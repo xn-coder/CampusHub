@@ -4,11 +4,11 @@ import type { LucideIcon } from 'lucide-react';
 export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student';
 
 export interface User {
-  id: string; // Keep id for consistency with Student/Teacher types if needed later
+  id: string;
   email: string;
   name: string;
   role: UserRole;
-  password?: string; // Optional: for future actual password check
+  password?: string; 
 }
 
 export type NavItem = {
@@ -71,7 +71,8 @@ export interface Announcement {
   title: string;
   content: string;
   date: Date;
-  author: string;
+  authorName: string; // Renamed from author
+  postedByRole: UserRole; // New field
 }
 
 export interface CalendarEvent {
@@ -85,4 +86,3 @@ export interface CalendarEvent {
 }
 
 // Add more types as needed
-
