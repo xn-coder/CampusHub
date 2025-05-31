@@ -9,9 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Student } from '@/types';
-import { useState } from 'react';
+import type { Student, User } from '@/types';
+import { useState, useEffect } from 'react';
 import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
+
+const MOCK_USER_DB_KEY = 'mockUserDatabase';
 
 // Mock data (can be moved to a shared location or fetched from an API later)
 const initialStudents: Student[] = [
@@ -22,6 +25,7 @@ const initialStudents: Student[] = [
 ];
 
 export default function ManageStudentsPage() {
+  const { toast } = useToast();
   const [students, setStudents] = useState<Student[]>(initialStudents);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-students");
@@ -31,7 +35,6 @@ export default function ManageStudentsPage() {
   const [newStudentEmail, setNewStudentEmail] = useState('');
   const [newStudentClassId, setNewStudentClassId] = useState('');
   const [newStudentProfilePicUrl, setNewStudentProfilePicUrl] = useState('');
-
 
   const filteredStudents = students.filter(student =>
     student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -44,26 +47,53 @@ export default function ManageStudentsPage() {
   
   const handleDeleteStudent = (studentId: string) => { 
     setStudents(prev => prev.filter(s => s.id !== studentId)); 
-    alert(`Student ${studentId} deleted (mock).`);
+    alert(`Student ${studentId} deleted (mock). Real deletion would also update mockUserDatabase.`);
   };
 
   const handleCreateStudentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const newStudent: Student = {
-        id: String(Date.now()), // mock ID
+        id: String(Date.now()), 
         name: newStudentName,
         email: newStudentEmail,
         classId: newStudentClassId,
         profilePictureUrl: newStudentProfilePicUrl || undefined,
     };
+
+    if (typeof window !== 'undefined') {
+      const storedUsers = localStorage.getItem(MOCK_USER_DB_KEY);
+      let users: User[] = storedUsers ? JSON.parse(storedUsers) : [];
+      
+      if (users.some(user => user.email === newStudent.email)) {
+        toast({
+          title: "Error",
+          description: "A user with this email already exists.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      users.push({ 
+        id: newStudent.id, 
+        email: newStudent.email, 
+        name: newStudent.name, 
+        role: 'student' 
+      });
+      localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify(users));
+    }
+
     setStudents(prev => [newStudent, ...prev]);
-    alert(`Student ${newStudentName} created (mock).`);
+    toast({
+      title: "Student Created",
+      description: `${newStudentName} has been added and can now log in.`,
+    });
+    
     // Reset form
     setNewStudentName('');
     setNewStudentEmail('');
     setNewStudentClassId('');
     setNewStudentProfilePicUrl('');
-    setActiveTab("list-students"); // Switch back to list after creation
+    setActiveTab("list-students"); 
   };
 
   return (
@@ -148,7 +178,7 @@ export default function ManageStudentsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Create New Student</CardTitle>
-              <CardDescription>Fill in the form below to add a new student.</CardDescription>
+              <CardDescription>Fill in the form below to add a new student. This will create a login for them.</CardDescription>
             </CardHeader>
             <form onSubmit={handleCreateStudentSubmit}>
               <CardContent className="space-y-4">
@@ -157,7 +187,7 @@ export default function ManageStudentsPage() {
                   <Input id="studentName" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} placeholder="Full Name" required />
                 </div>
                 <div>
-                  <Label htmlFor="studentEmail">Email</Label>
+                  <Label htmlFor="studentEmail">Email (Login ID)</Label>
                   <Input id="studentEmail" type="email" value={newStudentEmail} onChange={(e) => setNewStudentEmail(e.target.value)} placeholder="student@example.com" required />
                 </div>
                 <div>

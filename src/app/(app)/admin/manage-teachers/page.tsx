@@ -9,9 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Teacher } from '@/types';
-import { useState } from 'react';
+import type { Teacher, User } from '@/types';
+import { useState, useEffect } from 'react';
 import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
+
+const MOCK_USER_DB_KEY = 'mockUserDatabase';
 
 // Mock data (can be moved to a shared location or fetched from an API later)
 const initialTeachers: Teacher[] = [
@@ -22,6 +25,7 @@ const initialTeachers: Teacher[] = [
 ];
 
 export default function ManageTeachersPage() {
+  const { toast } = useToast();
   const [teachers, setTeachers] = useState<Teacher[]>(initialTeachers);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-teachers");
@@ -43,7 +47,7 @@ export default function ManageTeachersPage() {
   
   const handleDeleteTeacher = (teacherId: string) => { 
     setTeachers(prev => prev.filter(t => t.id !== teacherId)); 
-    alert(`Teacher ${teacherId} deleted (mock).`);
+    alert(`Teacher ${teacherId} deleted (mock). Real deletion would also update mockUserDatabase.`);
   };
 
   const handleCreateTeacherSubmit = (e: React.FormEvent) => {
@@ -55,14 +59,41 @@ export default function ManageTeachersPage() {
         subject: newTeacherSubject,
         profilePictureUrl: newTeacherProfilePicUrl || undefined,
     };
+
+    if (typeof window !== 'undefined') {
+      const storedUsers = localStorage.getItem(MOCK_USER_DB_KEY);
+      let users: User[] = storedUsers ? JSON.parse(storedUsers) : [];
+      
+      if (users.some(user => user.email === newTeacher.email)) {
+         toast({
+          title: "Error",
+          description: "A user with this email already exists.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      users.push({ 
+        id: newTeacher.id, 
+        email: newTeacher.email, 
+        name: newTeacher.name, 
+        role: 'teacher' 
+      });
+      localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify(users));
+    }
+    
     setTeachers(prev => [newTeacher, ...prev]);
-    alert(`Teacher ${newTeacherName} created (mock).`);
+    toast({
+      title: "Teacher Created",
+      description: `${newTeacherName} has been added and can now log in.`,
+    });
+
     // Reset form
     setNewTeacherName('');
     setNewTeacherEmail('');
     setNewTeacherSubject('');
     setNewTeacherProfilePicUrl('');
-    setActiveTab("list-teachers"); // Switch back to list after creation
+    setActiveTab("list-teachers"); 
   };
 
   return (
@@ -147,7 +178,7 @@ export default function ManageTeachersPage() {
           <Card>
             <CardHeader>
               <CardTitle>Create New Teacher</CardTitle>
-              <CardDescription>Fill in the form below to add a new teacher.</CardDescription>
+              <CardDescription>Fill in the form below to add a new teacher. This will create a login for them.</CardDescription>
             </CardHeader>
             <form onSubmit={handleCreateTeacherSubmit}>
               <CardContent className="space-y-4">
@@ -156,7 +187,7 @@ export default function ManageTeachersPage() {
                   <Input id="teacherName" value={newTeacherName} onChange={(e) => setNewTeacherName(e.target.value)} placeholder="Full Name" required />
                 </div>
                 <div>
-                  <Label htmlFor="teacherEmail">Email</Label>
+                  <Label htmlFor="teacherEmail">Email (Login ID)</Label>
                   <Input id="teacherEmail" type="email" value={newTeacherEmail} onChange={(e) => setNewTeacherEmail(e.target.value)} placeholder="teacher@example.com" required />
                 </div>
                 <div>

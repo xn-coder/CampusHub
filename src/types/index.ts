@@ -3,6 +3,14 @@ import type { LucideIcon } from 'lucide-react';
 
 export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student';
 
+export interface User {
+  id: string; // Keep id for consistency with Student/Teacher types if needed later
+  email: string;
+  name: string;
+  role: UserRole;
+  password?: string; // Optional: for future actual password check
+}
+
 export type NavItem = {
   href: string;
   label: string;
@@ -77,3 +85,4 @@ export interface CalendarEvent {
 }
 
 // Add more types as needed
+
