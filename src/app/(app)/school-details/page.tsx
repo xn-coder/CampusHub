@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -5,12 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import type { SchoolDetails, Holiday } from '@/types';
 import { Calendar } from '@/components/ui/calendar';
 import { PlusCircle, Trash2 } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { useToast } from "@/hooks/use-toast";
 
 export default function SchoolDetailsPage() {
+  const { toast } = useToast();
   const [schoolDetails, setSchoolDetails] = useState<SchoolDetails>({
     name: 'CampusHub High School',
     address: '123 Education Lane, Knowledgetown, USA 12345',
@@ -19,28 +23,55 @@ export default function SchoolDetailsPage() {
   });
 
   const [holidays, setHolidays] = useState<Holiday[]>([
-    { id: '1', name: 'Summer Break Starts', date: new Date(2024, 6, 20) },
-    { id: '2', name: 'Independence Day', date: new Date(2024, 6, 4) },
+    { id: '1', name: 'Summer Break Starts', date: new Date(2024, 6, 20) }, // July 20, 2024
+    { id: '2', name: 'Independence Day', date: new Date(2024, 6, 4) }, // July 4, 2024
   ]);
   const [newHolidayName, setNewHolidayName] = useState('');
   const [newHolidayDate, setNewHolidayDate] = useState<Date | undefined>(new Date());
 
 
-  const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDetailChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setSchoolDetails(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleSaveSchoolDetails = () => {
+    // In a real app, you would save this to a database
+    toast({
+      title: "School Details Updated",
+      description: "The school information has been saved (mock).",
+    });
+    console.log("School details saved:", schoolDetails);
+  };
+
   const handleAddHoliday = () => {
     if (newHolidayName && newHolidayDate) {
-      setHolidays(prev => [...prev, { id: String(Date.now()), name: newHolidayName, date: newHolidayDate }]);
+      setHolidays(prev => [...prev, { id: String(Date.now()), name: newHolidayName, date: newHolidayDate }].sort((a,b) => a.date.getTime() - b.date.getTime()));
       setNewHolidayName('');
       setNewHolidayDate(new Date());
+      toast({
+        title: "Holiday Added",
+        description: `${newHolidayName} has been added to the schedule.`,
+      });
+    } else {
+      toast({
+        title: "Error",
+        description: "Please provide both a name and a date for the holiday.",
+        variant: "destructive",
+      });
     }
   };
   
   const handleRemoveHoliday = (id: string) => {
+    const holidayToRemove = holidays.find(h => h.id === id);
     setHolidays(prev => prev.filter(holiday => holiday.id !== id));
+    if (holidayToRemove) {
+      toast({
+        title: "Holiday Removed",
+        description: `${holidayToRemove.name} has been removed from the schedule.`,
+        variant: "destructive"
+      });
+    }
   };
 
   return (
@@ -69,7 +100,7 @@ export default function SchoolDetailsPage() {
             <Label htmlFor="contactPhone">Contact Phone</Label>
             <Input id="contactPhone" name="contactPhone" type="tel" value={schoolDetails.contactPhone} onChange={handleDetailChange} />
           </div>
-          <Button>Save School Details</Button>
+          <Button onClick={handleSaveSchoolDetails}>Save School Details</Button>
         </CardContent>
       </Card>
 
@@ -79,28 +110,42 @@ export default function SchoolDetailsPage() {
           <CardDescription>Manage the school's holiday calendar.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="space-y-4 mb-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-              <div>
+              <div className="space-y-1">
                 <Label htmlFor="newHolidayName">Holiday Name</Label>
                 <Input id="newHolidayName" value={newHolidayName} onChange={(e) => setNewHolidayName(e.target.value)} placeholder="e.g. Winter Break" />
               </div>
-              <div>
-                <Label>Holiday Date</Label>
-                <Calendar mode="single" selected={newHolidayDate} onSelect={setNewHolidayDate} className="rounded-md border p-0" />
+              <div className="space-y-1">
+                <Label htmlFor="newHolidayDate">Holiday Date</Label>
+                 <Input 
+                  type="date" 
+                  id="newHolidayDate" 
+                  value={newHolidayDate ? format(newHolidayDate, 'yyyy-MM-dd') : ''} 
+                  onChange={(e) => setNewHolidayDate(e.target.value ? parseISO(e.target.value) : undefined)}
+                  className="w-full"
+                />
               </div>
-              <Button onClick={handleAddHoliday} className="self-end">
+              <Button onClick={handleAddHoliday} className="self-end mt-2 md:mt-0">
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Holiday
               </Button>
+            </div>
+             <div className="md:col-span-3 flex justify-center md:justify-start">
+                <Calendar 
+                    mode="single" 
+                    selected={newHolidayDate} 
+                    onSelect={setNewHolidayDate} 
+                    className="rounded-md border p-3 inline-block"
+                />
             </div>
           </div>
           <h4 className="text-lg font-medium mt-6 mb-2">Current Holidays:</h4>
           {holidays.length > 0 ? (
             <ul className="space-y-2">
               {holidays.map(holiday => (
-                <li key={holiday.id} className="flex items-center justify-between p-3 border rounded-md">
+                <li key={holiday.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
                   <div>
-                    <span className="font-medium">{holiday.name}</span> - <span className="text-sm text-muted-foreground">{holiday.date.toLocaleDateString()}</span>
+                    <span className="font-medium">{holiday.name}</span> - <span className="text-sm text-muted-foreground">{format(holiday.date, "MMMM d, yyyy")}</span>
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => handleRemoveHoliday(holiday.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
@@ -109,7 +154,7 @@ export default function SchoolDetailsPage() {
               ))}
             </ul>
           ) : (
-            <p className="text-muted-foreground">No holidays added yet.</p>
+            <p className="text-muted-foreground text-center py-4">No holidays added yet.</p>
           )}
         </CardContent>
       </Card>

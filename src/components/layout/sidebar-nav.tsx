@@ -28,6 +28,9 @@ import {
   ClipboardList,
   BookMarked,
   Settings,
+  FilePlus2,
+  Tags,
+  Receipt
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -45,6 +48,9 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/manage-students', label: 'Manage Students', icon: Users },
   { href: '/admin/manage-teachers', label: 'Manage Teachers', icon: UserCog },
   { href: '/class-management', label: 'Class Management', icon: Presentation },
+  { href: '/admin/admissions', label: 'Admissions', icon: FilePlus2 },
+  { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
+  { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
   { href: '/admin/academics', label: 'Academics', icon: GraduationCap },
   { href: '/admin/subjects', label: 'Subjects', icon: BookOpen },
   { href: '/admin/exams', label: 'Exams', icon: FileText },
@@ -82,27 +88,22 @@ const studentNavItems: NavItem[] = [
 
 export default function SidebarNav() {
   const pathname = usePathname();
-  // Default to 'student' or a role that shows minimal items before hydration
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null); 
 
   useEffect(() => {
-    // This code runs only on the client-side after hydration
     if (typeof window !== 'undefined') {
       const storedRole = localStorage.getItem('currentUserRole') as UserRole | null;
       const validRoles: UserRole[] = ['superadmin', 'admin', 'teacher', 'student'];
       if (storedRole && validRoles.includes(storedRole)) {
         setCurrentUserRole(storedRole);
       } else {
-        // Fallback if no valid role is stored, or handle as an unauthenticated state
-        setCurrentUserRole('student'); // Default to student if no role or invalid role
+        setCurrentUserRole('student'); 
       }
     }
   }, []);
 
-  // Conditional rendering based on whether currentUserRole has been determined
   if (currentUserRole === null) {
-    // You can render a loading state or null here until the role is determined
-    return null; // Or a skeleton loader
+    return null; 
   }
 
   let navItems: NavItem[];
@@ -121,7 +122,6 @@ export default function SidebarNav() {
       navItems = studentNavItems;
       break;
     default:
-      // Fallback to a minimal set or student view if role is unrecognized
       navItems = studentNavItems; 
   }
 
