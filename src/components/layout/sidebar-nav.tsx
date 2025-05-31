@@ -27,23 +27,25 @@ import {
   CreditCard,
   ClipboardList,
   BookMarked,
+  Settings, // Added for Manage School
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 // TODO: Replace this with actual role from authentication context
-const currentUserRole: UserRole = 'admin'; 
+const currentUserRole: UserRole = 'superadmin'; 
 
 const superAdminNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/superadmin/create-school', label: 'Create School', icon: Building },
+  { href: '/superadmin/manage-school', label: 'Manage School', icon: Settings },
 ];
 
 const adminNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/school-details', label: 'School Details', icon: School },
-  { href: '/admin/manage-students', label: 'Manage Students', icon: Users },
-  { href: '/admin/manage-teachers', label: 'Manage Teachers', icon: UserCog },
+  { href: '/admin/manage-students', label: 'Manage Students', icon: Users }, // Kept as /admin/manage-students
+  { href: '/admin/manage-teachers', label: 'Manage Teachers', icon: UserCog }, // Kept as /admin/manage-teachers
   { href: '/class-management', label: 'Class Management', icon: Presentation },
   { href: '/admin/academics', label: 'Academics', icon: GraduationCap },
   { href: '/admin/subjects', label: 'Subjects', icon: BookOpen },
@@ -53,7 +55,7 @@ const adminNavItems: NavItem[] = [
   { href: '/communication', label: 'Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'Calendar & Events', icon: CalendarDays },
   { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/leave-application', label: 'Leave Management', icon: ClipboardEdit },
+  { href: '/leave-application', label: 'Leave Management', icon: ClipboardEdit }, // Maintained generic leave-application link
 ];
 
 const teacherNavItems: NavItem[] = [
@@ -64,8 +66,8 @@ const teacherNavItems: NavItem[] = [
   { href: '/teacher/attendance', label: 'Class Attendance', icon: ClipboardCheck },
   { href: '/teacher/student-scores', label: 'Enter Scores', icon: Award },
   { href: '/teacher/leave-requests', label: 'Leave Requests', icon: ClipboardEdit },
-  { href: '/communication', label: 'View Announcements', icon: Megaphone },
-  { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
+  { href: '/communication', label: 'View Announcements', icon: Megaphone }, // Kept generic /communication
+  { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays }, // Kept generic /calendar-events
 ];
 
 const studentNavItems: NavItem[] = [
@@ -74,10 +76,10 @@ const studentNavItems: NavItem[] = [
   { href: '/student/subjects', label: 'My Subjects', icon: BookOpen },
   { href: '/student/assignments', label: 'Assignments', icon: ClipboardList },
   { href: '/student/study-material', label: 'Study Material', icon: BookMarked },
-  { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit },
+  { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit }, // Maintained generic leave-application link
   { href: '/student/payment-history', label: 'Payment History', icon: CreditCard },
-  { href: '/communication', label: 'View Announcements', icon: Megaphone },
-  { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
+  { href: '/communication', label: 'View Announcements', icon: Megaphone }, // Kept generic /communication
+  { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays }, // Kept generic /calendar-events
 ];
 
 let navItems: NavItem[];
