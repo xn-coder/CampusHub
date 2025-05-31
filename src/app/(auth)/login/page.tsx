@@ -12,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { UserRole, User } from '@/types';
 import { LogIn } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import Link from 'next/link';
 
 const MOCK_USER_DB_KEY = 'mockUserDatabase';
 
@@ -23,24 +22,53 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('student'); // Default role for dropdown
 
-  // Initialize mockUserDatabase in localStorage if it doesn't exist
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      if (!localStorage.getItem(MOCK_USER_DB_KEY)) {
-        // You could pre-populate with default admin/superadmin here if desired
-        // For now, it starts empty, users are added via admin panels
-        localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify([]));
-      }
-      // Pre-populate with a superadmin for easier initial testing
-      const storedUsers = localStorage.getItem(MOCK_USER_DB_KEY);
+      const superAdminEmailFromEnv = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL;
+      let storedUsers = localStorage.getItem(MOCK_USER_DB_KEY);
       let users: User[] = storedUsers ? JSON.parse(storedUsers) : [];
-      if (!users.some(u => u.email === 'super@example.com')) {
-        users.push({ id: 'superadmin01', email: 'super@example.com', name: 'Super Admin', role: 'superadmin', password: 'password' });
+
+      let usersModified = false;
+
+      // Ensure Super Admin exists
+      if (superAdminEmailFromEnv) {
+        if (!users.some(u => u.email === superAdminEmailFromEnv && u.role === 'superadmin')) {
+          users = users.filter(u => !(u.role === 'superadmin' && u.email !== superAdminEmailFromEnv)); // Remove any other superadmin
+          users.push({
+            id: 'superadmin-env',
+            email: superAdminEmailFromEnv,
+            name: 'Super Admin',
+            role: 'superadmin',
+            password: 'password'
+          });
+          usersModified = true;
+        }
+      } else {
+        // Fallback if .env var is not set
+        if (!users.some(u => u.email === 'super@example.com' && u.role === 'superadmin')) {
+          users.push({
+            id: 'superadmin-fallback',
+            email: 'super@example.com',
+            name: 'Super Admin (Default)',
+            role: 'superadmin',
+            password: 'password'
+          });
+          usersModified = true;
+        }
+      }
+      
+      // Ensure default Admin exists
+      if (!users.some(u => u.email === 'admin@example.com' && u.role === 'admin')) {
+         users.push({ id: 'admin01', email: 'admin@example.com', name: 'Admin User', role: 'admin', password: 'password' });
+         usersModified = true;
+      }
+
+
+      if (usersModified) {
         localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify(users));
       }
-      if (!users.some(u => u.email === 'admin@example.com')) {
-        users.push({ id: 'admin01', email: 'admin@example.com', name: 'Admin User', role: 'admin', password: 'password' });
-        localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify(users));
+       if (!localStorage.getItem(MOCK_USER_DB_KEY)) {
+        localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify([])); // Initialize if completely empty
       }
     }
   }, []);
@@ -55,8 +83,7 @@ export default function LoginPage() {
       
       const foundUser = users.find(user => user.email === email);
 
-      if (foundUser && foundUser.role === role) {
-        // In a real app, you'd also check password here: foundUser.password === password
+      if (foundUser && foundUser.role === role && foundUser.password === password) {
         localStorage.setItem('currentUserRole', role);
         toast({
           title: "Login Successful!",

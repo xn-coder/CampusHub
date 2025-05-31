@@ -15,18 +15,11 @@ import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase
 import { useToast } from "@/hooks/use-toast";
 
 const MOCK_USER_DB_KEY = 'mockUserDatabase';
-
-// Mock data (can be moved to a shared location or fetched from an API later)
-const initialTeachers: Teacher[] = [
-  { id: 't1', name: 'John Smith', email: 'john.smith@example.com', subject: 'Mathematics', profilePictureUrl: 'https://placehold.co/40x40.png?text=JS' },
-  { id: 't2', name: 'Emily Jones', email: 'emily.jones@example.com', subject: 'Science', profilePictureUrl: 'https://placehold.co/40x40.png?text=EJ' },
-  { id: 't3', name: 'Michael Brown', email: 'michael.brown@example.com', subject: 'History' },
-  { id: 't4', name: 'Sarah Davis', email: 'sarah.davis@example.com', subject: 'English', profilePictureUrl: 'https://placehold.co/40x40.png?text=SD' },
-];
+const MOCK_TEACHERS_KEY = 'mockTeachersData'; // For storing teacher-specific data
 
 export default function ManageTeachersPage() {
   const { toast } = useToast();
-  const [teachers, setTeachers] = useState<Teacher[]>(initialTeachers);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-teachers");
 
@@ -36,28 +29,81 @@ export default function ManageTeachersPage() {
   const [newTeacherSubject, setNewTeacherSubject] = useState('');
   const [newTeacherProfilePicUrl, setNewTeacherProfilePicUrl] = useState('');
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedTeachers = localStorage.getItem(MOCK_TEACHERS_KEY);
+      if (storedTeachers) {
+        setTeachers(JSON.parse(storedTeachers));
+      } else {
+        localStorage.setItem(MOCK_TEACHERS_KEY, JSON.stringify([]));
+      }
+       // Ensure mockUserDatabase exists
+      if (!localStorage.getItem(MOCK_USER_DB_KEY)) {
+        localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify([]));
+      }
+    }
+  }, []);
+
+  const updateLocalStorage = (key: string, data: any) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+  };
+
+
   const filteredTeachers = teachers.filter(teacher =>
     teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     teacher.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
   const handleEditTeacher = (teacher: Teacher) => { 
-    alert(`Editing ${teacher.name}. Form/functionality to be implemented.`); 
+    toast({ title: "Edit Teacher", description: `Editing ${teacher.name}. Form/functionality to be implemented.`});
   };
   
   const handleDeleteTeacher = (teacherId: string) => { 
-    setTeachers(prev => prev.filter(t => t.id !== teacherId)); 
-    alert(`Teacher ${teacherId} deleted (mock). Real deletion would also update mockUserDatabase.`);
+    if(confirm("Are you sure you want to delete this teacher? This will also remove their login access.")) {
+      const teacherToDelete = teachers.find(t => t.id === teacherId);
+      if (!teacherToDelete) return;
+
+      const updatedTeachers = teachers.filter(t => t.id !== teacherId);
+      setTeachers(updatedTeachers);
+      updateLocalStorage(MOCK_TEACHERS_KEY, updatedTeachers);
+
+      // Remove from user database
+      const storedUsers = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '[]') as User[];
+      const updatedUsers = storedUsers.filter(user => user.id !== teacherId);
+      updateLocalStorage(MOCK_USER_DB_KEY, updatedUsers);
+
+      toast({
+        title: "Teacher Deleted",
+        description: `${teacherToDelete.name} has been removed along with their login access.`,
+        variant: "destructive"
+      });
+    }
   };
 
   const handleCreateTeacherSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newTeacherName || !newTeacherEmail || !newTeacherSubject) {
+      toast({ title: "Error", description: "Name, Email, and Subject are required.", variant: "destructive" });
+      return;
+    }
+
+    const newTeacherId = `t-${Date.now()}`;
     const newTeacher: Teacher = {
-        id: String(Date.now()), // mock ID
+        id: newTeacherId,
         name: newTeacherName,
         email: newTeacherEmail,
         subject: newTeacherSubject,
-        profilePictureUrl: newTeacherProfilePicUrl || undefined,
+        profilePictureUrl: newTeacherProfilePicUrl || `https://placehold.co/100x100.png?text=${newTeacherName.substring(0,1)}`,
+    };
+    
+    const newUser: User = {
+      id: newTeacherId,
+      email: newTeacherEmail,
+      name: newTeacherName,
+      role: 'teacher',
+      password: 'password' // Default password
     };
 
     if (typeof window !== 'undefined') {
@@ -73,19 +119,17 @@ export default function ManageTeachersPage() {
         return;
       }
       
-      users.push({ 
-        id: newTeacher.id, 
-        email: newTeacher.email, 
-        name: newTeacher.name, 
-        role: 'teacher' 
-      });
-      localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify(users));
+      users.push(newUser);
+      updateLocalStorage(MOCK_USER_DB_KEY, users);
     }
     
-    setTeachers(prev => [newTeacher, ...prev]);
+    const updatedTeachers = [newTeacher, ...teachers];
+    setTeachers(updatedTeachers);
+    updateLocalStorage(MOCK_TEACHERS_KEY, updatedTeachers);
+    
     toast({
       title: "Teacher Created",
-      description: `${newTeacherName} has been added and can now log in.`,
+      description: `${newTeacherName} has been added and a login account created.`,
     });
 
     // Reset form
@@ -138,7 +182,7 @@ export default function ManageTeachersPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Subject</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -153,7 +197,7 @@ export default function ManageTeachersPage() {
                       <TableCell className="font-medium">{teacher.name}</TableCell>
                       <TableCell>{teacher.email}</TableCell>
                       <TableCell>{teacher.subject}</TableCell>
-                      <TableCell className="space-x-1">
+                      <TableCell className="space-x-1 text-right">
                         <Button variant="outline" size="icon" onClick={() => handleEditTeacher(teacher)}>
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -201,7 +245,7 @@ export default function ManageTeachersPage() {
               </CardContent>
               <CardFooter>
                 <Button type="submit">
-                  <UserPlus className="mr-2 h-4 w-4" /> Save Teacher
+                  <UserPlus className="mr-2 h-4 w-4" /> Save Teacher & Create Account
                 </Button>
               </CardFooter>
             </form>
