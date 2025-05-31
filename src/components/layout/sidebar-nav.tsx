@@ -30,7 +30,9 @@ import {
   Settings,
   FilePlus2,
   Tags,
-  Receipt
+  Receipt,
+  Printer, // Added
+  UsersRound // Added
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -47,6 +49,7 @@ const adminNavItems: NavItem[] = [
   { href: '/school-details', label: 'School Details', icon: School },
   { href: '/admin/manage-students', label: 'Manage Students', icon: Users },
   { href: '/admin/manage-teachers', label: 'Manage Teachers', icon: UserCog },
+  { href: '/admin/employee-registration', label: 'Employee Registration', icon: UsersRound },
   { href: '/class-management', label: 'Class Management', icon: Presentation },
   { href: '/admin/admissions', label: 'Admissions', icon: FilePlus2 },
   { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
@@ -56,6 +59,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/exams', label: 'Exams', icon: FileText },
   { href: '/admin/student-scores', label: 'Student Scores', icon: Award },
   { href: '/admin/attendance', label: 'Attendance', icon: ClipboardCheck },
+  { href: '/admin/id-card-printing', label: 'ID Card Printing', icon: Printer },
   { href: '/communication', label: 'Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'Calendar & Events', icon: CalendarDays },
   { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
@@ -97,12 +101,17 @@ export default function SidebarNav() {
       if (storedRole && validRoles.includes(storedRole)) {
         setCurrentUserRole(storedRole);
       } else {
+        // Default to student if role is invalid or not found, or redirect to login
+        // For now, defaulting to student for safety during development.
+        // Consider redirecting to login in a real app if role is crucial and missing.
         setCurrentUserRole('student'); 
       }
     }
   }, []);
 
+  // It's good practice to show a loading state or null until the role is determined client-side
   if (currentUserRole === null) {
+    // You could return a loading skeleton here if preferred
     return null; 
   }
 
@@ -122,6 +131,7 @@ export default function SidebarNav() {
       navItems = studentNavItems;
       break;
     default:
+      // Fallback to student nav items if role is somehow unexpected
       navItems = studentNavItems; 
   }
 
