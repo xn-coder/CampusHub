@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, type FormEvent } from 'react';
@@ -17,7 +18,7 @@ import { CheckCircle, XCircle, Loader2, UploadCloud } from 'lucide-react';
 const formSchema = z.object({
   studentName: z.string().min(1, "Student name is required"),
   reason: z.string().min(10, "Reason must be at least 10 characters long"),
-  medicalNotes: z.instanceof(FileList).optional(),
+  medicalNotes: z.any().optional(),
 });
 
 type LeaveFormValues = z.infer<typeof formSchema>;
