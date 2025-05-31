@@ -4,6 +4,7 @@
 import type React from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Sidebar, SidebarInset, SidebarTrigger, SidebarHeader, SidebarContent, SidebarFooter } from '@/components/ui/sidebar';
 import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
