@@ -7,6 +7,7 @@ import { Sidebar, SidebarInset, SidebarTrigger, SidebarHeader, SidebarContent, S
 import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -14,11 +15,16 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const router = useRouter();
+  const { toast } = useToast();
 
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('currentUserRole');
     }
+    toast({
+      title: "Logout Successful",
+      description: "You have been logged out.",
+    });
     router.push('/login');
   };
 

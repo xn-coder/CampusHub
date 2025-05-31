@@ -10,9 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { UserRole } from '@/types';
 import { LogIn } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('student'); // Default role
@@ -20,18 +22,19 @@ export default function LoginPage() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     // In a real app, you'd authenticate here
-    alert(`Login attempt:
-Email: ${email}
-Role: ${role}
-(Authentication not implemented yet)`);
+    console.log(`Login attempt: Email: ${email}, Role: ${role}`);
 
     // Store the selected role in localStorage
     if (typeof window !== 'undefined') {
         localStorage.setItem('currentUserRole', role);
     }
     
+    toast({
+      title: "Login Successful!",
+      description: `Welcome! You are logged in as ${role}.`,
+    });
+    
     // For now, redirect to dashboard. This can be role-specific later.
-    // Example: router.push(role === 'superadmin' ? '/superadmin/dashboard' : '/dashboard');
     router.push('/dashboard'); 
   };
 
