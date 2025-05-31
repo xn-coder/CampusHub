@@ -47,6 +47,7 @@ export interface Teacher {
   name: string;
   email: string;
   subject: string;
+  profilePictureUrl?: string;
 }
 
 export interface ClassData {
