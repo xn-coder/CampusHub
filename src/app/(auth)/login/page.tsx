@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -23,8 +24,14 @@ export default function LoginPage() {
 Email: ${email}
 Role: ${role}
 (Authentication not implemented yet)`);
-    // For now, redirect to dashboard on any "login" attempt.
-    // This should be conditional on successful authentication in a real app.
+
+    // Store the selected role in localStorage
+    if (typeof window !== 'undefined') {
+        localStorage.setItem('currentUserRole', role);
+    }
+    
+    // For now, redirect to dashboard. This can be role-specific later.
+    // Example: router.push(role === 'superadmin' ? '/superadmin/dashboard' : '/dashboard');
     router.push('/dashboard'); 
   };
 

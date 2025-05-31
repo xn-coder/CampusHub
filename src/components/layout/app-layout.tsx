@@ -1,6 +1,8 @@
+
 "use client";
 
 import type React from 'react';
+import { useRouter } from 'next/navigation';
 import { Sidebar, SidebarInset, SidebarTrigger, SidebarHeader, SidebarContent, SidebarFooter } from '@/components/ui/sidebar';
 import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
@@ -11,6 +13,15 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
+  const router = useRouter();
+
+  const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('currentUserRole');
+    }
+    router.push('/login');
+  };
+
   return (
     <div className="flex min-h-screen w-full">
       <Sidebar variant="sidebar" collapsible="icon" side="left">
@@ -24,7 +35,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <SidebarNav />
         </SidebarContent>
         <SidebarFooter className="p-2 border-t border-sidebar-border">
-           <Button variant="ghost" className="w-full justify-start group-data-[collapsible=icon]:justify-center">
+           <Button variant="ghost" className="w-full justify-start group-data-[collapsible=icon]:justify-center" onClick={handleLogout}>
             <LogOut className="mr-2 group-data-[collapsible=icon]:mr-0" />
             <span className="group-data-[collapsible=icon]:hidden">Logout</span>
           </Button>
