@@ -46,9 +46,27 @@ export interface Student {
   id: string;
   name: string;
   email: string;
-  classId: string;
+  classId: string; 
   profilePictureUrl?: string;
+  dateOfBirth?: string; 
+  guardianName?: string;
+  contactNumber?: string;
+  address?: string;
+  admissionDate?: string; 
 }
+
+export interface AdmissionRecord {
+  id: string;
+  name: string;
+  email: string;
+  dateOfBirth: string; 
+  guardianName: string;
+  contactNumber: string;
+  address: string;
+  admissionDate: string; 
+  status: 'Pending Review' | 'Admitted' | 'Rejected' | 'Enrolled';
+}
+
 
 export interface Teacher {
   id: string;
@@ -71,8 +89,8 @@ export interface Announcement {
   title: string;
   content: string;
   date: Date;
-  authorName: string; // Renamed from author
-  postedByRole: UserRole; // New field
+  authorName: string; 
+  postedByRole: UserRole; 
 }
 
 export interface CalendarEvent {
@@ -86,3 +104,5 @@ export interface CalendarEvent {
 }
 
 // Add more types as needed
+
+      

@@ -5,113 +5,92 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Student, User } from '@/types';
 import { useState, useEffect } from 'react';
-import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity } from 'lucide-react';
+import { Edit2, Trash2, Search, Users, Activity } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
+const MOCK_STUDENTS_KEY = 'mockStudentsData';
 const MOCK_USER_DB_KEY = 'mockUserDatabase';
-
-// Mock data (can be moved to a shared location or fetched from an API later)
-const initialStudents: Student[] = [
-  { id: '1', name: 'Alice Wonderland', email: 'alice@example.com', classId: '10A', profilePictureUrl: 'https://placehold.co/40x40.png?text=AW' },
-  { id: '2', name: 'Bob The Builder', email: 'bob@example.com', classId: '10B', profilePictureUrl: 'https://placehold.co/40x40.png?text=BB' },
-  { id: '3', name: 'Charlie Brown', email: 'charlie@example.com', classId: '11A' },
-  { id: '4', name: 'Diana Prince', email: 'diana@example.com', classId: '10A', profilePictureUrl: 'https://placehold.co/40x40.png?text=DP' },
-];
+// const MOCK_ADMISSIONS_KEY = 'mockAdmissionsData'; // Key for admission records
 
 export default function ManageStudentsPage() {
   const { toast } = useToast();
-  const [students, setStudents] = useState<Student[]>(initialStudents);
+  const [students, setStudents] = useState<Student[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-students");
 
-  // Form state for creating a new student
-  const [newStudentName, setNewStudentName] = useState('');
-  const [newStudentEmail, setNewStudentEmail] = useState('');
-  const [newStudentClassId, setNewStudentClassId] = useState('');
-  const [newStudentProfilePicUrl, setNewStudentProfilePicUrl] = useState('');
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
+      if (storedStudents) {
+        setStudents(JSON.parse(storedStudents));
+      } else {
+        localStorage.setItem(MOCK_STUDENTS_KEY, JSON.stringify([])); 
+      }
+
+      if (!localStorage.getItem(MOCK_USER_DB_KEY)) {
+        localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify([]));
+      }
+    }
+  }, []);
+
+  const updateLocalStorage = (key: string, data: any) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+  };
 
   const filteredStudents = students.filter(student =>
     student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.email.toLowerCase().includes(searchTerm.toLowerCase())
+    (student.email && student.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
   
   const handleEditStudent = (student: Student) => { 
-    alert(`Editing ${student.name}. Form/functionality to be implemented.`); 
+    toast({ title: "Edit Student", description: `Editing ${student.name}. Form/functionality to be implemented.`});
   };
   
   const handleDeleteStudent = (studentId: string) => { 
-    setStudents(prev => prev.filter(s => s.id !== studentId)); 
-    alert(`Student ${studentId} deleted (mock). Real deletion would also update mockUserDatabase.`);
-  };
+    if (confirm("Are you sure you want to delete this student? This will also remove their login access and admission record if any.")) {
+      const studentToDelete = students.find(s => s.id === studentId);
+      if (!studentToDelete) return;
 
-  const handleCreateStudentSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newStudent: Student = {
-        id: String(Date.now()), 
-        name: newStudentName,
-        email: newStudentEmail,
-        classId: newStudentClassId,
-        profilePictureUrl: newStudentProfilePicUrl || undefined,
-    };
+      const updatedStudents = students.filter(s => s.id !== studentId);
+      setStudents(updatedStudents);
+      updateLocalStorage(MOCK_STUDENTS_KEY, updatedStudents);
 
-    if (typeof window !== 'undefined') {
-      const storedUsers = localStorage.getItem(MOCK_USER_DB_KEY);
-      let users: User[] = storedUsers ? JSON.parse(storedUsers) : [];
+      const storedUsers = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '[]') as User[];
+      const updatedUsers = storedUsers.filter(user => user.id !== studentId); 
+      updateLocalStorage(MOCK_USER_DB_KEY, updatedUsers);
       
-      if (users.some(user => user.email === newStudent.email)) {
-        toast({
-          title: "Error",
-          description: "A user with this email already exists.",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      users.push({ 
-        id: newStudent.id, 
-        email: newStudent.email, 
-        name: newStudent.name, 
-        role: 'student' 
+      // Also remove from admission records using email as a fallback link if ID isn't directly stored or consistent
+      const storedAdmissions = JSON.parse(localStorage.getItem('mockAdmissionsData') || '[]') as any[]; // Assuming AdmissionRecord type
+      const updatedAdmissions = storedAdmissions.filter(adm => adm.email !== studentToDelete.email);
+      updateLocalStorage('mockAdmissionsData', updatedAdmissions);
+
+
+      toast({
+        title: "Student Deleted",
+        description: `${studentToDelete.name} has been removed along with their login and admission record.`,
+        variant: "destructive"
       });
-      localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify(users));
     }
-
-    setStudents(prev => [newStudent, ...prev]);
-    toast({
-      title: "Student Created",
-      description: `${newStudentName} has been added and can now log in.`,
-    });
-    
-    // Reset form
-    setNewStudentName('');
-    setNewStudentEmail('');
-    setNewStudentClassId('');
-    setNewStudentProfilePicUrl('');
-    setActiveTab("list-students"); 
   };
+
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Manage Students" 
-        description="Administer student profiles, enrollment, and records." 
-        actions={
-          <Button onClick={() => setActiveTab("create-student")}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Add New Student
-          </Button>
-        }
+        description="Administer enrolled student profiles and records." 
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2"> 
           <TabsTrigger value="list-students"><Users className="mr-2 h-4 w-4" />List Students</TabsTrigger>
-          <TabsTrigger value="create-student"><FilePlus className="mr-2 h-4 w-4" />Create Student</TabsTrigger>
           <TabsTrigger value="student-activity"><Activity className="mr-2 h-4 w-4" />Student Activity</TabsTrigger>
         </TabsList>
 
@@ -119,7 +98,7 @@ export default function ManageStudentsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Student Roster</CardTitle>
-              <CardDescription>View, search, and manage all student profiles.</CardDescription>
+              <CardDescription>View, search, and manage enrolled student profiles. New students are added via the Admissions page.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-4 flex items-center gap-2">
@@ -137,8 +116,8 @@ export default function ManageStudentsPage() {
                     <TableHead>Avatar</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead>Class ID</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -152,8 +131,8 @@ export default function ManageStudentsPage() {
                       </TableCell>
                       <TableCell className="font-medium">{student.name}</TableCell>
                       <TableCell>{student.email}</TableCell>
-                      <TableCell>{student.classId}</TableCell>
-                      <TableCell className="space-x-1">
+                      <TableCell>{student.classId || 'N/A'}</TableCell>
+                      <TableCell className="space-x-1 text-right">
                         <Button variant="outline" size="icon" onClick={() => handleEditStudent(student)}>
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -167,44 +146,10 @@ export default function ManageStudentsPage() {
               </Table>
               {filteredStudents.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">
-                  {searchTerm ? "No students match your search." : "No students found. Add a new student to get started."}
+                  {searchTerm ? "No students match your search." : "No students found. Add students via the Admissions page."}
                 </p>
               )}
             </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="create-student">
-          <Card>
-            <CardHeader>
-              <CardTitle>Create New Student</CardTitle>
-              <CardDescription>Fill in the form below to add a new student. This will create a login for them.</CardDescription>
-            </CardHeader>
-            <form onSubmit={handleCreateStudentSubmit}>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="studentName">Student Name</Label>
-                  <Input id="studentName" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} placeholder="Full Name" required />
-                </div>
-                <div>
-                  <Label htmlFor="studentEmail">Email (Login ID)</Label>
-                  <Input id="studentEmail" type="email" value={newStudentEmail} onChange={(e) => setNewStudentEmail(e.target.value)} placeholder="student@example.com" required />
-                </div>
-                <div>
-                  <Label htmlFor="studentClassId">Class ID</Label>
-                  <Input id="studentClassId" value={newStudentClassId} onChange={(e) => setNewStudentClassId(e.target.value)} placeholder="e.g., 10A, Grade 5B" required />
-                </div>
-                <div>
-                  <Label htmlFor="studentProfilePicUrl">Profile Picture URL (Optional)</Label>
-                  <Input id="studentProfilePicUrl" value={newStudentProfilePicUrl} onChange={(e) => setNewStudentProfilePicUrl(e.target.value)} placeholder="https://placehold.co/100x100.png" />
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button type="submit">
-                  <FilePlus className="mr-2 h-4 w-4" /> Save Student
-                </Button>
-              </CardFooter>
-            </form>
           </Card>
         </TabsContent>
 
@@ -224,3 +169,4 @@ export default function ManageStudentsPage() {
     </div>
   );
 }
+        
