@@ -1,4 +1,6 @@
 
+"use client";
+
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,9 +18,9 @@ const mockSchools = [
 export default function ManageSchoolPage() {
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader 
-        title="Manage Schools" 
-        description="View, edit, or deactivate schools in the system." 
+      <PageHeader
+        title="Manage Schools"
+        description="View, edit, or deactivate schools in the system."
       />
       <Card>
         <CardHeader>
@@ -28,7 +30,7 @@ export default function ManageSchoolPage() {
         <CardContent>
           <div className="mb-4 flex items-center gap-2">
             <Search className="h-5 w-5 text-muted-foreground" />
-            <Input 
+            <Input
               placeholder="Search schools by name or admin email..."
               className="max-w-sm"
             />
