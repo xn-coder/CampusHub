@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Teacher } from '@/types';
 import { useState } from 'react';
-import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus } from 'lucide-react';
 
 // Mock data (can be moved to a shared location or fetched from an API later)
 const initialTeachers: Teacher[] = [
