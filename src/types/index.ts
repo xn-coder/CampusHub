@@ -1,4 +1,7 @@
+
 import type { LucideIcon } from 'lucide-react';
+
+export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student';
 
 export type NavItem = {
   href: string;
@@ -55,7 +58,7 @@ export interface ClassData {
 }
 
 export interface Announcement {
-  id: string;
+  id:string;
   title: string;
   content: string;
   date: Date;
