@@ -36,7 +36,7 @@ import { useState, useEffect } from 'react';
 const superAdminNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/superadmin/create-school', label: 'Create School', icon: Building },
-  { href: '/superadmin/manage-school', label: 'Manage School', icon: Settings },
+  { href: '/superadmin/manage-school', label: 'Manage Schools', icon: Settings },
 ];
 
 const adminNavItems: NavItem[] = [
@@ -83,7 +83,7 @@ const studentNavItems: NavItem[] = [
 export default function SidebarNav() {
   const pathname = usePathname();
   // Default to 'student' or a role that shows minimal items before hydration
-  const [currentUserRole, setCurrentUserRole] = useState<UserRole>('student'); 
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null); 
 
   useEffect(() => {
     // This code runs only on the client-side after hydration
@@ -94,10 +94,16 @@ export default function SidebarNav() {
         setCurrentUserRole(storedRole);
       } else {
         // Fallback if no valid role is stored, or handle as an unauthenticated state
-        setCurrentUserRole('student'); // Or potentially redirect to login
+        setCurrentUserRole('student'); // Default to student if no role or invalid role
       }
     }
   }, []);
+
+  // Conditional rendering based on whether currentUserRole has been determined
+  if (currentUserRole === null) {
+    // You can render a loading state or null here until the role is determined
+    return null; // Or a skeleton loader
+  }
 
   let navItems: NavItem[];
 

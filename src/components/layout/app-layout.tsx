@@ -3,6 +3,7 @@
 
 import type React from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Sidebar, SidebarInset, SidebarTrigger, SidebarHeader, SidebarContent, SidebarFooter } from '@/components/ui/sidebar';
 import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
@@ -32,9 +33,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
     <div className="flex min-h-screen w-full">
       <Sidebar variant="sidebar" collapsible="icon" side="left">
         <SidebarHeader className="p-4 flex items-center justify-between">
-          <h1 className="text-2xl font-headline font-bold text-sidebar-primary group-data-[collapsible=icon]:hidden">
-            CampusHub
-          </h1>
+          <Link href="/dashboard" className="group-data-[collapsible=icon]:hidden">
+            <Image src="/logo.png" alt="App Logo" width={148} height={40} priority />
+          </Link>
+          <Link href="/dashboard" className="hidden group-data-[collapsible=icon]:block">
+             <Image src="/logo.png" alt="App Logo" width={32} height={32} className="rounded-sm" priority />
+          </Link>
           <SidebarTrigger className="group-data-[collapsible=icon]:hidden md:hidden" />
         </SidebarHeader>
         <SidebarContent className="flex-1">
@@ -50,7 +54,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       <SidebarInset className="flex-1 bg-background">
         <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6 py-4 md:hidden">
            <SidebarTrigger />
-           <h1 className="text-xl font-headline font-bold text-primary">CampusHub</h1>
+           <Image src="/logo.png" alt="App Logo" width={120} height={32} priority />
         </header>
         <main className="flex-1 overflow-auto p-4 md:p-6">
           {children}

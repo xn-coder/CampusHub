@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { UserRole } from '@/types';
 import { LogIn } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,8 +42,11 @@ export default function LoginPage() {
 
   return (
     <Card className="w-full max-w-md shadow-2xl">
-      <CardHeader className="text-center">
-        <CardTitle className="text-3xl font-bold text-primary">CampusHub Login</CardTitle>
+      <CardHeader className="text-center space-y-4">
+        <div className="flex justify-center">
+          <Image src="/logo.png" alt="App Logo" width={185} height={50} priority />
+        </div>
+        <CardTitle className="text-2xl font-bold">Welcome Back!</CardTitle>
         <CardDescription>Sign in to access your account.</CardDescription>
       </CardHeader>
       <form onSubmit={handleLogin}>
