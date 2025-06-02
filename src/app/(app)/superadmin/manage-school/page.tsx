@@ -6,28 +6,44 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Edit2, Trash2, Search, Building, Settings } from 'lucide-react';
-import { useState } from 'react';
+import { Edit2, Trash2, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data for demonstration
-const mockSchools = [
-  { id: '1', name: 'Springfield Elementary', adminEmail: 'principal@springfield.edu', status: 'Active', adminName: 'Seymour Skinner' },
-  { id: '2', name: 'Shelbyville High', adminEmail: 'headmaster@shelbyvillehigh.com', status: 'Active', adminName: 'John Doe' },
-  { id: '3', name: 'Ogdenville Academy', adminEmail: 'dean@ogdenville.org', status: 'Inactive', adminName: 'Jane Smith' },
-];
+const MOCK_SCHOOLS_DB_KEY = 'mockSchoolsDatabase';
 
 interface SchoolEntry {
   id: string;
   name: string;
+  address: string; // Added address for completeness
   adminEmail: string;
-  status: 'Active' | 'Inactive';
   adminName: string;
+  status: 'Active' | 'Inactive'; // Status can be managed if needed
 }
 
 export default function ManageSchoolPage() {
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
-  // In a real app, schools would be fetched from a data source
-  const [schools, setSchools] = useState<SchoolEntry[]>(mockSchools);
+  const [schools, setSchools] = useState<SchoolEntry[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedSchools = localStorage.getItem(MOCK_SCHOOLS_DB_KEY);
+      if (storedSchools) {
+        setSchools(JSON.parse(storedSchools));
+      } else {
+        // Initialize with an empty array if no schools are stored yet
+        localStorage.setItem(MOCK_SCHOOLS_DB_KEY, JSON.stringify([]));
+        setSchools([]);
+      }
+    }
+  }, []);
+
+  const updateLocalStorage = (data: SchoolEntry[]) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(MOCK_SCHOOLS_DB_KEY, JSON.stringify(data));
+    }
+  };
 
   const filteredSchools = schools.filter(school =>
     school.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -36,13 +52,23 @@ export default function ManageSchoolPage() {
   );
 
   const handleEditSchool = (schoolId: string) => {
-    alert(`Edit school ${schoolId} - functionality to be implemented.`);
+    // Placeholder for edit functionality
+    toast({ title: "Edit School", description: `Editing school ${schoolId}. Functionality to be implemented.` });
   };
 
   const handleDeleteSchool = (schoolId: string) => {
-    if (confirm('Are you sure you want to deactivate/delete this school? This action cannot be undone.')) {
-      setSchools(prev => prev.filter(s => s.id !== schoolId));
-      alert(`School ${schoolId} deactivated/deleted (mock).`);
+    if (confirm('Are you sure you want to delete this school record? This action cannot be undone from the UI.')) {
+      const schoolToDelete = schools.find(s => s.id === schoolId);
+      if (!schoolToDelete) return;
+
+      const updatedSchools = schools.filter(s => s.id !== schoolId);
+      setSchools(updatedSchools);
+      updateLocalStorage(updatedSchools);
+      toast({
+        title: "School Record Deleted",
+        description: `${schoolToDelete.name} has been removed.`,
+        variant: "destructive",
+      });
     }
   };
 
@@ -72,24 +98,30 @@ export default function ManageSchoolPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>School Name</TableHead>
+                <TableHead>Address</TableHead>
                 <TableHead>Administrator Name</TableHead>
                 <TableHead>Admin Email</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredSchools.map((school) => (
                 <TableRow key={school.id}>
                   <TableCell className="font-medium">{school.name}</TableCell>
+                  <TableCell>{school.address}</TableCell>
                   <TableCell>{school.adminName}</TableCell>
                   <TableCell>{school.adminEmail}</TableCell>
                   <TableCell>
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${school.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                      school.status === 'Active' 
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                        : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                    }`}>
                       {school.status}
                     </span>
                   </TableCell>
-                  <TableCell className="space-x-2">
+                  <TableCell className="space-x-1 text-right">
                     <Button variant="outline" size="icon" onClick={() => handleEditSchool(school.id)}>
                       <Edit2 className="h-4 w-4" />
                     </Button>
@@ -103,7 +135,7 @@ export default function ManageSchoolPage() {
           </Table>
           {filteredSchools.length === 0 && (
             <p className="text-center text-muted-foreground py-4">
-              {searchTerm ? "No schools match your search." : "No schools registered yet."}
+              {searchTerm ? "No schools match your search." : "No schools registered yet. Create one via 'Create School' page."}
             </p>
           )}
         </CardContent>
