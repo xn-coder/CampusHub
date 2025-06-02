@@ -1,4 +1,5 @@
 
+
 import type { LucideIcon } from 'lucide-react';
 
 export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student';
@@ -46,7 +47,7 @@ export interface Student {
   id: string;
   name: string;
   email: string;
-  classId: string; 
+  classId: string; // Stores the ID of the ClassData object
   profilePictureUrl?: string;
   dateOfBirth?: string; 
   guardianName?: string;
@@ -65,6 +66,7 @@ export interface AdmissionRecord {
   address: string;
   admissionDate: string; 
   status: 'Pending Review' | 'Admitted' | 'Rejected' | 'Enrolled';
+  classId: string; // ID of the ClassData object student is admitted to
 }
 
 
@@ -78,10 +80,10 @@ export interface Teacher {
 
 export interface ClassData {
   id: string;
-  name: string;
-  division: string;
+  name: string; // e.g., "Grade 10"
+  division: string; // e.g., "A", "B"
   teacherId?: string;
-  studentIds: string[];
+  studentIds: string[]; // List of student IDs assigned to this class-division
 }
 
 export interface Announcement {
@@ -105,12 +107,12 @@ export interface CalendarEvent {
 
 export interface ClassScheduleItem {
   id: string;
-  className: string;
+  className: string; // e.g. "Grade 10A" or could be linked to ClassData.id
   subject: string;
-  teacherName: string;
+  teacherName: string; // or Teacher.id
   dayOfWeek: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-  startTime: string;
-  endTime: string;
+  startTime: string; // HH:mm format
+  endTime: string; // HH:mm format
 }
 
 export interface PayrollEntry {
@@ -125,3 +127,5 @@ export interface PayrollEntry {
 // Add more types as needed
 
       
+
+    

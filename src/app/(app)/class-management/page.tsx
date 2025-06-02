@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { ClassData, Student, Teacher } from '@/types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { PlusCircle, Edit2, Trash2, Users, UserCog, Save } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
@@ -22,11 +22,11 @@ const initialMockTeachers: Teacher[] = [
     { id: 't3', name: 'Dr. Alan Who', email: 'who@example.com', subject: 'History', profilePictureUrl: 'https://placehold.co/40x40.png?text=AW' },
 ];
 const initialMockStudents: Student[] = [
-    { id: 's1', name: 'Alice Wonderland', email: 'a@example.com', classId: '10A', profilePictureUrl: 'https://placehold.co/40x40.png?text=AW' },
-    { id: 's2', name: 'Bob The Builder', email: 'b@example.com', classId: '10A', profilePictureUrl: 'https://placehold.co/40x40.png?text=BB' },
-    { id: 's3', name: 'Charlie Brown', email: 'c@example.com', classId: '10B', profilePictureUrl: 'https://placehold.co/40x40.png?text=CB' },
-    { id: 's4', name: 'Diana Prince', email: 'd@example.com', classId: '10B', profilePictureUrl: 'https://placehold.co/40x40.png?text=DP' },
-    { id: 's5', name: 'Eve Harrington', email: 'e@example.com', classId: '11A', profilePictureUrl: 'https://placehold.co/40x40.png?text=EH' },
+    { id: 's1', name: 'Alice Wonderland', email: 'a@example.com', classId: 'c1', profilePictureUrl: 'https://placehold.co/40x40.png?text=AW' },
+    { id: 's2', name: 'Bob The Builder', email: 'b@example.com', classId: 'c1', profilePictureUrl: 'https://placehold.co/40x40.png?text=BB' },
+    { id: 's3', name: 'Charlie Brown', email: 'c@example.com', classId: 'c2', profilePictureUrl: 'https://placehold.co/40x40.png?text=CB' },
+    { id: 's4', name: 'Diana Prince', email: 'd@example.com', classId: 'c3', profilePictureUrl: 'https://placehold.co/40x40.png?text=DP' },
+    { id: 's5', name: 'Eve Harrington', email: 'e@example.com', classId: 'c3', profilePictureUrl: 'https://placehold.co/40x40.png?text=EH' },
 ];
 
 const initialClasses: ClassData[] = [
@@ -35,12 +35,16 @@ const initialClasses: ClassData[] = [
   { id: 'c3', name: 'Grade 11', division: 'A', teacherId: 't3', studentIds: ['s4', 's5'] },
 ];
 
+const MOCK_CLASSES_KEY = 'mockClassesData';
+const MOCK_STUDENTS_KEY = 'mockStudentsData'; // For student selection, potentially
+const MOCK_TEACHERS_KEY = 'mockTeachersData'; // For teacher selection, potentially
+
 
 export default function ClassManagementPage() {
   const { toast } = useToast();
-  const [classes, setClasses] = useState<ClassData[]>(initialClasses);
-  const [mockStudents, setMockStudents] = useState<Student[]>(initialMockStudents); // Using local mock for dialogs
-  const [mockTeachers, setMockTeachers] = useState<Teacher[]>(initialMockTeachers); // Using local mock for dialogs
+  const [classes, setClasses] = useState<ClassData[]>([]);
+  const [mockStudents, setMockStudents] = useState<Student[]>(initialMockStudents); 
+  const [mockTeachers, setMockTeachers] = useState<Teacher[]>(initialMockTeachers);
 
   // Dialog states
   const [isCreateClassDialogOpen, setIsCreateClassDialogOpen] = useState(false);
@@ -55,6 +59,37 @@ export default function ClassManagementPage() {
   const [classToAssignTeacher, setClassToAssignTeacher] = useState<ClassData | null>(null);
   const [selectedTeacherIdForDialog, setSelectedTeacherIdForDialog] = useState<string | undefined>(undefined);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
+      if (storedClasses) {
+        setClasses(JSON.parse(storedClasses));
+      } else {
+        setClasses(initialClasses);
+        localStorage.setItem(MOCK_CLASSES_KEY, JSON.stringify(initialClasses));
+      }
+      // Future: Load mockStudents and mockTeachers from localStorage if needed for wider app consistency
+      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
+      if (storedStudents) {
+          setMockStudents(JSON.parse(storedStudents));
+      } else {
+          localStorage.setItem(MOCK_STUDENTS_KEY, JSON.stringify(initialMockStudents));
+      }
+      const storedTeachers = localStorage.getItem(MOCK_TEACHERS_KEY);
+      if (storedTeachers) {
+          setMockTeachers(JSON.parse(storedTeachers));
+      } else {
+          localStorage.setItem(MOCK_TEACHERS_KEY, JSON.stringify(initialMockTeachers));
+      }
+    }
+  }, []);
+
+  const updateLocalStorageAndState = (updatedClasses: ClassData[]) => {
+    setClasses(updatedClasses);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(MOCK_CLASSES_KEY, JSON.stringify(updatedClasses));
+    }
+  };
 
   const getTeacherName = (teacherId?: string) => mockTeachers.find(t => t.id === teacherId)?.name || 'N/A';
 
@@ -74,9 +109,11 @@ export default function ClassManagementPage() {
       division: currentClass.division,
       studentIds: [],
     };
-    setClasses(prev => [...prev, newClass]);
+    const updatedClasses = [...classes, newClass];
+    updateLocalStorageAndState(updatedClasses);
     toast({ title: "Class Created", description: `${newClass.name} - ${newClass.division} has been created.` });
     setIsCreateClassDialogOpen(false);
+    setCurrentClass({});
   };
 
   const handleOpenEditClassDialog = (cls: ClassData) => {
@@ -89,15 +126,19 @@ export default function ClassManagementPage() {
       toast({ title: "Error", description: "Invalid class data.", variant: "destructive" });
       return;
     }
-    setClasses(prev => prev.map(c => c.id === currentClass.id ? { ...c, name: currentClass.name!, division: currentClass.division! } : c));
+    const updatedClasses = classes.map(c => c.id === currentClass.id ? { ...c, name: currentClass.name!, division: currentClass.division! } : c);
+    updateLocalStorageAndState(updatedClasses);
     toast({ title: "Class Updated", description: `${currentClass.name} - ${currentClass.division} has been updated.` });
     setIsEditClassDialogOpen(false);
+    setCurrentClass({});
   };
   
   const handleDeleteClass = (classId: string) => { 
-    if (confirm(`Are you sure you want to delete class ${classes.find(c=>c.id === classId)?.name}? This action cannot be undone.`)) {
-      setClasses(prev => prev.filter(c => c.id !== classId)); 
-      toast({ title: "Class Deleted", description: `Class ${classId} has been deleted.`, variant: "destructive" });
+    const classToDelete = classes.find(c => c.id === classId);
+    if (confirm(`Are you sure you want to delete class ${classToDelete?.name} - ${classToDelete?.division}? This action cannot be undone.`)) {
+      const updatedClasses = classes.filter(c => c.id !== classId);
+      updateLocalStorageAndState(updatedClasses);
+      toast({ title: "Class Deleted", description: `Class ${classToDelete?.name} - ${classToDelete?.division} has been deleted.`, variant: "destructive" });
     }
   };
 
@@ -115,9 +156,10 @@ export default function ClassManagementPage() {
 
   const handleSaveStudentAssignments = () => {
     if (!classToManageStudents) return;
-    setClasses(prev => prev.map(c => 
+    const updatedClasses = classes.map(c => 
       c.id === classToManageStudents.id ? { ...c, studentIds: selectedStudentIdsForDialog } : c
-    ));
+    );
+    updateLocalStorageAndState(updatedClasses);
     toast({ title: "Students Updated", description: `Student assignments for ${classToManageStudents.name} - ${classToManageStudents.division} updated.` });
     setIsManageStudentsDialogOpen(false);
     setClassToManageStudents(null);
@@ -132,9 +174,10 @@ export default function ClassManagementPage() {
   const handleSaveTeacherAssignment = () => {
     if (!classToAssignTeacher) return;
     const newTeacherId = selectedTeacherIdForDialog === 'unassign' ? undefined : selectedTeacherIdForDialog;
-    setClasses(prev => prev.map(c => 
+    const updatedClasses = classes.map(c => 
       c.id === classToAssignTeacher.id ? { ...c, teacherId: newTeacherId } : c
-    ));
+    );
+    updateLocalStorageAndState(updatedClasses);
     const teacherName = getTeacherName(newTeacherId);
     toast({ title: "Teacher Assigned", description: `${teacherName} assigned to ${classToAssignTeacher.name} - ${classToAssignTeacher.division}.` });
     setIsAssignTeacherDialogOpen(false);
@@ -186,13 +229,13 @@ export default function ClassManagementPage() {
             </TableBody>
           </Table>
            {classes.length === 0 && (
-            <p className="text-center text-muted-foreground py-4">No classes created yet.</p>
+            <p className="text-center text-muted-foreground py-4">No classes created yet. Use "Create New Class" to add one.</p>
           )}
         </CardContent>
       </Card>
       
       {/* Create Class Dialog */}
-      <Dialog open={isCreateClassDialogOpen} onOpenChange={setIsCreateClassDialogOpen}>
+      <Dialog open={isCreateClassDialogOpen} onOpenChange={(isOpen) => { setIsCreateClassDialogOpen(isOpen); if (!isOpen) setCurrentClass({}); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Class</DialogTitle>
@@ -215,7 +258,7 @@ export default function ClassManagementPage() {
       </Dialog>
 
       {/* Edit Class Dialog */}
-      <Dialog open={isEditClassDialogOpen} onOpenChange={setIsEditClassDialogOpen}>
+      <Dialog open={isEditClassDialogOpen} onOpenChange={(isOpen) => { setIsEditClassDialogOpen(isOpen); if (!isOpen) setCurrentClass({}); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Class: {currentClass.name} - {currentClass.division}</DialogTitle>
@@ -238,14 +281,14 @@ export default function ClassManagementPage() {
       </Dialog>
 
       {/* Manage Students Dialog */}
-      <Dialog open={isManageStudentsDialogOpen} onOpenChange={setIsManageStudentsDialogOpen}>
+      <Dialog open={isManageStudentsDialogOpen} onOpenChange={(isOpen) => { setIsManageStudentsDialogOpen(isOpen); if (!isOpen) setClassToManageStudents(null); }}>
         <DialogContent className="max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Manage Students for {classToManageStudents?.name} - {classToManageStudents?.division}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2 py-2 overflow-y-auto flex-grow">
-            <p className="text-sm text-muted-foreground">Select students to assign to this class.</p>
-            {mockStudents.map(student => ( // Using local mockStudents for dialog
+            <p className="text-sm text-muted-foreground">Select students to assign to this class. Students are managed via the Admissions and Manage Students pages.</p>
+            {mockStudents.length > 0 ? mockStudents.map(student => (
               <div key={student.id} className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
                 <Checkbox 
                   id={`student-${student.id}`} 
@@ -256,8 +299,7 @@ export default function ClassManagementPage() {
                   {student.name} <span className="text-xs text-muted-foreground">({student.email})</span>
                 </Label>
               </div>
-            ))}
-             {mockStudents.length === 0 && <p className="text-sm text-muted-foreground">No students available to assign.</p>}
+            )) : <p className="text-sm text-muted-foreground text-center py-4">No students available in the system. Add students via Admissions.</p>}
           </div>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
@@ -267,7 +309,7 @@ export default function ClassManagementPage() {
       </Dialog>
 
       {/* Assign Teacher Dialog */}
-      <Dialog open={isAssignTeacherDialogOpen} onOpenChange={setIsAssignTeacherDialogOpen}>
+      <Dialog open={isAssignTeacherDialogOpen} onOpenChange={(isOpen) => { setIsAssignTeacherDialogOpen(isOpen); if (!isOpen) setClassToAssignTeacher(null); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Assign Teacher to {classToAssignTeacher?.name} - {classToAssignTeacher?.division}</DialogTitle>
@@ -275,19 +317,19 @@ export default function ClassManagementPage() {
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="teacherSelect">Select Teacher</Label>
-              <Select value={selectedTeacherIdForDialog} onValueChange={setSelectedTeacherIdForDialog}>
+              <Select value={selectedTeacherIdForDialog} onValueChange={(val) => setSelectedTeacherIdForDialog(val === 'unassign' ? undefined : val)}>
                 <SelectTrigger id="teacherSelect">
                   <SelectValue placeholder="Select a teacher" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassign">Unassign Teacher</SelectItem>
-                  {mockTeachers.map(teacher => ( // Using local mockTeachers for dialog
+                  {mockTeachers.map(teacher => ( 
                     <SelectItem key={teacher.id} value={teacher.id}>{teacher.name} ({teacher.subject})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-             {mockTeachers.length === 0 && <p className="text-sm text-muted-foreground">No teachers available to assign.</p>}
+             {mockTeachers.length === 0 && <p className="text-sm text-muted-foreground">No teachers available to assign. Add teachers via Manage Teachers page.</p>}
           </div>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
@@ -300,4 +342,4 @@ export default function ClassManagementPage() {
   );
 }
 
-        
+    
