@@ -211,33 +211,31 @@ export default function AdmissionsPage() {
                 <Textarea id="address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, City, State, Zip Code" required />
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                 <div>
-                    <Label htmlFor="classNameSelect">Assign to Class</Label>
-                    <Select value={selectedClassName} onValueChange={handleClassNameChange}>
-                      <SelectTrigger id="classNameSelect">
-                        <SelectValue placeholder="Select Class" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableClassNames.length > 0 ? availableClassNames.map(cName => (
-                          <SelectItem key={cName} value={cName}>{cName}</SelectItem>
-                        )) : <SelectItem value="no-class" disabled>No classes available</SelectItem>}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="divisionSelect">Assign to Section/Division</Label>
-                    <Select value={selectedDivision} onValueChange={handleDivisionChange} disabled={!selectedClassName || availableDivisions.length === 0}>
-                      <SelectTrigger id="divisionSelect">
-                        <SelectValue placeholder="Select Section" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableDivisions.length > 0 ? availableDivisions.map(divName => (
-                          <SelectItem key={divName} value={divName}>{divName}</SelectItem>
-                        )) : <SelectItem value="no-division" disabled>No sections for this class</SelectItem>}
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <div>
+                <Label htmlFor="classNameSelect">Assign to Class</Label>
+                <Select value={selectedClassName} onValueChange={handleClassNameChange}>
+                  <SelectTrigger id="classNameSelect">
+                    <SelectValue placeholder="Select Class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableClassNames.length > 0 ? availableClassNames.map(cName => (
+                      <SelectItem key={cName} value={cName}>{cName}</SelectItem>
+                    )) : <SelectItem value="no-class" disabled>No classes available</SelectItem>}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="divisionSelect">Assign to Section/Division</Label>
+                <Select value={selectedDivision} onValueChange={handleDivisionChange} disabled={!selectedClassName || availableDivisions.length === 0}>
+                  <SelectTrigger id="divisionSelect">
+                    <SelectValue placeholder="Select Section" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableDivisions.length > 0 ? availableDivisions.map(divName => (
+                      <SelectItem key={divName} value={divName}>{divName}</SelectItem>
+                    )) : <SelectItem value="no-division" disabled>No sections for this class</SelectItem>}
+                  </SelectContent>
+                </Select>
               </div>
                {allClasses.length === 0 && <p className="text-sm text-muted-foreground">No classes defined. Please add classes in 'Class Management' first.</p>}
 
