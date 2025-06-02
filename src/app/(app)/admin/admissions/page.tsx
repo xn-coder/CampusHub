@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import type { AdmissionRecord, Student, User, ClassData } from '@/types'; // ClassData is an activated class-section
+import type { AdmissionRecord, Student, User, ClassData, ClassNameRecord, SectionRecord } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { FilePlus, ListChecks, CheckSquare, UserPlus } from 'lucide-react';
@@ -18,7 +18,9 @@ import { format } from 'date-fns';
 const MOCK_ADMISSIONS_KEY = 'mockAdmissionsData';
 const MOCK_STUDENTS_KEY = 'mockStudentsData';
 const MOCK_USER_DB_KEY = 'mockUserDatabase';
-const MOCK_ACTIVE_CLASSES_KEY = 'mockClassesData'; // Key for activated class-sections
+const MOCK_CLASSES_KEY = 'mockClassesData'; // For activated class-sections
+const MOCK_CLASS_NAMES_KEY = 'mockClassNamesData';
+const MOCK_SECTION_NAMES_KEY = 'mockSectionNamesData';
 
 
 export default function AdmissionsPage() {
@@ -32,25 +34,34 @@ export default function AdmissionsPage() {
   const [contactNumber, setContactNumber] = useState('');
   const [address, setAddress] = useState('');
 
-  const [activeClasses, setActiveClasses] = useState<ClassData[]>([]); // Stores activated class-sections
-  const [selectedClassName, setSelectedClassName] = useState<string>(''); // Stores the name of the selected class (e.g., "Grade 10")
-  const [selectedDivision, setSelectedDivision] = useState<string>(''); // Stores the name of the selected division (e.g., "A")
-  const [selectedClassId, setSelectedClassId] = useState<string>(''); // Stores the ID of the selected ClassData object
+  const [allClassNames, setAllClassNames] = useState<ClassNameRecord[]>([]);
+  const [allSectionNames, setAllSectionNames] = useState<SectionRecord[]>([]);
+  const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
+
+  const [selectedClassName, setSelectedClassName] = useState<string>('');
+  const [selectedDivision, setSelectedDivision] = useState<string>('');
+  const [selectedClassId, setSelectedClassId] = useState<string>('');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedAdmissions = localStorage.getItem(MOCK_ADMISSIONS_KEY);
       if (storedAdmissions) setAdmissionRecords(JSON.parse(storedAdmissions));
+      else localStorage.setItem(MOCK_ADMISSIONS_KEY, JSON.stringify([]));
       
       if (!localStorage.getItem(MOCK_STUDENTS_KEY)) localStorage.setItem(MOCK_STUDENTS_KEY, JSON.stringify([]));
       if (!localStorage.getItem(MOCK_USER_DB_KEY)) localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify([]));
       
-      const storedActiveClasses = localStorage.getItem(MOCK_ACTIVE_CLASSES_KEY);
-      if (storedActiveClasses) {
-        setActiveClasses(JSON.parse(storedActiveClasses));
-      } else {
-        localStorage.setItem(MOCK_ACTIVE_CLASSES_KEY, JSON.stringify([])); 
-      }
+      const storedActiveClasses = localStorage.getItem(MOCK_CLASSES_KEY);
+      if (storedActiveClasses) setActiveClasses(JSON.parse(storedActiveClasses));
+      else localStorage.setItem(MOCK_CLASSES_KEY, JSON.stringify([]));
+
+      const storedClassNames = localStorage.getItem(MOCK_CLASS_NAMES_KEY);
+      if (storedClassNames) setAllClassNames(JSON.parse(storedClassNames));
+      else localStorage.setItem(MOCK_CLASS_NAMES_KEY, JSON.stringify([]));
+
+      const storedSectionNames = localStorage.getItem(MOCK_SECTION_NAMES_KEY);
+      if (storedSectionNames) setAllSectionNames(JSON.parse(storedSectionNames));
+      else localStorage.setItem(MOCK_SECTION_NAMES_KEY, JSON.stringify([]));
     }
   }, []);
 
@@ -60,31 +71,30 @@ export default function AdmissionsPage() {
     }
   };
 
-  const availableClassNamesFromActive = useMemo(() => {
-    return [...new Set(activeClasses.map(cls => cls.name))].sort();
-  }, [activeClasses]);
-
-  const availableDivisionsForSelectedClass = useMemo(() => {
-    if (!selectedClassName) return [];
-    return activeClasses
-      .filter(cls => cls.name === selectedClassName)
-      .map(cls => cls.division)
-      .sort();
-  }, [activeClasses, selectedClassName]);
-
   const handleClassNameChange = (value: string) => {
     setSelectedClassName(value);
-    setSelectedDivision(''); // Reset division when class name changes
-    setSelectedClassId(''); // Reset class ID
+    setSelectedDivision(''); // Reset division
+    setSelectedClassId(''); // Reset class ID, will be re-validated on division change or submit
   };
 
   const handleDivisionChange = (value: string) => {
     setSelectedDivision(value);
-    const foundClass = activeClasses.find(cls => cls.name === selectedClassName && cls.division === value);
-    if (foundClass) {
-      setSelectedClassId(foundClass.id);
+    // Validate if this combination is active
+    const foundActiveClass = activeClasses.find(
+      (cls) => cls.name === selectedClassName && cls.division === value
+    );
+    if (foundActiveClass) {
+      setSelectedClassId(foundActiveClass.id);
     } else {
       setSelectedClassId('');
+      if (selectedClassName && value) { // only show toast if both are selected but not active
+        toast({
+          title: "Combination Not Active",
+          description: `The class-section '${selectedClassName} - ${value}' is not activated. Please activate it in Class Management if you wish to assign students.`,
+          variant: "destructive",
+          duration: 5000,
+        });
+      }
     }
   };
 
@@ -94,10 +104,25 @@ export default function AdmissionsPage() {
       toast({ title: "Error", description: "All student details are required.", variant: "destructive" });
       return;
     }
-    if (!selectedClassId) { // Ensure a specific activated class-section ID is selected
-        toast({ title: "Error", description: "Please select an activated class and section for the student.", variant: "destructive" });
+    if (!selectedClassName || !selectedDivision) {
+        toast({ title: "Error", description: "Please select a class and a section for the student.", variant: "destructive" });
         return;
     }
+
+    const activeClassForAdmission = activeClasses.find(
+      (cls) => cls.name === selectedClassName && cls.division === selectedDivision
+    );
+
+    if (!activeClassForAdmission) {
+      toast({
+        title: "Error: Class-Section Not Active",
+        description: `The selected combination '${selectedClassName} - ${selectedDivision}' is not an active class-section. Please activate it in 'Class Management' before admitting students.`,
+        variant: "destructive",
+        duration: 7000,
+      });
+      return;
+    }
+    const currentClassId = activeClassForAdmission.id;
     
     const storedUsers = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '[]') as User[];
     if (storedUsers.some((user:User) => user.email === email)) {
@@ -115,14 +140,14 @@ export default function AdmissionsPage() {
       name, email, dateOfBirth, guardianName, contactNumber, address,
       admissionDate: new Date().toISOString(),
       status: 'Admitted', 
-      classId: selectedClassId, 
+      classId: currentClassId, 
     };
 
     const newStudentId = `s-${Date.now()}`;
     const newStudent: Student = {
       id: newStudentId,
       name, email,
-      classId: selectedClassId, 
+      classId: currentClassId, 
       dateOfBirth, guardianName, contactNumber, address,
       admissionDate: newAdmissionRecord.admissionDate,
       profilePictureUrl: `https://placehold.co/100x100.png?text=${name.substring(0,1)}` 
@@ -139,17 +164,14 @@ export default function AdmissionsPage() {
     setAdmissionRecords(updatedAdmissions);
     updateLocalStorage(MOCK_ADMISSIONS_KEY, updatedAdmissions);
 
-    const currentStoredStudents = JSON.parse(localStorage.getItem(MOCK_STUDENTS_KEY) || '[]');
+    const currentStoredStudents = JSON.parse(localStorage.getItem(MOCK_STUDENTS_KEY) || '[]') as Student[];
     const updatedStudents = [...currentStoredStudents, newStudent];
     updateLocalStorage(MOCK_STUDENTS_KEY, updatedStudents);
 
     const updatedUsers = [...storedUsers, newUser];
     updateLocalStorage(MOCK_USER_DB_KEY, updatedUsers);
     
-    const assignedClassDetails = activeClasses.find(c => c.id === selectedClassId);
-    const assignedClassText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'Selected Class';
-
-    toast({ title: "Admission Submitted", description: `${name} has been admitted to ${assignedClassText} and a student account created.` });
+    toast({ title: "Admission Submitted", description: `${name} has been admitted to ${selectedClassName} - ${selectedDivision} and a student account created.` });
     
     setName(''); setEmail(''); setDateOfBirth(''); setGuardianName(''); setContactNumber(''); setAddress('');
     setSelectedClassName(''); setSelectedDivision(''); setSelectedClassId('');
@@ -214,26 +236,31 @@ export default function AdmissionsPage() {
                     <SelectValue placeholder="Select Class Standard" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableClassNamesFromActive.length > 0 ? availableClassNamesFromActive.map(cName => (
-                      <SelectItem key={cName} value={cName}>{cName}</SelectItem>
-                    )) : <SelectItem value="no-class" disabled>No active classes available</SelectItem>}
+                    {allClassNames.length > 0 ? allClassNames.map(cName => (
+                      <SelectItem key={cName.id} value={cName.name}>{cName.name}</SelectItem>
+                    )) : <SelectItem value="no-class" disabled>No class names defined</SelectItem>}
                   </SelectContent>
                 </Select>
+                {allClassNames.length === 0 && <p className="text-xs text-muted-foreground mt-1">Define class names in 'Class Management' first.</p>}
               </div>
               <div>
                 <Label htmlFor="divisionSelect">Assign to Section/Division</Label>
-                <Select value={selectedDivision} onValueChange={handleDivisionChange} disabled={!selectedClassName || availableDivisionsForSelectedClass.length === 0}>
+                <Select value={selectedDivision} onValueChange={handleDivisionChange} disabled={!selectedClassName || allSectionNames.length === 0}>
                   <SelectTrigger id="divisionSelect">
                     <SelectValue placeholder="Select Section/Division" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableDivisionsForSelectedClass.length > 0 ? availableDivisionsForSelectedClass.map(divName => (
-                      <SelectItem key={divName} value={divName}>{divName}</SelectItem>
-                    )) : <SelectItem value="no-division" disabled>No sections for this class standard</SelectItem>}
+                    {allSectionNames.length > 0 ? allSectionNames.map(divName => (
+                      <SelectItem key={divName.id} value={divName.name}>{divName.name}</SelectItem>
+                    )) : <SelectItem value="no-division" disabled>No sections defined</SelectItem>}
                   </SelectContent>
                 </Select>
+                {allSectionNames.length === 0 && <p className="text-xs text-muted-foreground mt-1">Define section names in 'Class Management' first.</p>}
+                {!selectedClassId && selectedClassName && selectedDivision && (
+                   <p className="text-xs text-destructive mt-1">This class-section is not active. Activate it in Class Management.</p>
+                )}
               </div>
-               {activeClasses.length === 0 && <p className="text-sm text-muted-foreground">No active class-sections defined. Please configure these in 'Class Management' first.</p>}
+               {activeClasses.length === 0 && allClassNames.length > 0 && allSectionNames.length > 0 && <p className="text-sm text-muted-foreground">No active class-sections defined from the available class/section names. Please configure these combinations in 'Class Management' first.</p>}
 
             </CardContent>
             <CardFooter>
@@ -302,3 +329,6 @@ export default function AdmissionsPage() {
     </div>
   );
 }
+
+
+    
