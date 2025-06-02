@@ -103,6 +103,25 @@ export interface CalendarEvent {
   isAllDay: boolean;
 }
 
+export interface ClassScheduleItem {
+  id: string;
+  className: string;
+  subject: string;
+  teacherName: string;
+  dayOfWeek: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+  startTime: string;
+  endTime: string;
+}
+
+export interface PayrollEntry {
+  id: string;
+  employeeName: string;
+  designation: string;
+  basicSalary: number;
+  paymentDate?: string; // ISO string
+  status: 'Pending' | 'Paid' | 'Processing';
+}
+
 // Add more types as needed
 
       
