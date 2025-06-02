@@ -11,8 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { ClassData, Student, Teacher } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Users, UserCog, Save } from 'lucide-react';
+import { useState, useEffect, type FormEvent, useMemo } from 'react';
+import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
 const MOCK_CLASSES_KEY = 'mockClassesData';
@@ -44,15 +44,23 @@ export default function ClassManagementPage() {
   const [mockTeachers, setMockTeachers] = useState<Teacher[]>([]);
 
   // Dialog states
-  const [isCreateClassDialogOpen, setIsCreateClassDialogOpen] = useState(false);
+  const [isAddClassAndSectionDialogOpen, setIsAddClassAndSectionDialogOpen] = useState(false);
+  const [isAddSectionToClassDialogOpen, setIsAddSectionToClassDialogOpen] = useState(false);
   const [isEditClassDialogOpen, setIsEditClassDialogOpen] = useState(false);
   const [isManageStudentsDialogOpen, setIsManageStudentsDialogOpen] = useState(false);
   const [isAssignTeacherDialogOpen, setIsAssignTeacherDialogOpen] = useState(false);
 
   // Form states
   const [currentClass, setCurrentClass] = useState<Partial<ClassData>>({}); // For edit dialog
-  const [newClassName, setNewClassName] = useState(''); // For create dialog
-  const [newClassDivision, setNewClassDivision] = useState(''); // For create dialog
+
+  // States for "Add New Class & Initial Section" Dialog
+  const [newClassName, setNewClassName] = useState('');
+  const [initialSectionName, setInitialSectionName] = useState('');
+
+  // States for "Add Section to Existing Class" Dialog
+  const [selectedClassForNewSection, setSelectedClassForNewSection] = useState<string>('');
+  const [newSectionName, setNewSectionName] = useState('');
+
 
   const [classToManageStudents, setClassToManageStudents] = useState<ClassData | null>(null);
   const [selectedStudentIdsForDialog, setSelectedStudentIdsForDialog] = useState<string[]>([]);
@@ -62,7 +70,8 @@ export default function ClassManagementPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      setClasses(storedClasses ? JSON.parse(storedClasses) : initialClassesData);
+      const loadedClasses = storedClasses ? JSON.parse(storedClasses) : initialClassesData;
+      setClasses(loadedClasses);
       if (!storedClasses) localStorage.setItem(MOCK_CLASSES_KEY, JSON.stringify(initialClassesData));
       
       const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
@@ -84,39 +93,77 @@ export default function ClassManagementPage() {
 
   const getTeacherName = (teacherId?: string) => mockTeachers.find(t => t.id === teacherId)?.name || 'N/A';
 
-  const handleOpenCreateClassDialog = () => {
+  const availableClassNamesForNewSection = useMemo(() => {
+    return [...new Set(classes.map(cls => cls.name))].sort();
+  }, [classes]);
+
+  const handleOpenAddClassAndSectionDialog = () => {
     setNewClassName('');
-    setNewClassDivision('');
-    setIsCreateClassDialogOpen(true);
+    setInitialSectionName('');
+    setIsAddClassAndSectionDialogOpen(true);
   };
 
-  const handleCreateClass = () => {
-    if (!newClassName || !newClassDivision) {
-      toast({ title: "Error", description: "Class Name and Division are required.", variant: "destructive" });
+  const handleCreateClassAndInitialSection = () => {
+    if (!newClassName || !initialSectionName) {
+      toast({ title: "Error", description: "Class Name and Initial Section Name are required.", variant: "destructive" });
       return;
     }
-    const newClass: ClassData = {
-      id: `c${Date.now()}`,
+    if (classes.some(c => c.name === newClassName && c.division === initialSectionName)) {
+      toast({ title: "Error", description: `The section '${initialSectionName}' already exists for class '${newClassName}'.`, variant: "destructive" });
+      return;
+    }
+    const newClassEntry: ClassData = {
+      id: `c-${Date.now()}`,
       name: newClassName,
-      division: newClassDivision,
+      division: initialSectionName,
       studentIds: [],
     };
-    const updatedClasses = [...classes, newClass];
+    const updatedClasses = [...classes, newClassEntry];
     updateLocalStorageAndState(updatedClasses);
-    toast({ title: "Class Created", description: `${newClass.name} - ${newClass.division} has been created.` });
-    setIsCreateClassDialogOpen(false);
-    setNewClassName('');
-    setNewClassDivision('');
+    toast({ title: "Class Created", description: `Class '${newClassName}' with section '${initialSectionName}' has been created.` });
+    setIsAddClassAndSectionDialogOpen(false);
+  };
+  
+  const handleOpenAddSectionToClassDialog = () => {
+    setSelectedClassForNewSection('');
+    setNewSectionName('');
+    setIsAddSectionToClassDialogOpen(true);
   };
 
+  const handleAddSectionToExistingClass = () => {
+    if (!selectedClassForNewSection || !newSectionName) {
+      toast({ title: "Error", description: "Please select a class and provide a new section name.", variant: "destructive" });
+      return;
+    }
+    if (classes.some(c => c.name === selectedClassForNewSection && c.division === newSectionName)) {
+      toast({ title: "Error", description: `The section '${newSectionName}' already exists for class '${selectedClassForNewSection}'.`, variant: "destructive" });
+      return;
+    }
+    const newSectionEntry: ClassData = {
+      id: `c-${Date.now()}`,
+      name: selectedClassForNewSection,
+      division: newSectionName,
+      studentIds: [],
+    };
+    const updatedClasses = [...classes, newSectionEntry];
+    updateLocalStorageAndState(updatedClasses);
+    toast({ title: "Section Added", description: `Section '${newSectionName}' has been added to class '${selectedClassForNewSection}'.` });
+    setIsAddSectionToClassDialogOpen(false);
+  };
+
+
   const handleOpenEditClassDialog = (cls: ClassData) => {
-    setCurrentClass({...cls}); // Use currentClass state for editing
+    setCurrentClass({...cls});
     setIsEditClassDialogOpen(true);
   };
 
   const handleUpdateClass = () => {
     if (!currentClass.id || !currentClass.name || !currentClass.division) {
       toast({ title: "Error", description: "Invalid class data for update.", variant: "destructive" });
+      return;
+    }
+    if (classes.some(c => c.id !== currentClass.id && c.name === currentClass.name && c.division === currentClass.division)) {
+       toast({ title: "Error", description: `Another class with name '${currentClass.name}' and section '${currentClass.division}' already exists.`, variant: "destructive" });
       return;
     }
     const updatedClasses = classes.map(c => 
@@ -183,24 +230,27 @@ export default function ClassManagementPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
-        title="Class & Division Management" 
-        description="Create and manage classes, divisions, and assign students/teachers."
+        title="Class & Section Management" 
+        description="Create classes, add sections, and assign students/teachers."
         actions={
-            <Button onClick={handleOpenCreateClassDialog}><PlusCircle className="mr-2 h-4 w-4" /> Create New Class</Button>
+          <div className="flex gap-2">
+            <Button onClick={handleOpenAddClassAndSectionDialog}><Library className="mr-2 h-4 w-4" /> Add Class & Initial Section</Button>
+            <Button onClick={handleOpenAddSectionToClassDialog}><ListPlus className="mr-2 h-4 w-4" /> Add Section to Class</Button>
+          </div>
         }
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>Class List</CardTitle>
-          <CardDescription>Overview of all classes and divisions.</CardDescription>
+          <CardTitle>Class & Section List</CardTitle>
+          <CardDescription>Overview of all classes and their sections.</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Class Name</TableHead>
-                <TableHead>Division</TableHead>
+                <TableHead>Section / Division</TableHead>
                 <TableHead>Teacher</TableHead>
                 <TableHead>No. of Students</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -224,23 +274,23 @@ export default function ClassManagementPage() {
             </TableBody>
           </Table>
            {classes.length === 0 && (
-            <p className="text-center text-muted-foreground py-4">No classes created yet. Use "Create New Class" to add one.</p>
+            <p className="text-center text-muted-foreground py-4">No classes created yet. Use the buttons above to add them.</p>
           )}
         </CardContent>
       </Card>
       
-      {/* Create Class Dialog */}
-      <Dialog open={isCreateClassDialogOpen} onOpenChange={(isOpen) => { 
-          setIsCreateClassDialogOpen(isOpen); 
-          if (!isOpen) { setNewClassName(''); setNewClassDivision(''); } 
+      {/* Add New Class & Initial Section Dialog */}
+      <Dialog open={isAddClassAndSectionDialogOpen} onOpenChange={(isOpen) => { 
+          setIsAddClassAndSectionDialogOpen(isOpen); 
+          if (!isOpen) { setNewClassName(''); setInitialSectionName(''); } 
         }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Class</DialogTitle>
+            <DialogTitle>Add New Class & Initial Section</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="newClassNameDialog">Class Name</Label>
+              <Label htmlFor="newClassNameDialog">New Class Name</Label>
               <Input 
                 id="newClassNameDialog" 
                 value={newClassName} 
@@ -249,21 +299,63 @@ export default function ClassManagementPage() {
               />
             </div>
             <div>
-              <Label htmlFor="newClassDivisionDialog">Division / Section</Label>
+              <Label htmlFor="initialSectionNameDialog">Initial Section Name</Label>
               <Input 
-                id="newClassDivisionDialog" 
-                value={newClassDivision} 
-                onChange={(e) => setNewClassDivision(e.target.value)} 
+                id="initialSectionNameDialog" 
+                value={initialSectionName} 
+                onChange={(e) => setInitialSectionName(e.target.value)} 
                 placeholder="e.g., A, Blue House" 
               />
             </div>
           </div>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button onClick={handleCreateClass}><Save className="mr-2 h-4 w-4" /> Create Class</Button>
+            <Button onClick={handleCreateClassAndInitialSection}><Save className="mr-2 h-4 w-4" /> Create</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+       {/* Add Section to Existing Class Dialog */}
+      <Dialog open={isAddSectionToClassDialogOpen} onOpenChange={(isOpen) => { 
+          setIsAddSectionToClassDialogOpen(isOpen); 
+          if (!isOpen) { setSelectedClassForNewSection(''); setNewSectionName(''); } 
+        }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Section to Existing Class</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="selectExistingClass">Select Class Name</Label>
+              <Select value={selectedClassForNewSection} onValueChange={(val) => setSelectedClassForNewSection(val)}>
+                <SelectTrigger id="selectExistingClass">
+                  <SelectValue placeholder="Select an existing class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableClassNamesForNewSection.map(name => ( 
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                   {availableClassNamesForNewSection.length === 0 && <SelectItem value="no-class" disabled>No classes defined yet</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="newSectionNameDialog">New Section Name</Label>
+              <Input 
+                id="newSectionNameDialog" 
+                value={newSectionName} 
+                onChange={(e) => setNewSectionName(e.target.value)} 
+                placeholder="e.g., B, Red House" 
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button onClick={handleAddSectionToExistingClass}><Save className="mr-2 h-4 w-4" /> Add Section</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Edit Class Dialog - uses currentClass state */}
       <Dialog open={isEditClassDialogOpen} onOpenChange={(isOpen) => { setIsEditClassDialogOpen(isOpen); if (!isOpen) setCurrentClass({}); }}>
@@ -277,7 +369,7 @@ export default function ClassManagementPage() {
               <Input id="editClassName" value={currentClass.name || ''} onChange={(e) => setCurrentClass(prev => ({ ...prev, name: e.target.value }))} />
             </div>
             <div>
-              <Label htmlFor="editClassDivision">Division / Section</Label>
+              <Label htmlFor="editClassDivision">Section / Division</Label>
               <Input id="editClassDivision" value={currentClass.division || ''} onChange={(e) => setCurrentClass(prev => ({ ...prev, division: e.target.value }))} />
             </div>
           </div>
@@ -349,3 +441,6 @@ export default function ClassManagementPage() {
     </div>
   );
 }
+
+
+    
