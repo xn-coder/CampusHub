@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import type { AdmissionRecord, Student, User, ClassData } from '@/types';
+import type { AdmissionRecord, Student, User, ClassData } from '@/types'; // ClassData is an activated class-section
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { FilePlus, ListChecks, CheckSquare, UserPlus } from 'lucide-react';
@@ -18,7 +18,7 @@ import { format } from 'date-fns';
 const MOCK_ADMISSIONS_KEY = 'mockAdmissionsData';
 const MOCK_STUDENTS_KEY = 'mockStudentsData';
 const MOCK_USER_DB_KEY = 'mockUserDatabase';
-const MOCK_CLASSES_KEY = 'mockClassesData';
+const MOCK_ACTIVE_CLASSES_KEY = 'mockClassesData'; // Key for activated class-sections
 
 
 export default function AdmissionsPage() {
@@ -32,28 +32,24 @@ export default function AdmissionsPage() {
   const [contactNumber, setContactNumber] = useState('');
   const [address, setAddress] = useState('');
 
-  const [allClasses, setAllClasses] = useState<ClassData[]>([]);
-  const [selectedClassName, setSelectedClassName] = useState<string>('');
-  const [selectedDivision, setSelectedDivision] = useState<string>('');
-  const [selectedClassId, setSelectedClassId] = useState<string>(''); // This will be student.classId
+  const [activeClasses, setActiveClasses] = useState<ClassData[]>([]); // Stores activated class-sections
+  const [selectedClassName, setSelectedClassName] = useState<string>(''); // Stores the name of the selected class (e.g., "Grade 10")
+  const [selectedDivision, setSelectedDivision] = useState<string>(''); // Stores the name of the selected division (e.g., "A")
+  const [selectedClassId, setSelectedClassId] = useState<string>(''); // Stores the ID of the selected ClassData object
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedAdmissions = localStorage.getItem(MOCK_ADMISSIONS_KEY);
-      if (storedAdmissions) {
-        setAdmissionRecords(JSON.parse(storedAdmissions));
-      }
-      if (!localStorage.getItem(MOCK_STUDENTS_KEY)) {
-        localStorage.setItem(MOCK_STUDENTS_KEY, JSON.stringify([]));
-      }
-      if (!localStorage.getItem(MOCK_USER_DB_KEY)) {
-        localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify([]));
-      }
-      const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      if (storedClasses) {
-        setAllClasses(JSON.parse(storedClasses));
+      if (storedAdmissions) setAdmissionRecords(JSON.parse(storedAdmissions));
+      
+      if (!localStorage.getItem(MOCK_STUDENTS_KEY)) localStorage.setItem(MOCK_STUDENTS_KEY, JSON.stringify([]));
+      if (!localStorage.getItem(MOCK_USER_DB_KEY)) localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify([]));
+      
+      const storedActiveClasses = localStorage.getItem(MOCK_ACTIVE_CLASSES_KEY);
+      if (storedActiveClasses) {
+        setActiveClasses(JSON.parse(storedActiveClasses));
       } else {
-        localStorage.setItem(MOCK_CLASSES_KEY, JSON.stringify([])); // Initialize if not present
+        localStorage.setItem(MOCK_ACTIVE_CLASSES_KEY, JSON.stringify([])); 
       }
     }
   }, []);
@@ -64,27 +60,27 @@ export default function AdmissionsPage() {
     }
   };
 
-  const availableClassNames = useMemo(() => {
-    return [...new Set(allClasses.map(cls => cls.name))].sort();
-  }, [allClasses]);
+  const availableClassNamesFromActive = useMemo(() => {
+    return [...new Set(activeClasses.map(cls => cls.name))].sort();
+  }, [activeClasses]);
 
-  const availableDivisions = useMemo(() => {
+  const availableDivisionsForSelectedClass = useMemo(() => {
     if (!selectedClassName) return [];
-    return allClasses
+    return activeClasses
       .filter(cls => cls.name === selectedClassName)
       .map(cls => cls.division)
       .sort();
-  }, [allClasses, selectedClassName]);
+  }, [activeClasses, selectedClassName]);
 
   const handleClassNameChange = (value: string) => {
     setSelectedClassName(value);
-    setSelectedDivision('');
-    setSelectedClassId('');
+    setSelectedDivision(''); // Reset division when class name changes
+    setSelectedClassId(''); // Reset class ID
   };
 
   const handleDivisionChange = (value: string) => {
     setSelectedDivision(value);
-    const foundClass = allClasses.find(cls => cls.name === selectedClassName && cls.division === value);
+    const foundClass = activeClasses.find(cls => cls.name === selectedClassName && cls.division === value);
     if (foundClass) {
       setSelectedClassId(foundClass.id);
     } else {
@@ -98,8 +94,8 @@ export default function AdmissionsPage() {
       toast({ title: "Error", description: "All student details are required.", variant: "destructive" });
       return;
     }
-    if (!selectedClassId) {
-        toast({ title: "Error", description: "Please select a class and section for the student.", variant: "destructive" });
+    if (!selectedClassId) { // Ensure a specific activated class-section ID is selected
+        toast({ title: "Error", description: "Please select an activated class and section for the student.", variant: "destructive" });
         return;
     }
     
@@ -150,8 +146,8 @@ export default function AdmissionsPage() {
     const updatedUsers = [...storedUsers, newUser];
     updateLocalStorage(MOCK_USER_DB_KEY, updatedUsers);
     
-    const assignedClass = allClasses.find(c => c.id === selectedClassId);
-    const assignedClassText = assignedClass ? `${assignedClass.name} - ${assignedClass.division}` : 'Selected Class';
+    const assignedClassDetails = activeClasses.find(c => c.id === selectedClassId);
+    const assignedClassText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'Selected Class';
 
     toast({ title: "Admission Submitted", description: `${name} has been admitted to ${assignedClassText} and a student account created.` });
     
@@ -212,33 +208,32 @@ export default function AdmissionsPage() {
               </div>
               
               <div>
-                <Label htmlFor="classNameSelect">Assign to Class</Label>
+                <Label htmlFor="classNameSelect">Assign to Class (Standard)</Label>
                 <Select value={selectedClassName} onValueChange={handleClassNameChange}>
                   <SelectTrigger id="classNameSelect">
-                    <SelectValue placeholder="Select Class" />
+                    <SelectValue placeholder="Select Class Standard" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableClassNames.length > 0 ? availableClassNames.map(cName => (
+                    {availableClassNamesFromActive.length > 0 ? availableClassNamesFromActive.map(cName => (
                       <SelectItem key={cName} value={cName}>{cName}</SelectItem>
-                    )) : <SelectItem value="no-class" disabled>No classes available</SelectItem>}
+                    )) : <SelectItem value="no-class" disabled>No active classes available</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
               <div>
                 <Label htmlFor="divisionSelect">Assign to Section/Division</Label>
-                <Select value={selectedDivision} onValueChange={handleDivisionChange} disabled={!selectedClassName || availableDivisions.length === 0}>
+                <Select value={selectedDivision} onValueChange={handleDivisionChange} disabled={!selectedClassName || availableDivisionsForSelectedClass.length === 0}>
                   <SelectTrigger id="divisionSelect">
-                    <SelectValue placeholder="Select Section" />
+                    <SelectValue placeholder="Select Section/Division" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableDivisions.length > 0 ? availableDivisions.map(divName => (
+                    {availableDivisionsForSelectedClass.length > 0 ? availableDivisionsForSelectedClass.map(divName => (
                       <SelectItem key={divName} value={divName}>{divName}</SelectItem>
-                    )) : <SelectItem value="no-division" disabled>No sections for this class</SelectItem>}
+                    )) : <SelectItem value="no-division" disabled>No sections for this class standard</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
-               {allClasses.length === 0 && <p className="text-sm text-muted-foreground">No classes defined. Please add classes in 'Class Management' first.</p>}
-
+               {activeClasses.length === 0 && <p className="text-sm text-muted-foreground">No active class-sections defined. Please configure these in 'Class Management' first.</p>}
 
             </CardContent>
             <CardFooter>
@@ -252,7 +247,7 @@ export default function AdmissionsPage() {
             <CardTitle className="flex items-center"><ListChecks className="mr-2 h-5 w-5" />Admission Records</CardTitle>
             <CardDescription>List of submitted admission applications.</CardDescription>
           </CardHeader>
-          <CardContent className="max-h-[calc(theme(space.96)_*_2)] overflow-y-auto"> {/* Adjusted max height */}
+          <CardContent className="max-h-[calc(theme(space.96)_*_2)] overflow-y-auto">
             {admissionRecords.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No admission records yet.</p>
             ) : (
@@ -268,7 +263,7 @@ export default function AdmissionsPage() {
                 </TableHeader>
                 <TableBody>
                   {admissionRecords.slice().reverse().map(record => {
-                    const assignedClassDetails = allClasses.find(c => c.id === record.classId);
+                    const assignedClassDetails = activeClasses.find(c => c.id === record.classId);
                     const classText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'N/A';
                     return (
                     <TableRow key={record.id}>
@@ -307,5 +302,3 @@ export default function AdmissionsPage() {
     </div>
   );
 }
-
-    

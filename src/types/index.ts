@@ -1,5 +1,4 @@
 
-
 import type { LucideIcon } from 'lucide-react';
 
 export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student';
@@ -47,7 +46,7 @@ export interface Student {
   id: string;
   name: string;
   email: string;
-  classId: string; // Stores the ID of the ClassData object
+  classId: string; // Stores the ID of the ClassData object (activated class-section)
   profilePictureUrl?: string;
   dateOfBirth?: string; 
   guardianName?: string;
@@ -78,10 +77,24 @@ export interface Teacher {
   profilePictureUrl?: string;
 }
 
+// Represents a standard or grade level, e.g., "Grade 10", "Senior KG"
+export interface ClassNameRecord {
+  id: string;
+  name: string;
+}
+
+// Represents a division or section, e.g., "A", "Rose Section"
+export interface SectionRecord {
+  id: string;
+  name: string;
+}
+
+// Represents an "activated" or "instantiated" class-section combination
+// to which students and teachers are assigned.
 export interface ClassData {
   id: string;
-  name: string; // e.g., "Grade 10"
-  division: string; // e.g., "A", "B"
+  name: string; // Name from ClassNameRecord, e.g., "Grade 10"
+  division: string; // Name from SectionRecord, e.g., "A"
   teacherId?: string;
   studentIds: string[]; // List of student IDs assigned to this class-division
 }
@@ -123,9 +136,3 @@ export interface PayrollEntry {
   paymentDate?: string; // ISO string
   status: 'Pending' | 'Paid' | 'Processing';
 }
-
-// Add more types as needed
-
-      
-
-    
