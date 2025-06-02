@@ -15,36 +15,33 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { PlusCircle, Edit2, Trash2, Users, UserCog, Save } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
-// Mock data - In a real app, this would come from a data store or API
+const MOCK_CLASSES_KEY = 'mockClassesData';
+const MOCK_STUDENTS_KEY = 'mockStudentsData';
+const MOCK_TEACHERS_KEY = 'mockTeachersData';
+
+// Initial mock data if localStorage is empty
 const initialMockTeachers: Teacher[] = [
-    { id: 't1', name: 'Mr. John Smith', email: 'smith@example.com', subject: 'Math', profilePictureUrl: 'https://placehold.co/40x40.png?text=JS' },
-    { id: 't2', name: 'Ms. Emily Jones', email: 'jones@example.com', subject: 'Science', profilePictureUrl: 'https://placehold.co/40x40.png?text=EJ' },
-    { id: 't3', name: 'Dr. Alan Who', email: 'who@example.com', subject: 'History', profilePictureUrl: 'https://placehold.co/40x40.png?text=AW' },
+    { id: 't1', name: 'Mr. John Smith', email: 'jsmith@example.com', subject: 'Math', profilePictureUrl: 'https://placehold.co/40x40.png?text=JS' },
+    { id: 't2', name: 'Ms. Emily Jones', email: 'ejones@example.com', subject: 'Science', profilePictureUrl: 'https://placehold.co/40x40.png?text=EJ' },
+    { id: 't3', name: 'Dr. Alan Who', email: 'awho@example.com', subject: 'History', profilePictureUrl: 'https://placehold.co/40x40.png?text=AW' },
 ];
 const initialMockStudents: Student[] = [
     { id: 's1', name: 'Alice Wonderland', email: 'a@example.com', classId: 'c1', profilePictureUrl: 'https://placehold.co/40x40.png?text=AW' },
     { id: 's2', name: 'Bob The Builder', email: 'b@example.com', classId: 'c1', profilePictureUrl: 'https://placehold.co/40x40.png?text=BB' },
     { id: 's3', name: 'Charlie Brown', email: 'c@example.com', classId: 'c2', profilePictureUrl: 'https://placehold.co/40x40.png?text=CB' },
-    { id: 's4', name: 'Diana Prince', email: 'd@example.com', classId: 'c3', profilePictureUrl: 'https://placehold.co/40x40.png?text=DP' },
-    { id: 's5', name: 'Eve Harrington', email: 'e@example.com', classId: 'c3', profilePictureUrl: 'https://placehold.co/40x40.png?text=EH' },
 ];
-
-const initialClasses: ClassData[] = [
+const initialClassesData: ClassData[] = [
   { id: 'c1', name: 'Grade 10', division: 'A', teacherId: 't1', studentIds: ['s1', 's2'] },
   { id: 'c2', name: 'Grade 10', division: 'B', teacherId: 't2', studentIds: ['s3'] },
-  { id: 'c3', name: 'Grade 11', division: 'A', teacherId: 't3', studentIds: ['s4', 's5'] },
+  { id: 'c3', name: 'Grade 11', division: 'A', teacherId: 't3', studentIds: [] },
 ];
-
-const MOCK_CLASSES_KEY = 'mockClassesData';
-const MOCK_STUDENTS_KEY = 'mockStudentsData'; // For student selection, potentially
-const MOCK_TEACHERS_KEY = 'mockTeachersData'; // For teacher selection, potentially
 
 
 export default function ClassManagementPage() {
   const { toast } = useToast();
   const [classes, setClasses] = useState<ClassData[]>([]);
-  const [mockStudents, setMockStudents] = useState<Student[]>(initialMockStudents); 
-  const [mockTeachers, setMockTeachers] = useState<Teacher[]>(initialMockTeachers);
+  const [mockStudents, setMockStudents] = useState<Student[]>([]); 
+  const [mockTeachers, setMockTeachers] = useState<Teacher[]>([]);
 
   // Dialog states
   const [isCreateClassDialogOpen, setIsCreateClassDialogOpen] = useState(false);
@@ -53,7 +50,10 @@ export default function ClassManagementPage() {
   const [isAssignTeacherDialogOpen, setIsAssignTeacherDialogOpen] = useState(false);
 
   // Form states
-  const [currentClass, setCurrentClass] = useState<Partial<ClassData>>({}); // For create/edit
+  const [currentClass, setCurrentClass] = useState<Partial<ClassData>>({}); // For edit dialog
+  const [newClassName, setNewClassName] = useState(''); // For create dialog
+  const [newClassDivision, setNewClassDivision] = useState(''); // For create dialog
+
   const [classToManageStudents, setClassToManageStudents] = useState<ClassData | null>(null);
   const [selectedStudentIdsForDialog, setSelectedStudentIdsForDialog] = useState<string[]>([]);
   const [classToAssignTeacher, setClassToAssignTeacher] = useState<ClassData | null>(null);
@@ -62,25 +62,16 @@ export default function ClassManagementPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      if (storedClasses) {
-        setClasses(JSON.parse(storedClasses));
-      } else {
-        setClasses(initialClasses);
-        localStorage.setItem(MOCK_CLASSES_KEY, JSON.stringify(initialClasses));
-      }
-      // Future: Load mockStudents and mockTeachers from localStorage if needed for wider app consistency
+      setClasses(storedClasses ? JSON.parse(storedClasses) : initialClassesData);
+      if (!storedClasses) localStorage.setItem(MOCK_CLASSES_KEY, JSON.stringify(initialClassesData));
+      
       const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      if (storedStudents) {
-          setMockStudents(JSON.parse(storedStudents));
-      } else {
-          localStorage.setItem(MOCK_STUDENTS_KEY, JSON.stringify(initialMockStudents));
-      }
+      setMockStudents(storedStudents ? JSON.parse(storedStudents) : initialMockStudents);
+      if (!storedStudents) localStorage.setItem(MOCK_STUDENTS_KEY, JSON.stringify(initialMockStudents));
+
       const storedTeachers = localStorage.getItem(MOCK_TEACHERS_KEY);
-      if (storedTeachers) {
-          setMockTeachers(JSON.parse(storedTeachers));
-      } else {
-          localStorage.setItem(MOCK_TEACHERS_KEY, JSON.stringify(initialMockTeachers));
-      }
+      setMockTeachers(storedTeachers ? JSON.parse(storedTeachers) : initialMockTeachers);
+      if (!storedTeachers) localStorage.setItem(MOCK_TEACHERS_KEY, JSON.stringify(initialMockTeachers));
     }
   }, []);
 
@@ -94,39 +85,43 @@ export default function ClassManagementPage() {
   const getTeacherName = (teacherId?: string) => mockTeachers.find(t => t.id === teacherId)?.name || 'N/A';
 
   const handleOpenCreateClassDialog = () => {
-    setCurrentClass({ name: '', division: '' });
+    setNewClassName('');
+    setNewClassDivision('');
     setIsCreateClassDialogOpen(true);
   };
 
   const handleCreateClass = () => {
-    if (!currentClass.name || !currentClass.division) {
+    if (!newClassName || !newClassDivision) {
       toast({ title: "Error", description: "Class Name and Division are required.", variant: "destructive" });
       return;
     }
     const newClass: ClassData = {
       id: `c${Date.now()}`,
-      name: currentClass.name,
-      division: currentClass.division,
+      name: newClassName,
+      division: newClassDivision,
       studentIds: [],
     };
     const updatedClasses = [...classes, newClass];
     updateLocalStorageAndState(updatedClasses);
     toast({ title: "Class Created", description: `${newClass.name} - ${newClass.division} has been created.` });
     setIsCreateClassDialogOpen(false);
-    setCurrentClass({});
+    setNewClassName('');
+    setNewClassDivision('');
   };
 
   const handleOpenEditClassDialog = (cls: ClassData) => {
-    setCurrentClass({...cls});
+    setCurrentClass({...cls}); // Use currentClass state for editing
     setIsEditClassDialogOpen(true);
   };
 
   const handleUpdateClass = () => {
     if (!currentClass.id || !currentClass.name || !currentClass.division) {
-      toast({ title: "Error", description: "Invalid class data.", variant: "destructive" });
+      toast({ title: "Error", description: "Invalid class data for update.", variant: "destructive" });
       return;
     }
-    const updatedClasses = classes.map(c => c.id === currentClass.id ? { ...c, name: currentClass.name!, division: currentClass.division! } : c);
+    const updatedClasses = classes.map(c => 
+        c.id === currentClass.id ? { ...c, name: currentClass.name!, division: currentClass.division! } : c
+    );
     updateLocalStorageAndState(updatedClasses);
     toast({ title: "Class Updated", description: `${currentClass.name} - ${currentClass.division} has been updated.` });
     setIsEditClassDialogOpen(false);
@@ -173,12 +168,12 @@ export default function ClassManagementPage() {
 
   const handleSaveTeacherAssignment = () => {
     if (!classToAssignTeacher) return;
-    const newTeacherId = selectedTeacherIdForDialog === 'unassign' ? undefined : selectedTeacherIdForDialog;
+    const newTeacherIdVal = selectedTeacherIdForDialog === 'unassign' ? undefined : selectedTeacherIdForDialog;
     const updatedClasses = classes.map(c => 
-      c.id === classToAssignTeacher.id ? { ...c, teacherId: newTeacherId } : c
+      c.id === classToAssignTeacher.id ? { ...c, teacherId: newTeacherIdVal } : c
     );
     updateLocalStorageAndState(updatedClasses);
-    const teacherName = getTeacherName(newTeacherId);
+    const teacherName = newTeacherIdVal ? getTeacherName(newTeacherIdVal) : 'No teacher';
     toast({ title: "Teacher Assigned", description: `${teacherName} assigned to ${classToAssignTeacher.name} - ${classToAssignTeacher.division}.` });
     setIsAssignTeacherDialogOpen(false);
     setClassToAssignTeacher(null);
@@ -235,19 +230,32 @@ export default function ClassManagementPage() {
       </Card>
       
       {/* Create Class Dialog */}
-      <Dialog open={isCreateClassDialogOpen} onOpenChange={(isOpen) => { setIsCreateClassDialogOpen(isOpen); if (!isOpen) setCurrentClass({}); }}>
+      <Dialog open={isCreateClassDialogOpen} onOpenChange={(isOpen) => { 
+          setIsCreateClassDialogOpen(isOpen); 
+          if (!isOpen) { setNewClassName(''); setNewClassDivision(''); } 
+        }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Class</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="newClassName">Class Name</Label>
-              <Input id="newClassName" value={currentClass.name || ''} onChange={(e) => setCurrentClass(prev => ({ ...prev, name: e.target.value }))} placeholder="e.g., Grade 10, Year 1" />
+              <Label htmlFor="newClassNameDialog">Class Name</Label>
+              <Input 
+                id="newClassNameDialog" 
+                value={newClassName} 
+                onChange={(e) => setNewClassName(e.target.value)} 
+                placeholder="e.g., Grade 10, Year 1" 
+              />
             </div>
             <div>
-              <Label htmlFor="newClassDivision">Division / Section</Label>
-              <Input id="newClassDivision" value={currentClass.division || ''} onChange={(e) => setCurrentClass(prev => ({ ...prev, division: e.target.value }))} placeholder="e.g., A, Blue House" />
+              <Label htmlFor="newClassDivisionDialog">Division / Section</Label>
+              <Input 
+                id="newClassDivisionDialog" 
+                value={newClassDivision} 
+                onChange={(e) => setNewClassDivision(e.target.value)} 
+                placeholder="e.g., A, Blue House" 
+              />
             </div>
           </div>
           <DialogFooter>
@@ -257,7 +265,7 @@ export default function ClassManagementPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Class Dialog */}
+      {/* Edit Class Dialog - uses currentClass state */}
       <Dialog open={isEditClassDialogOpen} onOpenChange={(isOpen) => { setIsEditClassDialogOpen(isOpen); if (!isOpen) setCurrentClass({}); }}>
         <DialogContent>
           <DialogHeader>
@@ -341,5 +349,3 @@ export default function ClassManagementPage() {
     </div>
   );
 }
-
-    
