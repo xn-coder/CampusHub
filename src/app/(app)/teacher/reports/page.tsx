@@ -15,39 +15,51 @@ import { format } from 'date-fns';
 const MOCK_STUDENTS_KEY = 'mockStudentsData';
 const MOCK_CLASSES_KEY = 'mockClassesData';
 
-// Helper to generate mock activity data
+// Helper to generate mock activity data (can be shared or duplicated)
 const generateMockActivity = (student: Student): Student => {
   const today = new Date();
-  const lastLoginDate = student.mockLoginDate || new Date(today.setDate(today.getDate() - Math.floor(Math.random() * 30)));
+  // Ensure mockLoginDate is a Date object, or create one if missing
+  const loginDateSeed = student.mockLoginDate instanceof Date ? student.mockLoginDate : new Date(today.setDate(today.getDate() - Math.floor(Math.random() * 30)));
+  
   return {
     ...student,
-    mockLoginDate: lastLoginDate,
-    lastLogin: student.lastLogin || format(lastLoginDate, 'PPpp'),
+    mockLoginDate: loginDateSeed, // Ensure this is a Date object
+    lastLogin: student.lastLogin || format(loginDateSeed, 'PPpp'),
     assignmentsSubmitted: student.assignmentsSubmitted ?? Math.floor(Math.random() * 20),
     attendancePercentage: student.attendancePercentage ?? Math.floor(Math.random() * 51) + 50, // 50-100%
   };
 };
 
-
-export default function AdminReportsPage() {
-  const [allStudents, setAllStudents] = useState<Student[]>([]);
-  const [allClasses, setAllClasses] = useState<ClassData[]>([]);
+export default function TeacherReportsPage() {
+  const [teacherStudents, setTeacherStudents] = useState<Student[]>([]);
+  const [teacherClasses, setTeacherClasses] = useState<ClassData[]>([]);
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all'); // classId or 'all'
   const [sortBy, setSortBy] = useState<keyof Student | ''>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      const studentsWithMockActivity = storedStudents 
-        ? (JSON.parse(storedStudents) as Student[]).map(generateMockActivity)
-        : [];
-      setAllStudents(studentsWithMockActivity);
+      const teacherId = localStorage.getItem('currentUserId');
+      setCurrentTeacherId(teacherId);
 
       const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      setAllClasses(storedClasses ? JSON.parse(storedClasses) : []);
+      const allClasses: ClassData[] = storedClasses ? JSON.parse(storedClasses) : [];
+      const assignedClasses = teacherId ? allClasses.filter(c => c.teacherId === teacherId) : [];
+      setTeacherClasses(assignedClasses);
+      
+      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
+      const allStudentsData: Student[] = storedStudents ? JSON.parse(storedStudents) : [];
+
+      if (teacherId) {
+        const assignedClassIds = assignedClasses.map(c => c.id);
+        const studentsForTeacher = allStudentsData
+          .filter(s => s.classId && assignedClassIds.includes(s.classId))
+          .map(generateMockActivity);
+        setTeacherStudents(studentsForTeacher);
+      }
     }
   }, []);
 
@@ -61,12 +73,12 @@ export default function AdminReportsPage() {
   };
 
   const getClassDisplayName = (classId: string): string => {
-    const classInfo = allClasses.find(c => c.id === classId);
+    const classInfo = teacherClasses.find(c => c.id === classId);
     return classInfo ? `${classInfo.name} - ${classInfo.division}` : 'N/A';
   };
 
   const filteredAndSortedStudents = useMemo(() => {
-    let students = [...allStudents];
+    let students = [...teacherStudents];
 
     if (searchTerm) {
       students = students.filter(s => 
@@ -78,7 +90,7 @@ export default function AdminReportsPage() {
     if (selectedClassFilter !== 'all') {
       students = students.filter(s => s.classId === selectedClassFilter);
     }
-
+    
     if (sortBy) {
       students.sort((a, b) => {
         let valA = a[sortBy];
@@ -90,7 +102,7 @@ export default function AdminReportsPage() {
         } else if (typeof valA === 'string') {
           valA = valA.toLowerCase();
         } else if (typeof valA === 'undefined') {
-           valA = sortBy === 'assignmentsSubmitted' || sortBy === 'attendancePercentage' ? -1 : ''; // Handle undefined for numeric/string sort
+           valA = sortBy === 'assignmentsSubmitted' || sortBy === 'attendancePercentage' ? -1 : '';
         }
         
         if (typeof valB === 'string') {
@@ -99,14 +111,13 @@ export default function AdminReportsPage() {
            valB = sortBy === 'assignmentsSubmitted' || sortBy === 'attendancePercentage' ? -1 : '';
         }
 
-
         if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
         if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
         return 0;
       });
     }
     return students;
-  }, [allStudents, searchTerm, selectedClassFilter, sortBy, sortOrder]);
+  }, [teacherStudents, searchTerm, selectedClassFilter, sortBy, sortOrder]);
 
   const SortableHeader = ({ column, label }: { column: keyof Student; label: string }) => (
     <TableHead onClick={() => handleSort(column)} className="cursor-pointer hover:bg-muted/50">
@@ -116,51 +127,57 @@ export default function AdminReportsPage() {
       </div>
     </TableHead>
   );
-
+  
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
-        title="Student Activity Reports (Admin)" 
-        description="View overall student activity, search, and filter records." 
+        title="Student Activity Reports (Teacher)" 
+        description="View activity for students in your assigned classes." 
       />
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-5 w-5" />Student Activity Overview</CardTitle>
-          <CardDescription>Monitor student engagement across the school.</CardDescription>
+          <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-5 w-5" />My Students' Activity</CardTitle>
+          <CardDescription>Monitor engagement for students you teach.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4">
             <div className="relative flex-grow">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input 
-                placeholder="Search by student name or email..."
+                placeholder="Search your students by name or email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-8 w-full"
               />
             </div>
-            <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter}>
+            <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter} disabled={teacherClasses.length === 0}>
               <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue placeholder="Filter by class" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Classes</SelectItem>
-                {allClasses.map(cls => (
+                <SelectItem value="all">All My Classes</SelectItem>
+                {teacherClasses.map(cls => (
                   <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          {filteredAndSortedStudents.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No student records found matching your criteria.</p>
-          ) : (
+          {teacherClasses.length === 0 && (
+             <p className="text-muted-foreground text-center py-4">You are not assigned to any classes. Reports will be available once you are assigned.</p>
+          )}
+
+          {teacherClasses.length > 0 && filteredAndSortedStudents.length === 0 && (
+            <p className="text-muted-foreground text-center py-4">No student records found matching your criteria in your classes.</p>
+          )}
+          
+          {teacherClasses.length > 0 && filteredAndSortedStudents.length > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
                   <SortableHeader column="name" label="Student Name" />
                   <SortableHeader column="email" label="Email" />
-                  <TableHead>Class</TableHead> {/* Class display doesn't need direct Student prop for sorting */}
+                  <TableHead>Class</TableHead>
                   <SortableHeader column="mockLoginDate" label="Last Login" />
                   <SortableHeader column="assignmentsSubmitted" label="Assignments Submitted" />
                   <SortableHeader column="attendancePercentage" label="Attendance (%)" />

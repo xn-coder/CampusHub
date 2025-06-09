@@ -84,6 +84,7 @@ const teacherNavItems: NavItem[] = [
   { href: '/teacher/id-card-printing', label: 'ID Card Printing', icon: Printer },
   { href: '/communication', label: 'Announcements', icon: Megaphone }, 
   { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
+  { href: '/teacher/reports', label: 'Reports', icon: BarChart3 },
 ];
 
 const studentNavItems: NavItem[] = [
@@ -160,3 +161,4 @@ export default function SidebarNav() {
     </SidebarMenu>
   );
 }
+

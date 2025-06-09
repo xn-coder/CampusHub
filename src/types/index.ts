@@ -52,7 +52,11 @@ export interface Student {
   guardianName?: string;
   contactNumber?: string;
   address?: string;
-  admissionDate?: string; 
+  admissionDate?: string;
+  lastLogin?: string; // ISO Date string for display
+  mockLoginDate?: Date; // Actual Date object for easier sorting
+  assignmentsSubmitted?: number;
+  attendancePercentage?: number; // 0-100
 }
 
 export interface AdmissionRecord {
@@ -149,3 +153,4 @@ export interface ClassAttendance {
   classSectionId: string; // ID of the ClassData
   records: AttendanceRecord[];
 }
+
