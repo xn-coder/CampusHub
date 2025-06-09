@@ -15,7 +15,7 @@ import {
   Presentation,
   Megaphone,
   CalendarDays,
-  Building, // Added for Create School
+  Building, 
   UserCog,
   GraduationCap,
   BookOpen,
@@ -27,14 +27,15 @@ import {
   CreditCard,
   ClipboardList,
   BookMarked,
-  Settings, // Added for Manage Schools
+  Settings, 
   FilePlus2,
   Tags,
   Receipt,
   Printer,
   UsersRound,
   DollarSign,
-  Clock
+  Clock,
+  UserPlus // Added for Register Student
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -44,7 +45,7 @@ const superAdminNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/superadmin/create-school', label: 'Create School', icon: Building },
   { href: '/superadmin/manage-school', label: 'Manage Schools', icon: Settings },
-  { href: '/communication', label: 'Announcements', icon: Megaphone }, // Super Admins can make announcements
+  { href: '/communication', label: 'Announcements', icon: Megaphone }, 
 ];
 
 const adminNavItems: NavItem[] = [
@@ -54,7 +55,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/manage-teachers', label: 'Manage Teachers', icon: UserCog },
   { href: '/admin/employee-registration', label: 'Employee Registration', icon: UsersRound },
   { href: '/class-management', label: 'Class Management', icon: Presentation },
-  { href: '/admin/admissions', label: 'Admissions', icon: FilePlus2 },
+  { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, // Changed label
   { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
   { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
   { href: '/admin/academics', label: 'Academics', icon: GraduationCap },
@@ -76,10 +77,11 @@ const teacherNavItems: NavItem[] = [
   { href: '/teacher/profile', label: 'My Profile', icon: UserCircle },
   { href: '/teacher/my-classes', label: 'My Classes', icon: Presentation },
   { href: '/teacher/my-students', label: 'My Students', icon: Users },
+  { href: '/teacher/register-student', label: 'Register Student', icon: UserPlus },
   { href: '/teacher/attendance', label: 'Class Attendance', icon: ClipboardCheck },
   { href: '/teacher/student-scores', label: 'Enter Scores', icon: Award },
   { href: '/teacher/leave-requests', label: 'Leave Requests', icon: ClipboardEdit },
-  { href: '/communication', label: 'Announcements', icon: Megaphone }, // Teachers can make/view announcements
+  { href: '/communication', label: 'Announcements', icon: Megaphone }, 
   { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
 ];
 
@@ -155,3 +157,4 @@ export default function SidebarNav() {
     </SidebarMenu>
   );
 }
+
