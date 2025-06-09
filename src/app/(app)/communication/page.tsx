@@ -7,58 +7,105 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import type { Announcement, UserRole } from '@/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { Announcement, UserRole, ClassData, Student } from '@/types';
 import { useState, useEffect } from 'react';
 import { PlusCircle, Send } from 'lucide-react';
 
+const MOCK_ANNOUNCEMENTS_KEY = 'mockAnnouncementsData'; // To store announcements
+const MOCK_CLASSES_KEY = 'mockClassesData';
+const MOCK_STUDENTS_KEY = 'mockStudentsData';
+const MOCK_USER_DB_KEY = 'mockUserDatabase';
+
+
 const initialAnnouncements: Announcement[] = [
-  { id: '1', title: 'School Reopens Monday', content: 'The school will reopen on Monday after the spring break. All students are expected to attend.', date: new Date(2024, 3, 10), authorName: 'Principal Office', postedByRole: 'admin' },
-  { id: '2', title: 'Science Fair Submissions', content: 'Reminder: The deadline for science fair project submissions is this Friday. Please submit your projects to Room 201.', date: new Date(2024, 3, 8), authorName: 'Science Department', postedByRole: 'teacher' },
-  { id: 'sa1', title: 'Important Update for Admins', content: 'All admins please attend the meeting on Friday.', date: new Date(2024, 6, 1), authorName: 'Super Admin', postedByRole: 'superadmin' },
+  { id: 'sa1', title: 'Platform Maintenance Alert', content: 'Scheduled maintenance on Sunday. System may be unavailable from 2 AM to 4 AM.', date: new Date(2024, 6, 25), authorName: 'System Operations', postedByRole: 'superadmin' },
+  { id: 'adm1', title: 'School Reopens Monday', content: 'The school will reopen on Monday after the spring break. All students are expected to attend.', date: new Date(2024, 3, 10), authorName: 'Principal Office', postedByRole: 'admin' },
+  { id: 'teach1', title: 'Science Fair Submissions', content: 'Reminder: The deadline for science fair project submissions is this Friday. Please submit your projects to Room 201.', date: new Date(2024, 3, 8), authorName: 'Science Department', postedByRole: 'teacher' },
+  { id: 'teach2', title: 'Math Test - Grade 10A', content: 'Your Math test previously scheduled for Wednesday will now be on Thursday.', date: new Date(2024, 6, 20), authorName: 'Mr. Matherton', postedByRole: 'teacher', targetClassSectionId: 'ac-some-grade10a-id' /* Replace with actual ID if testing */ },
 ];
+
 
 export default function CommunicationPage() {
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>(initialAnnouncements);
-  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '' });
+  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassSectionId: '' });
   const [showForm, setShowForm] = useState(false);
+  
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserData, setCurrentUserData] = useState<User | Student | null>(null); // For student's classId
+
+  const [teacherAssignedClasses, setTeacherAssignedClasses] = useState<ClassData[]>([]);
   const [filteredAnnouncements, setFilteredAnnouncements] = useState<Announcement[]>([]);
 
-  useEffect(() => {
+  useEffect(() => { // Load initial announcements and user data
     if (typeof window !== 'undefined') {
       const storedRole = localStorage.getItem('currentUserRole') as UserRole | null;
+      const storedUserId = localStorage.getItem('currentUserId');
       setCurrentUserRole(storedRole);
+      setCurrentUserId(storedUserId);
+
+      const storedAnnouncements = localStorage.getItem(MOCK_ANNOUNCEMENTS_KEY);
+      setAllAnnouncements(storedAnnouncements ? JSON.parse(storedAnnouncements) : initialAnnouncements);
+      
+      if (storedRole === 'teacher' && storedUserId) {
+        const storedActiveClasses = localStorage.getItem(MOCK_CLASSES_KEY);
+        if (storedActiveClasses) {
+          const allClasses: ClassData[] = JSON.parse(storedActiveClasses);
+          setTeacherAssignedClasses(allClasses.filter(cls => cls.teacherId === storedUserId));
+        }
+      }
+      if (storedRole === 'student' && storedUserId) {
+        const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
+        if(storedStudents){
+            const allStudents: Student[] = JSON.parse(storedStudents);
+            const studentData = allStudents.find(s => s.id === storedUserId);
+            if(studentData) setCurrentUserData(studentData);
+        }
+      }
     }
   }, []);
 
-  useEffect(() => {
+  useEffect(() => { // Filter announcements when role or data changes
     if (!currentUserRole) {
       setFilteredAnnouncements([]);
       return;
     }
 
-    const newFilteredAnnouncements = allAnnouncements.filter(announcement => {
-      if (currentUserRole === 'superadmin') {
-        return announcement.postedByRole === 'superadmin'; // Superadmins see their own relevant posts
+    let studentClassId: string | undefined = undefined;
+    if (currentUserRole === 'student' && currentUserData) {
+        studentClassId = (currentUserData as Student).classId;
+    }
+
+    const newFiltered = allAnnouncements.filter(ann => {
+      switch (currentUserRole) {
+        case 'superadmin': // Sees all
+          return true;
+        case 'admin': // Sees admin and superadmin
+          return ann.postedByRole === 'superadmin' || ann.postedByRole === 'admin' || ann.postedByRole === 'teacher';
+        case 'teacher': // Sees teacher, admin, superadmin
+           return ann.postedByRole === 'teacher' || ann.postedByRole === 'admin' || ann.postedByRole === 'superadmin';
+        case 'student': // Sees relevant teacher posts and admin posts
+          if (ann.postedByRole === 'teacher') {
+            return !ann.targetClassSectionId || ann.targetClassSectionId === studentClassId;
+          }
+          return ann.postedByRole === 'admin'; // Students also see general admin posts
+        default:
+          return false;
       }
-      if (currentUserRole === 'admin') {
-        return announcement.postedByRole === 'superadmin' || announcement.postedByRole === 'admin';
-      }
-      if (currentUserRole === 'teacher') {
-        return announcement.postedByRole === 'admin' || announcement.postedByRole === 'teacher';
-      }
-      if (currentUserRole === 'student') {
-        return announcement.postedByRole === 'teacher';
-      }
-      return false;
     });
-    setFilteredAnnouncements(newFilteredAnnouncements.sort((a,b) => b.date.getTime() - a.date.getTime()));
-  }, [allAnnouncements, currentUserRole]);
+    setFilteredAnnouncements(newFiltered.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+
+  }, [allAnnouncements, currentUserRole, currentUserData]);
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setNewAnnouncement(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleTargetClassChange = (value: string) => {
+    setNewAnnouncement(prev => ({ ...prev, targetClassSectionId: value === "general" ? "" : value }));
   };
 
   const handleSubmitAnnouncement = (e: React.FormEvent) => {
@@ -71,9 +118,13 @@ export default function CommunicationPage() {
         authorName: newAnnouncement.authorName,
         postedByRole: currentUserRole,
         date: new Date(),
+        targetClassSectionId: newAnnouncement.targetClassSectionId || undefined,
       };
-      setAllAnnouncements(prev => [announcementToAdd, ...prev]);
-      setNewAnnouncement({ title: '', content: '', authorName: '' });
+      const updatedAnnouncements = [announcementToAdd, ...allAnnouncements];
+      setAllAnnouncements(updatedAnnouncements);
+      localStorage.setItem(MOCK_ANNOUNCEMENTS_KEY, JSON.stringify(updatedAnnouncements));
+      
+      setNewAnnouncement({ title: '', content: '', authorName: '', targetClassSectionId: '' });
       setShowForm(false);
     }
   };
@@ -109,6 +160,22 @@ export default function CommunicationPage() {
                 <Label htmlFor="authorName">Author Name / Department</Label>
                 <Input id="authorName" name="authorName" value={newAnnouncement.authorName} onChange={handleInputChange} placeholder="e.g., Principal's Office, Your Name" required />
               </div>
+              {currentUserRole === 'teacher' && teacherAssignedClasses.length > 0 && (
+                <div>
+                  <Label htmlFor="targetClassSectionId">Target Audience (Optional)</Label>
+                  <Select value={newAnnouncement.targetClassSectionId} onValueChange={handleTargetClassChange}>
+                    <SelectTrigger id="targetClassSectionId">
+                      <SelectValue placeholder="Select target class (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="general">General (All Students)</SelectItem>
+                      {teacherAssignedClasses.map(cls => (
+                        <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div>
                 <Label htmlFor="content">Content</Label>
                 <Textarea id="content" name="content" value={newAnnouncement.content} onChange={handleInputChange} placeholder="Write your announcement here..." required rows={5} />
@@ -127,7 +194,10 @@ export default function CommunicationPage() {
             <CardHeader>
               <CardTitle>{announcement.title}</CardTitle>
               <CardDescription>
-                Posted by {announcement.authorName} ({announcement.postedByRole}) on {announcement.date.toLocaleDateString()}
+                Posted by {announcement.authorName} ({announcement.postedByRole}) on {new Date(announcement.date).toLocaleDateString()}
+                {announcement.targetClassSectionId && teacherAssignedClasses.find(c=> c.id === announcement.targetClassSectionId) && (
+                    <span className="text-xs block text-blue-500"> (Targeted: {teacherAssignedClasses.find(c=>c.id === announcement.targetClassSectionId)?.name} - {teacherAssignedClasses.find(c=>c.id === announcement.targetClassSectionId)?.division})</span>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>

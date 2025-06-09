@@ -35,7 +35,7 @@ import {
   UsersRound,
   DollarSign,
   Clock,
-  UserPlus // Added for Register Student
+  UserPlus 
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -55,7 +55,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/manage-teachers', label: 'Manage Teachers', icon: UserCog },
   { href: '/admin/employee-registration', label: 'Employee Registration', icon: UsersRound },
   { href: '/class-management', label: 'Class Management', icon: Presentation },
-  { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, // Changed label
+  { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
   { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
   { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
   { href: '/admin/academics', label: 'Academics', icon: GraduationCap },
@@ -81,6 +81,7 @@ const teacherNavItems: NavItem[] = [
   { href: '/teacher/attendance', label: 'Class Attendance', icon: ClipboardCheck },
   { href: '/teacher/student-scores', label: 'Enter Scores', icon: Award },
   { href: '/teacher/leave-requests', label: 'Leave Requests', icon: ClipboardEdit },
+  { href: '/teacher/id-card-printing', label: 'ID Card Printing', icon: Printer },
   { href: '/communication', label: 'Announcements', icon: Megaphone }, 
   { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
 ];
@@ -108,12 +109,14 @@ export default function SidebarNav() {
       if (storedRole && validRoles.includes(storedRole)) {
         setCurrentUserRole(storedRole);
       } else {
+        // Default to student if role is invalid or not found, or handle error/redirect
         setCurrentUserRole('student'); 
       }
     }
   }, []);
 
   if (currentUserRole === null) {
+    // Optionally, render a loading state or null
     return null; 
   }
 
@@ -133,7 +136,7 @@ export default function SidebarNav() {
       navItems = studentNavItems;
       break;
     default:
-      navItems = studentNavItems; 
+      navItems = studentNavItems; // Fallback, though should be handled by useEffect logic
   }
 
   return (
@@ -157,4 +160,3 @@ export default function SidebarNav() {
     </SidebarMenu>
   );
 }
-

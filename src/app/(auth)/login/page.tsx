@@ -85,6 +85,7 @@ export default function LoginPage() {
 
       if (foundUser && foundUser.role === role && foundUser.password === password) {
         localStorage.setItem('currentUserRole', role);
+        localStorage.setItem('currentUserId', foundUser.id); // Store user ID
         toast({
           title: "Login Successful!",
           description: `Welcome, ${foundUser.name}! You are logged in as ${role}.`,

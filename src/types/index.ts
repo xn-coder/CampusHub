@@ -106,6 +106,7 @@ export interface Announcement {
   date: Date;
   authorName: string; 
   postedByRole: UserRole; 
+  targetClassSectionId?: string; // Optional: ID of the ClassData for targeted announcements
 }
 
 export interface CalendarEvent {
@@ -135,4 +136,16 @@ export interface PayrollEntry {
   basicSalary: number;
   paymentDate?: string; // ISO string
   status: 'Pending' | 'Paid' | 'Processing';
+}
+
+export interface AttendanceRecord {
+  studentId: string;
+  date: string; // YYYY-MM-DD
+  status: 'Present' | 'Absent' | 'Late' | 'Excused';
+  remarks?: string;
+}
+
+export interface ClassAttendance {
+  classSectionId: string; // ID of the ClassData
+  records: AttendanceRecord[];
 }
