@@ -75,7 +75,11 @@ export default function ClassManagementPage() {
     }
   };
 
-  const getTeacherName = (teacherId?: string) => mockTeachers.find(t => t.id === teacherId)?.name || 'N/A';
+  const getTeacherName = (teacherId?: string): string => {
+    if (!teacherId) return 'N/A';
+    const teacher = mockTeachers.find(t => t.id === teacherId);
+    return teacher ? teacher.name : 'N/A';
+  };
 
   // --- Class Name (Standard) Management ---
   const handleAddClassName = () => {
@@ -463,3 +467,4 @@ export default function ClassManagementPage() {
     </div>
   );
 }
+
