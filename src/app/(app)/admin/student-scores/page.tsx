@@ -5,10 +5,11 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { StudentScore, Student, Exam, ClassData, Subject, Teacher } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
-import { Award, Filter, Search, User, BookOpen, CalendarCheck, UserCogIcon } from 'lucide-react';
+import { Award, Filter, Search, User, BookOpen, CalendarCheck, UserCogIcon, FileText } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 const MOCK_STUDENT_SCORES_KEY = 'mockStudentScoresData';
@@ -179,3 +180,4 @@ export default function AdminStudentScoresPage() {
     </div>
   );
 }
+
