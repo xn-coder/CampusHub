@@ -32,6 +32,8 @@ export default function ManageCoursesPage() {
   const [courseForCodeGeneration, setCourseForCodeGeneration] = useState<Course | null>(null);
   const [generatedCodesForDisplay, setGeneratedCodesForDisplay] = useState<string[]>([]);
   const [numCodesToGenerate, setNumCodesToGenerate] = useState<number>(1);
+  const [codeExpiresInDays, setCodeExpiresInDays] = useState<number>(365);
+
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -40,11 +42,23 @@ export default function ManageCoursesPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const storedCourses = localStorage.getItem(MOCK_LMS_COURSES_KEY);
-      setCourses(storedCourses ? JSON.parse(storedCourses) : []);
-      
-      const storedCodes = localStorage.getItem(MOCK_LMS_ACTIVATION_CODES_KEY);
-      setActivationCodes(storedCodes ? JSON.parse(storedCodes) : []);
+      try {
+        const storedCoursesRaw = localStorage.getItem(MOCK_LMS_COURSES_KEY);
+        setCourses(storedCoursesRaw ? JSON.parse(storedCoursesRaw) : []);
+      } catch (error) {
+        console.error("Error parsing courses from localStorage:", error);
+        setCourses([]); 
+        // localStorage.removeItem(MOCK_LMS_COURSES_KEY); // Optionally clear corrupted data
+      }
+
+      try {
+        const storedCodesRaw = localStorage.getItem(MOCK_LMS_ACTIVATION_CODES_KEY);
+        setActivationCodes(storedCodesRaw ? JSON.parse(storedCodesRaw) : []);
+      } catch (error) {
+        console.error("Error parsing activation codes from localStorage:", error);
+        setActivationCodes([]); 
+        // localStorage.removeItem(MOCK_LMS_ACTIVATION_CODES_KEY); // Optionally clear corrupted data
+      }
     }
   }, []);
 
@@ -140,6 +154,7 @@ export default function ManageCoursesPage() {
     }
     setCourseForCodeGeneration(course);
     setNumCodesToGenerate(1);
+    setCodeExpiresInDays(365); // Reset to default
     setGeneratedCodesForDisplay([]);
     setIsCodeDialogOpen(true);
   };
@@ -149,8 +164,17 @@ export default function ManageCoursesPage() {
       toast({ title: "Error", description: "Please select a course and specify a valid number of codes.", variant: "destructive"});
       return;
     }
+    if (codeExpiresInDays <=0) {
+      toast({ title: "Error", description: "Expiration days must be a positive number.", variant: "destructive"});
+      return;
+    }
+
     const newCodes: CourseActivationCode[] = [];
     const displayableCodes: string[] = [];
+    const currentDate = new Date();
+    const expiryDate = new Date(currentDate);
+    expiryDate.setDate(currentDate.getDate() + codeExpiresInDays);
+
 
     for (let i = 0; i < numCodesToGenerate; i++) {
       const uniqueCode = `COURSE-${courseForCodeGeneration.id.substring(0,4)}-${uuidv4().substring(0, 8).toUpperCase()}`;
@@ -160,6 +184,7 @@ export default function ManageCoursesPage() {
         code: uniqueCode,
         isUsed: false,
         generatedDate: new Date().toISOString(),
+        expiryDate: expiryDate.toISOString(),
       });
       displayableCodes.push(uniqueCode);
     }
@@ -168,7 +193,7 @@ export default function ManageCoursesPage() {
     setActivationCodes(updatedActivationCodes);
     updateLocalStorage(MOCK_LMS_ACTIVATION_CODES_KEY, updatedActivationCodes);
     setGeneratedCodesForDisplay(displayableCodes);
-    toast({ title: `${numCodesToGenerate} Activation Code(s) Generated`, description: `For course: ${courseForCodeGeneration.title}`});
+    toast({ title: `${numCodesToGenerate} Activation Code(s) Generated`, description: `For course: ${courseForCodeGeneration.title}. Codes expire in ${codeExpiresInDays} days.`});
   };
 
   const handleCopyCode = (code: string) => {
@@ -306,6 +331,16 @@ export default function ManageCoursesPage() {
                 onChange={(e) => setNumCodesToGenerate(parseInt(e.target.value))} 
               />
             </div>
+            <div>
+              <Label htmlFor="codeExpiresInDays">Expires in (days)</Label>
+              <Input 
+                id="codeExpiresInDays" 
+                type="number" 
+                min="1"
+                value={codeExpiresInDays} 
+                onChange={(e) => setCodeExpiresInDays(parseInt(e.target.value))} 
+              />
+            </div>
             <Button onClick={handleGenerateCodes}>Generate Codes</Button>
             {generatedCodesForDisplay.length > 0 && (
               <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
@@ -329,3 +364,4 @@ export default function ManageCoursesPage() {
     </div>
   );
 }
+

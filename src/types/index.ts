@@ -276,5 +276,6 @@ export interface CourseActivationCode {
   isUsed: boolean;
   usedByUserId?: string; 
   generatedDate: string; 
-  expiryDate?: string; 
+  expiryDate?: string; // ISO string for expiration date
 }
+

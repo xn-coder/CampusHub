@@ -33,7 +33,6 @@ export default function ActivateLmsCoursePage() {
     const courseIdFromQuery = searchParams.get('courseId');
     if (courseIdFromQuery) {
       setTargetCourseId(courseIdFromQuery);
-      // Optionally load course details to display course name if ID is present
       const storedCourses = localStorage.getItem(MOCK_LMS_COURSES_KEY);
       if (storedCourses) {
         const courses: Course[] = JSON.parse(storedCourses);
@@ -81,20 +80,25 @@ export default function ActivateLmsCoursePage() {
       setIsLoading(false);
       return;
     }
+    if (codeToActivate.expiryDate && new Date() > new Date(codeToActivate.expiryDate)) {
+      setMessage({type: 'error', text: "This activation code has expired."});
+      toast({ title: "Activation Failed", description: "This activation code has expired.", variant: "destructive"});
+      setIsLoading(false);
+      return;
+    }
     
-    // Mark code as used
     const updatedCodes = allCodes.map(c => 
       c.id === codeToActivate.id ? { ...c, isUsed: true, usedByUserId: currentUserId } : c
     );
     localStorage.setItem(MOCK_LMS_ACTIVATION_CODES_KEY, JSON.stringify(updatedCodes));
 
-    // Enroll user in course
     const allCourses: Course[] = JSON.parse(localStorage.getItem(MOCK_LMS_COURSES_KEY) || '[]');
     const updatedCourses = allCourses.map(course => {
       if (course.id === codeToActivate.courseId) {
-        const enrollmentArray = currentUserRole === 'student' ? 'enrolledStudentIds' : 'enrolledTeacherIds';
-        if (!course[enrollmentArray].includes(currentUserId)) {
-          return { ...course, [enrollmentArray]: [...course[enrollmentArray], currentUserId] };
+        const enrollmentArrayKey = currentUserRole === 'student' ? 'enrolledStudentIds' : 'enrolledTeacherIds';
+        const currentEnrollments = course[enrollmentArrayKey] || [];
+        if (!currentEnrollments.includes(currentUserId)) {
+          return { ...course, [enrollmentArrayKey]: [...currentEnrollments, currentUserId] };
         }
       }
       return course;
@@ -105,9 +109,8 @@ export default function ActivateLmsCoursePage() {
     setMessage({type: 'success', text: `Successfully activated and enrolled in: ${activatedCourseDetails?.title || 'the course'}`});
     toast({ title: "Course Activated!", description: `You are now enrolled in ${activatedCourseDetails?.title || 'the course'}.`});
     setIsLoading(false);
-    setActivationCode(''); // Clear input
+    setActivationCode('');
 
-    // Optional: Redirect after a delay
     setTimeout(() => {
         router.push('/lms/available-courses');
     }, 2000);
@@ -156,3 +159,4 @@ export default function ActivateLmsCoursePage() {
     </div>
   );
 }
+
