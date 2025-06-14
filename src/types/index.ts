@@ -46,17 +46,17 @@ export interface Student {
   id: string;
   name: string;
   email: string;
-  classId: string; // Stores the ID of the ClassData object (activated class-section)
+  classId: string; 
   profilePictureUrl?: string;
   dateOfBirth?: string; 
   guardianName?: string;
   contactNumber?: string;
   address?: string;
   admissionDate?: string;
-  lastLogin?: string; // ISO Date string for display
-  mockLoginDate?: Date; // Actual Date object for easier sorting
+  lastLogin?: string; 
+  mockLoginDate?: Date; 
   assignmentsSubmitted?: number;
-  attendancePercentage?: number; // 0-100
+  attendancePercentage?: number; 
 }
 
 export interface AdmissionRecord {
@@ -69,7 +69,7 @@ export interface AdmissionRecord {
   address: string;
   admissionDate: string; 
   status: 'Pending Review' | 'Admitted' | 'Rejected' | 'Enrolled';
-  classId: string; // ID of the ClassData object student is admitted to
+  classId: string; 
 }
 
 
@@ -81,26 +81,22 @@ export interface Teacher {
   profilePictureUrl?: string;
 }
 
-// Represents a standard or grade level, e.g., "Grade 10", "Senior KG"
 export interface ClassNameRecord {
   id: string;
   name: string;
 }
 
-// Represents a division or section, e.g., "A", "Rose Section"
 export interface SectionRecord {
   id: string;
   name: string;
 }
 
-// Represents an "activated" or "instantiated" class-section combination
-// to which students and teachers are assigned.
 export interface ClassData {
   id: string;
-  name: string; // Name from ClassNameRecord, e.g., "Grade 10"
-  division: string; // Name from SectionRecord, e.g., "A"
+  name: string; 
+  division: string; 
   teacherId?: string;
-  studentIds: string[]; // List of student IDs assigned to this class-division
+  studentIds: string[]; 
 }
 
 export interface Announcement {
@@ -110,14 +106,14 @@ export interface Announcement {
   date: Date;
   authorName: string; 
   postedByRole: UserRole; 
-  targetClassSectionId?: string; // Optional: ID of the ClassData for targeted announcements
+  targetClassSectionId?: string; 
 }
 
 export interface CalendarEvent {
   id: string;
   title: string;
   description?: string;
-  date: Date;
+  date: string; // Store as ISO string 'yyyy-MM-dd' for localStorage compatibility
   startTime?: string;
   endTime?: string;
   isAllDay: boolean;
@@ -125,12 +121,12 @@ export interface CalendarEvent {
 
 export interface ClassScheduleItem {
   id: string;
-  className: string; // e.g. "Grade 10A" or could be linked to ClassData.id
+  className: string; 
   subject: string;
-  teacherName: string; // or Teacher.id
+  teacherName: string; 
   dayOfWeek: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-  startTime: string; // HH:mm format
-  endTime: string; // HH:mm format
+  startTime: string; 
+  endTime: string; 
 }
 
 export interface PayrollEntry {
@@ -138,19 +134,54 @@ export interface PayrollEntry {
   employeeName: string;
   designation: string;
   basicSalary: number;
-  paymentDate?: string; // ISO string
+  paymentDate?: string; 
   status: 'Pending' | 'Paid' | 'Processing';
 }
 
 export interface AttendanceRecord {
   studentId: string;
-  date: string; // YYYY-MM-DD
+  date: string; 
   status: 'Present' | 'Absent' | 'Late' | 'Excused';
   remarks?: string;
 }
 
 export interface ClassAttendance {
-  classSectionId: string; // ID of the ClassData
+  classSectionId: string; 
   records: AttendanceRecord[];
 }
 
+// New Types for Academic Year, Subject, Exam
+export interface AcademicYear {
+  id: string;
+  name: string;
+  startDate: string; // ISO string 'yyyy-MM-dd'
+  endDate: string; // ISO string 'yyyy-MM-dd'
+}
+
+export interface Subject {
+  id: string;
+  name: string;
+  code: string;
+  academicYearId?: string; // Optional: Link to an AcademicYear
+}
+
+export interface Exam {
+  id: string;
+  name: string;
+  subjectId: string;
+  classSectionId?: string; // Optional: For class-specific exams
+  academicYearId?: string; // Optional: Link to an AcademicYear
+  date: string; // ISO string 'yyyy-MM-dd'
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+}
+
+// For Superadmin Manage School page
+export interface SchoolEntry {
+  id: string;
+  name: string;
+  address: string; 
+  adminEmail: string;
+  adminName: string;
+  status?: 'Active' | 'Inactive'; // Optional status
+}

@@ -35,7 +35,9 @@ import {
   UsersRound,
   DollarSign,
   Clock,
-  UserPlus 
+  UserPlus,
+  CalendarRange, // Added for Academic Years
+  BookOpenText // For Subjects
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -58,8 +60,8 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
   { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
   { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
-  { href: '/admin/academics', label: 'Academics', icon: GraduationCap },
-  { href: '/admin/subjects', label: 'Subjects', icon: BookOpen },
+  { href: '/admin/academic-years', label: 'Academic Years', icon: CalendarRange },
+  { href: '/admin/subjects', label: 'Subjects', icon: BookOpenText },
   { href: '/admin/exams', label: 'Exams', icon: FileText },
   { href: '/admin/student-scores', label: 'Student Scores', icon: Award },
   { href: '/admin/attendance', label: 'Attendance', icon: ClipboardCheck },
@@ -110,14 +112,12 @@ export default function SidebarNav() {
       if (storedRole && validRoles.includes(storedRole)) {
         setCurrentUserRole(storedRole);
       } else {
-        // Default to student if role is invalid or not found, or handle error/redirect
         setCurrentUserRole('student'); 
       }
     }
   }, []);
 
   if (currentUserRole === null) {
-    // Optionally, render a loading state or null
     return null; 
   }
 
@@ -137,7 +137,7 @@ export default function SidebarNav() {
       navItems = studentNavItems;
       break;
     default:
-      navItems = studentNavItems; // Fallback, though should be handled by useEffect logic
+      navItems = studentNavItems; 
   }
 
   return (
@@ -161,4 +161,3 @@ export default function SidebarNav() {
     </SidebarMenu>
   );
 }
-

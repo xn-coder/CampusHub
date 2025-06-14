@@ -6,12 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { useState, type ChangeEvent } from 'react';
+import { useState, type ChangeEvent, useEffect } from 'react';
 import type { SchoolDetails, Holiday } from '@/types';
 import { Calendar } from '@/components/ui/calendar';
 import { PlusCircle, Trash2 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
+
+const MOCK_SCHOOL_DETAILS_KEY = 'mockSchoolDetails';
+const MOCK_HOLIDAYS_KEY = 'mockSchoolHolidays';
 
 export default function SchoolDetailsPage() {
   const { toast } = useToast();
@@ -22,13 +25,46 @@ export default function SchoolDetailsPage() {
     contactPhone: '(555) 123-4567',
   });
 
-  const [holidays, setHolidays] = useState<Holiday[]>([
-    { id: '1', name: 'Summer Break Starts', date: new Date(2024, 6, 20) }, // July 20, 2024
-    { id: '2', name: 'Independence Day', date: new Date(2024, 6, 4) }, // July 4, 2024
-  ]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [newHolidayName, setNewHolidayName] = useState('');
   const [newHolidayDate, setNewHolidayDate] = useState<Date | undefined>(new Date());
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedDetails = localStorage.getItem(MOCK_SCHOOL_DETAILS_KEY);
+      if (storedDetails) {
+        setSchoolDetails(JSON.parse(storedDetails));
+      } else {
+        localStorage.setItem(MOCK_SCHOOL_DETAILS_KEY, JSON.stringify(schoolDetails));
+      }
+
+      const storedHolidays = localStorage.getItem(MOCK_HOLIDAYS_KEY);
+      if (storedHolidays) {
+        // Ensure date strings are converted to Date objects
+        const parsedHolidays: Holiday[] = JSON.parse(storedHolidays).map((h: any) => ({
+          ...h,
+          date: new Date(h.date),
+        }));
+        setHolidays(parsedHolidays.sort((a,b) => b.date.getTime() - a.date.getTime())); // Sort newest first on load
+      } else {
+         // Initialize with some default holidays if none are stored
+        const initialHolidays = [
+          { id: '1', name: 'Summer Break Starts', date: new Date(2024, 6, 20) }, // July 20, 2024
+          { id: '2', name: 'Independence Day', date: new Date(2024, 6, 4) }, // July 4, 2024
+        ].sort((a,b) => b.date.getTime() - a.date.getTime());
+        setHolidays(initialHolidays);
+        localStorage.setItem(MOCK_HOLIDAYS_KEY, JSON.stringify(initialHolidays));
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
+  const updateLocalStorage = (key: string, data: any) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+  };
 
   const handleDetailChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -36,17 +72,22 @@ export default function SchoolDetailsPage() {
   };
 
   const handleSaveSchoolDetails = () => {
-    // In a real app, you would save this to a database
+    updateLocalStorage(MOCK_SCHOOL_DETAILS_KEY, schoolDetails);
     toast({
       title: "School Details Updated",
-      description: "The school information has been saved (mock).",
+      description: "The school information has been saved. (In a real system, these changes might require Super Admin approval).",
     });
-    console.log("School details saved:", schoolDetails);
   };
 
   const handleAddHoliday = () => {
-    if (newHolidayName && newHolidayDate) {
-      setHolidays(prev => [...prev, { id: String(Date.now()), name: newHolidayName, date: newHolidayDate }].sort((a,b) => a.date.getTime() - b.date.getTime()));
+    if (newHolidayName && newHolidayDate && isValid(newHolidayDate)) {
+      const updatedHolidays = [
+        { id: String(Date.now()), name: newHolidayName, date: newHolidayDate },
+        ...holidays
+      ].sort((a,b) => b.date.getTime() - a.date.getTime()); // Ensure newest is always on top after adding
+      
+      setHolidays(updatedHolidays);
+      updateLocalStorage(MOCK_HOLIDAYS_KEY, updatedHolidays);
       setNewHolidayName('');
       setNewHolidayDate(new Date());
       toast({
@@ -56,7 +97,7 @@ export default function SchoolDetailsPage() {
     } else {
       toast({
         title: "Error",
-        description: "Please provide both a name and a date for the holiday.",
+        description: "Please provide a valid name and date for the holiday.",
         variant: "destructive",
       });
     }
@@ -64,7 +105,9 @@ export default function SchoolDetailsPage() {
   
   const handleRemoveHoliday = (id: string) => {
     const holidayToRemove = holidays.find(h => h.id === id);
-    setHolidays(prev => prev.filter(holiday => holiday.id !== id));
+    const updatedHolidays = holidays.filter(holiday => holiday.id !== id);
+    setHolidays(updatedHolidays);
+    updateLocalStorage(MOCK_HOLIDAYS_KEY, updatedHolidays);
     if (holidayToRemove) {
       toast({
         title: "Holiday Removed",
@@ -107,7 +150,7 @@ export default function SchoolDetailsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Holiday Schedule</CardTitle>
-          <CardDescription>Manage the school's holiday calendar.</CardDescription>
+          <CardDescription>Manage the school's holiday calendar. Newest holidays are listed first.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4 mb-6">
@@ -122,7 +165,14 @@ export default function SchoolDetailsPage() {
                   type="date" 
                   id="newHolidayDate" 
                   value={newHolidayDate ? format(newHolidayDate, 'yyyy-MM-dd') : ''} 
-                  onChange={(e) => setNewHolidayDate(e.target.value ? parseISO(e.target.value) : undefined)}
+                  onChange={(e) => {
+                    const parsedDate = parseISO(e.target.value);
+                    if (isValid(parsedDate)) {
+                      setNewHolidayDate(parsedDate);
+                    } else {
+                      setNewHolidayDate(undefined); // Handle invalid date input
+                    }
+                  }}
                   className="w-full"
                 />
               </div>
@@ -136,6 +186,7 @@ export default function SchoolDetailsPage() {
                     selected={newHolidayDate} 
                     onSelect={setNewHolidayDate} 
                     className="rounded-md border p-3 inline-block"
+                    initialFocus
                 />
             </div>
           </div>
@@ -145,7 +196,7 @@ export default function SchoolDetailsPage() {
               {holidays.map(holiday => (
                 <li key={holiday.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
                   <div>
-                    <span className="font-medium">{holiday.name}</span> - <span className="text-sm text-muted-foreground">{format(holiday.date, "MMMM d, yyyy")}</span>
+                    <span className="font-medium">{holiday.name}</span> - <span className="text-sm text-muted-foreground">{format(new Date(holiday.date), "MMMM d, yyyy")}</span>
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => handleRemoveHoliday(holiday.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />

@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -8,119 +9,141 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import type { CalendarEvent } from '@/types';
-import { useState } from 'react';
-import { PlusCircle, Edit2, Trash2 } from 'lucide-react';
+import { useState, useEffect, type FormEvent } from 'react';
+import { PlusCircle, Edit2, Trash2, Save } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
-import { format } from "date-fns";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { format, parseISO, isValid } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
-const initialEvents: CalendarEvent[] = [
-  { id: '1', title: 'Parent-Teacher Meeting', date: new Date(2024, 7, 15), startTime: '16:00', endTime: '18:00', isAllDay: false, description: 'Discuss student progress.' },
-  { id: '2', title: 'School Play Rehearsal', date: new Date(2024, 7, 10), startTime: '15:00', endTime: '17:00', isAllDay: false },
-  { id: '3', title: 'Book Fair', date: new Date(2024, 7, 20), isAllDay: true, description: 'Annual book fair in the library.' },
-];
-
+const MOCK_CALENDAR_EVENTS_KEY = 'mockCalendarEventsData';
 
 export default function CalendarEventsPage() {
-  const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
+  const { toast } = useToast();
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   
-  const [showForm, setShowForm] = useState(false);
-  const [newEvent, setNewEvent] = useState<Partial<CalendarEvent>>({ title: '', date: selectedDate || new Date(), isAllDay: false });
+  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  
+  // Form state
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDate, setEventDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [eventIsAllDay, setEventIsAllDay] = useState(false);
+  const [eventStartTime, setEventStartTime] = useState('');
+  const [eventEndTime, setEventEndTime] = useState('');
+  const [eventDescription, setEventDescription] = useState('');
 
-  const handleDateSelect = (date: Date | undefined) => {
-    setSelectedDate(date);
-    setNewEvent(prev => ({ ...prev, date: date || new Date() }));
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedEvents = localStorage.getItem(MOCK_CALENDAR_EVENTS_KEY);
+      if (storedEvents) {
+        setEvents(JSON.parse(storedEvents));
+      }
+    }
+  }, []);
+
+  const updateLocalStorage = (updatedEvents: CalendarEvent[]) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(MOCK_CALENDAR_EVENTS_KEY, JSON.stringify(updatedEvents));
+    }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target;
-    if (type === 'checkbox' && e.target instanceof HTMLInputElement) {
-       setNewEvent(prev => ({ ...prev, [name]: e.target.checked }));
+  const resetForm = () => {
+    setEventTitle('');
+    setEventDate(selectedDate ? format(selectedDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'));
+    setEventIsAllDay(false);
+    setEventStartTime('');
+    setEventEndTime('');
+    setEventDescription('');
+    setEditingEvent(null);
+  };
+
+  const handleOpenFormDialog = (eventToEdit?: CalendarEvent) => {
+    if (eventToEdit) {
+      setEditingEvent(eventToEdit);
+      setEventTitle(eventToEdit.title);
+      setEventDate(eventToEdit.date); // Date is already 'yyyy-MM-dd'
+      setEventIsAllDay(eventToEdit.isAllDay);
+      setEventStartTime(eventToEdit.startTime || '');
+      setEventEndTime(eventToEdit.endTime || '');
+      setEventDescription(eventToEdit.description || '');
     } else {
-       setNewEvent(prev => ({ ...prev, [name]: value }));
+      resetForm();
+      // Pre-fill date if a date is selected on the calendar
+      if (selectedDate) {
+        setEventDate(format(selectedDate, 'yyyy-MM-dd'));
+      }
     }
+    setIsFormDialogOpen(true);
   };
 
-  const handleSubmitEvent = (e: React.FormEvent) => {
+  const handleSubmitEvent = (e: FormEvent) => {
     e.preventDefault();
-    if (newEvent.title && newEvent.date) {
-      const eventToAdd: CalendarEvent = {
-        id: String(Date.now()),
-        title: newEvent.title,
-        date: newEvent.date,
-        description: newEvent.description,
-        startTime: newEvent.isAllDay ? undefined : newEvent.startTime,
-        endTime: newEvent.isAllDay ? undefined : newEvent.endTime,
-        isAllDay: !!newEvent.isAllDay,
-      };
-      setEvents(prev => [...prev, eventToAdd].sort((a,b) => a.date.getTime() - b.date.getTime()));
-      setNewEvent({ title: '', date: selectedDate || new Date(), isAllDay: false });
-      setShowForm(false);
+    if (!eventTitle.trim() || !eventDate) {
+      toast({ title: "Error", description: "Event Title and Date are required.", variant: "destructive" });
+      return;
     }
+
+    let updatedEvents;
+    if (editingEvent) {
+      updatedEvents = events.map(event => 
+        event.id === editingEvent.id ? { 
+          ...event, 
+          title: eventTitle.trim(),
+          date: eventDate,
+          isAllDay: eventIsAllDay,
+          startTime: eventIsAllDay ? undefined : eventStartTime,
+          endTime: eventIsAllDay ? undefined : eventEndTime,
+          description: eventDescription.trim() || undefined,
+        } : event
+      );
+      toast({ title: "Event Updated", description: "The event has been successfully updated."});
+    } else {
+      const newEventToAdd: CalendarEvent = {
+        id: String(Date.now()),
+        title: eventTitle.trim(),
+        date: eventDate,
+        isAllDay: eventIsAllDay,
+        startTime: eventIsAllDay ? undefined : eventStartTime,
+        endTime: eventIsAllDay ? undefined : eventEndTime,
+        description: eventDescription.trim() || undefined,
+      };
+      updatedEvents = [...events, newEventToAdd];
+      toast({ title: "Event Added", description: "The new event has been added to the calendar."});
+    }
+    
+    updatedEvents.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    setEvents(updatedEvents);
+    updateLocalStorage(updatedEvents);
+    setIsFormDialogOpen(false);
+    resetForm();
   };
 
   const handleDeleteEvent = (id: string) => {
-    setEvents(prev => prev.filter(event => event.id !== id));
+    if (confirm("Are you sure you want to delete this event?")) {
+      const updatedEvents = events.filter(event => event.id !== id);
+      setEvents(updatedEvents);
+      updateLocalStorage(updatedEvents);
+      toast({ title: "Event Deleted", variant: "destructive" });
+    }
   };
 
   const eventsOnSelectedDate = selectedDate 
-    ? events.filter(event => format(event.date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd'))
+    ? events.filter(event => event.date === format(selectedDate, 'yyyy-MM-dd'))
     : [];
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Calendar & Events" 
-        description="Organize and view school events and activities."
+        description="Organize and view school events and activities. Events are saved locally."
         actions={
-          <Button onClick={() => setShowForm(prev => !prev)}>
-            <PlusCircle className="mr-2 h-4 w-4" /> {showForm ? 'Cancel' : 'Add Event'}
+          <Button onClick={() => handleOpenFormDialog()}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Add Event
           </Button>
         }
       />
-
-      {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Add New Event</CardTitle>
-          </CardHeader>
-          <form onSubmit={handleSubmitEvent}>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="title">Event Title</Label>
-                <Input id="title" name="title" value={newEvent.title || ''} onChange={handleInputChange} placeholder="Event Title" required />
-              </div>
-              <div>
-                <Label htmlFor="date">Date</Label>
-                <Input type="date" id="date" name="date" value={newEvent.date ? format(newEvent.date, 'yyyy-MM-dd') : ''} onChange={(e) => setNewEvent(prev => ({...prev, date: new Date(e.target.value)}))} required />
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox id="isAllDay" name="isAllDay" checked={!!newEvent.isAllDay} onCheckedChange={(checked) => setNewEvent(prev => ({...prev, isAllDay: !!checked}))} />
-                <Label htmlFor="isAllDay">All-day event</Label>
-              </div>
-              {!newEvent.isAllDay && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="startTime">Start Time</Label>
-                    <Input id="startTime" name="startTime" type="time" value={newEvent.startTime || ''} onChange={handleInputChange} />
-                  </div>
-                  <div>
-                    <Label htmlFor="endTime">End Time</Label>
-                    <Input id="endTime" name="endTime" type="time" value={newEvent.endTime || ''} onChange={handleInputChange} />
-                  </div>
-                </div>
-              )}
-              <div>
-                <Label htmlFor="description">Description (Optional)</Label>
-                <Textarea id="description" name="description" value={newEvent.description || ''} onChange={handleInputChange} placeholder="Event details..." />
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button type="submit">Save Event</Button>
-            </CardFooter>
-          </form>
-        </Card>
-      )}
 
       <div className="grid md:grid-cols-3 gap-6">
         <div className="md:col-span-1">
@@ -130,8 +153,12 @@ export default function CalendarEventsPage() {
                     <Calendar
                         mode="single"
                         selected={selectedDate}
-                        onSelect={handleDateSelect}
+                        onSelect={(date) => {
+                            setSelectedDate(date);
+                            if(date) setEventDate(format(date, 'yyyy-MM-dd'));
+                        }}
                         className="rounded-md border"
+                        initialFocus
                     />
                 </CardContent>
             </Card>
@@ -144,35 +171,85 @@ export default function CalendarEventsPage() {
                 Events for {selectedDate ? format(selectedDate, "MMMM d, yyyy") : 'Today'}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 max-h-[calc(theme(space.96)_*_2)] overflow-y-auto">
               {eventsOnSelectedDate.length > 0 ? eventsOnSelectedDate.map(event => (
                 <Card key={event.id} className="overflow-hidden">
                   <CardHeader className="p-4">
-                    <div className="flex justify-between items-start">
+                    <div className="flex justify-between items-start gap-2">
                       <div>
                         <CardTitle className="text-lg">{event.title}</CardTitle>
                         <CardDescription>
-                          {event.isAllDay ? 'All Day' : `${event.startTime || ''} - ${event.endTime || ''}`}
+                          {event.isAllDay ? 'All Day' : `${event.startTime || ''}${event.startTime && event.endTime ? ' - ' : ''}${event.endTime || ''}`}
                         </CardDescription>
                       </div>
-                       <Button variant="ghost" size="icon" onClick={() => handleDeleteEvent(event.id)} className="text-destructive hover:text-destructive">
+                      <div className="flex gap-1 shrink-0">
+                        <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(event)}>
+                           <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button variant="destructive" size="icon" onClick={() => handleDeleteEvent(event.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   {event.description && (
                     <CardContent className="p-4 pt-0">
-                      <p className="text-sm text-muted-foreground">{event.description}</p>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p>
                     </CardContent>
                   )}
                 </Card>
               )) : (
-                <p className="text-muted-foreground">No events scheduled for this day.</p>
+                <p className="text-muted-foreground text-center py-4">No events scheduled for this day.</p>
               )}
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Add/Edit Event Dialog */}
+      <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>{editingEvent ? 'Edit Event' : 'Add New Event'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmitEvent}>
+            <div className="grid gap-4 py-4">
+              <div>
+                <Label htmlFor="eventTitle">Event Title</Label>
+                <Input id="eventTitle" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder="Event Title" required />
+              </div>
+              <div>
+                <Label htmlFor="eventDate">Date</Label>
+                <Input type="date" id="eventDate" value={eventDate} onChange={(e) => setEventDate(e.target.value)} required />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="eventIsAllDay" checked={eventIsAllDay} onCheckedChange={(checked) => setEventIsAllDay(!!checked)} />
+                <Label htmlFor="eventIsAllDay">All-day event</Label>
+              </div>
+              {!eventIsAllDay && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="eventStartTime">Start Time</Label>
+                    <Input id="eventStartTime" type="time" value={eventStartTime} onChange={(e) => setEventStartTime(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label htmlFor="eventEndTime">End Time</Label>
+                    <Input id="eventEndTime" type="time" value={eventEndTime} onChange={(e) => setEventEndTime(e.target.value)} />
+                  </div>
+                </div>
+              )}
+              <div>
+                <Label htmlFor="eventDescription">Description (Optional)</Label>
+                <Textarea id="eventDescription" value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} placeholder="Event details..." />
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+              <Button type="submit"><Save className="mr-2 h-4 w-4" /> {editingEvent ? 'Save Changes' : 'Add Event'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -7,46 +7,55 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Announcement, UserRole, ClassData, Student } from '@/types';
+import type { Announcement, UserRole, ClassData, Student, User } from '@/types';
 import { useState, useEffect } from 'react';
 import { PlusCircle, Send } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
 
-const MOCK_ANNOUNCEMENTS_KEY = 'mockAnnouncementsData'; // To store announcements
+const MOCK_ANNOUNCEMENTS_KEY = 'mockAnnouncementsData';
 const MOCK_CLASSES_KEY = 'mockClassesData';
 const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_USER_DB_KEY = 'mockUserDatabase';
-
+const MOCK_USER_DB_KEY = 'mockUserDatabase'; // To get current user's name if needed
 
 const initialAnnouncements: Announcement[] = [
   { id: 'sa1', title: 'Platform Maintenance Alert', content: 'Scheduled maintenance on Sunday. System may be unavailable from 2 AM to 4 AM.', date: new Date(2024, 6, 25), authorName: 'System Operations', postedByRole: 'superadmin' },
   { id: 'adm1', title: 'School Reopens Monday', content: 'The school will reopen on Monday after the spring break. All students are expected to attend.', date: new Date(2024, 3, 10), authorName: 'Principal Office', postedByRole: 'admin' },
   { id: 'teach1', title: 'Science Fair Submissions', content: 'Reminder: The deadline for science fair project submissions is this Friday. Please submit your projects to Room 201.', date: new Date(2024, 3, 8), authorName: 'Science Department', postedByRole: 'teacher' },
-  { id: 'teach2', title: 'Math Test - Grade 10A', content: 'Your Math test previously scheduled for Wednesday will now be on Thursday.', date: new Date(2024, 6, 20), authorName: 'Mr. Matherton', postedByRole: 'teacher', targetClassSectionId: 'ac-some-grade10a-id' /* Replace with actual ID if testing */ },
 ];
 
-
 export default function CommunicationPage() {
+  const { toast } = useToast();
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>(initialAnnouncements);
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassSectionId: '' });
+  const [notifyViaEmailMock, setNotifyViaEmailMock] = useState(false);
   const [showForm, setShowForm] = useState(false);
   
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentUserData, setCurrentUserData] = useState<User | Student | null>(null); // For student's classId
+  const [currentUserInfo, setCurrentUserInfo] = useState<User | null>(null);
+  const [studentData, setStudentData] = useState<Student | null>(null);
 
   const [teacherAssignedClasses, setTeacherAssignedClasses] = useState<ClassData[]>([]);
   const [filteredAnnouncements, setFilteredAnnouncements] = useState<Announcement[]>([]);
 
-  useEffect(() => { // Load initial announcements and user data
+  useEffect(() => { 
     if (typeof window !== 'undefined') {
       const storedRole = localStorage.getItem('currentUserRole') as UserRole | null;
       const storedUserId = localStorage.getItem('currentUserId');
       setCurrentUserRole(storedRole);
       setCurrentUserId(storedUserId);
 
-      const storedAnnouncements = localStorage.getItem(MOCK_ANNOUNCEMENTS_KEY);
-      setAllAnnouncements(storedAnnouncements ? JSON.parse(storedAnnouncements) : initialAnnouncements);
+      const storedUsers = localStorage.getItem(MOCK_USER_DB_KEY);
+      if(storedUsers && storedUserId) {
+        const users: User[] = JSON.parse(storedUsers);
+        const CUser = users.find(u => u.id === storedUserId);
+        if(CUser) setCurrentUserInfo(CUser);
+      }
+      
+      const storedAnnouncementsData = localStorage.getItem(MOCK_ANNOUNCEMENTS_KEY);
+      setAllAnnouncements(storedAnnouncementsData ? JSON.parse(storedAnnouncementsData).map((a: any) => ({...a, date: new Date(a.date)})) : initialAnnouncements.map(a => ({...a, date: new Date(a.date)})));
       
       if (storedRole === 'teacher' && storedUserId) {
         const storedActiveClasses = localStorage.getItem(MOCK_CLASSES_KEY);
@@ -59,44 +68,39 @@ export default function CommunicationPage() {
         const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
         if(storedStudents){
             const allStudents: Student[] = JSON.parse(storedStudents);
-            const studentData = allStudents.find(s => s.id === storedUserId);
-            if(studentData) setCurrentUserData(studentData);
+            const SData = allStudents.find(s => s.id === storedUserId);
+            if(SData) setStudentData(SData);
         }
       }
     }
   }, []);
 
-  useEffect(() => { // Filter announcements when role or data changes
+  useEffect(() => { 
     if (!currentUserRole) {
       setFilteredAnnouncements([]);
       return;
     }
 
     let studentClassId: string | undefined = undefined;
-    if (currentUserRole === 'student' && currentUserData) {
-        studentClassId = (currentUserData as Student).classId;
+    if (currentUserRole === 'student' && studentData) {
+        studentClassId = studentData.classId;
     }
 
     const newFiltered = allAnnouncements.filter(ann => {
-      switch (currentUserRole) {
-        case 'superadmin': // Sees all
-          return true;
-        case 'admin': // Sees admin and superadmin
-          return ann.postedByRole === 'superadmin' || ann.postedByRole === 'admin' || ann.postedByRole === 'teacher';
-        case 'teacher': // Sees teacher, admin, superadmin
-           return ann.postedByRole === 'teacher' || ann.postedByRole === 'admin' || ann.postedByRole === 'superadmin';
-        case 'student': // Sees relevant teacher posts and admin posts
-          if (ann.postedByRole === 'teacher') {
-            return !ann.targetClassSectionId || ann.targetClassSectionId === studentClassId;
-          }
-          return ann.postedByRole === 'admin'; // Students also see general admin posts
-        default:
-          return false;
+      if (currentUserRole === 'superadmin') return true;
+      if (currentUserRole === 'admin') return ann.postedByRole === 'superadmin' || ann.postedByRole === 'admin' || ann.postedByRole === 'teacher';
+      if (currentUserRole === 'teacher') return ann.postedByRole !== 'student'; // Teachers see all non-student posts
+      if (currentUserRole === 'student') {
+        if (ann.postedByRole === 'teacher') { // Student sees teacher post if general or targeted to their class
+          return !ann.targetClassSectionId || ann.targetClassSectionId === studentClassId;
+        }
+        return ann.postedByRole === 'admin' || ann.postedByRole === 'superadmin'; // Students also see general admin/superadmin posts
       }
+      return false;
     });
     setFilteredAnnouncements(newFiltered.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
-  }, [allAnnouncements, currentUserRole, currentUserData]);
+  }, [allAnnouncements, currentUserRole, studentData]);
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -110,12 +114,14 @@ export default function CommunicationPage() {
 
   const handleSubmitAnnouncement = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newAnnouncement.title && newAnnouncement.content && newAnnouncement.authorName && currentUserRole) {
+    const authorNameToUse = newAnnouncement.authorName.trim() || currentUserInfo?.name || 'CampusHub User';
+
+    if (newAnnouncement.title.trim() && newAnnouncement.content.trim() && currentUserRole) {
       const announcementToAdd: Announcement = {
         id: String(Date.now()),
-        title: newAnnouncement.title,
-        content: newAnnouncement.content,
-        authorName: newAnnouncement.authorName,
+        title: newAnnouncement.title.trim(),
+        content: newAnnouncement.content.trim(),
+        authorName: authorNameToUse,
         postedByRole: currentUserRole,
         date: new Date(),
         targetClassSectionId: newAnnouncement.targetClassSectionId || undefined,
@@ -124,8 +130,17 @@ export default function CommunicationPage() {
       setAllAnnouncements(updatedAnnouncements);
       localStorage.setItem(MOCK_ANNOUNCEMENTS_KEY, JSON.stringify(updatedAnnouncements));
       
+      let toastDescription = `${newAnnouncement.title} has been posted.`;
+      if (notifyViaEmailMock) {
+        toastDescription += " (Email notification simulated)";
+      }
+      toast({ title: "Announcement Posted", description: toastDescription });
+
       setNewAnnouncement({ title: '', content: '', authorName: '', targetClassSectionId: '' });
+      setNotifyViaEmailMock(false);
       setShowForm(false);
+    } else {
+      toast({title: "Error", description: "Title and Content are required.", variant: "destructive"});
     }
   };
 
@@ -138,7 +153,12 @@ export default function CommunicationPage() {
         description="Share and view important updates."
         actions={
           canPostAnnouncement ? (
-            <Button onClick={() => setShowForm(prev => !prev)}>
+            <Button onClick={() => {
+              setShowForm(prev => !prev);
+              if(currentUserInfo && newAnnouncement.authorName === '') {
+                 setNewAnnouncement(prev => ({...prev, authorName: currentUserInfo.name}));
+              }
+            }}>
               <PlusCircle className="mr-2 h-4 w-4" /> {showForm ? 'Cancel' : 'New Announcement'}
             </Button>
           ) : null
@@ -168,17 +188,26 @@ export default function CommunicationPage() {
                       <SelectValue placeholder="Select target class (optional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="general">General (All Students)</SelectItem>
+                      <SelectItem value="general">General (All My Students)</SelectItem>
                       {teacherAssignedClasses.map(cls => (
                         <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">If not specified, announcement is visible more broadly based on your role.</p>
                 </div>
               )}
               <div>
                 <Label htmlFor="content">Content</Label>
                 <Textarea id="content" name="content" value={newAnnouncement.content} onChange={handleInputChange} placeholder="Write your announcement here..." required rows={5} />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="notifyViaEmailMock" 
+                  checked={notifyViaEmailMock} 
+                  onCheckedChange={(checked) => setNotifyViaEmailMock(!!checked)}
+                />
+                <Label htmlFor="notifyViaEmailMock">Notify via Email (Simulation)</Label>
               </div>
             </CardContent>
             <CardFooter>
@@ -195,8 +224,8 @@ export default function CommunicationPage() {
               <CardTitle>{announcement.title}</CardTitle>
               <CardDescription>
                 Posted by {announcement.authorName} ({announcement.postedByRole}) on {new Date(announcement.date).toLocaleDateString()}
-                {announcement.targetClassSectionId && teacherAssignedClasses.find(c=> c.id === announcement.targetClassSectionId) && (
-                    <span className="text-xs block text-blue-500"> (Targeted: {teacherAssignedClasses.find(c=>c.id === announcement.targetClassSectionId)?.name} - {teacherAssignedClasses.find(c=>c.id === announcement.targetClassSectionId)?.division})</span>
+                {announcement.targetClassSectionId && (
+                    <span className="text-xs block text-blue-500"> (Targeted)</span>
                 )}
               </CardDescription>
             </CardHeader>

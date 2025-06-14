@@ -5,23 +5,30 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Student, User } from '@/types';
-import { useState, useEffect } from 'react';
-import { Edit2, Trash2, Search, Users, Activity } from 'lucide-react';
+import { useState, useEffect, type FormEvent } from 'react';
+import { Edit2, Trash2, Search, Users, Activity, Save } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
 const MOCK_STUDENTS_KEY = 'mockStudentsData';
 const MOCK_USER_DB_KEY = 'mockUserDatabase';
-// const MOCK_ADMISSIONS_KEY = 'mockAdmissionsData'; // Key for admission records
+const MOCK_ADMISSIONS_KEY = 'mockAdmissionsData'; 
 
 export default function ManageStudentsPage() {
   const { toast } = useToast();
   const [students, setStudents] = useState<Student[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-students");
+
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [editStudentName, setEditStudentName] = useState('');
+  const [editStudentEmail, setEditStudentEmail] = useState('');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -49,8 +56,48 @@ export default function ManageStudentsPage() {
     (student.email && student.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
   
-  const handleEditStudent = (student: Student) => { 
-    toast({ title: "Edit Student", description: `Editing ${student.name}. Form/functionality to be implemented.`});
+  const handleOpenEditDialog = (student: Student) => { 
+    setEditingStudent(student);
+    setEditStudentName(student.name);
+    setEditStudentEmail(student.email);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleEditStudentSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent || !editStudentName.trim() || !editStudentEmail.trim()) {
+      toast({ title: "Error", description: "Name and Email cannot be empty.", variant: "destructive" });
+      return;
+    }
+    
+    const storedUsers = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '[]') as User[];
+    if (editStudentEmail.trim() !== editingStudent.email && storedUsers.some(u => u.email === editStudentEmail.trim())) {
+        toast({ title: "Error", description: "Another user with this email already exists.", variant: "destructive" });
+        return;
+    }
+
+    const updatedStudents = students.map(s => 
+      s.id === editingStudent.id ? { ...s, name: editStudentName.trim(), email: editStudentEmail.trim() } : s
+    );
+    setStudents(updatedStudents);
+    updateLocalStorage(MOCK_STUDENTS_KEY, updatedStudents);
+
+    const updatedUsers = storedUsers.map(u =>
+      u.id === editingStudent.id ? { ...u, name: editStudentName.trim(), email: editStudentEmail.trim() } : u
+    );
+    updateLocalStorage(MOCK_USER_DB_KEY, updatedUsers);
+    
+    // Also update admission record if email changed and an admission record exists
+    const storedAdmissions = JSON.parse(localStorage.getItem(MOCK_ADMISSIONS_KEY) || '[]') as any[];
+    const updatedAdmissions = storedAdmissions.map(adm =>
+      adm.email === editingStudent.email ? { ...adm, name: editStudentName.trim(), email: editStudentEmail.trim() } : adm
+    );
+    updateLocalStorage(MOCK_ADMISSIONS_KEY, updatedAdmissions);
+
+
+    toast({ title: "Student Updated", description: `${editStudentName.trim()}'s details updated.` });
+    setIsEditDialogOpen(false);
+    setEditingStudent(null);
   };
   
   const handleDeleteStudent = (studentId: string) => { 
@@ -66,11 +113,9 @@ export default function ManageStudentsPage() {
       const updatedUsers = storedUsers.filter(user => user.id !== studentId); 
       updateLocalStorage(MOCK_USER_DB_KEY, updatedUsers);
       
-      // Also remove from admission records using email as a fallback link if ID isn't directly stored or consistent
-      const storedAdmissions = JSON.parse(localStorage.getItem('mockAdmissionsData') || '[]') as any[]; // Assuming AdmissionRecord type
+      const storedAdmissions = JSON.parse(localStorage.getItem(MOCK_ADMISSIONS_KEY) || '[]') as any[];
       const updatedAdmissions = storedAdmissions.filter(adm => adm.email !== studentToDelete.email);
-      updateLocalStorage('mockAdmissionsData', updatedAdmissions);
-
+      updateLocalStorage(MOCK_ADMISSIONS_KEY, updatedAdmissions);
 
       toast({
         title: "Student Deleted",
@@ -79,7 +124,6 @@ export default function ManageStudentsPage() {
       });
     }
   };
-
 
   return (
     <div className="flex flex-col gap-6">
@@ -98,7 +142,7 @@ export default function ManageStudentsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Student Roster</CardTitle>
-              <CardDescription>View, search, and manage enrolled student profiles. New students are added via the Admissions page.</CardDescription>
+              <CardDescription>View, search, and manage enrolled student profiles. New students are registered by teachers.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-4 flex items-center gap-2">
@@ -133,7 +177,7 @@ export default function ManageStudentsPage() {
                       <TableCell>{student.email}</TableCell>
                       <TableCell>{student.classId || 'N/A'}</TableCell>
                       <TableCell className="space-x-1 text-right">
-                        <Button variant="outline" size="icon" onClick={() => handleEditStudent(student)}>
+                        <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)}>
                           <Edit2 className="h-4 w-4" />
                         </Button>
                         <Button variant="destructive" size="icon" onClick={() => handleDeleteStudent(student.id)}>
@@ -146,7 +190,7 @@ export default function ManageStudentsPage() {
               </Table>
               {filteredStudents.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">
-                  {searchTerm ? "No students match your search." : "No students found. Add students via the Admissions page."}
+                  {searchTerm ? "No students match your search." : "No students found. Students are registered by teachers."}
                 </p>
               )}
             </CardContent>
@@ -166,7 +210,31 @@ export default function ManageStudentsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Student Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Edit Student: {editingStudent?.name}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditStudentSubmit}>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="editStudentName" className="text-right">Name</Label>
+                <Input id="editStudentName" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="col-span-3" required />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="editStudentEmail" className="text-right">Email</Label>
+                <Input id="editStudentEmail" type="email" value={editStudentEmail} onChange={(e) => setEditStudentEmail(e.target.value)} className="col-span-3" required />
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+              <Button type="submit"><Save className="mr-2 h-4 w-4" /> Save Changes</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-        
