@@ -42,11 +42,12 @@ import {
   History, 
   ScrollText,
   Library,
-  KeyRound // Added for LMS Activation
+  KeyRound
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
 
 const superAdminNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -116,8 +117,10 @@ const studentNavItems: NavItem[] = [
 export default function SidebarNav() {
   const pathname = usePathname();
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null); 
+  const [isMounted, setIsMounted] = useState(false); // To track client-side mount
 
   useEffect(() => {
+    setIsMounted(true); // Component has mounted on the client
     if (typeof window !== 'undefined') {
       const storedRole = localStorage.getItem('currentUserRole') as UserRole | null;
       const validRoles: UserRole[] = ['superadmin', 'admin', 'teacher', 'student'];
@@ -129,18 +132,42 @@ export default function SidebarNav() {
     }
   }, []);
 
+  if (!isMounted) {
+    // Render a skeleton or minimal loading state that matches server render
+    // This ensures the initial client render is consistent with SSR.
+    return (
+      <SidebarMenu>
+        {[...Array(5)].map((_, i) => ( // Render 5 skeleton items as an example
+          <SidebarMenuItem key={i}>
+            <SidebarMenuButton
+              asChild
+              tooltip={{ children: "Loading...", side: 'right', align: 'center' }}
+            >
+              <a>
+                <Skeleton className="h-5 w-5 rounded" />
+                <Skeleton className="ml-2 h-4 w-20 rounded group-data-[collapsible=icon]:hidden" />
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
+    );
+  }
+  
   if (currentUserRole === null) {
+     // After mounting, if role is still null (e.g., no role in localStorage), render a specific "no role" state or minimal nav
     return (
         <SidebarMenu>
             <SidebarMenuItem>
                 <SidebarMenuButton tooltip={{ children: "Loading...", side: 'right', align: 'center' }}>
                     <LayoutDashboard />
-                    <span>Loading...</span>
+                    <span>Loading Role...</span>
                 </SidebarMenuButton>
             </SidebarMenuItem>
         </SidebarMenu>
     );
   }
+
 
   let navItems: NavItem[];
 
@@ -182,3 +209,4 @@ export default function SidebarNav() {
     </SidebarMenu>
   );
 }
+
