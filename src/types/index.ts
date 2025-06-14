@@ -44,11 +44,6 @@ export interface StoredLeaveApplication {
   status: 'Approved' | 'Rejected' | 'Pending AI Review'; // Status after AI processing or while pending
   aiReasoning?: string; // Explanation from AI
   applicantRole: UserRole | 'guest'; // Role of the user who submitted the form
-  // Potentially add fields for manual teacher/admin review if workflow changes
-  // teacherReviewed?: boolean;
-  // teacherComments?: string;
-  // adminReviewed?: boolean;
-  // adminComments?: string;
 }
 
 
@@ -90,6 +85,9 @@ export interface Teacher {
   email: string;
   subject: string; // Primary subject
   profilePictureUrl?: string;
+  // For mock history
+  pastAssignmentsCount?: number;
+  pastClassesTaught?: string[];
 }
 
 export interface ClassNameRecord { // e.g., "Grade 10", "Year 5"
@@ -108,7 +106,6 @@ export interface ClassData { // Represents an "Activated Class-Section"
   division: string; // Name from SectionRecord
   teacherId?: string; // ID of the assigned teacher
   studentIds: string[]; // IDs of students enrolled
-  // academicYearId?: string; // Optional: Link to an academic year
 }
 
 export interface Announcement {
@@ -159,7 +156,6 @@ export interface AttendanceRecord { // Record for a single student on a single d
 
 export interface ClassAttendance { // Daily attendance for a whole class-section
   classSectionId: string; // ID of ClassData
-  // date: string; // yyyy-MM-dd -- This is part of the localStorage key now
   records: AttendanceRecord[];
 }
 
@@ -208,4 +204,33 @@ export interface Assignment {
   // Optional fields for future enhancement
   // files?: { name: string, url: string }[]; 
   // submissions?: { studentId: string, submittedAt: string, fileUrl?: string, content?: string, grade?: string }[];
+}
+
+export interface Employee {
+  id: string;
+  name: string;
+  email: string;
+  role: string; // e.g., Accountant, Librarian, Support Staff
+  department: string;
+  joiningDate: string; // ISO String
+  profilePictureUrl?: string;
+}
+
+export interface FeeCategory {
+  id: string;
+  name: string;
+  description: string;
+  amount?: number; // Optional fixed amount for the category
+}
+
+// Placeholder - actual student score structure might be more complex
+export interface StudentScore {
+  id: string;
+  studentId: string;
+  examId: string; // Link to an Exam
+  subjectId: string; // Link to a Subject
+  classSectionId: string; // Class context
+  score: number | string; // e.g., 85 or "A+"
+  recordedByTeacherId: string;
+  dateRecorded: string; // ISO string
 }

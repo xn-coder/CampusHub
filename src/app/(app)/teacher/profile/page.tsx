@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Teacher, User } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { KeyRound } from 'lucide-react';
+import { KeyRound, History } from 'lucide-react';
 
 const MOCK_TEACHERS_KEY = 'mockTeachersData';
 const MOCK_USER_DB_KEY = 'mockUserDatabase';
@@ -45,6 +45,15 @@ export default function TeacherProfilePage() {
       description: "In a real application, a password reset link would be sent or a modal would appear to change your password.",
     });
   };
+  
+  const handleMockAcademicHistory = () => {
+    toast({
+      title: "Academic History (Mock)",
+      description: "This section would show past classes taught, subjects, student performance trends, and old assignments. This is a placeholder.",
+      duration: 5000,
+    });
+  };
+
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><p>Loading profile...</p></div>;
@@ -80,9 +89,12 @@ export default function TeacherProfilePage() {
             <CardDescription>{userDetails.email}</CardDescription>
             <CardDescription>Role: {userDetails.role}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-2">
             <Button variant="outline" className="w-full" onClick={handleMockPasswordReset}>
               <KeyRound className="mr-2 h-4 w-4" /> Reset Password
+            </Button>
+             <Button variant="outline" className="w-full" onClick={handleMockAcademicHistory}>
+              <History className="mr-2 h-4 w-4" /> View Academic History (Mock)
             </Button>
           </CardContent>
         </Card>
