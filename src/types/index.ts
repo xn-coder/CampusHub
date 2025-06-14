@@ -33,17 +33,16 @@ export interface Holiday {
   date: Date;
 }
 
-// Main leave application type used across system, stored in localStorage
 export interface StoredLeaveApplication {
-  id: string;          // Unique ID for the application
-  studentName: string; // Name of the student as entered in the form
-  studentId?: string;  // Actual ID of the student if a student user submitted it
+  id: string;
+  studentName: string; 
+  studentId?: string; 
   reason: string;
-  medicalNotesDataUri?: string; // If a file was uploaded
-  submissionDate: string; // ISO string, date of submission
-  status: 'Approved' | 'Rejected' | 'Pending AI Review'; // Status after AI processing or while pending
-  aiReasoning?: string; // Explanation from AI
-  applicantRole: UserRole | 'guest'; // Role of the user who submitted the form
+  medicalNotesDataUri?: string; 
+  submissionDate: string; 
+  status: 'Approved' | 'Rejected' | 'Pending AI Review'; 
+  aiReasoning?: string; 
+  applicantRole: UserRole | 'guest'; 
 }
 
 
@@ -58,7 +57,6 @@ export interface Student {
   contactNumber?: string;
   address?: string;
   admissionDate?: string;
-  // For Reports
   lastLogin?: string; 
   mockLoginDate?: Date; 
   assignmentsSubmitted?: number;
@@ -83,29 +81,28 @@ export interface Teacher {
   id: string;
   name: string;
   email: string;
-  subject: string; // Primary subject
+  subject: string; 
   profilePictureUrl?: string;
-  // For mock history
   pastAssignmentsCount?: number;
   pastClassesTaught?: string[];
 }
 
-export interface ClassNameRecord { // e.g., "Grade 10", "Year 5"
+export interface ClassNameRecord { 
   id: string;
   name: string;
 }
 
-export interface SectionRecord { // e.g., "A", "Blue", "Rose"
+export interface SectionRecord { 
   id: string;
   name: string;
 }
 
-export interface ClassData { // Represents an "Activated Class-Section"
+export interface ClassData { 
   id: string;
-  name: string; // Name from ClassNameRecord
-  division: string; // Name from SectionRecord
-  teacherId?: string; // ID of the assigned teacher
-  studentIds: string[]; // IDs of students enrolled
+  name: string; 
+  division: string; 
+  teacherId?: string; 
+  studentIds: string[]; 
 }
 
 export interface Announcement {
@@ -115,14 +112,14 @@ export interface Announcement {
   date: Date;
   authorName: string; 
   postedByRole: UserRole; 
-  targetClassSectionId?: string; // ID of ClassData if targeted
+  targetClassSectionId?: string; 
 }
 
 export interface CalendarEvent {
   id: string;
   title: string;
   description?: string;
-  date: string; // Store as ISO string 'yyyy-MM-dd' for localStorage compatibility
+  date: string; 
   startTime?: string;
   endTime?: string;
   isAllDay: boolean;
@@ -147,23 +144,23 @@ export interface PayrollEntry {
   status: 'Pending' | 'Paid' | 'Processing';
 }
 
-export interface AttendanceRecord { // Record for a single student on a single day
+export interface AttendanceRecord { 
   studentId: string;
-  date: string; // yyyy-MM-dd
+  date: string; 
   status: 'Present' | 'Absent' | 'Late' | 'Excused';
   remarks?: string;
 }
 
-export interface ClassAttendance { // Daily attendance for a whole class-section
-  classSectionId: string; // ID of ClassData
+export interface ClassAttendance { 
+  classSectionId: string; 
   records: AttendanceRecord[];
 }
 
 export interface AcademicYear {
   id: string;
   name: string;
-  startDate: string; // ISO string 'yyyy-MM-dd'
-  endDate: string; // ISO string 'yyyy-MM-dd'
+  startDate: string; 
+  endDate: string; 
 }
 
 export interface Subject {
@@ -182,7 +179,7 @@ export interface Exam {
   date: string; 
   startTime: string; 
   endTime: string; 
-  maxMarks?: number; // Optional max marks for an exam
+  maxMarks?: number; 
 }
 
 export interface SchoolEntry {
@@ -194,26 +191,22 @@ export interface SchoolEntry {
   status?: 'Active' | 'Inactive'; 
 }
 
-// New type for Teacher Assignments
 export interface Assignment {
   id: string;
   title: string;
   description: string;
-  dueDate: string; // ISO string 'yyyy-MM-dd'
-  classSectionId: string; // ID of the target ClassData
-  teacherId: string; // ID of the teacher who posted
-  // Optional fields for future enhancement
-  // files?: { name: string, url: string }[]; 
-  // submissions?: { studentId: string, submittedAt: string, fileUrl?: string, content?: string, grade?: string }[];
+  dueDate: string; 
+  classSectionId: string; 
+  teacherId: string; 
 }
 
 export interface Employee {
   id: string;
   name: string;
   email: string;
-  role: string; // e.g., Accountant, Librarian, Support Staff
+  role: string; 
   department: string;
-  joiningDate: string; // ISO String
+  joiningDate: string; 
   profilePictureUrl?: string;
 }
 
@@ -221,19 +214,19 @@ export interface FeeCategory {
   id: string;
   name: string;
   description: string;
-  amount?: number; // Optional fixed amount for the category
+  amount?: number; 
 }
 
 export interface StudentScore {
   id: string;
   studentId: string;
   examId: string;
-  subjectId: string; // From the exam
-  classSectionId: string; // From the exam or student's class at time of exam
-  score: number | string; // Numeric score or grade like "A+"
-  maxMarks?: number; // Max marks for the exam, for context
+  subjectId: string; 
+  classSectionId: string; 
+  score: number | string; 
+  maxMarks?: number; 
   recordedByTeacherId: string;
-  dateRecorded: string; // ISO string
+  dateRecorded: string; 
   comments?: string;
 }
 
@@ -244,9 +237,46 @@ export interface StudentFeePayment {
   feeCategoryId: string;
   assignedAmount: number;
   paidAmount: number;
-  dueDate?: string; // ISO Date string
-  paymentDate?: string; // ISO Date string for the last payment
+  dueDate?: string; 
+  paymentDate?: string; 
   status: 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue';
   notes?: string;
-  academicYearId?: string; // Optional link to academic year
+  academicYearId?: string; 
+}
+
+// LMS Types
+export interface CourseResource {
+  id: string;
+  title: string;
+  type: 'ebook' | 'video' | 'note' | 'webinar';
+  urlOrContent: string; // URL for video/ebook, text for note, meeting link for webinar
+  fileName?: string; // Optional for uploaded files
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  description: string;
+  isPaid: boolean;
+  price?: number;
+  resources: {
+    ebooks: CourseResource[];
+    videos: CourseResource[];
+    notes: CourseResource[];
+    webinars: CourseResource[];
+  };
+  enrolledStudentIds: string[];
+  enrolledTeacherIds: string[];
+  // Add thumbnail/cover image URL if needed
+  // coverImageUrl?: string;
+}
+
+export interface CourseActivationCode {
+  id: string;
+  courseId: string;
+  code: string; // The unique activation code
+  isUsed: boolean;
+  usedByStudentId?: string; // ID of the student who used it
+  generatedDate: string; // ISO date string
+  expiryDate?: string; // Optional expiry for the code
 }
