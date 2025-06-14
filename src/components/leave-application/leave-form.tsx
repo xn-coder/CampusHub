@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,9 +14,26 @@ import { fileToDataUri } from '@/lib/utils';
 import { leaveApplicationApproval, type LeaveApplicationInput, type LeaveApplicationOutput } from '@/ai/flows/leave-application-approval';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CheckCircle, XCircle, Loader2, UploadCloud } from 'lucide-react';
+import type { User, Student, UserRole } from '@/types'; // Import User and Student types
+
+const MOCK_ALL_LEAVE_APPLICATIONS_KEY = 'mockAllLeaveApplicationsData';
+const MOCK_USER_DB_KEY = 'mockUserDatabase';
+const MOCK_STUDENTS_KEY = 'mockStudentsData';
+
+
+interface StoredLeaveApplication extends LeaveApplicationInput {
+  id: string;
+  studentName: string; // The name entered in the form
+  studentId?: string; // ID of the student if logged in as student
+  applicantRole: UserRole | 'guest';
+  submissionDate: string; // ISO string
+  status: 'Pending AI Review' | 'Approved' | 'Rejected';
+  aiReasoning?: string;
+}
+
 
 const formSchema = z.object({
-  studentName: z.string().min(1, "Student name is required"),
+  studentName: z.string().min(1, "Student name is required"), // This could be pre-filled if user is logged in as student
   reason: z.string().min(10, "Reason must be at least 10 characters long"),
   medicalNotes: z.any().optional(),
 });
@@ -28,8 +45,13 @@ export default function LeaveForm() {
   const [aiResponse, setAiResponse] = useState<LeaveApplicationOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  
+  const [currentUserName, setCurrentUserName] = useState<string>('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
 
-  const { control, handleSubmit, register, formState: { errors }, reset, watch } = useForm<LeaveFormValues>({
+
+  const { control, handleSubmit, register, formState: { errors }, reset, watch, setValue } = useForm<LeaveFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       studentName: '',
@@ -37,6 +59,29 @@ export default function LeaveForm() {
     }
   });
   
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const role = localStorage.getItem('currentUserRole') as UserRole | null;
+      const userId = localStorage.getItem('currentUserId');
+      setCurrentUserRole(role);
+      setCurrentUserId(userId);
+
+      if (role === 'student' && userId) {
+        const users: User[] = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '[]');
+        const studentUser = users.find(u => u.id === userId);
+        if (studentUser) {
+          setValue('studentName', studentUser.name); // Pre-fill student name
+          setCurrentUserName(studentUser.name);
+        }
+      } else if (userId) { // For admin/teacher, get their name for record-keeping if they apply for someone
+         const users: User[] = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '[]');
+         const applierUser = users.find(u => u.id === userId);
+         if(applierUser) setCurrentUserName(applierUser.name);
+      }
+    }
+  }, [setValue]);
+
+
   const medicalNotesFileList = watch("medicalNotes");
 
   const onSubmit = async (data: LeaveFormValues) => {
@@ -63,7 +108,30 @@ export default function LeaveForm() {
     try {
       const response = await leaveApplicationApproval(aiInput);
       setAiResponse(response);
-      reset(); // Reset form after successful submission
+
+      // Save to localStorage
+      const storedApplications: StoredLeaveApplication[] = JSON.parse(localStorage.getItem(MOCK_ALL_LEAVE_APPLICATIONS_KEY) || '[]');
+      const newApplication: StoredLeaveApplication = {
+        id: `leave-${Date.now()}`,
+        studentName: data.studentName, // Name from the form
+        studentId: currentUserRole === 'student' ? currentUserId || undefined : undefined, // Actual student ID if student applied
+        reason: data.reason,
+        medicalNotesDataUri: medicalNotesDataUri,
+        submissionDate: new Date().toISOString(),
+        status: response.approved ? 'Approved' : 'Rejected',
+        aiReasoning: response.reasoning,
+        applicantRole: currentUserRole || 'guest', // Role of person submitting
+      };
+      storedApplications.unshift(newApplication); // Add to top
+      localStorage.setItem(MOCK_ALL_LEAVE_APPLICATIONS_KEY, JSON.stringify(storedApplications));
+      
+      // Reset form, but keep student name if they are a student
+      const resetValues = { reason: '', medicalNotes: undefined };
+      if(currentUserRole === 'student' && currentUserName) {
+        reset({...resetValues, studentName: currentUserName });
+      } else {
+        reset({...resetValues, studentName: ''});
+      }
       setFileName(null); 
     } catch (e) {
       console.error("AI processing error:", e);
@@ -87,7 +155,7 @@ export default function LeaveForm() {
     <Card>
       <CardHeader>
         <CardTitle>Submit Leave Application</CardTitle>
-        <CardDescription>Fill in the details for your leave request. The system will review it based on school policy.</CardDescription>
+        <CardDescription>Fill in the details for your leave request. The system will review it based on school policy. All submissions are recorded.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -96,7 +164,7 @@ export default function LeaveForm() {
             <Controller
               name="studentName"
               control={control}
-              render={({ field }) => <Input id="studentName" placeholder="Enter student's full name" {...field} />}
+              render={({ field }) => <Input id="studentName" placeholder="Enter student's full name" {...field} disabled={currentUserRole === 'student'} />}
             />
             {errors.studentName && <p className="text-sm text-destructive mt-1">{errors.studentName.message}</p>}
           </div>
@@ -138,7 +206,7 @@ export default function LeaveForm() {
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing...
+                Processing & Recording...
               </>
             ) : (
               'Submit Application'

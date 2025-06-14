@@ -7,18 +7,19 @@ export default function FeeCategoriesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Fee Category Management"
-        description="Organize and manage different fee structures and categories."
+        description="Organize and manage different fee structures and categories for the institution."
       />
       <Card>
         <CardHeader>
           <CardTitle>Fee Categories</CardTitle>
-          <CardDescription>Define and manage various fee types (e.g., tuition, lab, sports).</CardDescription>
+          <CardDescription>Define and manage various fee types (e.g., tuition, lab, sports, library).</CardDescription>
         </CardHeader>
         <CardContent>
           <p>Admin Fee Categories page - Content to be implemented.</p>
-          <p className="mt-2 text-sm text-muted-foreground">This section will allow creating, editing, and deleting fee categories, and setting amounts for each.</p>
+          <p className="mt-2 text-sm text-muted-foreground">This section will allow administrators to create, edit, and delete fee categories, set amounts or calculation rules for each, and assign them to academic years or programs.</p>
         </CardContent>
       </Card>
     </div>
   );
 }
+

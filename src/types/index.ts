@@ -33,14 +33,24 @@ export interface Holiday {
   date: Date;
 }
 
-export interface LeaveApplication {
-  id: string;
-  studentName: string;
+// Main leave application type used across system, stored in localStorage
+export interface StoredLeaveApplication {
+  id: string;          // Unique ID for the application
+  studentName: string; // Name of the student as entered in the form
+  studentId?: string;  // Actual ID of the student if a student user submitted it
   reason: string;
-  medicalNotesUrl?: string;
-  status: 'Pending' | 'Approved' | 'Rejected';
-  decisionReason?: string;
+  medicalNotesDataUri?: string; // If a file was uploaded
+  submissionDate: string; // ISO string, date of submission
+  status: 'Approved' | 'Rejected' | 'Pending AI Review'; // Status after AI processing or while pending
+  aiReasoning?: string; // Explanation from AI
+  applicantRole: UserRole | 'guest'; // Role of the user who submitted the form
+  // Potentially add fields for manual teacher/admin review if workflow changes
+  // teacherReviewed?: boolean;
+  // teacherComments?: string;
+  // adminReviewed?: boolean;
+  // adminComments?: string;
 }
+
 
 export interface Student {
   id: string;
@@ -53,6 +63,7 @@ export interface Student {
   contactNumber?: string;
   address?: string;
   admissionDate?: string;
+  // For Reports
   lastLogin?: string; 
   mockLoginDate?: Date; 
   assignmentsSubmitted?: number;
@@ -77,26 +88,27 @@ export interface Teacher {
   id: string;
   name: string;
   email: string;
-  subject: string;
+  subject: string; // Primary subject
   profilePictureUrl?: string;
 }
 
-export interface ClassNameRecord {
+export interface ClassNameRecord { // e.g., "Grade 10", "Year 5"
   id: string;
   name: string;
 }
 
-export interface SectionRecord {
+export interface SectionRecord { // e.g., "A", "Blue", "Rose"
   id: string;
   name: string;
 }
 
-export interface ClassData {
+export interface ClassData { // Represents an "Activated Class-Section"
   id: string;
-  name: string; 
-  division: string; 
-  teacherId?: string;
-  studentIds: string[]; 
+  name: string; // Name from ClassNameRecord
+  division: string; // Name from SectionRecord
+  teacherId?: string; // ID of the assigned teacher
+  studentIds: string[]; // IDs of students enrolled
+  // academicYearId?: string; // Optional: Link to an academic year
 }
 
 export interface Announcement {
@@ -106,7 +118,7 @@ export interface Announcement {
   date: Date;
   authorName: string; 
   postedByRole: UserRole; 
-  targetClassSectionId?: string; 
+  targetClassSectionId?: string; // ID of ClassData if targeted
 }
 
 export interface CalendarEvent {
@@ -138,19 +150,19 @@ export interface PayrollEntry {
   status: 'Pending' | 'Paid' | 'Processing';
 }
 
-export interface AttendanceRecord {
+export interface AttendanceRecord { // Record for a single student on a single day
   studentId: string;
-  date: string; 
+  date: string; // yyyy-MM-dd
   status: 'Present' | 'Absent' | 'Late' | 'Excused';
   remarks?: string;
 }
 
-export interface ClassAttendance {
-  classSectionId: string; 
+export interface ClassAttendance { // Daily attendance for a whole class-section
+  classSectionId: string; // ID of ClassData
+  // date: string; // yyyy-MM-dd -- This is part of the localStorage key now
   records: AttendanceRecord[];
 }
 
-// New Types for Academic Year, Subject, Exam
 export interface AcademicYear {
   id: string;
   name: string;
@@ -162,26 +174,38 @@ export interface Subject {
   id: string;
   name: string;
   code: string;
-  academicYearId?: string; // Optional: Link to an AcademicYear
+  academicYearId?: string; 
 }
 
 export interface Exam {
   id: string;
   name: string;
   subjectId: string;
-  classSectionId?: string; // Optional: For class-specific exams
-  academicYearId?: string; // Optional: Link to an AcademicYear
-  date: string; // ISO string 'yyyy-MM-dd'
-  startTime: string; // HH:mm
-  endTime: string; // HH:mm
+  classSectionId?: string; 
+  academicYearId?: string; 
+  date: string; 
+  startTime: string; 
+  endTime: string; 
 }
 
-// For Superadmin Manage School page
 export interface SchoolEntry {
   id: string;
   name: string;
   address: string; 
   adminEmail: string;
   adminName: string;
-  status?: 'Active' | 'Inactive'; // Optional status
+  status?: 'Active' | 'Inactive'; 
+}
+
+// New type for Teacher Assignments
+export interface Assignment {
+  id: string;
+  title: string;
+  description: string;
+  dueDate: string; // ISO string 'yyyy-MM-dd'
+  classSectionId: string; // ID of the target ClassData
+  teacherId: string; // ID of the teacher who posted
+  // Optional fields for future enhancement
+  // files?: { name: string, url: string }[]; 
+  // submissions?: { studentId: string, submittedAt: string, fileUrl?: string, content?: string, grade?: string }[];
 }

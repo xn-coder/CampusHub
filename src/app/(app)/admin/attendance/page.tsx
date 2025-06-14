@@ -6,18 +6,20 @@ export default function AttendancePage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
-        title="Attendance Management" 
-        description="Monitor and manage student and staff attendance." 
+        title="Attendance Overview" 
+        description="Monitor and manage overall student and staff attendance records provided by various departments and teachers." 
       />
       <Card>
         <CardHeader>
-          <CardTitle>Attendance Records</CardTitle>
-          <CardDescription>Oversee attendance data for the school.</CardDescription>
+          <CardTitle>Consolidated Attendance Records</CardTitle>
+          <CardDescription>View attendance data compiled from teacher submissions and staff records.</CardDescription>
         </CardHeader>
         <CardContent>
-          <p>Admin Attendance page - Content to be implemented.</p>
+          <p>Admin Attendance Overview page - Content to be implemented.</p>
+          <p className="mt-2 text-sm text-muted-foreground">This section will provide tools to view daily/monthly attendance summaries, track absenteeism trends, and generate attendance reports.</p>
         </CardContent>
       </Card>
     </div>
   );
 }
+
