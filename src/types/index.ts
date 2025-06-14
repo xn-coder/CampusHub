@@ -249,8 +249,8 @@ export interface CourseResource {
   id: string;
   title: string;
   type: 'ebook' | 'video' | 'note' | 'webinar';
-  urlOrContent: string; // URL for video/ebook, text for note, meeting link for webinar
-  fileName?: string; // Optional for uploaded files
+  urlOrContent: string; 
+  fileName?: string; // Optional, e.g., for display if it was an uploaded file
 }
 
 export interface Course {
@@ -267,16 +267,14 @@ export interface Course {
   };
   enrolledStudentIds: string[];
   enrolledTeacherIds: string[];
-  // Add thumbnail/cover image URL if needed
-  // coverImageUrl?: string;
 }
 
 export interface CourseActivationCode {
   id: string;
   courseId: string;
-  code: string; // The unique activation code
+  code: string; 
   isUsed: boolean;
-  usedByUserId?: string; // ID of the user (student/teacher) who used it
-  generatedDate: string; // ISO date string
-  expiryDate?: string; // Optional expiry for the code
+  usedByUserId?: string; 
+  generatedDate: string; 
+  expiryDate?: string; 
 }

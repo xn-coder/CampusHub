@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { Course, UserRole } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Library, Lock, Unlock, CheckCircle, ExternalLink, ShoppingCart } from 'lucide-react';
+import { Library, Lock, Unlock, CheckCircle, ExternalLink, ShoppingCart, Eye } from 'lucide-react';
 import Link from 'next/link';
 
 const MOCK_LMS_COURSES_KEY = 'mockLMSCoursesData';
@@ -47,9 +47,11 @@ export default function AvailableLmsCoursesPage() {
 
     const updatedCourses = courses.map(course => {
       if (course.id === courseId) {
-        const enrollmentArray = currentUserRole === 'student' ? 'enrolledStudentIds' : 'enrolledTeacherIds';
-        if (!course[enrollmentArray].includes(currentUserId)) {
-          return { ...course, [enrollmentArray]: [...course[enrollmentArray], currentUserId] };
+        const enrollmentArrayKey = currentUserRole === 'student' ? 'enrolledStudentIds' : 'enrolledTeacherIds';
+        // Ensure the enrollment array exists
+        const currentEnrollments = course[enrollmentArrayKey] || [];
+        if (!currentEnrollments.includes(currentUserId)) {
+          return { ...course, [enrollmentArrayKey]: [...currentEnrollments, currentUserId] };
         }
       }
       return course;
@@ -62,8 +64,9 @@ export default function AvailableLmsCoursesPage() {
 
   const isUserEnrolled = (course: Course): boolean => {
     if (!currentUserId || !currentUserRole) return false;
-    const enrollmentArray = currentUserRole === 'student' ? course.enrolledStudentIds : course.enrolledTeacherIds;
-    return enrollmentArray.includes(currentUserId);
+    const enrollmentArrayKey = currentUserRole === 'student' ? 'enrolledStudentIds' : 'enrolledTeacherIds';
+    const currentEnrollments = course[enrollmentArrayKey] || [];
+    return currentEnrollments.includes(currentUserId);
   };
 
 
@@ -101,28 +104,22 @@ export default function AvailableLmsCoursesPage() {
                   <p className="text-lg font-semibold text-foreground mb-2">${course.price.toFixed(2)}</p>
                 )}
                 <p className="text-sm text-muted-foreground">
-                  {course.enrolledStudentIds.length + course.enrolledTeacherIds.length} enrolled.
+                  {(course.enrolledStudentIds?.length || 0) + (course.enrolledTeacherIds?.length || 0)} enrolled.
                 </p>
               </CardContent>
               <CardFooter>
                 {isUserEnrolled(course) ? (
-                  <Button variant="outline" disabled className="w-full">
-                    <CheckCircle className="mr-2 h-4 w-4"/> Enrolled
-                  </Button>
+                   <Button asChild className="w-full" variant="secondary">
+                     <Link href={`/lms/courses/${course.id}`}>
+                       <Eye className="mr-2 h-4 w-4"/> View Course
+                     </Link>
+                   </Button>
                 ) : course.isPaid ? (
-                  currentUserRole === 'student' ? (
-                    <Button asChild className="w-full">
-                      <Link href={`/student/lms/activate?courseId=${course.id}`}>
-                         <ShoppingCart className="mr-2 h-4 w-4"/> Activate Course
-                      </Link>
-                    </Button>
-                  ) : ( // Teachers might need a different flow for paid courses, or same as student
-                     <Button asChild className="w-full">
-                      <Link href={`/student/lms/activate?courseId=${course.id}`}> {/* Assuming teachers use same activation page for now */}
-                        <ShoppingCart className="mr-2 h-4 w-4"/> Activate Course
-                      </Link>
-                    </Button>
-                  )
+                  <Button asChild className="w-full">
+                    <Link href={`/student/lms/activate?courseId=${course.id}`}>
+                       <ShoppingCart className="mr-2 h-4 w-4"/> Activate Course
+                    </Link>
+                  </Button>
                 ) : (
                   <Button onClick={() => handleEnrollUnpaid(course.id)} className="w-full">
                     <Unlock className="mr-2 h-4 w-4"/> Enroll Now (Free)

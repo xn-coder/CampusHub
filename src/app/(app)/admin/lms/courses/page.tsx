@@ -10,11 +10,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { PlusCircle, Edit2, Trash2, Save, Library, Users, FileTextIcon, KeyRound, Copy } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Library, Users, FileTextIcon, KeyRound, Copy, Settings, UserPlus } from 'lucide-react';
 import type { Course, CourseActivationCode } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs and codes
+import { v4 as uuidv4 } from 'uuid';
+import Link from 'next/link';
 
 const MOCK_LMS_COURSES_KEY = 'mockLMSCoursesData';
 const MOCK_LMS_ACTIVATION_CODES_KEY = 'mockLMSActivationCodesData';
@@ -32,7 +33,6 @@ export default function ManageCoursesPage() {
   const [generatedCodesForDisplay, setGeneratedCodesForDisplay] = useState<string[]>([]);
   const [numCodesToGenerate, setNumCodesToGenerate] = useState<number>(1);
 
-  // Course Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isPaid, setIsPaid] = useState(false);
@@ -92,7 +92,7 @@ export default function ManageCoursesPage() {
       description: description.trim(),
       isPaid,
       price: isPaid ? Number(price) : undefined,
-      resources: editingCourse?.resources || { ebooks: [], videos: [], notes: [], webinars: [] }, // Preserve existing or initialize
+      resources: editingCourse?.resources || { ebooks: [], videos: [], notes: [], webinars: [] },
       enrolledStudentIds: editingCourse?.enrolledStudentIds || [],
       enrolledTeacherIds: editingCourse?.enrolledTeacherIds || [],
     };
@@ -120,13 +120,11 @@ export default function ManageCoursesPage() {
   const handleDeleteCourse = (courseId: string) => {
     const courseToDelete = courses.find(c => c.id === courseId);
     if (!courseToDelete) return;
-    // Consider checking for enrollments or active codes before deleting
     if (confirm(`Are you sure you want to delete the course "${courseToDelete.title}"? This will also remove related activation codes.`)) {
       const updatedCourses = courses.filter(c => c.id !== courseId);
       setCourses(updatedCourses);
       updateLocalStorage(MOCK_LMS_COURSES_KEY, updatedCourses);
 
-      // Also remove associated activation codes
       const updatedCodes = activationCodes.filter(code => code.courseId !== courseId);
       setActivationCodes(updatedCodes);
       updateLocalStorage(MOCK_LMS_ACTIVATION_CODES_KEY, updatedCodes);
@@ -171,7 +169,6 @@ export default function ManageCoursesPage() {
     updateLocalStorage(MOCK_LMS_ACTIVATION_CODES_KEY, updatedActivationCodes);
     setGeneratedCodesForDisplay(displayableCodes);
     toast({ title: `${numCodesToGenerate} Activation Code(s) Generated`, description: `For course: ${courseForCodeGeneration.title}`});
-    // Optionally close dialog or keep it open to show codes. For now, we keep it open.
   };
 
   const handleCopyCode = (code: string) => {
@@ -218,11 +215,15 @@ export default function ManageCoursesPage() {
                     <TableCell>{course.isPaid ? 'Paid' : 'Unpaid'}</TableCell>
                     <TableCell>{course.isPaid && course.price ? `$${course.price.toFixed(2)}` : 'N/A'}</TableCell>
                     <TableCell className="space-x-1 text-right">
-                      <Button variant="outline" size="sm" onClick={() => toast({title: "Placeholder", description:"Manage Content (Not Implemented)"})}>
-                        <FileTextIcon className="mr-1 h-3 w-3" /> Content
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/admin/lms/courses/${course.id}/content`}>
+                           <Settings className="mr-1 h-3 w-3" /> Content
+                        </Link>
                       </Button>
-                       <Button variant="outline" size="sm" onClick={() => toast({title: "Placeholder", description:"Enroll Users (Not Implemented)"})}>
-                        <Users className="mr-1 h-3 w-3" /> Enroll
+                       <Button variant="outline" size="sm" asChild>
+                        <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
+                          <UserPlus className="mr-1 h-3 w-3" /> Enroll
+                        </Link>
                       </Button>
                       {course.isPaid && (
                         <Button variant="outline" size="sm" onClick={() => handleOpenCodeGenerationDialog(course)}>
@@ -244,7 +245,6 @@ export default function ManageCoursesPage() {
         </CardContent>
       </Card>
 
-      {/* Add/Edit Course Dialog */}
       <Dialog open={isCourseDialogOpen} onOpenChange={setIsCourseDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -288,7 +288,6 @@ export default function ManageCoursesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Generate Activation Codes Dialog */}
       <Dialog open={isCodeDialogOpen} onOpenChange={setIsCodeDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -302,7 +301,7 @@ export default function ManageCoursesPage() {
                 id="numCodesToGenerate" 
                 type="number" 
                 min="1" 
-                max="100" // Arbitrary limit
+                max="100"
                 value={numCodesToGenerate} 
                 onChange={(e) => setNumCodesToGenerate(parseInt(e.target.value))} 
               />
