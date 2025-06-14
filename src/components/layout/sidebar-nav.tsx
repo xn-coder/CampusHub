@@ -39,7 +39,8 @@ import {
   BookOpenText,
   Briefcase, 
   UserPlus,
-  History // For Teacher History
+  History, // For Teacher History
+  ScrollText // For Assignment History
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -85,6 +86,7 @@ const teacherNavItems: NavItem[] = [
   { href: '/teacher/attendance', label: 'Class Attendance', icon: ClipboardCheck },
   { href: '/teacher/student-scores', label: 'Gradebook', icon: Award }, 
   { href: '/teacher/post-assignments', label: 'Post Assignments', icon: ClipboardList }, 
+  { href: '/teacher/assignment-history', label: 'Assignment History', icon: ScrollText },
   { href: '/teacher/leave-requests', label: 'Student Leaves', icon: ClipboardEdit }, 
   { href: '/teacher/id-card-printing', label: 'ID Card Printing', icon: Printer },
   { href: '/communication', label: 'Announcements', icon: Megaphone }, 

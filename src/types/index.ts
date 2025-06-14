@@ -234,3 +234,16 @@ export interface StudentScore {
   recordedByTeacherId: string;
   dateRecorded: string; // ISO string
 }
+
+export interface StudentFeePayment {
+  id: string;
+  studentId: string;
+  feeCategoryId: string;
+  assignedAmount: number;
+  paidAmount: number;
+  dueDate?: string; // ISO Date string
+  paymentDate?: string; // ISO Date string for the last payment
+  status: 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue';
+  notes?: string;
+  academicYearId?: string; // Optional link to academic year
+}
