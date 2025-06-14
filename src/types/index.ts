@@ -276,7 +276,7 @@ export interface CourseActivationCode {
   courseId: string;
   code: string; // The unique activation code
   isUsed: boolean;
-  usedByStudentId?: string; // ID of the student who used it
+  usedByUserId?: string; // ID of the user (student/teacher) who used it
   generatedDate: string; // ISO date string
   expiryDate?: string; // Optional expiry for the code
 }

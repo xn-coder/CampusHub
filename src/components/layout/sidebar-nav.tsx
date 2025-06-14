@@ -41,7 +41,8 @@ import {
   UserPlus,
   History, 
   ScrollText,
-  Library // Added for LMS
+  Library,
+  KeyRound // Added for LMS Activation
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -61,7 +62,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/manage-teachers', label: 'Manage Teachers', icon: Briefcase }, 
   { href: '/admin/employee-registration', label: 'Employee Registration', icon: UsersRound },
   { href: '/class-management', label: 'Class Management', icon: Presentation },
-  { href: '/admin/lms/courses', label: 'LMS Courses', icon: Library }, // LMS Link
+  { href: '/admin/lms/courses', label: 'LMS Courses', icon: Library }, 
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
   { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
   { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
@@ -91,8 +92,7 @@ const teacherNavItems: NavItem[] = [
   { href: '/teacher/assignment-history', label: 'Assignment History', icon: ScrollText },
   { href: '/teacher/leave-requests', label: 'Student Leaves', icon: ClipboardEdit }, 
   { href: '/teacher/id-card-printing', label: 'ID Card Printing', icon: Printer },
-  // Placeholder for teacher view of LMS courses
-  // { href: '/lms/my-courses', label: 'My LMS Courses', icon: Library }, 
+  { href: '/lms/available-courses', label: 'LMS Courses', icon: Library }, 
   { href: '/communication', label: 'Announcements', icon: Megaphone }, 
   { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
   { href: '/teacher/reports', label: 'Reports', icon: BarChart3 },
@@ -105,9 +105,8 @@ const studentNavItems: NavItem[] = [
   { href: '/student/assignments', label: 'My Assignments', icon: ClipboardList }, 
   { href: '/student/my-scores', label: 'My Scores', icon: Award },
   { href: '/student/study-material', label: 'Study Material', icon: BookMarked },
-  // Placeholder for student view of LMS courses & activation
-  // { href: '/lms/my-courses', label: 'My LMS Courses', icon: Library },
-  // { href: '/lms/activate', label: 'Activate Course', icon: KeyRound },
+  { href: '/lms/available-courses', label: 'LMS Courses', icon: Library },
+  { href: '/student/lms/activate', label: 'Activate Course', icon: KeyRound },
   { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit },
   { href: '/student/payment-history', label: 'Payment History', icon: CreditCard },
   { href: '/communication', label: 'View Announcements', icon: Megaphone },
