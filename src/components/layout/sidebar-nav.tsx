@@ -25,7 +25,7 @@ import {
   BarChart3,
   UserCircle,
   CreditCard,
-  ClipboardList, // Used for Student Assignments and Teacher Post Assignments
+  ClipboardList, 
   BookMarked,
   Settings, 
   FilePlus2,
@@ -39,8 +39,8 @@ import {
   BookOpenText,
   Briefcase, 
   UserPlus,
-  History, // For Teacher History
-  ScrollText // For Assignment History
+  History, 
+  ScrollText 
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -99,6 +99,7 @@ const studentNavItems: NavItem[] = [
   { href: '/student/my-profile', label: 'My Profile', icon: UserCircle },
   { href: '/student/subjects', label: 'My Subjects', icon: BookOpenText }, 
   { href: '/student/assignments', label: 'My Assignments', icon: ClipboardList }, 
+  { href: '/student/my-scores', label: 'My Scores', icon: Award },
   { href: '/student/study-material', label: 'Study Material', icon: BookMarked },
   { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit },
   { href: '/student/payment-history', label: 'Payment History', icon: CreditCard },

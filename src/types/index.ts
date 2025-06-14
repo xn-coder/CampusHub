@@ -182,6 +182,7 @@ export interface Exam {
   date: string; 
   startTime: string; 
   endTime: string; 
+  maxMarks?: number; // Optional max marks for an exam
 }
 
 export interface SchoolEntry {
@@ -223,17 +224,19 @@ export interface FeeCategory {
   amount?: number; // Optional fixed amount for the category
 }
 
-// Placeholder - actual student score structure might be more complex
 export interface StudentScore {
   id: string;
   studentId: string;
-  examId: string; // Link to an Exam
-  subjectId: string; // Link to a Subject
-  classSectionId: string; // Class context
-  score: number | string; // e.g., 85 or "A+"
+  examId: string;
+  subjectId: string; // From the exam
+  classSectionId: string; // From the exam or student's class at time of exam
+  score: number | string; // Numeric score or grade like "A+"
+  maxMarks?: number; // Max marks for the exam, for context
   recordedByTeacherId: string;
   dateRecorded: string; // ISO string
+  comments?: string;
 }
+
 
 export interface StudentFeePayment {
   id: string;
