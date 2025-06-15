@@ -1,44 +1,62 @@
 
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+// import { Button } from '@/components/ui/button';
+// import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Building } from 'lucide-react';
-import prisma from '@/lib/prisma';
-import type { School } from '@prisma/client'; // Prisma auto-generated type
-import EditSchoolDialog from './edit-school-dialog'; // Client Component for dialog
-import DeleteSchoolButton from './delete-school-button'; // Client Component for delete button
+import { supabase } from '@/lib/supabaseClient'; // Import supabase client
+import type { SchoolEntry as School } from '@/types'; // Using your defined type
+import EditSchoolDialog from './edit-school-dialog'; 
+import DeleteSchoolButton from './delete-school-button';
 
-// Revalidate data on this page every 60 seconds, or on demand
-export const revalidate = 60; 
+export const revalidate = 0; // Revalidate on every request for dynamic data
 
-async function getSchools(searchTerm?: string) {
+async function getSchools(searchTerm?: string): Promise<School[]> {
   try {
-    const schools = await prisma.school.findMany({
-      where: searchTerm ? {
-        OR: [
-          { name: { contains: searchTerm, mode: 'insensitive' } },
-          { adminEmail: { contains: searchTerm, mode: 'insensitive' } },
-          { adminName: { contains: searchTerm, mode: 'insensitive' } },
-          { address: { contains: searchTerm, mode: 'insensitive' } },
-        ],
-      } : undefined,
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-    return schools;
+    let query = supabase.from('schools').select(`
+      id,
+      name,
+      address,
+      admin_email,
+      admin_name,
+      status,
+      admin_user_id,
+      created_at
+    `); // Adjust column names if they differ in your Supabase table
+
+    if (searchTerm) {
+      // Supabase textSearch or multiple ilike filters might be complex here for multiple fields
+      // Simplification: search by name only for this example.
+      // For multi-column search, you might need a database function or multiple .or() conditions.
+      query = query.ilike('name', `%${searchTerm}%`);
+    }
+    
+    query = query.order('created_at', { ascending: false });
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("Failed to fetch schools from Supabase:", error);
+      return [];
+    }
+    // Map Supabase data to your School type, assuming column names match or need mapping
+    // This example assumes direct mapping where snake_case from DB maps to camelCase in type
+    return (data || []).map(item => ({
+      id: item.id,
+      name: item.name,
+      address: item.address,
+      adminEmail: item.admin_email,
+      adminName: item.admin_name,
+      status: item.status as 'Active' | 'Inactive',
+      adminUserId: item.admin_user_id,
+      // createdAt: item.created_at, // Add if in your type and needed
+    }));
   } catch (error) {
-    console.error("Failed to fetch schools:", error);
+    console.error("Unexpected error fetching schools:", error);
     return [];
   }
 }
-
-// Search form needs to be a client component to manage state
-// For simplicity, we'll pass searchTerm via query params for now if we were to implement search fully server-side
-// Or, keep the whole page client-side if complex filtering/sorting is needed without full page reloads.
-// For this refactor, making it a server component for initial load. Advanced search can be added later.
 
 export default async function ManageSchoolPage({
   searchParams,
@@ -60,14 +78,14 @@ export default async function ManageSchoolPage({
         <CardHeader>
           <CardTitle className="flex items-center"><Building className="mr-2 h-5 w-5" /> Registered Schools</CardTitle>
           <CardDescription>A list of all schools currently in the CampusHub system.
-            {/* Search input can be added here if made a client component or via form submitting to server */}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* 
-          <form className="mb-4 flex items-center gap-2">
+          {/* Search form can be a client component submitting to reload the page with query params */}
+          {/*
+          <form action="/superadmin/manage-school" method="GET" className="mb-4 flex items-center gap-2">
             <Input
-              placeholder="Search schools by name, admin, or address..."
+              placeholder="Search schools by name..."
               name="search"
               defaultValue={searchTerm}
               className="max-w-md"
@@ -103,7 +121,17 @@ export default async function ManageSchoolPage({
                     </span>
                   </TableCell>
                   <TableCell className="space-x-1 text-right">
-                    <EditSchoolDialog school={school} />
+                    {/* Pass the Supabase-compatible School object to EditSchoolDialog */}
+                    <EditSchoolDialog school={{
+                      id: school.id,
+                      name: school.name,
+                      address: school.address,
+                      adminEmail: school.adminEmail, // Supabase field name assumed as admin_email
+                      adminName: school.adminName,   // Supabase field name assumed as admin_name
+                      status: school.status,
+                      adminUserId: school.adminUserId,
+                      // Map other fields if your EditSchoolDialog or actions expect them
+                    }} />
                     <DeleteSchoolButton schoolId={school.id} schoolName={school.name} />
                   </TableCell>
                 </TableRow>

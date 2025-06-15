@@ -8,11 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Edit2, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import type { School } from '@prisma/client';
+import type { SchoolEntry as School } from '@/types'; // Using your defined type
 import { updateSchoolAction } from './actions';
 
 interface EditSchoolDialogProps {
-  school: School;
+  school: School; // Use your School type, ensure it matches what page.tsx provides
 }
 
 export default function EditSchoolDialog({ school }: EditSchoolDialogProps) {
@@ -46,6 +46,13 @@ export default function EditSchoolDialog({ school }: EditSchoolDialogProps) {
     }
     setIsLoading(false);
   };
+
+  // Sync form state if the passed school prop changes (e.g., after a revalidation)
+  React.useEffect(() => {
+    setEditSchoolName(school.name);
+    setEditSchoolAddress(school.address);
+  }, [school]);
+
 
   return (
     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

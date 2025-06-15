@@ -1,73 +1,135 @@
 
 'use server';
 
-import prisma from '@/lib/prisma';
-import type { AcademicYear } from '@prisma/client';
+import { supabase } from '@/lib/supabaseClient';
+import type { AcademicYear as PrismaAcademicYearType } from '@prisma/client'; // Keep this for input type, or define a new one
 import { revalidatePath } from 'next/cache';
+import { v4 as uuidv4 } from 'uuid';
 
-interface AcademicYearInput {
+// Define a type for input if not using Prisma's generated type
+interface AcademicYearInputType {
+  id?: string; // Optional for add
   name: string;
   startDate: string; // Expecting YYYY-MM-DD string from date input
   endDate: string;   // Expecting YYYY-MM-DD string from date input
-  schoolId: string;
+  school_id: string; // Assuming column name is school_id
 }
 
+// Define a type for Supabase row, assuming snake_case
+interface AcademicYearSupabaseRow {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  school_id: string;
+  created_at?: string;
+}
+
+
 export async function addAcademicYearAction(
-  data: AcademicYearInput
-): Promise<{ ok: boolean; message: string; year?: AcademicYear }> {
+  data: Omit<AcademicYearInputType, 'id'>
+): Promise<{ ok: boolean; message: string; year?: AcademicYearSupabaseRow }> {
   try {
     if (new Date(data.startDate) >= new Date(data.endDate)) {
       return { ok: false, message: 'Start Date must be before End Date.' };
     }
 
-    const newYear = await prisma.academicYear.create({
-      data: {
+    // Check for existing name within the same school
+    const { data: existingYear, error: fetchError } = await supabase
+        .from('academic_years')
+        .select('id')
+        .eq('name', data.name)
+        .eq('school_id', data.school_id)
+        .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 means no rows found
+        console.error('Error checking for existing academic year:', fetchError);
+        return { ok: false, message: 'Database error checking for existing year.' };
+    }
+    if (existingYear) {
+        return { ok: false, message: 'An academic year with this name already exists for this school.' };
+    }
+
+    const newYearId = uuidv4();
+    const { data: newYear, error: insertError } = await supabase
+      .from('academic_years')
+      .insert({
+        id: newYearId,
         name: data.name,
-        startDate: new Date(data.startDate),
-        endDate: new Date(data.endDate),
-        schoolId: data.schoolId,
-      },
-    });
+        start_date: data.startDate,
+        end_date: data.endDate,
+        school_id: data.school_id,
+      })
+      .select()
+      .single();
+    
+    if (insertError) {
+        console.error('Error adding academic year:', insertError);
+        return { ok: false, message: `Failed to add academic year: ${insertError.message}` };
+    }
+    if (!newYear) {
+        return { ok: false, message: 'Failed to add academic year (no data returned).' };
+    }
+
     revalidatePath('/admin/academic-years');
     return { ok: true, message: `Academic Year "${newYear.name}" added.`, year: newYear };
   } catch (error) {
-    console.error('Error adding academic year:', error);
-    if (error instanceof Error && 'code' in error && error.code === 'P2002' && 'meta' in error && typeof error.meta === 'object' && error.meta && 'target' in error.meta && (error.meta.target as string[]).includes('name')) {
-        return { ok: false, message: 'An academic year with this name already exists for this school.' };
-    }
-    return { ok: false, message: 'Failed to add academic year.' };
+    console.error('Unexpected error adding academic year:', error);
+    return { ok: false, message: 'Failed to add academic year due to an unexpected error.' };
   }
 }
 
-interface UpdateAcademicYearInput extends AcademicYearInput {
-  id: string;
-}
 
 export async function updateAcademicYearAction(
-  data: UpdateAcademicYearInput
-): Promise<{ ok: boolean; message: string; year?: AcademicYear }> {
+  data: AcademicYearInputType & { id: string }
+): Promise<{ ok: boolean; message: string; year?: AcademicYearSupabaseRow }> {
   try {
     if (new Date(data.startDate) >= new Date(data.endDate)) {
       return { ok: false, message: 'Start Date must be before End Date.' };
     }
+
+    // Check if the new name conflicts with another existing year for the same school
+    const { data: conflictingYear, error: fetchError } = await supabase
+        .from('academic_years')
+        .select('id')
+        .eq('name', data.name)
+        .eq('school_id', data.school_id)
+        .neq('id', data.id) // Exclude the current year being updated
+        .single();
     
-    const updatedYear = await prisma.academicYear.update({
-      where: { id: data.id },
-      data: {
+    if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('Error checking for conflicting academic year name:', fetchError);
+        return { ok: false, message: 'Database error checking for name conflict.' };
+    }
+    if (conflictingYear) {
+        return { ok: false, message: 'Another academic year with this name already exists for this school.' };
+    }
+    
+    const { data: updatedYear, error: updateError } = await supabase
+      .from('academic_years')
+      .update({
         name: data.name,
-        startDate: new Date(data.startDate),
-        endDate: new Date(data.endDate),
-        // schoolId should not change during an update of this nature
-      },
-    });
+        start_date: data.startDate,
+        end_date: data.endDate,
+        // school_id should not change during an update of this nature usually
+      })
+      .eq('id', data.id)
+      .select()
+      .single();
+
+    if (updateError) {
+        console.error('Error updating academic year:', updateError);
+        return { ok: false, message: `Failed to update academic year: ${updateError.message}` };
+    }
+    if (!updatedYear) {
+         return { ok: false, message: 'Failed to update academic year (no data returned).' };
+    }
+
     revalidatePath('/admin/academic-years');
     return { ok: true, message: `Academic Year "${updatedYear.name}" updated.`, year: updatedYear };
   } catch (error) {
-    console.error('Error updating academic year:', error);
-     if (error instanceof Error && 'code' in error && error.code === 'P2002' && 'meta' in error && typeof error.meta === 'object' && error.meta && 'target' in error.meta && (error.meta.target as string[]).includes('name')) {
-        return { ok: false, message: 'Another academic year with this name already exists for this school.' };
-    }
-    return { ok: false, message: 'Failed to update academic year.' };
+    console.error('Unexpected error updating academic year:', error);
+    return { ok: false, message: 'Failed to update academic year due to an unexpected error.' };
   }
 }
 
@@ -76,18 +138,28 @@ export async function deleteAcademicYearAction(
 ): Promise<{ ok: boolean; message: string }> {
   try {
     // Consider checking for dependencies (e.g., if subjects or exams are linked to this year)
-    // before allowing deletion in a real application.
-    await prisma.academicYear.delete({
-      where: { id },
-    });
+    // This requires querying related tables. For example:
+    // const { data: subjects, error: subjectsError } = await supabase
+    //   .from('subjects').select('id', { count: 'exact' }).eq('academic_year_id', id);
+    // if (subjects && subjects.length > 0) return { ok: false, message: 'Cannot delete: Subjects linked.'}
+
+    const { error } = await supabase
+      .from('academic_years')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting academic year:', error);
+      // Supabase error for foreign key constraint might be code '23503'
+      if (error.code === '23503') {
+          return { ok: false, message: 'Cannot delete academic year. It is still referenced by other records (e.g., subjects, exams).' };
+      }
+      return { ok: false, message: `Failed to delete academic year: ${error.message}` };
+    }
     revalidatePath('/admin/academic-years');
     return { ok: true, message: 'Academic Year deleted.' };
   } catch (error) {
-    console.error('Error deleting academic year:', error);
-    // Prisma error P2003 is for foreign key constraint violation
-    if (error instanceof Error && 'code' in error && error.code === 'P2003') {
-        return { ok: false, message: 'Cannot delete academic year. It is still referenced by other records (e.g., subjects, exams).' };
-    }
-    return { ok: false, message: 'Failed to delete academic year.' };
+    console.error('Unexpected error deleting academic year:', error);
+    return { ok: false, message: 'Failed to delete academic year due to an unexpected error.' };
   }
 }

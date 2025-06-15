@@ -3,57 +3,85 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CalendarRange } from 'lucide-react';
-import prisma from '@/lib/prisma';
+import { supabase } from '@/lib/supabaseClient'; // Import supabase client
 import { format, parseISO, isValid } from 'date-fns';
-import AcademicYearActions from './academic-year-actions'; // Client component for dialogs and buttons
-import type { AcademicYear } from '@prisma/client';
+import AcademicYearActions from './academic-year-actions';
+import type { User } from '@/types'; // For User type
 
-// Revalidate data on this page every 60 seconds, or on demand
-export const revalidate = 60; 
+// Define a type for academic year data fetched from Supabase
+// Assuming your Supabase table has columns like id, name, start_date, end_date, school_id
+interface AcademicYear {
+  id: string;
+  name: string;
+  start_date: string; // Supabase returns date strings
+  end_date: string;
+  school_id: string;
+}
 
-async function getAcademicYears(adminSchoolId: string | null) {
-  if (!adminSchoolId) return []; // Or handle error appropriately
+export const revalidate = 0; // Revalidate on every request for dynamic data
+
+async function getAcademicYears(adminSchoolId: string | null): Promise<AcademicYear[]> {
+  if (!adminSchoolId) return [];
   try {
-    const academicYears = await prisma.academicYear.findMany({
-      where: { schoolId: adminSchoolId },
-      orderBy: {
-        startDate: 'desc', // Newest start date first
-      },
-    });
-    return academicYears;
+    const { data, error } = await supabase
+      .from('academic_years')
+      .select('id, name, start_date, end_date, school_id')
+      .eq('school_id', adminSchoolId)
+      .order('start_date', { ascending: false });
+
+    if (error) {
+      console.error("Failed to fetch academic years from Supabase:", error);
+      return [];
+    }
+    return data || [];
   } catch (error) {
-    console.error("Failed to fetch academic years:", error);
+    console.error("Unexpected error fetching academic years:", error);
     return [];
   }
 }
 
-// Helper function to get current admin's school ID (replace with actual logic)
 async function getCurrentAdminSchoolId(): Promise<string | null> {
   // This is a placeholder. In a real app, you'd get this from the user's session or context.
-  // For now, let's assume the first school found for any admin user, or a hardcoded one for testing.
-  // This needs to be robustly implemented based on your auth system.
-  const adminUser = await prisma.user.findFirst({ where: { role: 'admin' }});
-  if (adminUser) {
-    const school = await prisma.school.findFirst({ where: { adminUserId: adminUser.id }});
-    return school?.id || null;
+  // For Supabase, you might get the logged-in user's ID from session, then query their school.
+  // For now, let's simulate by finding an admin user and their associated school.
+  // This logic needs to be robustly implemented based on your auth system.
+  // Assuming user ID is stored in a way that can be retrieved server-side (e.g., via cookies or Supabase auth context)
+
+  // This part would ideally use Supabase auth to get current user, then query their school
+  // For now, fetching the first admin from 'users' and then their school from 'schools'
+  const { data: adminUser, error: userError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('role', 'admin')
+    .limit(1)
+    .single();
+
+  if (userError || !adminUser) {
+    console.error("Error fetching admin user or no admin found:", userError);
+    return null;
   }
-  return null; 
+
+  const { data: school, error: schoolError } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUser.id) // Assuming schools table has admin_user_id
+    .limit(1)
+    .single();
+  
+  if (schoolError || !school) {
+    console.error("Error fetching school for admin or admin not linked:", schoolError);
+    return null;
+  }
+  return school.id;
 }
 
 
 export default async function AcademicYearsPage() {
-  // In a real app, you'd get the current admin's school ID from their session.
-  // For this example, we'll simulate it. This part MUST be robustly implemented.
   const schoolId = await getCurrentAdminSchoolId(); 
-  // If schoolId is null, it means either no admin, or admin not linked to a school properly.
-  // Handle this case (e.g., show an error message, or redirect).
-  // For now, getAcademicYears will return [] if schoolId is null.
-
   const academicYears = await getAcademicYears(schoolId);
 
-  const formatDateString = (dateString: Date | string) => {
+  const formatDateString = (dateString: string | Date) => {
     if (!dateString) return 'N/A';
-    // Prisma returns Date objects, but if it were a string:
     const dateObj = typeof dateString === 'string' ? parseISO(dateString) : dateString;
     return isValid(dateObj) ? format(dateObj, 'MMM d, yyyy') : 'Invalid Date';
   };
@@ -63,7 +91,7 @@ export default async function AcademicYearsPage() {
       <PageHeader 
         title="Academic Year Management" 
         description="Define and manage academic years for the school."
-        actions={<AcademicYearActions schoolId={schoolId} />}
+        actions={<AcademicYearActions schoolId={schoolId} />} // Pass schoolId
       />
       <Card>
         <CardHeader>
@@ -72,7 +100,7 @@ export default async function AcademicYearsPage() {
         </CardHeader>
         <CardContent>
           {!schoolId ? (
-             <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage academic years.</p>
+             <p className="text-destructive text-center py-4">Admin not associated with a school or school ID not found. Cannot manage academic years.</p>
           ) : academicYears.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">No academic years defined yet for this school.</p>
           ) : (
@@ -89,10 +117,20 @@ export default async function AcademicYearsPage() {
                 {academicYears.map((year) => (
                   <TableRow key={year.id}>
                     <TableCell className="font-medium">{year.name}</TableCell>
-                    <TableCell>{formatDateString(year.startDate)}</TableCell>
-                    <TableCell>{formatDateString(year.endDate)}</TableCell>
+                    <TableCell>{formatDateString(year.start_date)}</TableCell>
+                    <TableCell>{formatDateString(year.end_date)}</TableCell>
                     <TableCell className="space-x-1 text-right">
-                      <AcademicYearActions schoolId={schoolId} existingYear={year} />
+                      {/* Map Supabase row to the expected PrismaAcademicYearType or adjust AcademicYearActions */}
+                      <AcademicYearActions 
+                        schoolId={schoolId} 
+                        existingYear={{
+                          id: year.id,
+                          name: year.name,
+                          startDate: new Date(year.start_date), // Convert string to Date
+                          endDate: new Date(year.end_date),     // Convert string to Date
+                          schoolId: year.school_id
+                        }} 
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

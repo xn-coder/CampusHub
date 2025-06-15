@@ -10,25 +10,33 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { Teacher, User } from '@/types';
+import type { Teacher, User } from '@/types'; // Supabase does not use Prisma types directly
 import { useState, useEffect, type FormEvent } from 'react';
 import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from '@/lib/supabaseClient'; // Import Supabase client
+import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs'; // For hashing default password if creating user
 
-const MOCK_USER_DB_KEY = 'mockUserDatabase';
-const MOCK_TEACHERS_KEY = 'mockTeachersData'; 
+const SALT_ROUNDS = 10;
+
+// No MOCK_TEACHERS_KEY or MOCK_USER_DB_KEY for primary data source.
+// Data will be fetched from Supabase.
 
 export default function ManageTeachersPage() {
   const { toast } = useToast();
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]); // Teacher type from your @/types
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-teachers");
+  const [isLoading, setIsLoading] = useState(true);
 
+  // For Create Teacher Tab
   const [newTeacherName, setNewTeacherName] = useState('');
   const [newTeacherEmail, setNewTeacherEmail] = useState('');
   const [newTeacherSubject, setNewTeacherSubject] = useState('');
   const [newTeacherProfilePicUrl, setNewTeacherProfilePicUrl] = useState('');
 
+  // For Edit Dialog
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [editTeacherName, setEditTeacherName] = useState('');
@@ -38,24 +46,45 @@ export default function ManageTeachersPage() {
 
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedTeachers = localStorage.getItem(MOCK_TEACHERS_KEY);
-      if (storedTeachers) {
-        setTeachers(JSON.parse(storedTeachers));
-      } else {
-        localStorage.setItem(MOCK_TEACHERS_KEY, JSON.stringify([]));
-      }
-      if (!localStorage.getItem(MOCK_USER_DB_KEY)) {
-        localStorage.setItem(MOCK_USER_DB_KEY, JSON.stringify([]));
-      }
-    }
+    fetchTeachers();
   }, []);
 
-  const updateLocalStorage = (key: string, data: any) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(data));
+  async function fetchTeachers() {
+    setIsLoading(true);
+    // Fetch from 'teachers' table and potentially join with 'users' for login email
+    // This depends on how your 'teachers' and 'users' tables are structured.
+    // Assuming 'teachers' has profile info (name, subject, profile_pic_url) and a 'user_id'.
+    // And 'users' has 'email'.
+    const { data, error } = await supabase
+      .from('teachers') // Assuming your teacher profiles are in 'teachers' table
+      .select(`
+        id, 
+        name, 
+        subject, 
+        profile_picture_url,
+        user_id,
+        users ( email ) 
+      `); // Adjust if your user relation or email field is different
+
+    if (error) {
+      console.error("Error fetching teachers:", error);
+      toast({ title: "Error", description: "Failed to fetch teacher data.", variant: "destructive" });
+      setTeachers([]);
+    } else {
+      // Map Supabase data to your Teacher type
+      const formattedTeachers = data?.map(t => ({
+        id: t.id,
+        name: t.name,
+        email: t.users?.email || 'N/A', // Get email from joined users table
+        subject: t.subject,
+        profilePictureUrl: t.profile_picture_url,
+        userId: t.user_id, // Store the linked user_id for edit/delete operations
+        // Other fields like pastAssignmentsCount etc. would need separate queries
+      })) || [];
+      setTeachers(formattedTeachers);
     }
-  };
+    setIsLoading(false);
+  }
 
   const filteredTeachers = teachers.filter(teacher =>
     teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -72,110 +101,170 @@ export default function ManageTeachersPage() {
     setIsEditDialogOpen(true);
   };
 
-  const handleEditTeacherSubmit = (e: FormEvent) => {
+  const handleEditTeacherSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!editingTeacher || !editTeacherName.trim() || !editTeacherEmail.trim() || !editTeacherSubject.trim()) {
       toast({ title: "Error", description: "Name, Email, and Subject cannot be empty.", variant: "destructive" });
       return;
     }
 
-    const storedUsers = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '[]') as User[];
-    if (editTeacherEmail.trim() !== editingTeacher.email && storedUsers.some(u => u.email === editTeacherEmail.trim())) {
-        toast({ title: "Error", description: "Another user with this email already exists.", variant: "destructive" });
-        return;
+    // Check if email is being changed and if new email already exists for another user
+    if (editTeacherEmail.trim() !== editingTeacher.email) {
+        const { data: existingUser, error: fetchError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('email', editTeacherEmail.trim())
+            .neq('id', editingTeacher.userId) // Exclude current teacher's user record
+            .single();
+        if (fetchError && fetchError.code !== 'PGRST116') {
+            toast({ title: "Error", description: "Database error checking email.", variant: "destructive" });
+            return;
+        }
+        if (existingUser) {
+            toast({ title: "Error", description: "Another user with this email already exists.", variant: "destructive" });
+            return;
+        }
+    }
+    
+    // Update 'teachers' (profile) table
+    const { error: teacherUpdateError } = await supabase
+      .from('teachers')
+      .update({ 
+        name: editTeacherName.trim(), 
+        subject: editTeacherSubject.trim(),
+        profile_picture_url: editTeacherProfilePicUrl.trim() || `https://placehold.co/100x100.png?text=${editTeacherName.substring(0,1)}`
+        // Note: Email is typically managed in the 'users' table. 
+        // If your 'teachers' table also stores email, update it here.
+      })
+      .eq('id', editingTeacher.id);
+
+    if (teacherUpdateError) {
+      toast({ title: "Error", description: `Failed to update teacher profile: ${teacherUpdateError.message}`, variant: "destructive" });
+      return;
     }
 
-    const updatedTeachers = teachers.map(t => 
-      t.id === editingTeacher.id ? { 
-        ...t, 
-        name: editTeacherName.trim(), 
-        email: editTeacherEmail.trim(), 
-        subject: editTeacherSubject.trim(),
-        profilePictureUrl: editTeacherProfilePicUrl.trim() || `https://placehold.co/100x100.png?text=${editTeacherName.substring(0,1)}`
-      } : t
-    );
-    setTeachers(updatedTeachers);
-    updateLocalStorage(MOCK_TEACHERS_KEY, updatedTeachers);
+    // Update 'users' (login) table if userId is available
+    if (editingTeacher.userId) {
+      const { error: userUpdateError } = await supabase
+        .from('users')
+        .update({ name: editTeacherName.trim(), email: editTeacherEmail.trim() })
+        .eq('id', editingTeacher.userId);
+      
+      if (userUpdateError) {
+         toast({ title: "Warning", description: `Teacher profile updated, but failed to update login details: ${userUpdateError.message}`, variant: "default" });
+      }
+    } else {
+        toast({ title: "Warning", description: "Teacher profile updated, but no linked user account found to update login details.", variant: "default" });
+    }
 
-    const updatedUsers = storedUsers.map(u =>
-      u.id === editingTeacher.id ? { ...u, name: editTeacherName.trim(), email: editTeacherEmail.trim() } : u
-    );
-    updateLocalStorage(MOCK_USER_DB_KEY, updatedUsers);
 
     toast({ title: "Teacher Updated", description: `${editTeacherName.trim()}'s details updated.` });
     setIsEditDialogOpen(false);
     setEditingTeacher(null);
+    fetchTeachers(); // Re-fetch to show updated data
   };
   
-  const handleDeleteTeacher = (teacherId: string) => { 
-    if(confirm("Are you sure you want to delete this teacher? This will also remove their login access.")) {
-      const teacherToDelete = teachers.find(t => t.id === teacherId);
-      if (!teacherToDelete) return;
+  const handleDeleteTeacher = async (teacher: Teacher) => { 
+    if(confirm(`Are you sure you want to delete teacher ${teacher.name}? This will also remove their login access.`)) {
+      // 1. Delete from 'teachers' (profile) table
+      const { error: teacherDeleteError } = await supabase
+        .from('teachers')
+        .delete()
+        .eq('id', teacher.id);
 
-      const updatedTeachers = teachers.filter(t => t.id !== teacherId);
-      setTeachers(updatedTeachers);
-      updateLocalStorage(MOCK_TEACHERS_KEY, updatedTeachers);
+      if (teacherDeleteError) {
+        toast({ title: "Error", description: `Failed to delete teacher profile: ${teacherDeleteError.message}`, variant: "destructive" });
+        return;
+      }
 
-      const storedUsers = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '[]') as User[];
-      const updatedUsers = storedUsers.filter(user => user.id !== teacherId);
-      updateLocalStorage(MOCK_USER_DB_KEY, updatedUsers);
-
+      // 2. Delete from 'users' (login) table if userId exists
+      if (teacher.userId) {
+        const { error: userDeleteError } = await supabase
+          .from('users')
+          .delete()
+          .eq('id', teacher.userId);
+        if (userDeleteError) {
+          toast({ title: "Warning", description: `Teacher profile deleted, but failed to delete login: ${userDeleteError.message}`, variant: "default" });
+        }
+      }
+      
       toast({
         title: "Teacher Deleted",
-        description: `${teacherToDelete.name} has been removed along with their login access.`,
+        description: `${teacher.name} has been removed.`,
         variant: "destructive"
       });
+      fetchTeachers(); // Re-fetch
     }
   };
 
-  const handleCreateTeacherSubmit = (e: React.FormEvent) => {
+  const handleCreateTeacherSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTeacherName || !newTeacherEmail || !newTeacherSubject) {
+    if (!newTeacherName.trim() || !newTeacherEmail.trim() || !newTeacherSubject.trim()) {
       toast({ title: "Error", description: "Name, Email, and Subject are required.", variant: "destructive" });
       return;
     }
 
-    const newTeacherId = `t-${Date.now()}`;
-    const newTeacher: Teacher = {
-        id: newTeacherId,
-        name: newTeacherName,
-        email: newTeacherEmail,
-        subject: newTeacherSubject,
-        profilePictureUrl: newTeacherProfilePicUrl || `https://placehold.co/100x100.png?text=${newTeacherName.substring(0,1)}`,
-    };
-    
-    const newUser: User = {
-      id: newTeacherId,
-      email: newTeacherEmail,
-      name: newTeacherName,
-      role: 'teacher',
-      password: 'password' 
-    };
+    // Check if email already exists in 'users' table
+    const { data: existingUser, error: fetchError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', newTeacherEmail.trim())
+        .single();
 
-    if (typeof window !== 'undefined') {
-      const storedUsers = localStorage.getItem(MOCK_USER_DB_KEY);
-      let users: User[] = storedUsers ? JSON.parse(storedUsers) : [];
-      
-      if (users.some(user => user.email === newTeacher.email)) {
-         toast({
-          title: "Error",
-          description: "A user with this email already exists.",
-          variant: "destructive",
-        });
+    if (fetchError && fetchError.code !== 'PGRST116') {
+        toast({ title: "Error", description: "Database error checking email.", variant: "destructive" });
         return;
-      }
-      
-      users.push(newUser);
-      updateLocalStorage(MOCK_USER_DB_KEY, users);
+    }
+    if (existingUser) {
+        toast({ title: "Error", description: "A user with this email already exists.", variant: "destructive" });
+        return;
     }
     
-    const updatedTeachers = [newTeacher, ...teachers];
-    setTeachers(updatedTeachers);
-    updateLocalStorage(MOCK_TEACHERS_KEY, updatedTeachers);
+    // 1. Create User record for login
+    const newUserId = uuidv4();
+    const defaultPassword = "password"; // Set a default password
+    const hashedPassword = await bcrypt.hash(defaultPassword, SALT_ROUNDS);
+
+    const { data: newUser, error: userInsertError } = await supabase
+      .from('users')
+      .insert({
+        id: newUserId,
+        email: newTeacherEmail.trim(),
+        name: newTeacherName.trim(),
+        role: 'teacher',
+        password_hash: hashedPassword 
+      })
+      .select('id') // Select the ID of the newly created user
+      .single();
+
+    if (userInsertError || !newUser) {
+      toast({ title: "Error", description: `Failed to create teacher login: ${userInsertError?.message || 'No user data returned'}`, variant: "destructive" });
+      return;
+    }
+
+    // 2. Create Teacher profile record, linking to the User ID
+    const newTeacherId = uuidv4(); // Teacher profile might have its own ID separate from User ID
+    const { error: teacherInsertError } = await supabase
+      .from('teachers')
+      .insert({
+        id: newTeacherId,
+        user_id: newUser.id, // Link to the created user
+        name: newTeacherName.trim(),
+        subject: newTeacherSubject.trim(),
+        profile_picture_url: newTeacherProfilePicUrl.trim() || `https://placehold.co/100x100.png?text=${newTeacherName.substring(0,1)}`,
+        // email might be redundant if it's in the users table and joined
+      });
+
+    if (teacherInsertError) {
+      toast({ title: "Error", description: `Failed to create teacher profile: ${teacherInsertError.message}`, variant: "destructive" });
+      // Consider deleting the created user if teacher profile creation fails (rollback logic)
+      await supabase.from('users').delete().eq('id', newUser.id);
+      return;
+    }
     
     toast({
       title: "Teacher Created",
-      description: `${newTeacherName} has been added and a login account created.`,
+      description: `${newTeacherName} has been added and a login account created with default password 'password'.`,
     });
 
     setNewTeacherName('');
@@ -183,6 +272,7 @@ export default function ManageTeachersPage() {
     setNewTeacherSubject('');
     setNewTeacherProfilePicUrl('');
     setActiveTab("list-teachers"); 
+    fetchTeachers(); // Refresh list
   };
 
   return (
@@ -220,41 +310,45 @@ export default function ManageTeachersPage() {
                   className="max-w-sm"
                 />
               </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Avatar</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTeachers.map((teacher) => (
-                    <TableRow key={teacher.id}>
-                      <TableCell>
-                        <Avatar>
-                          <AvatarImage src={teacher.profilePictureUrl} alt={teacher.name} data-ai-hint="person portrait" />
-                          <AvatarFallback>{teacher.name.substring(0,2).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                      </TableCell>
-                      <TableCell className="font-medium">{teacher.name}</TableCell>
-                      <TableCell>{teacher.email}</TableCell>
-                      <TableCell>{teacher.subject}</TableCell>
-                      <TableCell className="space-x-1 text-right">
-                        <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(teacher)}>
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="destructive" size="icon" onClick={() => handleDeleteTeacher(teacher.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+              {isLoading ? (
+                <p className="text-center text-muted-foreground py-4">Loading teachers...</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Avatar</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Subject</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              {filteredTeachers.length === 0 && (
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTeachers.map((teacher) => (
+                      <TableRow key={teacher.id}>
+                        <TableCell>
+                          <Avatar>
+                            <AvatarImage src={teacher.profilePictureUrl || `https://placehold.co/40x40.png?text=${teacher.name.substring(0,2).toUpperCase()}`} alt={teacher.name} data-ai-hint="person portrait" />
+                            <AvatarFallback>{teacher.name.substring(0,2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                        </TableCell>
+                        <TableCell className="font-medium">{teacher.name}</TableCell>
+                        <TableCell>{teacher.email}</TableCell>
+                        <TableCell>{teacher.subject}</TableCell>
+                        <TableCell className="space-x-1 text-right">
+                          <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(teacher)}>
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteTeacher(teacher)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+              {!isLoading && filteredTeachers.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">
                   {searchTerm ? "No teachers match your search." : "No teachers found. Add a new teacher to get started."}
                 </p>
@@ -267,7 +361,7 @@ export default function ManageTeachersPage() {
           <Card>
             <CardHeader>
               <CardTitle>Create New Teacher</CardTitle>
-              <CardDescription>Fill in the form below to add a new teacher. This will create a login for them.</CardDescription>
+              <CardDescription>Fill in the form below to add a new teacher. This will create a login for them with default password "password".</CardDescription>
             </CardHeader>
             <form onSubmit={handleCreateTeacherSubmit}>
               <CardContent className="space-y-4">
@@ -305,13 +399,12 @@ export default function ManageTeachersPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">Teacher activity tracking and reporting will be implemented here.</p>
-              <p className="mt-2 text-sm">This section could include things like assigned classes, average student performance, resources shared, etc.</p>
+              <p className="mt-2 text-sm">This section could include things like assigned classes, average student performance, resources shared, etc., by querying relevant Supabase tables.</p>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
-      {/* Edit Teacher Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
