@@ -1,115 +1,60 @@
 
-"use client";
-
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { AcademicYear } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, CalendarRange } from 'lucide-react';
-import { useToast } from "@/hooks/use-toast";
+import { CalendarRange } from 'lucide-react';
+import prisma from '@/lib/prisma';
 import { format, parseISO, isValid } from 'date-fns';
+import AcademicYearActions from './academic-year-actions'; // Client component for dialogs and buttons
+import type { AcademicYear } from '@prisma/client';
 
-const MOCK_ACADEMIC_YEARS_KEY = 'mockAcademicYearsData';
+// Revalidate data on this page every 60 seconds, or on demand
+export const revalidate = 60; 
 
-export default function AcademicYearsPage() {
-  const { toast } = useToast();
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingYear, setEditingYear] = useState<AcademicYear | null>(null);
+async function getAcademicYears(adminSchoolId: string | null) {
+  if (!adminSchoolId) return []; // Or handle error appropriately
+  try {
+    const academicYears = await prisma.academicYear.findMany({
+      where: { schoolId: adminSchoolId },
+      orderBy: {
+        startDate: 'desc', // Newest start date first
+      },
+    });
+    return academicYears;
+  } catch (error) {
+    console.error("Failed to fetch academic years:", error);
+    return [];
+  }
+}
 
-  const [yearName, setYearName] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+// Helper function to get current admin's school ID (replace with actual logic)
+async function getCurrentAdminSchoolId(): Promise<string | null> {
+  // This is a placeholder. In a real app, you'd get this from the user's session or context.
+  // For now, let's assume the first school found for any admin user, or a hardcoded one for testing.
+  // This needs to be robustly implemented based on your auth system.
+  const adminUser = await prisma.user.findFirst({ where: { role: 'admin' }});
+  if (adminUser) {
+    const school = await prisma.school.findFirst({ where: { adminUserId: adminUser.id }});
+    return school?.id || null;
+  }
+  return null; 
+}
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedYears = localStorage.getItem(MOCK_ACADEMIC_YEARS_KEY);
-      if (storedYears) {
-        setAcademicYears(JSON.parse(storedYears));
-      } else {
-        localStorage.setItem(MOCK_ACADEMIC_YEARS_KEY, JSON.stringify([]));
-      }
-    }
-  }, []);
 
-  const updateLocalStorage = (data: AcademicYear[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(MOCK_ACADEMIC_YEARS_KEY, JSON.stringify(data));
-    }
-  };
+export default async function AcademicYearsPage() {
+  // In a real app, you'd get the current admin's school ID from their session.
+  // For this example, we'll simulate it. This part MUST be robustly implemented.
+  const schoolId = await getCurrentAdminSchoolId(); 
+  // If schoolId is null, it means either no admin, or admin not linked to a school properly.
+  // Handle this case (e.g., show an error message, or redirect).
+  // For now, getAcademicYears will return [] if schoolId is null.
 
-  const resetForm = () => {
-    setYearName('');
-    setStartDate('');
-    setEndDate('');
-    setEditingYear(null);
-  };
+  const academicYears = await getAcademicYears(schoolId);
 
-  const handleOpenDialog = (year?: AcademicYear) => {
-    if (year) {
-      setEditingYear(year);
-      setYearName(year.name);
-      setStartDate(year.startDate);
-      setEndDate(year.endDate);
-    } else {
-      resetForm();
-    }
-    setIsDialogOpen(true);
-  };
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!yearName.trim() || !startDate || !endDate) {
-      toast({ title: "Error", description: "Name, Start Date, and End Date are required.", variant: "destructive" });
-      return;
-    }
-    if (new Date(startDate) >= new Date(endDate)) {
-        toast({ title: "Error", description: "Start Date must be before End Date.", variant: "destructive" });
-        return;
-    }
-
-    let updatedYears;
-    if (editingYear) {
-      updatedYears = academicYears.map(y =>
-        y.id === editingYear.id ? { ...y, name: yearName.trim(), startDate, endDate } : y
-      );
-      toast({ title: "Academic Year Updated", description: `${yearName.trim()} has been updated.` });
-    } else {
-      const newYear: AcademicYear = {
-        id: `ay-${Date.now()}`,
-        name: yearName.trim(),
-        startDate,
-        endDate,
-      };
-      updatedYears = [newYear, ...academicYears]; // Add to top
-      toast({ title: "Academic Year Added", description: `${yearName.trim()} has been added.` });
-    }
-    
-    updatedYears.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()); // Sort by newest start date
-    setAcademicYears(updatedYears);
-    updateLocalStorage(updatedYears);
-    resetForm();
-    setIsDialogOpen(false);
-  };
-  
-  const handleDeleteYear = (yearId: string) => {
-    // Potential: Check if this year is used by any subjects/exams before deleting
-    if (confirm("Are you sure you want to delete this academic year?")) {
-      const updatedYears = academicYears.filter(y => y.id !== yearId);
-      setAcademicYears(updatedYears);
-      updateLocalStorage(updatedYears);
-      toast({ title: "Academic Year Deleted", variant: "destructive" });
-    }
-  };
-
-  const formatDateString = (dateString: string) => {
+  const formatDateString = (dateString: Date | string) => {
     if (!dateString) return 'N/A';
-    const dateObj = parseISO(dateString);
+    // Prisma returns Date objects, but if it were a string:
+    const dateObj = typeof dateString === 'string' ? parseISO(dateString) : dateString;
     return isValid(dateObj) ? format(dateObj, 'MMM d, yyyy') : 'Invalid Date';
   };
 
@@ -118,11 +63,7 @@ export default function AcademicYearsPage() {
       <PageHeader 
         title="Academic Year Management" 
         description="Define and manage academic years for the school."
-        actions={
-          <Button onClick={() => handleOpenDialog()}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Add Academic Year
-          </Button>
-        }
+        actions={<AcademicYearActions schoolId={schoolId} />}
       />
       <Card>
         <CardHeader>
@@ -130,8 +71,10 @@ export default function AcademicYearsPage() {
           <CardDescription>List of all defined academic years, newest start date first.</CardDescription>
         </CardHeader>
         <CardContent>
-          {academicYears.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No academic years defined yet.</p>
+          {!schoolId ? (
+             <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage academic years.</p>
+          ) : academicYears.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">No academic years defined yet for this school.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -149,12 +92,7 @@ export default function AcademicYearsPage() {
                     <TableCell>{formatDateString(year.startDate)}</TableCell>
                     <TableCell>{formatDateString(year.endDate)}</TableCell>
                     <TableCell className="space-x-1 text-right">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(year)}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteYear(year.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <AcademicYearActions schoolId={schoolId} existingYear={year} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -163,34 +101,6 @@ export default function AcademicYearsPage() {
           )}
         </CardContent>
       </Card>
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[480px]">
-          <DialogHeader>
-            <DialogTitle>{editingYear ? 'Edit' : 'Add New'} Academic Year</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="yearName" className="text-right">Name</Label>
-                <Input id="yearName" value={yearName} onChange={(e) => setYearName(e.target.value)} className="col-span-3" placeholder="e.g., 2024-2025" required />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="startDate" className="text-right">Start Date</Label>
-                <Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="col-span-3" required />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="endDate" className="text-right">End Date</Label>
-                <Input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="col-span-3" required />
-              </div>
-            </div>
-            <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit"><Save className="mr-2 h-4 w-4" /> {editingYear ? 'Save Changes' : 'Add Year'}</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
