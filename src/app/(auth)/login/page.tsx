@@ -13,6 +13,7 @@ import type { UserRole } from '@/types';
 import { LogIn, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { ensureSuperAdminExists, attemptLogin } from './actions';
+import bcrypt from 'bcryptjs';
 
 const SUPERADMIN_SETUP_FLAG = 'SUPERADMIN_DB_SETUP_COMPLETE_FLAG_V5_PRISMA_BCRYPT';
 

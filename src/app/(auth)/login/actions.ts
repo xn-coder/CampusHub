@@ -9,7 +9,7 @@ const SALT_ROUNDS = 10;
 export async function ensureSuperAdminExists(): Promise<{ ok: boolean; message: string }> {
   const superAdminEmail = process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL;
   const superAdminName = process.env.NEXT_PUBLIC_SUPERADMIN_NAME || 'Super Administrator';
-  const superAdminPassword = "password"; // Hardcoded default password
+  const superAdminPassword = "password"; // Hardcoded default password  
 
   if (!superAdminEmail) {
     console.error('Superadmin email not configured in .env');
@@ -31,6 +31,7 @@ export async function ensureSuperAdminExists(): Promise<{ ok: boolean; message: 
 
     if (!existingUser) {
       const hashedPassword = await bcrypt.hash(superAdminPassword, SALT_ROUNDS);
+      
       const { error: insertError } = await supabase
         .from('users')
         .insert({

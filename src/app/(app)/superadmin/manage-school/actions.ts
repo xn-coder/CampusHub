@@ -8,7 +8,7 @@ interface UpdateSchoolInput {
   id: string;
   name: string;
   address: string;
-  // status: 'Active' | 'Inactive'; // If status change is also allowed
+  status: 'Active' | 'Inactive'; 
 }
 
 export async function updateSchoolAction(
@@ -20,7 +20,7 @@ export async function updateSchoolAction(
       .update({
         name: data.name,
         address: data.address,
-        // status: data.status, // if status update is needed
+        status: data.status,
       })
       .eq('id', data.id);
 
@@ -31,9 +31,9 @@ export async function updateSchoolAction(
 
     revalidatePath('/superadmin/manage-school');
     return { ok: true, message: `School "${data.name}" updated successfully.` };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Unexpected error updating school:', error);
-    return { ok: false, message: 'An unexpected error occurred while updating school.' };
+    return { ok: false, message: `An unexpected error occurred while updating school: ${error.message}` };
   }
 }
 
@@ -44,11 +44,11 @@ export async function deleteSchoolAction(
     // Check if school exists before attempting to delete
     const { data: schoolToDelete, error: fetchError } = await supabase
         .from('schools')
-        .select('id, admin_user_id') // admin_user_id for potential linked user deletion
+        .select('id, admin_user_id') 
         .eq('id', schoolId)
         .single();
 
-    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 means 0 rows, so school not found
+    if (fetchError && fetchError.code !== 'PGRST116') { 
         console.error('Error fetching school for deletion:', fetchError);
         return { ok: false, message: "Error finding school to delete."};
     }
@@ -56,28 +56,24 @@ export async function deleteSchoolAction(
         return { ok: false, message: "School not found."};
     }
     
-    // Note: This only deletes the school record.
-    // The associated admin user in the users table is NOT deleted automatically by this action.
-    // You might want to implement logic to handle the admin user, e.g., by:
-    // 1. Disallowing school deletion if the admin user still exists and is linked.
-    // 2. Deleting or deactivating the admin user (requires careful consideration of dependencies).
-    // For now, focusing on deleting the school record itself.
-
-    // Before deleting the school, check for dependent records in other tables.
-    // Example: Check for academic_years linked to this school.
-    const { data: academicYears, error: ayError } = await supabase
+    // Check for dependent academic_years linked to this school.
+    const { data: academicYears, error: ayError, count: ayCount } = await supabase
       .from('academic_years')
-      .select('id', { count: 'exact' })
+      .select('id', { count: 'exact', head: true }) // Only need the count
       .eq('school_id', schoolId);
 
     if (ayError) {
       console.error('Error checking academic years for school:', ayError);
-      return { ok: false, message: 'Failed to check school dependencies.' };
+      return { ok: false, message: `Failed to check school dependencies: ${ayError.message}` };
     }
-    if (academicYears && academicYears.length > 0) { // Supabase count is often in a separate data structure or header, check docs
-      return { ok: false, message: 'Failed to delete school: It has associated academic years. Please remove them first.' };
+    if (ayCount && ayCount > 0) { 
+      return { ok: false, message: `Failed to delete school: It has ${ayCount} associated academic year(s). Please remove them first.` };
     }
-    // Add similar checks for other dependent tables (classes, students, etc.)
+    // Add similar checks for other dependent tables (classes, students, etc.) if necessary
+
+    // Note: The associated admin user in the users table is NOT deleted automatically.
+    // Further logic would be needed to handle the admin_user_id from schoolToDelete.admin_user_id
+    // For example, by deleting or deactivating them based on policy.
 
     const { error: deleteError } = await supabase
       .from('schools')
@@ -86,15 +82,14 @@ export async function deleteSchoolAction(
 
     if (deleteError) {
       console.error('Error deleting school:', deleteError);
-      // Check for foreign key constraint violation (Supabase error codes might differ from Prisma)
-      // Example: if (deleteError.code === '23503') for foreign key violation
-      return { ok: false, message: `Failed to delete school: ${deleteError.message}. It might have associated records.` };
+      return { ok: false, message: `Failed to delete school: ${deleteError.message}. It might have other associated records.` };
     }
 
     revalidatePath('/superadmin/manage-school');
     return { ok: true, message: `School record deleted successfully.` };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Unexpected error deleting school:', error);
-    return { ok: false, message: 'An unexpected error occurred while deleting the school.' };
+    return { ok: false, message: `An unexpected error occurred while deleting the school: ${error.message}` };
   }
 }
+

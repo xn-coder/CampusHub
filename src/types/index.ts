@@ -1,20 +1,17 @@
 
 
 import type { LucideIcon } from 'lucide-react';
-// Import Prisma-generated types if you want to use them directly
-// import type { User as PrismaUser, School as PrismaSchool, etc } from '@prisma/client';
 
-// User roles (matches Prisma enum)
 export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student' | 'staff';
 
-// User type for client-side use (omit sensitive fields like password)
 export interface User {
   id: string;
   email: string;
   name: string;
   role: UserRole;
-  // password field should NOT be here for client-side types
-  // createdAt and updatedAt are available from Prisma if needed
+  password_hash?: string; // Only used server-side for creation/validation
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type NavItem = {
@@ -26,343 +23,363 @@ export type NavItem = {
   children?: NavItem[];
 };
 
-// Matches Prisma's School model for superadmin management
-export interface SchoolEntry { // Renamed from School to avoid conflict if using Prisma types
+export type SchoolStatus = 'Active' | 'Inactive';
+
+export interface SchoolEntry { 
   id: string;
   name: string;
   address: string;
   adminEmail: string;
   adminName: string;
-  status: 'Active' | 'Inactive'; // Matches Prisma enum SchoolStatus
-  adminUserId?: string | null; // Foreign key to User table
-  // createdAt and updatedAt are available
+  status: SchoolStatus; 
+  adminUserId: string; 
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's SchoolDetails model for admin's school management
 export interface SchoolDetails {
-  id: string;
+  id: string; // This would be the ID of the school record itself.
   name: string;
   address: string;
   contactEmail: string;
   contactPhone: string;
-  schoolId: string; // Foreign key to School table
-  // createdAt and updatedAt are available
+  // schoolId field is removed as this interface represents the school itself.
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's Holiday model
 export interface Holiday {
   id: string;
   name: string;
-  date: Date; // Prisma returns Date objects
+  date: Date; // Keep as Date for client-side, string 'yyyy-MM-dd' for DB
   schoolId: string;
-  // createdAt and updatedAt are available
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's StudentLeaveApplication model
 export interface StoredLeaveApplication {
   id: string;
   studentName: string;
   reason: string;
   medicalNotesDataUri?: string | null;
-  submissionDate: Date; // Prisma returns Date objects
-  status: 'Pending' | 'Approved' | 'Rejected'; // Matches Prisma enum
+  submissionDate: string; 
+  status: 'Pending AI Review' | 'Approved' | 'Rejected';
   aiReasoning?: string | null;
-  applicantId: string; // Foreign key to User
-  studentProfileId?: string | null; // Foreign key to Student profile
-  // createdAt and updatedAt are available
+  applicantId: string; 
+  studentProfileId?: string | null; 
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's Student model (profile part)
 export interface Student {
-  id: string; // This is Student Profile ID
-  userId: string; // Link to User login record
-  // User details like name, email are fetched from associated User record
-  classId: string; // This will be the ID from ClassData (Activated Class-Section)
+  id: string; 
+  name: string;
+  email: string;
+  classId: string; 
   profilePictureUrl?: string | null;
-  dateOfBirth?: string | null; // Keep as string for form, convert for DB
+  dateOfBirth?: string | null; 
   guardianName?: string | null;
   contactNumber?: string | null;
   address?: string | null;
-  admissionDate?: string | null; // Keep as string for form, convert for DB
-  
+  admissionDate?: string | null; 
+  userId?: string; // ID from the main 'users' table for login
+
   // For reporting/activity (can be populated from related records or aggregated)
   lastLogin?: string; 
-  mockLoginDate?: Date; // Used for mock data generation
+  mockLoginDate?: Date; 
   assignmentsSubmitted?: number;
   attendancePercentage?: number; 
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's Teacher model (profile part)
 export interface Teacher {
-  id: string; // This is Teacher Profile ID
-  userId: string; // Link to User login record
-  // User details like name, email are fetched from associated User record
-  subject: string; // Primary subject
+  id: string; 
+  name: string;
+  email: string; 
+  subject: string; 
   profilePictureUrl?: string | null;
-  // createdAt and updatedAt are available
-
-  // For display, could be aggregated:
+  userId?: string; // ID from the main 'users' table for login
+  createdAt?: string;
+  updatedAt?: string;
+  
   pastAssignmentsCount?: number;
   pastClassesTaught?: string[];
 }
 
-// Matches Prisma's Employee model (profile part)
 export interface Employee {
-  id: string; // This is Employee Profile ID
-  userId: string; // Link to User login record
-  // User details like name, email are fetched from associated User record
-  roleDescription: string; // e.g., "Accountant", "Librarian"
+  id: string; 
+  name: string; // From User record
+  email: string; // From User record
+  role: string; // Specific role like 'Accountant', 'Librarian'
   department?: string | null;
-  joiningDate?: string | null; // Keep as string for form, convert for DB
+  joiningDate: string; // YYYY-MM-DD
   profilePictureUrl?: string | null;
-  // createdAt and updatedAt are available
+  userId?: string; // ID from the main 'users' table for login
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's ClassNameRecord model
 export interface ClassNameRecord { 
   id: string;
   name: string;
-  schoolId: string;
-  // createdAt and updatedAt are available
+  // schoolId: string; // If class names are school-specific
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's SectionRecord model
 export interface SectionRecord { 
   id: string;
   name: string;
-  schoolId: string;
-  // createdAt and updatedAt are available
+  // schoolId: string; // If section names are school-specific
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's ClassData model (Activated Class-Section)
 export interface ClassData { 
   id: string;
-  name: string; // e.g., "Grade 10"
-  division: string; // e.g., "A"
-  classNameRecordId: string;
-  sectionRecordId: string;
-  teacherId?: string | null; // Foreign key to Teacher profile ID
+  name: string; 
+  division: string; 
+  // classNameRecordId: string; // Link to ClassNameRecord
+  // sectionRecordId: string;   // Link to SectionRecord
+  teacherId?: string | null; 
   academicYearId?: string | null;
-  // studentIds: string[]; // This would be a relation in Prisma, fetched separately
-  // createdAt and updatedAt are available
+  studentIds: string[]; // Array of student IDs (Student profile IDs)
+  // schoolId: string; // If class-sections are school-specific
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's Announcement model
 export interface Announcement {
   id:string;
   title: string;
   content: string;
-  date: Date; // Prisma returns Date objects
+  date: Date; 
   authorName: string; 
-  postedByUserId: string; // Foreign key to User
-  postedByRole: UserRole; // Stored for easier filtering, though derivable from User
-  targetClassSectionId?: string | null; // Foreign key to ClassData
-  // createdAt and updatedAt are available
+  // postedByUserId: string; 
+  postedByRole: UserRole; 
+  targetClassSectionId?: string | null; 
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's CalendarEvent model
 export interface CalendarEvent {
   id: string;
   title: string;
   description?: string | null;
-  date: string; // Keep as YYYY-MM-DD string for form, convert for DB
-  startTime?: string | null; // Format HH:mm
-  endTime?: string | null; // Format HH:mm
+  date: string; 
+  startTime?: string | null; 
+  endTime?: string | null; 
   isAllDay: boolean;
-  postedByUserId: string; // Foreign key to User
-  // createdAt and updatedAt are available
+  // postedByUserId: string; 
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's AcademicYear model
 export interface AcademicYear {
   id: string;
   name: string;
-  startDate: string; // YYYY-MM-DD for forms
-  endDate: string;   // YYYY-MM-DD for forms
-  schoolId: string;
-  // createdAt and updatedAt are available
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  schoolId: string;  // Foreign Key to schools table
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's Subject model
 export interface Subject {
   id: string;
   name: string;
   code: string;
   academicYearId?: string | null;
-  // createdAt and updatedAt are available
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's Exam model
 export interface Exam {
   id: string;
   name: string;
   subjectId: string;
   classSectionId?: string | null; 
   academicYearId?: string | null; 
-  date: string; // YYYY-MM-DD for forms
-  startTime: string; // HH:mm
-  endTime: string;   // HH:mm
+  date: string; 
+  startTime: string; 
+  endTime: string;   
   maxMarks?: number | null; 
-  // createdAt and updatedAt are available
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's Assignment model
 export interface Assignment {
   id: string;
   title: string;
   description: string;
-  dueDate: string; // YYYY-MM-DD for forms
+  dueDate: string; 
   classSectionId: string; 
-  teacherId: string; // Teacher Profile ID
-  postedByUserId: string; // User ID of the teacher
+  teacherId: string; // Teacher profile ID (from 'teachers' table or 'users' table if teachers are just users with a role)
+  // postedByUserId: string; // User ID of the teacher
   subjectId?: string | null;
-  // createdAt and updatedAt are available
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's StudentScore model
 export interface StudentScore {
   id: string;
-  studentId: string; // Student Profile ID
+  studentId: string; 
   examId: string;
   subjectId: string; 
   classSectionId: string; 
-  score: string; // Stored as string to allow "A+", "Pass", or numeric
+  score: string | number; // Allow string for grades like 'A+' or number for marks
   maxMarks?: number | null; 
-  recordedByTeacherId: string; // Teacher Profile ID
-  recordedByUserId: string; // User ID of the teacher
-  dateRecorded: string; // ISO string or Date
+  recordedByTeacherId: string; 
+  // recordedByUserId: string; 
+  dateRecorded: string; 
   comments?: string | null;
-  // createdAt and updatedAt are available
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's AdmissionRecord model
 export interface AdmissionRecord {
   id: string;
-  studentId: string; // Student Profile ID
-  admissionDate: string; // YYYY-MM-DD for forms
-  status: string; // "Pending Review", "Admitted", "Enrolled", "Rejected"
-  classId?: string | null; // Assigned ClassData ID
-  // createdAt and updatedAt are available
+  name: string; // Student's name
+  email: string; // Student's email
+  dateOfBirth: string;
+  guardianName: string;
+  contactNumber: string;
+  address: string;
+  admissionDate: string; 
+  status: 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected'; 
+  classId?: string | null; 
+  // schoolId: string;
+  // studentId: string; // This would be the ID from the main 'students' (profile) table once created
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's ClassScheduleItem model
 export interface ClassScheduleItem {
   id: string;
-  classDataId: string;
-  subjectId: string;
-  teacherId: string; // Teacher Profile ID
-  scheduledByUserId: string; // User ID (teacher or admin)
-  dayOfWeek: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday'; // Matches Prisma enum
-  startTime: string; // HH:mm
-  endTime: string;   // HH:mm
-  // createdAt and updatedAt are available
+  // classDataId: string;
+  className: string; // e.g. "Grade 10A" (derived or stored)
+  subject: string; // e.g. "Mathematics"
+  teacherName: string; // e.g. "Mr. Smith"
+  dayOfWeek: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday'; 
+  startTime: string; 
+  endTime: string;   
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's AttendanceRecord model
 export interface AttendanceRecord { 
-  id: string;
-  studentId: string; // Student Profile ID
-  classDataId: string;
-  date: string; // YYYY-MM-DD for forms
-  status: 'Present' | 'Absent' | 'Late' | 'Excused'; // Matches Prisma enum
+  id?: string; // Optional if auto-generated by DB
+  studentId: string; 
+  // classDataId: string;
+  date: string; 
+  status: 'Present' | 'Absent' | 'Late' | 'Excused'; 
   remarks?: string | null;
-  teacherProfileId: string; // Teacher Profile ID who took attendance
-  takenByUserId: string; // User ID of the teacher
-  // createdAt and updatedAt are available
+  // teacherProfileId: string; 
+  // takenByUserId: string; 
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's FeeCategory model
+// For class-level attendance, primarily used for storage in localStorage
+export interface ClassAttendance {
+  classSectionId: string;
+  records: AttendanceRecord[];
+}
+
+
 export interface FeeCategory {
   id: string;
   name: string;
-  description?: string | null;
-  amount?: number | null; 
-  schoolId: string;
-  // createdAt and updatedAt are available
+  description: string;
+  amount?: number; 
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's StudentFeePayment model
 export interface StudentFeePayment {
   id: string;
-  studentId: string; // Student Profile ID
+  studentId: string; 
   feeCategoryId: string;
   assignedAmount: number;
   paidAmount: number;
-  dueDate?: string | null; // YYYY-MM-DD for forms
-  paymentDate?: string | null; // YYYY-MM-DD for forms
-  status: 'Pending' | 'Paid' | 'PartiallyPaid' | 'Overdue' | 'Failed'; // Matches Prisma enum
+  dueDate?: string | null; 
+  paymentDate?: string | null; 
+  status: 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed'; 
   notes?: string | null;
   academicYearId?: string | null; 
-  // createdAt and updatedAt are available
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's PayrollEntry model
 export interface PayrollEntry {
   id: string;
-  employeeId: string; // Employee Profile ID
-  designation: string; // May be redundant with Employee.roleDescription
+  employeeName: string; // Should link to an Employee ID in a real system
+  // employeeId: string; 
+  designation: string; 
   basicSalary: number;
-  paymentDate?: string | null; // YYYY-MM-DD for forms
-  status: 'Pending' | 'Paid' | 'Processing'; // Matches Prisma enum
-  schoolId: string;
-  // createdAt and updatedAt are available
+  paymentDate?: string | null; 
+  status: 'Pending' | 'Paid' | 'Processing'; 
+  // schoolId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // LMS Types
-// Matches Prisma's CourseResource model
 export interface CourseResource {
   id: string;
   title: string;
-  type: 'ebook' | 'video' | 'note' | 'webinar'; // Matches Prisma enum
+  type: 'ebook' | 'video' | 'note' | 'webinar'; 
   urlOrContent: string; 
   fileName?: string | null;
-  courseId: string;
-  // createdAt and updatedAt are available
+  // courseId: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's Course model
 export interface Course {
   id: string;
   title: string;
   description: string;
   isPaid: boolean;
-  price?: number | null;
-  // schoolId?: string; // If courses are school-specific
-  // createdAt and updatedAt are available
+  price?: number;
+  // schoolId?: string; 
+  createdAt?: string;
+  updatedAt?: string;
 
-  // Relations (fetched separately)
-  resources?: CourseResource[]; // Example, actual data shape depends on query
-  activationCodes?: CourseActivationCode[];
-  studentEnrollments?: StudentCourseEnrollment[];
-  teacherEnrollments?: TeacherCourseEnrollment[];
+  resources: {
+    ebooks: CourseResource[];
+    videos: CourseResource[];
+    notes: CourseResource[];
+    webinars: CourseResource[];
+  };
+  enrolledStudentIds?: string[];
+  enrolledTeacherIds?: string[];
 }
 
-// Matches Prisma's CourseActivationCode model
 export interface CourseActivationCode {
   id: string;
   courseId: string;
   code: string; 
   isUsed: boolean;
-  usedByUserId?: string | null; // Foreign key to User
-  generatedDate: Date; // Prisma returns Date
-  expiryDate?: Date | null; // Prisma returns Date
-  // createdAt and updatedAt are available
+  usedByUserId?: string | null; 
+  generatedDate: string; // ISO String
+  expiryDate?: string | null; // ISO String
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Matches Prisma's StudentCourseEnrollment model
-export interface StudentCourseEnrollment {
-  id: string;
-  studentId: string; // User ID of the student
-  studentProfileId: string; // Student Profile ID
-  courseId: string;
-  enrolledAt: Date; // Prisma returns Date
-}
+// StudentCourseEnrollment and TeacherCourseEnrollment are implicitly handled
+// by enrolledStudentIds and enrolledTeacherIds arrays in the Course type for localStorage.
+// For a DB, these would be separate join tables.
 
-// Matches Prisma's TeacherCourseEnrollment model
-export interface TeacherCourseEnrollment {
-  id: string;
-  teacherId: string; // User ID of the teacher
-  teacherProfileId: string; // Teacher Profile ID
-  courseId: string;
-  enrolledAt: Date; // Prisma returns Date
-}

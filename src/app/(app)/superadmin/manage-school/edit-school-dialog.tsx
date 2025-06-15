@@ -1,18 +1,19 @@
 
 "use client";
 
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Edit2, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import type { SchoolEntry as School } from '@/types'; // Using your defined type
+import type { SchoolEntry as School } from '@/types'; 
 import { updateSchoolAction } from './actions';
 
 interface EditSchoolDialogProps {
-  school: School; // Use your School type, ensure it matches what page.tsx provides
+  school: School; 
 }
 
 export default function EditSchoolDialog({ school }: EditSchoolDialogProps) {
@@ -20,6 +21,7 @@ export default function EditSchoolDialog({ school }: EditSchoolDialogProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editSchoolName, setEditSchoolName] = useState(school.name);
   const [editSchoolAddress, setEditSchoolAddress] = useState(school.address);
+  const [editSchoolStatus, setEditSchoolStatus] = useState<School['status']>(school.status);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleEditSchoolSubmit = async (e: FormEvent) => {
@@ -36,6 +38,7 @@ export default function EditSchoolDialog({ school }: EditSchoolDialogProps) {
       id: school.id,
       name: editSchoolName.trim(),
       address: editSchoolAddress.trim(),
+      status: editSchoolStatus,
     });
 
     if (result.ok) {
@@ -47,11 +50,11 @@ export default function EditSchoolDialog({ school }: EditSchoolDialogProps) {
     setIsLoading(false);
   };
 
-  // Sync form state if the passed school prop changes (e.g., after a revalidation)
-  React.useEffect(() => {
+  useEffect(() => {
     setEditSchoolName(school.name);
     setEditSchoolAddress(school.address);
-  }, [school]);
+    setEditSchoolStatus(school.status);
+  }, [school, isDialogOpen]);
 
 
   return (
@@ -89,6 +92,18 @@ export default function EditSchoolDialog({ school }: EditSchoolDialogProps) {
                 disabled={isLoading}
               />
             </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="editSchoolStatus" className="text-right">Status</Label>
+              <Select value={editSchoolStatus} onValueChange={(value) => setEditSchoolStatus(value as School['status'])} disabled={isLoading}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
@@ -102,3 +117,4 @@ export default function EditSchoolDialog({ school }: EditSchoolDialogProps) {
     </Dialog>
   );
 }
+

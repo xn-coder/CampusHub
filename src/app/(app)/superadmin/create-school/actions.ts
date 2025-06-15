@@ -37,11 +37,11 @@ export async function createSchoolAndAdminAction(
       return { ok: false, message: `Admin email ${adminEmail} already exists.` };
     }
 
-    // Check if school with the same admin email exists (less likely but good practice)
+    // Check if school with the same admin email exists
     const { data: existingSchoolByAdminEmail, error: schoolFetchError } = await supabase
         .from('schools')
         .select('id')
-        .eq('admin_email', adminEmail) // Assuming column name is admin_email
+        .eq('admin_email', adminEmail) 
         .single();
     
     if (schoolFetchError && schoolFetchError.code !== 'PGRST116') {
@@ -58,16 +58,16 @@ export async function createSchoolAndAdminAction(
     const { error: adminInsertError } = await supabase
       .from('users')
       .insert({
-        id: newAdminUserId, // Manually provide UUID if your table doesn't auto-generate
+        id: newAdminUserId, 
         email: adminEmail,
         name: adminName,
-        password_hash: hashedPassword, // Assuming column is password_hash
+        password_hash: hashedPassword,
         role: 'admin',
       });
 
     if (adminInsertError) {
       console.error('Error creating admin user:', adminInsertError);
-      return { ok: false, message: 'Failed to create admin user account.' };
+      return { ok: false, message: `Failed to create admin user account: ${adminInsertError.message}` };
     }
 
     // Create School, linking to the new admin user
@@ -75,12 +75,12 @@ export async function createSchoolAndAdminAction(
     const { error: schoolInsertError } = await supabase
       .from('schools')
       .insert({
-        id: newSchoolId, // Manually provide UUID
+        id: newSchoolId, 
         name: schoolName,
         address: schoolAddress,
         admin_email: adminEmail, 
         admin_name: adminName,   
-        admin_user_id: newAdminUserId, // Assuming column name is admin_user_id
+        admin_user_id: newAdminUserId, 
         status: 'Active',
       });
 
@@ -89,7 +89,7 @@ export async function createSchoolAndAdminAction(
       // Attempt to clean up user if school creation failed
        await supabase.from('users').delete().eq('id', newAdminUserId);
        console.log(`Cleaned up user ${adminEmail} due to school creation failure.`);
-      return { ok: false, message: 'Failed to create school record.' };
+      return { ok: false, message: `Failed to create school record: ${schoolInsertError.message}` };
     }
 
     return {
@@ -98,8 +98,9 @@ export async function createSchoolAndAdminAction(
       schoolId: newSchoolId,
       adminId: newAdminUserId,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating school and admin:', error);
-    return { ok: false, message: 'Failed to create school and admin. Please check server logs.' };
+    return { ok: false, message: `Failed to create school and admin: ${error.message || 'Please check server logs.'}` };
   }
 }
+
