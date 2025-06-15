@@ -10,25 +10,35 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { Teacher, User } from '@/types'; // Supabase does not use Prisma types directly
+import type { Teacher, User } from '@/types'; 
 import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient'; // Import Supabase client
-import { v4 as uuidv4 } from 'uuid';
-import bcrypt from 'bcryptjs'; // For hashing default password if creating user
+import { supabase } from '@/lib/supabaseClient';
+import { createTeacherAction, updateTeacherAction, deleteTeacherAction } from './actions';
 
-const SALT_ROUNDS = 10;
-
-// No MOCK_TEACHERS_KEY or MOCK_USER_DB_KEY for primary data source.
-// Data will be fetched from Supabase.
+async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
+  const { data: school, error } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUserId)
+    .single();
+  if (error || !school) {
+    console.error("Error fetching admin's school or admin not linked:", error);
+    return null;
+  }
+  return school.id;
+}
 
 export default function ManageTeachersPage() {
   const { toast } = useToast();
-  const [teachers, setTeachers] = useState<Teacher[]>([]); // Teacher type from your @/types
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-teachers");
   const [isLoading, setIsLoading] = useState(true);
+  const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+
 
   // For Create Teacher Tab
   const [newTeacherName, setNewTeacherName] = useState('');
@@ -46,40 +56,44 @@ export default function ManageTeachersPage() {
 
 
   useEffect(() => {
-    fetchTeachers();
-  }, []);
+    const adminId = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(adminId);
+    if (adminId) {
+      fetchAdminSchoolId(adminId).then(schoolId => {
+        setCurrentSchoolId(schoolId);
+        if (schoolId) {
+          fetchTeachers(schoolId);
+        } else {
+          setIsLoading(false);
+          toast({ title: "Error", description: "Admin not linked to a school. Cannot manage teachers.", variant: "destructive"});
+        }
+      });
+    } else {
+       setIsLoading(false);
+       toast({ title: "Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
+    }
+  }, [toast]);
 
-  async function fetchTeachers() {
+  async function fetchTeachers(schoolId: string) {
     setIsLoading(true);
-    // Fetch from 'teachers' table and potentially join with 'users' for login email
-    // This depends on how your 'teachers' and 'users' tables are structured.
-    // Assuming 'teachers' has profile info (name, subject, profile_pic_url) and a 'user_id'.
-    // And 'users' has 'email'.
     const { data, error } = await supabase
-      .from('teachers') // Assuming your teacher profiles are in 'teachers' table
-      .select(`
-        id, 
-        name, 
-        subject, 
-        profile_picture_url,
-        user_id,
-        users ( email ) 
-      `); // Adjust if your user relation or email field is different
+      .from('teachers')
+      .select('id, name, email, subject, profile_picture_url, user_id')
+      .eq('school_id', schoolId);
 
     if (error) {
       console.error("Error fetching teachers:", error);
       toast({ title: "Error", description: "Failed to fetch teacher data.", variant: "destructive" });
       setTeachers([]);
     } else {
-      // Map Supabase data to your Teacher type
       const formattedTeachers = data?.map(t => ({
-        id: t.id,
+        id: t.id, // Teacher Profile ID
+        user_id: t.user_id, // User Login ID
         name: t.name,
-        email: t.users?.email || 'N/A', // Get email from joined users table
+        email: t.email, 
         subject: t.subject,
         profilePictureUrl: t.profile_picture_url,
-        userId: t.user_id, // Store the linked user_id for edit/delete operations
-        // Other fields like pastAssignmentsCount etc. would need separate queries
+        school_id: schoolId, // Already known
       })) || [];
       setTeachers(formattedTeachers);
     }
@@ -88,192 +102,102 @@ export default function ManageTeachersPage() {
 
   const filteredTeachers = teachers.filter(teacher =>
     teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    teacher.subject.toLowerCase().includes(searchTerm.toLowerCase())
+    (teacher.email && teacher.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (teacher.subject && teacher.subject.toLowerCase().includes(searchTerm.toLowerCase()))
   );
   
   const handleOpenEditDialog = (teacher: Teacher) => { 
     setEditingTeacher(teacher);
     setEditTeacherName(teacher.name);
     setEditTeacherEmail(teacher.email);
-    setEditTeacherSubject(teacher.subject);
+    setEditTeacherSubject(teacher.subject || '');
     setEditTeacherProfilePicUrl(teacher.profilePictureUrl || '');
     setIsEditDialogOpen(true);
   };
 
   const handleEditTeacherSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!editingTeacher || !editTeacherName.trim() || !editTeacherEmail.trim() || !editTeacherSubject.trim()) {
-      toast({ title: "Error", description: "Name, Email, and Subject cannot be empty.", variant: "destructive" });
+    if (!editingTeacher || !editTeacherName.trim() || !editTeacherEmail.trim() || !editTeacherSubject.trim() || !currentSchoolId) {
+      toast({ title: "Error", description: "Name, Email, Subject, and School context are required.", variant: "destructive" });
       return;
     }
-
-    // Check if email is being changed and if new email already exists for another user
-    if (editTeacherEmail.trim() !== editingTeacher.email) {
-        const { data: existingUser, error: fetchError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('email', editTeacherEmail.trim())
-            .neq('id', editingTeacher.userId) // Exclude current teacher's user record
-            .single();
-        if (fetchError && fetchError.code !== 'PGRST116') {
-            toast({ title: "Error", description: "Database error checking email.", variant: "destructive" });
-            return;
-        }
-        if (existingUser) {
-            toast({ title: "Error", description: "Another user with this email already exists.", variant: "destructive" });
-            return;
-        }
-    }
+    setIsLoading(true);
     
-    // Update 'teachers' (profile) table
-    const { error: teacherUpdateError } = await supabase
-      .from('teachers')
-      .update({ 
-        name: editTeacherName.trim(), 
-        subject: editTeacherSubject.trim(),
-        profile_picture_url: editTeacherProfilePicUrl.trim() || `https://placehold.co/100x100.png?text=${editTeacherName.substring(0,1)}`
-        // Note: Email is typically managed in the 'users' table. 
-        // If your 'teachers' table also stores email, update it here.
-      })
-      .eq('id', editingTeacher.id);
+    const result = await updateTeacherAction({
+      id: editingTeacher.id,
+      userId: editingTeacher.user_id,
+      name: editTeacherName,
+      email: editTeacherEmail,
+      subject: editTeacherSubject,
+      profilePictureUrl: editTeacherProfilePicUrl,
+      school_id: currentSchoolId,
+    });
 
-    if (teacherUpdateError) {
-      toast({ title: "Error", description: `Failed to update teacher profile: ${teacherUpdateError.message}`, variant: "destructive" });
-      return;
-    }
-
-    // Update 'users' (login) table if userId is available
-    if (editingTeacher.userId) {
-      const { error: userUpdateError } = await supabase
-        .from('users')
-        .update({ name: editTeacherName.trim(), email: editTeacherEmail.trim() })
-        .eq('id', editingTeacher.userId);
-      
-      if (userUpdateError) {
-         toast({ title: "Warning", description: `Teacher profile updated, but failed to update login details: ${userUpdateError.message}`, variant: "default" });
-      }
+    if (result.ok) {
+      toast({ title: "Teacher Updated", description: result.message });
+      setIsEditDialogOpen(false);
+      setEditingTeacher(null);
+      if(currentSchoolId) fetchTeachers(currentSchoolId);
     } else {
-        toast({ title: "Warning", description: "Teacher profile updated, but no linked user account found to update login details.", variant: "default" });
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-
-
-    toast({ title: "Teacher Updated", description: `${editTeacherName.trim()}'s details updated.` });
-    setIsEditDialogOpen(false);
-    setEditingTeacher(null);
-    fetchTeachers(); // Re-fetch to show updated data
+    setIsLoading(false);
   };
   
   const handleDeleteTeacher = async (teacher: Teacher) => { 
+    if (!currentSchoolId) return;
     if(confirm(`Are you sure you want to delete teacher ${teacher.name}? This will also remove their login access.`)) {
-      // 1. Delete from 'teachers' (profile) table
-      const { error: teacherDeleteError } = await supabase
-        .from('teachers')
-        .delete()
-        .eq('id', teacher.id);
-
-      if (teacherDeleteError) {
-        toast({ title: "Error", description: `Failed to delete teacher profile: ${teacherDeleteError.message}`, variant: "destructive" });
-        return;
+      setIsLoading(true);
+      const result = await deleteTeacherAction(teacher.id, teacher.user_id, currentSchoolId);
+      if (result.ok) {
+        toast({ title: "Teacher Deleted", description: result.message, variant: "destructive" });
+        if(currentSchoolId) fetchTeachers(currentSchoolId);
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
-
-      // 2. Delete from 'users' (login) table if userId exists
-      if (teacher.userId) {
-        const { error: userDeleteError } = await supabase
-          .from('users')
-          .delete()
-          .eq('id', teacher.userId);
-        if (userDeleteError) {
-          toast({ title: "Warning", description: `Teacher profile deleted, but failed to delete login: ${userDeleteError.message}`, variant: "default" });
-        }
-      }
-      
-      toast({
-        title: "Teacher Deleted",
-        description: `${teacher.name} has been removed.`,
-        variant: "destructive"
-      });
-      fetchTeachers(); // Re-fetch
+      setIsLoading(false);
     }
   };
 
   const handleCreateTeacherSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTeacherName.trim() || !newTeacherEmail.trim() || !newTeacherSubject.trim()) {
-      toast({ title: "Error", description: "Name, Email, and Subject are required.", variant: "destructive" });
+    if (!newTeacherName.trim() || !newTeacherEmail.trim() || !newTeacherSubject.trim() || !currentSchoolId) {
+      toast({ title: "Error", description: "Name, Email, Subject, and School context are required.", variant: "destructive" });
       return;
     }
+    setIsLoading(true);
 
-    // Check if email already exists in 'users' table
-    const { data: existingUser, error: fetchError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', newTeacherEmail.trim())
-        .single();
-
-    if (fetchError && fetchError.code !== 'PGRST116') {
-        toast({ title: "Error", description: "Database error checking email.", variant: "destructive" });
-        return;
-    }
-    if (existingUser) {
-        toast({ title: "Error", description: "A user with this email already exists.", variant: "destructive" });
-        return;
-    }
-    
-    // 1. Create User record for login
-    const newUserId = uuidv4();
-    const defaultPassword = "password"; // Set a default password
-    const hashedPassword = await bcrypt.hash(defaultPassword, SALT_ROUNDS);
-
-    const { data: newUser, error: userInsertError } = await supabase
-      .from('users')
-      .insert({
-        id: newUserId,
-        email: newTeacherEmail.trim(),
-        name: newTeacherName.trim(),
-        role: 'teacher',
-        password_hash: hashedPassword 
-      })
-      .select('id') // Select the ID of the newly created user
-      .single();
-
-    if (userInsertError || !newUser) {
-      toast({ title: "Error", description: `Failed to create teacher login: ${userInsertError?.message || 'No user data returned'}`, variant: "destructive" });
-      return;
-    }
-
-    // 2. Create Teacher profile record, linking to the User ID
-    const newTeacherId = uuidv4(); // Teacher profile might have its own ID separate from User ID
-    const { error: teacherInsertError } = await supabase
-      .from('teachers')
-      .insert({
-        id: newTeacherId,
-        user_id: newUser.id, // Link to the created user
-        name: newTeacherName.trim(),
-        subject: newTeacherSubject.trim(),
-        profile_picture_url: newTeacherProfilePicUrl.trim() || `https://placehold.co/100x100.png?text=${newTeacherName.substring(0,1)}`,
-        // email might be redundant if it's in the users table and joined
-      });
-
-    if (teacherInsertError) {
-      toast({ title: "Error", description: `Failed to create teacher profile: ${teacherInsertError.message}`, variant: "destructive" });
-      // Consider deleting the created user if teacher profile creation fails (rollback logic)
-      await supabase.from('users').delete().eq('id', newUser.id);
-      return;
-    }
-    
-    toast({
-      title: "Teacher Created",
-      description: `${newTeacherName} has been added and a login account created with default password 'password'.`,
+    const result = await createTeacherAction({
+      name: newTeacherName,
+      email: newTeacherEmail,
+      subject: newTeacherSubject,
+      profilePictureUrl: newTeacherProfilePicUrl,
+      school_id: currentSchoolId,
     });
 
-    setNewTeacherName('');
-    setNewTeacherEmail('');
-    setNewTeacherSubject('');
-    setNewTeacherProfilePicUrl('');
-    setActiveTab("list-teachers"); 
-    fetchTeachers(); // Refresh list
+    if (result.ok) {
+      toast({ title: "Teacher Created", description: result.message });
+      setNewTeacherName('');
+      setNewTeacherEmail('');
+      setNewTeacherSubject('');
+      setNewTeacherProfilePicUrl('');
+      setActiveTab("list-teachers"); 
+      if(currentSchoolId) fetchTeachers(currentSchoolId);
+    } else {
+       toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsLoading(false);
   };
+
+  if (!currentSchoolId && !isLoading) {
+    return (
+        <div className="flex flex-col gap-6">
+        <PageHeader title="Manage Teachers" />
+        <Card><CardContent className="pt-6 text-center text-destructive">Admin not associated with a school. Cannot manage teachers.</CardContent></Card>
+        </div>
+    );
+  }
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -281,7 +205,7 @@ export default function ManageTeachersPage() {
         title="Manage Teachers" 
         description="Administer teacher profiles, assignments, and records." 
         actions={
-          <Button onClick={() => setActiveTab("create-teacher")}>
+          <Button onClick={() => setActiveTab("create-teacher")} disabled={isLoading}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Teacher
           </Button>
         }
@@ -308,9 +232,12 @@ export default function ManageTeachersPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="max-w-sm"
+                  disabled={isLoading}
                 />
               </div>
-              {isLoading ? (
+              {isLoading && !currentSchoolId ? (
+                  <p className="text-center text-muted-foreground py-4">Identifying admin school...</p>
+              ) : isLoading ? (
                 <p className="text-center text-muted-foreground py-4">Loading teachers...</p>
               ) : (
                 <Table>
@@ -336,11 +263,11 @@ export default function ManageTeachersPage() {
                         <TableCell>{teacher.email}</TableCell>
                         <TableCell>{teacher.subject}</TableCell>
                         <TableCell className="space-x-1 text-right">
-                          <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(teacher)}>
+                          <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(teacher)} disabled={isLoading}>
                             <Edit2 className="h-4 w-4" />
                           </Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteTeacher(teacher)}>
-                            <Trash2 className="h-4 w-4" />
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteTeacher(teacher)} disabled={isLoading}>
+                             {isLoading && editingTeacher?.id === teacher.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -367,24 +294,25 @@ export default function ManageTeachersPage() {
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="teacherName">Teacher Name</Label>
-                  <Input id="teacherName" value={newTeacherName} onChange={(e) => setNewTeacherName(e.target.value)} placeholder="Full Name" required />
+                  <Input id="teacherName" value={newTeacherName} onChange={(e) => setNewTeacherName(e.target.value)} placeholder="Full Name" required disabled={isLoading}/>
                 </div>
                 <div>
                   <Label htmlFor="teacherEmail">Email (Login ID)</Label>
-                  <Input id="teacherEmail" type="email" value={newTeacherEmail} onChange={(e) => setNewTeacherEmail(e.target.value)} placeholder="teacher@example.com" required />
+                  <Input id="teacherEmail" type="email" value={newTeacherEmail} onChange={(e) => setNewTeacherEmail(e.target.value)} placeholder="teacher@example.com" required disabled={isLoading}/>
                 </div>
                 <div>
                   <Label htmlFor="teacherSubject">Subject</Label>
-                  <Input id="teacherSubject" value={newTeacherSubject} onChange={(e) => setNewTeacherSubject(e.target.value)} placeholder="e.g., Mathematics, English" required />
+                  <Input id="teacherSubject" value={newTeacherSubject} onChange={(e) => setNewTeacherSubject(e.target.value)} placeholder="e.g., Mathematics, English" required disabled={isLoading}/>
                 </div>
                 <div>
                   <Label htmlFor="teacherProfilePicUrl">Profile Picture URL (Optional)</Label>
-                  <Input id="teacherProfilePicUrl" value={newTeacherProfilePicUrl} onChange={(e) => setNewTeacherProfilePicUrl(e.target.value)} placeholder="https://placehold.co/100x100.png" />
+                  <Input id="teacherProfilePicUrl" value={newTeacherProfilePicUrl} onChange={(e) => setNewTeacherProfilePicUrl(e.target.value)} placeholder="https://placehold.co/100x100.png" disabled={isLoading}/>
                 </div>
               </CardContent>
               <CardFooter>
-                <Button type="submit">
-                  <UserPlus className="mr-2 h-4 w-4" /> Save Teacher & Create Account
+                <Button type="submit" disabled={isLoading || !currentSchoolId}>
+                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
+                  Save Teacher & Create Account
                 </Button>
               </CardFooter>
             </form>
@@ -395,11 +323,10 @@ export default function ManageTeachersPage() {
           <Card>
             <CardHeader>
               <CardTitle>Teacher Activity</CardTitle>
-              <CardDescription>Overview of teacher activities and engagement.</CardDescription>
+              <CardDescription>Overview of teacher activities and engagement (Placeholder).</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">Teacher activity tracking and reporting will be implemented here.</p>
-              <p className="mt-2 text-sm">This section could include things like assigned classes, average student performance, resources shared, etc., by querying relevant Supabase tables.</p>
+              <p className="text-muted-foreground">Teacher activity tracking will be implemented here.</p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -414,24 +341,27 @@ export default function ManageTeachersPage() {
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editTeacherName" className="text-right">Name</Label>
-                <Input id="editTeacherName" value={editTeacherName} onChange={(e) => setEditTeacherName(e.target.value)} className="col-span-3" required />
+                <Input id="editTeacherName" value={editTeacherName} onChange={(e) => setEditTeacherName(e.target.value)} className="col-span-3" required disabled={isLoading}/>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editTeacherEmail" className="text-right">Email</Label>
-                <Input id="editTeacherEmail" type="email" value={editTeacherEmail} onChange={(e) => setEditTeacherEmail(e.target.value)} className="col-span-3" required />
+                <Input id="editTeacherEmail" type="email" value={editTeacherEmail} onChange={(e) => setEditTeacherEmail(e.target.value)} className="col-span-3" required disabled={isLoading}/>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editTeacherSubject" className="text-right">Subject</Label>
-                <Input id="editTeacherSubject" value={editTeacherSubject} onChange={(e) => setEditTeacherSubject(e.target.value)} className="col-span-3" required />
+                <Input id="editTeacherSubject" value={editTeacherSubject} onChange={(e) => setEditTeacherSubject(e.target.value)} className="col-span-3" required disabled={isLoading}/>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editTeacherProfilePicUrl" className="text-right">Profile URL</Label>
-                <Input id="editTeacherProfilePicUrl" value={editTeacherProfilePicUrl} onChange={(e) => setEditTeacherProfilePicUrl(e.target.value)} className="col-span-3" placeholder="Optional image URL" />
+                <Input id="editTeacherProfilePicUrl" value={editTeacherProfilePicUrl} onChange={(e) => setEditTeacherProfilePicUrl(e.target.value)} className="col-span-3" placeholder="Optional image URL" disabled={isLoading}/>
               </div>
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit"><Save className="mr-2 h-4 w-4" /> Save Changes</Button>
+              <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
+                Save Changes
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -439,3 +369,4 @@ export default function ManageTeachersPage() {
     </div>
   );
 }
+

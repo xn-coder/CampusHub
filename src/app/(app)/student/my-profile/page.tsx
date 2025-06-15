@@ -10,11 +10,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Student, User, ClassData } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { KeyRound, School } from 'lucide-react';
-
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_USER_DB_KEY = 'mockUserDatabase';
-const MOCK_CLASSES_KEY = 'mockClassesData';
+import { KeyRound, School, Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function StudentProfilePage() {
   const { toast } = useToast();
@@ -24,29 +21,50 @@ export default function StudentProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const currentUserId = localStorage.getItem('currentUserId');
-      if (currentUserId) {
-        const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-        const students: Student[] = storedStudents ? JSON.parse(storedStudents) : [];
-        const foundStudent = students.find(s => s.id === currentUserId);
-        setStudentDetails(foundStudent || null);
+    const currentUserId = localStorage.getItem('currentUserId'); // This is User ID
+    if (currentUserId) {
+      // Fetch User details (for email, basic name)
+      supabase.from('users').select('*').eq('id', currentUserId).single()
+        .then(({ data: userData, error: userError }) => {
+          if (userError || !userData) {
+            toast({ title: "Error", description: "Could not fetch user data.", variant: "destructive"});
+            setIsLoading(false);
+            return;
+          }
+          setUserDetails(userData as User);
 
-        const storedUsers = localStorage.getItem(MOCK_USER_DB_KEY);
-        const users: User[] = storedUsers ? JSON.parse(storedUsers) : [];
-        const foundUser = users.find(u => u.id === currentUserId);
-        setUserDetails(foundUser || null);
+          // Fetch Student Profile details (for additional info like DOB, class_id, etc.)
+          supabase.from('students').select('*').eq('user_id', currentUserId).single()
+            .then(({ data: studentData, error: studentError }) => {
+              if (studentError || !studentData) {
+                toast({ title: "Error", description: "Could not fetch student profile.", variant: "destructive"});
+                setIsLoading(false);
+                return;
+              }
+              setStudentDetails(studentData as Student);
 
-        if (foundStudent && foundStudent.classId) {
-          const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-          const classes: ClassData[] = storedClasses ? JSON.parse(storedClasses) : [];
-          const foundClass = classes.find(c => c.id === foundStudent.classId);
-          setClassDetails(foundClass || null);
-        }
-      }
+              // If student has a class_id, fetch class details
+              if (studentData.class_id) {
+                supabase.from('classes').select('*').eq('id', studentData.class_id).single()
+                  .then(({ data: classData, error: classError }) => {
+                    if (classError || !classData) {
+                      console.warn("Could not fetch class details for student:", classError?.message);
+                      // Not critical enough to show toast, class can be N/A
+                    } else {
+                      setClassDetails(classData as ClassData);
+                    }
+                    setIsLoading(false);
+                  });
+              } else {
+                setIsLoading(false);
+              }
+            });
+        });
+    } else {
+      toast({ title: "Error", description: "User not identified. Please log in.", variant: "destructive"});
       setIsLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   const handleMockPasswordReset = () => {
     toast({
@@ -56,7 +74,12 @@ export default function StudentProfilePage() {
   };
 
   if (isLoading) {
-    return <div className="flex justify-center items-center h-64"><p>Loading profile...</p></div>;
+    return (
+        <div className="flex flex-col gap-6">
+            <PageHeader title="My Profile" />
+            <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading profile...</div>
+        </div>
+    );
   }
 
   if (!studentDetails || !userDetails) {
@@ -65,7 +88,7 @@ export default function StudentProfilePage() {
         <PageHeader title="My Profile" description="View and update your personal information." />
         <Card>
           <CardContent className="pt-6">
-            <p className="text-destructive text-center">Could not load your profile data. Please ensure you are logged in correctly.</p>
+            <p className="text-destructive text-center">Could not load your profile data. Please ensure you are logged in correctly or contact support.</p>
           </CardContent>
         </Card>
       </div>
@@ -84,7 +107,7 @@ export default function StudentProfilePage() {
         <Card className="md:col-span-1">
           <CardHeader className="items-center text-center">
             <Avatar className="w-24 h-24 mb-4">
-              <AvatarImage src={studentDetails.profilePictureUrl} alt={studentDetails.name} data-ai-hint="person student" />
+              <AvatarImage src={studentDetails.profile_picture_url || undefined} alt={studentDetails.name} data-ai-hint="person student" />
               <AvatarFallback className="text-3xl">{studentDetails.name.substring(0,2).toUpperCase()}</AvatarFallback>
             </Avatar>
             <CardTitle>{studentDetails.name}</CardTitle>
@@ -114,15 +137,15 @@ export default function StudentProfilePage() {
             </div>
             <div>
               <Label htmlFor="studentDob">Date of Birth</Label>
-              <Input id="studentDob" value={studentDetails.dateOfBirth || 'N/A'} readOnly />
+              <Input id="studentDob" value={studentDetails.date_of_birth || 'N/A'} readOnly />
             </div>
              <div>
               <Label htmlFor="studentGuardian">Guardian&apos;s Name</Label>
-              <Input id="studentGuardian" value={studentDetails.guardianName || 'N/A'} readOnly />
+              <Input id="studentGuardian" value={studentDetails.guardian_name || 'N/A'} readOnly />
             </div>
              <div>
               <Label htmlFor="studentContact">Contact Number</Label>
-              <Input id="studentContact" value={studentDetails.contactNumber || 'N/A'} readOnly />
+              <Input id="studentContact" value={studentDetails.contact_number || 'N/A'} readOnly />
             </div>
              <div>
               <Label htmlFor="studentAddress">Address</Label>
@@ -135,3 +158,4 @@ export default function StudentProfilePage() {
     </div>
   );
 }
+

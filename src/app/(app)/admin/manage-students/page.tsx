@@ -10,81 +10,105 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { Student, User } from '@/types'; // Supabase does not use Prisma types directly
+import type { Student, User, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
-import { Edit2, Trash2, Search, Users, Activity, Save } from 'lucide-react';
+import { Edit2, Trash2, Search, Users, Activity, Save, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient'; // Import Supabase client
+import { supabase } from '@/lib/supabaseClient'; 
 
-// No longer using MOCK_STUDENTS_KEY, MOCK_USER_DB_KEY, MOCK_ADMISSIONS_KEY for primary data source
-// Data will be fetched from Supabase, though these keys might still be used for other mock parts not yet refactored.
+async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
+  const { data: school, error } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUserId)
+    .single();
+  if (error || !school) {
+    console.error("Error fetching admin's school or admin not linked:", error);
+    return null;
+  }
+  return school.id;
+}
 
 export default function ManageStudentsPage() {
   const { toast } = useToast();
-  const [students, setStudents] = useState<Student[]>([]); // Student type from your @/types
+  const [students, setStudents] = useState<Student[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-students");
   const [isLoading, setIsLoading] = useState(true);
+  const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [allClassesInSchool, setAllClassesInSchool] = useState<ClassData[]>([]);
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [editStudentName, setEditStudentName] = useState('');
   const [editStudentEmail, setEditStudentEmail] = useState('');
+  const [editStudentClassId, setEditStudentClassId] = useState<string | undefined>(undefined);
+
 
   useEffect(() => {
-    fetchStudents();
-  }, []);
+    const adminId = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(adminId);
+    if (adminId) {
+      fetchAdminSchoolId(adminId).then(schoolId => {
+        setCurrentSchoolId(schoolId);
+        if (schoolId) {
+          fetchClasses(schoolId);
+          fetchStudents(schoolId);
+        } else {
+          setIsLoading(false);
+          toast({ title: "Error", description: "Admin not linked to a school. Cannot manage students.", variant: "destructive"});
+        }
+      });
+    } else {
+      setIsLoading(false);
+      toast({ title: "Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
+    }
+  }, [toast]);
 
-  async function fetchStudents() {
+  async function fetchClasses(schoolId: string) {
+     const { data, error } = await supabase
+      .from('classes')
+      .select('id, name, division')
+      .eq('school_id', schoolId);
+    if (error) {
+      console.error("Error fetching classes:", error);
+      toast({ title: "Error", description: "Failed to fetch class data.", variant: "destructive" });
+    } else {
+      setAllClassesInSchool(data || []);
+    }
+  }
+
+  async function fetchStudents(schoolId: string) {
     setIsLoading(true);
-    // Fetch from 'students' table and join with 'users' table for email
-    // This assumes your 'students' table has a 'user_id' linking to 'users.id'
-    // and that 'students' table contains name, profile_picture_url, class_id.
-    // 'users' table contains email.
-    // Adjust select query based on your actual Supabase table structure.
     const { data, error } = await supabase
-      .from('students') // Assuming your profiles are in 'students' table
-      .select(`
-        id, 
-        name, 
-        email, 
-        class_id, 
-        profile_picture_url, 
-        date_of_birth,
-        guardian_name,
-        contact_number,
-        address,
-        admission_date,
-        users ( id, email ) 
-      `); // Adjust fields as per your 'students' and 'users' table structure
+      .from('students')
+      .select('id, name, email, class_id, profile_picture_url, user_id')
+      .eq('school_id', schoolId);
 
     if (error) {
       console.error("Error fetching students:", error);
       toast({ title: "Error", description: "Failed to fetch student data.", variant: "destructive" });
       setStudents([]);
     } else {
-      // Map Supabase data to your Student type.
-      // This example assumes 'students' has most fields, and 'users' provides the email.
       const formattedStudents = data?.map(s => ({
         id: s.id,
         name: s.name,
-        email: s.users?.email || s.email || 'N/A', // Prioritize email from users table if joined, fallback to student table if it has email
-        classId: s.class_id,
+        email: s.email || 'N/A',
+        classId: s.class_id || '',
         profilePictureUrl: s.profile_picture_url,
-        dateOfBirth: s.date_of_birth,
-        guardianName: s.guardian_name,
-        contactNumber: s.contact_number,
-        address: s.address,
-        admissionDate: s.admission_date,
-        userId: s.users?.id || '', // Assuming students.user_id links to users.id
-        // Other fields like lastLogin, assignmentsSubmitted, etc. are not directly in students/users table
-        // and would require more complex queries or separate tracking if needed on this page.
+        userId: s.user_id, 
       })) || [];
       setStudents(formattedStudents);
     }
     setIsLoading(false);
   }
 
+  const getClassDisplayName = (classId?: string | null): string => {
+    if (!classId) return 'N/A';
+    const cls = allClassesInSchool.find(c => c.id === classId);
+    return cls ? `${cls.name} - ${cls.division}` : 'N/A';
+  };
 
   const filteredStudents = students.filter(student =>
     student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -95,15 +119,17 @@ export default function ManageStudentsPage() {
     setEditingStudent(student);
     setEditStudentName(student.name);
     setEditStudentEmail(student.email);
+    setEditStudentClassId(student.classId || undefined);
     setIsEditDialogOpen(true);
   };
 
   const handleEditStudentSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!editingStudent || !editStudentName.trim() || !editStudentEmail.trim()) {
-      toast({ title: "Error", description: "Name and Email cannot be empty.", variant: "destructive" });
+    if (!editingStudent || !editStudentName.trim() || !editStudentEmail.trim() || !currentSchoolId) {
+      toast({ title: "Error", description: "Name, Email, and School context are required.", variant: "destructive" });
       return;
     }
+    setIsLoading(true);
     
     // Check if email is being changed and if the new email already exists for another user
     if (editStudentEmail.trim() !== editingStudent.email) {
@@ -111,32 +137,37 @@ export default function ManageStudentsPage() {
         .from('users')
         .select('id')
         .eq('email', editStudentEmail.trim())
-        .neq('id', editingStudent.userId) // Exclude the current student's user record
+        .neq('id', editingStudent.userId) 
         .single();
 
-      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 means no rows, which is good
+      if (fetchError && fetchError.code !== 'PGRST116') { 
         toast({ title: "Error", description: "Database error checking email.", variant: "destructive" });
+        setIsLoading(false);
         return;
       }
       if (existingUser) {
         toast({ title: "Error", description: "Another user with this email already exists.", variant: "destructive" });
+        setIsLoading(false);
         return;
       }
     }
 
-    // Update 'students' table (or your student profiles table)
     const { error: studentUpdateError } = await supabase
-      .from('students') // Assuming 'students' table for profile info
-      .update({ name: editStudentName.trim(), email: editStudentEmail.trim() }) // Update email here if it's on student profile table
-      .eq('id', editingStudent.id);
+      .from('students')
+      .update({ 
+        name: editStudentName.trim(), 
+        email: editStudentEmail.trim(),
+        class_id: editStudentClassId === 'unassign' ? null : editStudentClassId 
+      })
+      .eq('id', editingStudent.id)
+      .eq('school_id', currentSchoolId);
 
     if (studentUpdateError) {
       toast({ title: "Error", description: `Failed to update student profile: ${studentUpdateError.message}`, variant: "destructive" });
+      setIsLoading(false);
       return;
     }
 
-    // Update 'users' table (for login email and name)
-    // This assumes editingStudent.userId holds the ID from the 'users' table.
     if (editingStudent.userId) {
       const { error: userUpdateError } = await supabase
         .from('users')
@@ -145,36 +176,32 @@ export default function ManageStudentsPage() {
       
       if (userUpdateError) {
         toast({ title: "Warning", description: `Student profile updated, but failed to update user login details: ${userUpdateError.message}`, variant: "default" });
-        // Decide on rollback or proceed with partial success. For now, we proceed.
       }
-    } else {
-        toast({ title: "Warning", description: "Student profile updated, but no linked user account found to update login details.", variant: "default" });
     }
     
-    // TODO: Update admission record if necessary (if email is a key there)
-    // This depends on how admission records are linked and if they store email redundantly.
-
     toast({ title: "Student Updated", description: `${editStudentName.trim()}'s details updated.` });
     setIsEditDialogOpen(false);
     setEditingStudent(null);
-    fetchStudents(); // Re-fetch to show updated data
+    if(currentSchoolId) fetchStudents(currentSchoolId); 
+    setIsLoading(false);
   };
   
   const handleDeleteStudent = async (student: Student) => { 
-    if (confirm(`Are you sure you want to delete ${student.name}? This will also remove their login access and admission record if any.`)) {
-      
-      // 1. Delete from 'students' (profile) table
+    if (!currentSchoolId) return;
+    if (confirm(`Are you sure you want to delete ${student.name}? This will also remove their login access.`)) {
+      setIsLoading(true);
       const { error: studentDeleteError } = await supabase
         .from('students')
         .delete()
-        .eq('id', student.id);
+        .eq('id', student.id)
+        .eq('school_id', currentSchoolId);
 
       if (studentDeleteError) {
         toast({ title: "Error", description: `Failed to delete student profile: ${studentDeleteError.message}`, variant: "destructive" });
+        setIsLoading(false);
         return;
       }
 
-      // 2. Delete from 'users' (login) table if userId exists
       if (student.userId) {
         const { error: userDeleteError } = await supabase
           .from('users')
@@ -185,24 +212,24 @@ export default function ManageStudentsPage() {
         }
       }
       
-      // 3. TODO: Delete from 'admission_records' table.
-      // This needs logic to find the admission record, likely by student.email or a student_id FK.
-      // Example:
-      // const { error: admissionDeleteError } = await supabase
-      //   .from('admission_records') // Assuming table name
-      //   .delete()
-      //   .eq('student_id', student.id); // Or .eq('email', student.email)
-      // if (admissionDeleteError) { /* ... handle ... */ }
-
-
       toast({
         title: "Student Deleted",
         description: `${student.name} has been removed.`,
         variant: "destructive"
       });
-      fetchStudents(); // Re-fetch
+      if(currentSchoolId) fetchStudents(currentSchoolId); 
+      setIsLoading(false);
     }
   };
+
+  if (!currentSchoolId && !isLoading) {
+    return (
+        <div className="flex flex-col gap-6">
+        <PageHeader title="Manage Students" />
+        <Card><CardContent className="pt-6 text-center text-destructive">Admin not associated with a school. Cannot manage students.</CardContent></Card>
+        </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -221,7 +248,7 @@ export default function ManageStudentsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Student Roster</CardTitle>
-              <CardDescription>View, search, and manage enrolled student profiles. New students are registered by teachers.</CardDescription>
+              <CardDescription>View, search, and manage enrolled student profiles. New students are registered by teachers via their portal.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-4 flex items-center gap-2">
@@ -231,9 +258,12 @@ export default function ManageStudentsPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="max-w-sm"
+                  disabled={isLoading}
                 />
               </div>
-              {isLoading ? (
+              {isLoading && !currentSchoolId ? (
+                 <p className="text-center text-muted-foreground py-4">Identifying admin school...</p>
+              ) : isLoading ? (
                 <p className="text-center text-muted-foreground py-4">Loading students...</p>
               ) : (
                 <Table>
@@ -242,7 +272,7 @@ export default function ManageStudentsPage() {
                       <TableHead>Avatar</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead>Class ID</TableHead>
+                      <TableHead>Class</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -257,13 +287,13 @@ export default function ManageStudentsPage() {
                         </TableCell>
                         <TableCell className="font-medium">{student.name}</TableCell>
                         <TableCell>{student.email}</TableCell>
-                        <TableCell>{student.classId || 'N/A'}</TableCell>
+                        <TableCell>{getClassDisplayName(student.classId)}</TableCell>
                         <TableCell className="space-x-1 text-right">
-                          <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)}>
+                          <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isLoading}>
                             <Edit2 className="h-4 w-4" />
                           </Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteStudent(student)}>
-                            <Trash2 className="h-4 w-4" />
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteStudent(student)} disabled={isLoading}>
+                            {isLoading && editingStudent?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -273,7 +303,7 @@ export default function ManageStudentsPage() {
               )}
               {!isLoading && filteredStudents.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">
-                  {searchTerm ? "No students match your search." : "No students found. Students are registered by teachers."}
+                  {searchTerm ? "No students match your search." : "No students found for this school. Teachers can register new students."}
                 </p>
               )}
             </CardContent>
@@ -288,7 +318,6 @@ export default function ManageStudentsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">Student activity tracking and reporting will be implemented here.</p>
-              <p className="mt-2 text-sm">This section could include things like login history, assignment submission rates, forum participation, etc., by querying relevant Supabase tables.</p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -303,18 +332,33 @@ export default function ManageStudentsPage() {
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editStudentName" className="text-right">Name</Label>
-                <Input id="editStudentName" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="col-span-3" required />
+                <Input id="editStudentName" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="col-span-3" required disabled={isLoading} />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editStudentEmail" className="text-right">Email</Label>
-                <Input id="editStudentEmail" type="email" value={editStudentEmail} onChange={(e) => setEditStudentEmail(e.target.value)} className="col-span-3" required />
+                <Input id="editStudentEmail" type="email" value={editStudentEmail} onChange={(e) => setEditStudentEmail(e.target.value)} className="col-span-3" required disabled={isLoading} />
               </div>
-              {/* Add other editable fields here if needed, e.g., classId, profilePictureUrl etc.
-                  Make sure to update the Supabase queries in handleEditStudentSubmit accordingly. */}
+               <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="editStudentClassId" className="text-right">Assign Class</Label>
+                 <Select value={editStudentClassId} onValueChange={(value) => setEditStudentClassId(value === 'unassign' ? undefined : value)} disabled={isLoading}>
+                    <SelectTrigger className="col-span-3">
+                        <SelectValue placeholder="Select a class" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="unassign">Unassign from Class</SelectItem>
+                        {allClassesInSchool.map(cls => (
+                            <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                        ))}
+                    </SelectContent>
+                 </Select>
+              </div>
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit"><Save className="mr-2 h-4 w-4" /> Save Changes</Button>
+              <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
+                Save Changes
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -322,3 +366,4 @@ export default function ManageStudentsPage() {
     </div>
   );
 }
+

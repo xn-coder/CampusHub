@@ -6,42 +6,58 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { StudentScore, Exam, Subject } from '@/types';
 import { useState, useEffect } from 'react';
-import { Award, BookOpen, CalendarCheck, FileText } from 'lucide-react';
+import { Award, BookOpen, CalendarCheck, FileText, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-
-const MOCK_STUDENT_SCORES_KEY = 'mockStudentScoresData';
-const MOCK_EXAMS_KEY = 'mockExamsData';
-const MOCK_SUBJECTS_KEY = 'mockSubjectsData';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function StudentMyScoresPage() {
   const [myScores, setMyScores] = useState<StudentScore[]>([]);
   const [allExams, setAllExams] = useState<Exam[]>([]);
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentStudentId, setCurrentStudentId] = useState<string | null>(null);
+  const [currentStudentId, setCurrentStudentId] = useState<string | null>(null); // This will be Student Profile ID
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+
 
   useEffect(() => {
-    setIsLoading(true);
-    if (typeof window !== 'undefined') {
-      const studentId = localStorage.getItem('currentUserId');
-      setCurrentStudentId(studentId);
+    const studentUserId = localStorage.getItem('currentUserId');
+    if (studentUserId) {
+      // First, get student's profile ID and school ID from their user ID
+      supabase.from('students').select('id, school_id').eq('user_id', studentUserId).single()
+        .then(({data: studentProfile, error: profileError}) => {
+          if (profileError || !studentProfile) {
+            console.error("Error fetching student profile:", profileError);
+            setIsLoading(false); return;
+          }
+          setCurrentStudentId(studentProfile.id);
+          setCurrentSchoolId(studentProfile.school_id);
 
-      const storedScores = localStorage.getItem(MOCK_STUDENT_SCORES_KEY);
-      const allScoresData: StudentScore[] = storedScores ? JSON.parse(storedScores) : [];
-      
-      if (studentId) {
-        const studentSpecificScores = allScoresData
-          .filter(score => score.studentId === studentId)
-          .sort((a, b) => parseISO(b.dateRecorded).getTime() - parseISO(a.dateRecorded).getTime()); // Newest first
-        setMyScores(studentSpecificScores);
-      }
-      
-      const storedExams = localStorage.getItem(MOCK_EXAMS_KEY);
-      setAllExams(storedExams ? JSON.parse(storedExams) : []);
-      
-      const storedSubjects = localStorage.getItem(MOCK_SUBJECTS_KEY);
-      setAllSubjects(storedSubjects ? JSON.parse(storedSubjects) : []);
+          // Now fetch scores and related data for this student and school
+          if (studentProfile.id && studentProfile.school_id) {
+            Promise.all([
+              supabase.from('student_scores').select('*').eq('student_id', studentProfile.id).eq('school_id', studentProfile.school_id).order('date_recorded', { ascending: false }),
+              supabase.from('exams').select('*').eq('school_id', studentProfile.school_id),
+              supabase.from('subjects').select('*').eq('school_id', studentProfile.school_id)
+            ]).then(([scoresRes, examsRes, subjectsRes]) => {
+              if (scoresRes.error) console.error("Error fetching scores", scoresRes.error);
+              else setMyScores((scoresRes.data as StudentScore[]) || []);
 
+              if (examsRes.error) console.error("Error fetching exams", examsRes.error);
+              else setAllExams((examsRes.data as Exam[]) || []);
+              
+              if (subjectsRes.error) console.error("Error fetching subjects", subjectsRes.error);
+              else setAllSubjects((subjectsRes.data as Subject[]) || []);
+              
+              setIsLoading(false);
+            }).catch(err => {
+                console.error("Error fetching student score data:", err);
+                setIsLoading(false);
+            });
+          } else {
+              setIsLoading(false); // No school ID or student profile ID
+          }
+        });
+    } else {
       setIsLoading(false);
     }
   }, []);
@@ -62,7 +78,7 @@ export default function StudentMyScoresPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-muted-foreground text-center py-4">Loading your scores...</p>
+             <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading your scores...</div>
           ) : !currentStudentId ? (
             <p className="text-destructive text-center py-4">Could not identify student. Please log in again.</p>
           ) : myScores.length === 0 ? (
@@ -81,11 +97,11 @@ export default function StudentMyScoresPage() {
               <TableBody>
                 {myScores.map((score) => (
                   <TableRow key={score.id}>
-                    <TableCell className="font-medium">{getExamName(score.examId)}</TableCell>
-                    <TableCell>{getSubjectName(score.subjectId)}</TableCell>
+                    <TableCell className="font-medium">{getExamName(score.exam_id)}</TableCell>
+                    <TableCell>{getSubjectName(score.subject_id)}</TableCell>
                     <TableCell className="font-semibold">{String(score.score)}</TableCell>
-                    <TableCell>{score.maxMarks ?? 'N/A'}</TableCell>
-                    <TableCell>{format(parseISO(score.dateRecorded), 'PP')}</TableCell>
+                    <TableCell>{score.max_marks ?? 'N/A'}</TableCell>
+                    <TableCell>{format(parseISO(score.date_recorded), 'PP')}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -96,3 +112,4 @@ export default function StudentMyScoresPage() {
     </div>
   );
 }
+

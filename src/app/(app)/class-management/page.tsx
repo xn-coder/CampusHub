@@ -11,39 +11,54 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord } from '@/types';
+import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
-import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from '@/lib/supabaseClient';
+import { 
+  addClassNameAction, deleteClassNameAction, 
+  addSectionNameAction, deleteSectionNameAction,
+  activateClassSectionAction, deleteActiveClassAction,
+  assignStudentsToClassAction, assignTeacherToClassAction
+} from './actions';
 
-const MOCK_CLASS_NAMES_KEY = 'mockClassNamesData';
-const MOCK_SECTION_NAMES_KEY = 'mockSectionNamesData';
-const MOCK_CLASSES_KEY = 'mockClassesData'; // For activated class-sections
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_TEACHERS_KEY = 'mockTeachersData';
+async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
+  const { data: school, error } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUserId)
+    .single();
+  if (error || !school) {
+    console.error("Error fetching admin's school or admin not linked:", error);
+    return null;
+  }
+  return school.id;
+}
 
 export default function ClassManagementPage() {
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   const [classNamesList, setClassNamesList] = useState<ClassNameRecord[]>([]);
   const [sectionNamesList, setSectionNamesList] = useState<SectionRecord[]>([]);
-  const [activeClasses, setActiveClasses] = useState<ClassData[]>([]); // Instantiated class-sections
+  const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
+  const [allStudentsInSchool, setAllStudentsInSchool] = useState<Student[]>([]); 
+  const [allTeachersInSchool, setAllTeachersInSchool] = useState<Teacher[]>([]);
+  const [allAcademicYears, setAllAcademicYears] = useState<AcademicYear[]>([]);
 
-  const [mockStudents, setMockStudents] = useState<Student[]>([]); 
-  const [mockTeachers, setMockTeachers] = useState<Teacher[]>([]);
-
-  // Dialog states
   const [isActivateClassSectionDialogOpen, setIsActivateClassSectionDialogOpen] = useState(false);
   const [isManageStudentsDialogOpen, setIsManageStudentsDialogOpen] = useState(false);
   const [isAssignTeacherDialogOpen, setIsAssignTeacherDialogOpen] = useState(false);
 
-  // Form states for new class name / section name
   const [newClassNameInput, setNewClassNameInput] = useState('');
   const [newSectionNameInput, setNewSectionNameInput] = useState('');
 
-  // States for "Activate Class-Section" Dialog
-  const [selectedClassNameForActivation, setSelectedClassNameForActivation] = useState<string>('');
-  const [selectedSectionNameForActivation, setSelectedSectionNameForActivation] = useState<string>('');
+  const [selectedClassNameIdForActivation, setSelectedClassNameIdForActivation] = useState<string>('');
+  const [selectedSectionNameIdForActivation, setSelectedSectionNameIdForActivation] = useState<string>('');
+  const [selectedAcademicYearIdForActivation, setSelectedAcademicYearIdForActivation] = useState<string | undefined>(undefined);
   
   const [classToManageStudents, setClassToManageStudents] = useState<ClassData | null>(null);
   const [selectedStudentIdsForDialog, setSelectedStudentIdsForDialog] = useState<string[]>([]);
@@ -51,149 +66,169 @@ export default function ClassManagementPage() {
   const [selectedTeacherIdForDialog, setSelectedTeacherIdForDialog] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedClassNames = localStorage.getItem(MOCK_CLASS_NAMES_KEY);
-      setClassNamesList(storedClassNames ? JSON.parse(storedClassNames) : []);
-      
-      const storedSectionNames = localStorage.getItem(MOCK_SECTION_NAMES_KEY);
-      setSectionNamesList(storedSectionNames ? JSON.parse(storedSectionNames) : []);
-
-      const storedActiveClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      setActiveClasses(storedActiveClasses ? JSON.parse(storedActiveClasses) : []);
-      
-      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      setMockStudents(storedStudents ? JSON.parse(storedStudents) : []);
-
-      const storedTeachers = localStorage.getItem(MOCK_TEACHERS_KEY);
-      setMockTeachers(storedTeachers ? JSON.parse(storedTeachers) : []);
+    const adminId = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(adminId);
+    if (adminId) {
+      fetchAdminSchoolId(adminId).then(schoolId => {
+        setCurrentSchoolId(schoolId);
+        if (schoolId) {
+          fetchAllData(schoolId);
+        } else {
+          setIsLoading(false);
+          toast({ title: "Error", description: "Admin not linked to a school. Cannot manage classes.", variant: "destructive"});
+        }
+      });
+    } else {
+       setIsLoading(false);
+       toast({ title: "Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
     }
-  }, []);
+  }, [toast]);
 
-  const updateLocalStorage = (key: string, data: any[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(data));
-    }
-  };
+  async function fetchAllData(schoolId: string) {
+    setIsLoading(true);
+    await Promise.all([
+      fetchClassNames(schoolId),
+      fetchSectionNames(schoolId),
+      fetchActiveClasses(schoolId),
+      fetchStudents(schoolId),
+      fetchTeachers(schoolId),
+      fetchAcademicYears(schoolId),
+    ]);
+    setIsLoading(false);
+  }
 
-  const getTeacherName = (teacherId?: string): string => {
+  async function fetchClassNames(schoolId: string) {
+    const { data, error } = await supabase.from('class_names').select('*').eq('school_id', schoolId).order('name');
+    if (error) toast({ title: "Error fetching class names", description: error.message, variant: "destructive" });
+    else setClassNamesList(data || []);
+  }
+  async function fetchSectionNames(schoolId: string) {
+    const { data, error } = await supabase.from('section_names').select('*').eq('school_id', schoolId).order('name');
+    if (error) toast({ title: "Error fetching section names", description: error.message, variant: "destructive" });
+    else setSectionNamesList(data || []);
+  }
+  async function fetchActiveClasses(schoolId: string) {
+    const { data, error } = await supabase.from('classes').select('*').eq('school_id', schoolId).order('name').order('division');
+    if (error) toast({ title: "Error fetching active classes", description: error.message, variant: "destructive" });
+    else setActiveClasses( (data || []).map(ac => ({...ac, studentIds: []})) ); // studentIds will be populated if needed by specific features
+  }
+   async function fetchStudents(schoolId: string) {
+    const { data, error } = await supabase.from('students').select('*').eq('school_id', schoolId);
+    if (error) toast({ title: "Error fetching students", description: error.message, variant: "destructive" });
+    else setAllStudentsInSchool(data || []);
+  }
+  async function fetchTeachers(schoolId: string) {
+    const { data, error } = await supabase.from('teachers').select('*').eq('school_id', schoolId);
+    if (error) toast({ title: "Error fetching teachers", description: error.message, variant: "destructive" });
+    else setAllTeachersInSchool(data || []);
+  }
+  async function fetchAcademicYears(schoolId: string) {
+     const { data, error } = await supabase.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false });
+    if (error) toast({ title: "Error fetching academic years", description: error.message, variant: "destructive" });
+    else setAllAcademicYears(data || []);
+  }
+
+  const getTeacherName = (teacherId?: string | null): string => {
     if (!teacherId) return 'N/A';
-    const teacher = mockTeachers.find(t => t.id === teacherId);
-    return teacher ? teacher.name : 'N/A';
+    return allTeachersInSchool.find(t => t.id === teacherId)?.name || 'N/A';
+  };
+  const getAcademicYearName = (yearId?: string | null): string => {
+    if (!yearId) return 'N/A';
+    return allAcademicYears.find(ay => ay.id === yearId)?.name || 'N/A';
   };
 
-  // --- Class Name (Standard) Management ---
-  const handleAddClassName = () => {
-    if (!newClassNameInput.trim()) {
-      toast({ title: "Error", description: "Class Name cannot be empty.", variant: "destructive" });
-      return;
+  const handleAddClassName = async () => {
+    if (!currentSchoolId) return;
+    setIsLoading(true);
+    const result = await addClassNameAction(newClassNameInput, currentSchoolId);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.ok) {
+      setNewClassNameInput('');
+      fetchClassNames(currentSchoolId);
     }
-    if (classNamesList.some(cn => cn.name.toLowerCase() === newClassNameInput.trim().toLowerCase())) {
-      toast({ title: "Error", description: `Class Name '${newClassNameInput.trim()}' already exists.`, variant: "destructive" });
-      return;
-    }
-    const newClassNameRecord: ClassNameRecord = { id: `cn-${Date.now()}`, name: newClassNameInput.trim() };
-    const updatedList = [...classNamesList, newClassNameRecord];
-    setClassNamesList(updatedList);
-    updateLocalStorage(MOCK_CLASS_NAMES_KEY, updatedList);
-    toast({ title: "Class Name Added", description: `'${newClassNameRecord.name}' has been added.` });
-    setNewClassNameInput('');
+    setIsLoading(false);
   };
 
-  const handleDeleteClassName = (id: string) => {
-    const nameToDelete = classNamesList.find(cn => cn.id === id)?.name;
-    // Optionally, check if this class name is used in any activeClasses and prevent deletion or warn.
-    if (activeClasses.some(ac => ac.name === nameToDelete)) {
-        toast({ title: "Cannot Delete", description: `Class Name '${nameToDelete}' is used in active class-sections. Please remove those first.`, variant: "destructive"});
-        return;
-    }
-    if (confirm(`Are you sure you want to delete Class Name: ${nameToDelete}?`)) {
-      const updatedList = classNamesList.filter(cn => cn.id !== id);
-      setClassNamesList(updatedList);
-      updateLocalStorage(MOCK_CLASS_NAMES_KEY, updatedList);
-      toast({ title: "Class Name Deleted", description: `'${nameToDelete}' has been deleted.`, variant: "destructive" });
-    }
+  const handleDeleteClassName = async (id: string) => {
+    if (!currentSchoolId) return;
+    setIsLoading(true);
+    const result = await deleteClassNameAction(id, currentSchoolId);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.ok) fetchClassNames(currentSchoolId);
+    setIsLoading(false);
   };
 
-  // --- Section/Division Name Management ---
-  const handleAddSectionName = () => {
-    if (!newSectionNameInput.trim()) {
-      toast({ title: "Error", description: "Section Name cannot be empty.", variant: "destructive" });
-      return;
+  const handleAddSectionName = async () => {
+    if (!currentSchoolId) return;
+    setIsLoading(true);
+    const result = await addSectionNameAction(newSectionNameInput, currentSchoolId);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.ok) {
+      setNewSectionNameInput('');
+      fetchSectionNames(currentSchoolId);
     }
-     if (sectionNamesList.some(sn => sn.name.toLowerCase() === newSectionNameInput.trim().toLowerCase())) {
-      toast({ title: "Error", description: `Section Name '${newSectionNameInput.trim()}' already exists.`, variant: "destructive" });
-      return;
-    }
-    const newSectionNameRecord: SectionRecord = { id: `sn-${Date.now()}`, name: newSectionNameInput.trim() };
-    const updatedList = [...sectionNamesList, newSectionNameRecord];
-    setSectionNamesList(updatedList);
-    updateLocalStorage(MOCK_SECTION_NAMES_KEY, updatedList);
-    toast({ title: "Section Name Added", description: `'${newSectionNameRecord.name}' has been added.` });
-    setNewSectionNameInput('');
+    setIsLoading(false);
   };
 
-  const handleDeleteSectionName = (id: string) => {
-    const nameToDelete = sectionNamesList.find(sn => sn.id === id)?.name;
-     // Optionally, check if this section name is used in any activeClasses
-    if (activeClasses.some(ac => ac.division === nameToDelete)) {
-        toast({ title: "Cannot Delete", description: `Section Name '${nameToDelete}' is used in active class-sections. Please remove those first.`, variant: "destructive"});
-        return;
-    }
-    if (confirm(`Are you sure you want to delete Section Name: ${nameToDelete}?`)) {
-      const updatedList = sectionNamesList.filter(sn => sn.id !== id);
-      setSectionNamesList(updatedList);
-      updateLocalStorage(MOCK_SECTION_NAMES_KEY, updatedList);
-      toast({ title: "Section Name Deleted", description: `'${nameToDelete}' has been deleted.`, variant: "destructive" });
-    }
+  const handleDeleteSectionName = async (id: string) => {
+    if (!currentSchoolId) return;
+    setIsLoading(true);
+    const result = await deleteSectionNameAction(id, currentSchoolId);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.ok) fetchSectionNames(currentSchoolId);
+    setIsLoading(false);
   };
 
-  // --- Activate & Manage Class-Sections ---
   const handleOpenActivateDialog = () => {
-    setSelectedClassNameForActivation('');
-    setSelectedSectionNameForActivation('');
+    setSelectedClassNameIdForActivation('');
+    setSelectedSectionNameIdForActivation('');
+    setSelectedAcademicYearIdForActivation(undefined);
     setIsActivateClassSectionDialogOpen(true);
   };
 
-  const handleActivateClassSection = () => {
-    if (!selectedClassNameForActivation || !selectedSectionNameForActivation) {
-      toast({ title: "Error", description: "Please select both a Class Name and a Section Name.", variant: "destructive" });
+  const handleActivateClassSection = async () => {
+    if (!selectedClassNameIdForActivation || !selectedSectionNameIdForActivation || !currentSchoolId) {
+      toast({ title: "Error", description: "Please select Class Name, Section Name, and ensure school context.", variant: "destructive" });
       return;
     }
-    if (activeClasses.some(ac => ac.name === selectedClassNameForActivation && ac.division === selectedSectionNameForActivation)) {
-      toast({ title: "Error", description: `Class-Section '${selectedClassNameForActivation} - ${selectedSectionNameForActivation}' is already active.`, variant: "destructive" });
-      return;
+    setIsLoading(true);
+    const className = classNamesList.find(cn => cn.id === selectedClassNameIdForActivation)?.name || '';
+    const sectionName = sectionNamesList.find(sn => sn.id === selectedSectionNameIdForActivation)?.name || '';
+
+    const result = await activateClassSectionAction({ 
+      classNameId: selectedClassNameIdForActivation, 
+      sectionNameId: selectedSectionNameIdForActivation, 
+      schoolId: currentSchoolId,
+      className, sectionName,
+      academicYearId: selectedAcademicYearIdForActivation === 'none' ? undefined : selectedAcademicYearIdForActivation
+    });
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.ok) {
+      fetchActiveClasses(currentSchoolId);
+      setIsActivateClassSectionDialogOpen(false);
     }
-    const newActiveClass: ClassData = {
-      id: `ac-${Date.now()}`,
-      name: selectedClassNameForActivation,
-      division: selectedSectionNameForActivation,
-      studentIds: [],
-    };
-    const updatedActiveClasses = [...activeClasses, newActiveClass];
-    setActiveClasses(updatedActiveClasses);
-    updateLocalStorage(MOCK_CLASSES_KEY, updatedActiveClasses);
-    toast({ title: "Class-Section Activated", description: `'${newActiveClass.name} - ${newActiveClass.division}' is now active.` });
-    setIsActivateClassSectionDialogOpen(false);
+    setIsLoading(false);
   };
 
-  const handleDeleteActiveClass = (activeClassId: string) => {
-    const classToDelete = activeClasses.find(c => c.id === activeClassId);
-    if (confirm(`Are you sure you want to delete active class-section ${classToDelete?.name} - ${classToDelete?.division}? This will unassign all students and teachers.`)) {
-      const updatedActiveClasses = activeClasses.filter(c => c.id !== activeClassId);
-      setActiveClasses(updatedActiveClasses);
-      updateLocalStorage(MOCK_CLASSES_KEY, updatedActiveClasses);
-      // Also, potentially update student records to remove this classId
-      const updatedStudents = mockStudents.map(s => s.classId === activeClassId ? {...s, classId: ''} : s);
-      setMockStudents(updatedStudents);
-      updateLocalStorage(MOCK_STUDENTS_KEY, updatedStudents);
-
-      toast({ title: "Active Class-Section Deleted", description: `Class ${classToDelete?.name} - ${classToDelete?.division} has been deactivated.`, variant: "destructive" });
+  const handleDeleteActiveClass = async (activeClassId: string) => {
+    if (!currentSchoolId) return;
+    if (confirm(`Are you sure you want to delete this active class-section? This will unassign all students.`)) {
+      setIsLoading(true);
+      const result = await deleteActiveClassAction(activeClassId, currentSchoolId);
+      toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+      if (result.ok) {
+        fetchActiveClasses(currentSchoolId);
+        fetchStudents(currentSchoolId); // Refresh student list as their class_id might change
+      }
+      setIsLoading(false);
     }
   };
 
   const handleOpenManageStudentsDialog = (cls: ClassData) => {
     setClassToManageStudents(cls);
-    setSelectedStudentIdsForDialog([...cls.studentIds]);
+    // Fetch students currently in this class
+    const currentStudentIdsInClass = allStudentsInSchool.filter(s => s.class_id === cls.id).map(s => s.id);
+    setSelectedStudentIdsForDialog(currentStudentIdsInClass);
     setIsManageStudentsDialogOpen(true);
   };
 
@@ -203,50 +238,48 @@ export default function ClassManagementPage() {
     );
   };
 
-  const handleSaveStudentAssignments = () => {
-    if (!classToManageStudents) return;
-    const updatedActiveClasses = activeClasses.map(c => 
-      c.id === classToManageStudents.id ? { ...c, studentIds: selectedStudentIdsForDialog } : c
-    );
-    setActiveClasses(updatedActiveClasses);
-    updateLocalStorage(MOCK_CLASSES_KEY, updatedActiveClasses);
-
-    // Update student records with the new classId
-    const studentsToUpdate = mockStudents.map(student => {
-        if (selectedStudentIdsForDialog.includes(student.id)) { // Student is in this class
-            return {...student, classId: classToManageStudents.id};
-        } else if (student.classId === classToManageStudents.id) { // Student was in this class but now removed
-            return {...student, classId: ''}; // Or some other logic for unassigned students
-        }
-        return student;
-    });
-    setMockStudents(studentsToUpdate);
-    updateLocalStorage(MOCK_STUDENTS_KEY, studentsToUpdate);
-
-    toast({ title: "Students Updated", description: `Student assignments for ${classToManageStudents.name} - ${classToManageStudents.division} updated.` });
-    setIsManageStudentsDialogOpen(false);
-    setClassToManageStudents(null);
+  const handleSaveStudentAssignments = async () => {
+    if (!classToManageStudents || !currentSchoolId) return;
+    setIsLoading(true);
+    const result = await assignStudentsToClassAction(classToManageStudents.id, selectedStudentIdsForDialog, currentSchoolId);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.ok) {
+      fetchActiveClasses(currentSchoolId); // To update student count display
+      fetchStudents(currentSchoolId); // To update students' class_id
+      setIsManageStudentsDialogOpen(false);
+    }
+    setIsLoading(false);
   };
 
   const handleOpenAssignTeacherDialog = (cls: ClassData) => {
     setClassToAssignTeacher(cls);
-    setSelectedTeacherIdForDialog(cls.teacherId);
+    setSelectedTeacherIdForDialog(cls.teacher_id || undefined);
     setIsAssignTeacherDialogOpen(true);
   };
 
-  const handleSaveTeacherAssignment = () => {
-    if (!classToAssignTeacher) return;
-    const newTeacherIdVal = selectedTeacherIdForDialog === 'unassign' ? undefined : selectedTeacherIdForDialog;
-    const updatedActiveClasses = activeClasses.map(c => 
-      c.id === classToAssignTeacher.id ? { ...c, teacherId: newTeacherIdVal } : c
-    );
-    setActiveClasses(updatedActiveClasses);
-    updateLocalStorage(MOCK_CLASSES_KEY, updatedActiveClasses);
-    const teacherName = newTeacherIdVal ? getTeacherName(newTeacherIdVal) : 'No teacher';
-    toast({ title: "Teacher Assigned", description: `${teacherName} assigned to ${classToAssignTeacher.name} - ${classToAssignTeacher.division}.` });
-    setIsAssignTeacherDialogOpen(false);
-    setClassToAssignTeacher(null);
+  const handleSaveTeacherAssignment = async () => {
+    if (!classToAssignTeacher || !currentSchoolId) return;
+    setIsLoading(true);
+    const result = await assignTeacherToClassAction(classToAssignTeacher.id, selectedTeacherIdForDialog, currentSchoolId);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.ok) {
+      fetchActiveClasses(currentSchoolId);
+      setIsAssignTeacherDialogOpen(false);
+    }
+    setIsLoading(false);
   };
+
+  if (!currentSchoolId && isLoading) {
+     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading school data...</span></div>;
+  }
+  if (!currentSchoolId && !isLoading) {
+    return (
+        <div className="flex flex-col gap-6">
+        <PageHeader title="Class Management" />
+        <Card><CardContent className="pt-6 text-center text-destructive">Admin not associated with a school. Cannot manage classes.</CardContent></Card>
+        </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -275,8 +308,11 @@ export default function ClassManagementPage() {
                   onChange={(e) => setNewClassNameInput(e.target.value)} 
                   placeholder="Enter new class name (e.g., Grade 10)" 
                   className="flex-grow"
+                  disabled={isLoading}
                 />
-                <Button onClick={handleAddClassName}><PlusCircle className="mr-2 h-4 w-4" /> Add Class Name</Button>
+                <Button onClick={handleAddClassName} disabled={isLoading || !newClassNameInput.trim()}>
+                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} Add Class Name
+                </Button>
               </div>
               {classNamesList.length > 0 ? (
                 <Table>
@@ -286,7 +322,7 @@ export default function ClassManagementPage() {
                       <TableRow key={cn.id}>
                         <TableCell>{cn.name}</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteClassName(cn.id)}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteClassName(cn.id)} disabled={isLoading}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -310,8 +346,11 @@ export default function ClassManagementPage() {
                   onChange={(e) => setNewSectionNameInput(e.target.value)} 
                   placeholder="Enter new section name (e.g., Section A)"
                   className="flex-grow"
+                  disabled={isLoading}
                 />
-                <Button onClick={handleAddSectionName}><PlusCircle className="mr-2 h-4 w-4" /> Add Section Name</Button>
+                <Button onClick={handleAddSectionName} disabled={isLoading || !newSectionNameInput.trim()}>
+                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} Add Section Name
+                </Button>
               </div>
               {sectionNamesList.length > 0 ? (
                 <Table>
@@ -321,7 +360,7 @@ export default function ClassManagementPage() {
                       <TableRow key={sn.id}>
                         <TableCell>{sn.name}</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteSectionName(sn.id)}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteSectionName(sn.id)} disabled={isLoading}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -334,12 +373,12 @@ export default function ClassManagementPage() {
 
         <TabsContent value="manage-active-classes">
           <Card>
-            <CardHeader className="flex-row justify-between items-center">
+            <CardHeader className="sm:flex-row sm:justify-between sm:items-center">
               <div>
                 <CardTitle>Activated Class-Sections</CardTitle>
                 <CardDescription>Combine class names and section names to create assignable units. Students and teachers are assigned here.</CardDescription>
               </div>
-              <Button onClick={handleOpenActivateDialog}><PlusCircle className="mr-2 h-4 w-4" /> Activate New Class-Section</Button>
+              <Button onClick={handleOpenActivateDialog} className="mt-2 sm:mt-0" disabled={isLoading}><PlusCircle className="mr-2 h-4 w-4" /> Activate New Class-Section</Button>
             </CardHeader>
             <CardContent>
               {activeClasses.length > 0 ? (
@@ -348,25 +387,30 @@ export default function ClassManagementPage() {
                     <TableRow>
                       <TableHead>Class Name</TableHead>
                       <TableHead>Section/Division</TableHead>
+                       <TableHead>Academic Year</TableHead>
                       <TableHead>Teacher</TableHead>
                       <TableHead>No. of Students</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {activeClasses.map((cls) => (
+                    {activeClasses.map((cls) => {
+                       const studentCount = allStudentsInSchool.filter(s => s.class_id === cls.id).length;
+                       return (
                       <TableRow key={cls.id}>
                         <TableCell className="font-medium">{cls.name}</TableCell>
                         <TableCell>{cls.division}</TableCell>
-                        <TableCell>{getTeacherName(cls.teacherId)}</TableCell>
-                        <TableCell>{cls.studentIds.length}</TableCell>
+                        <TableCell>{getAcademicYearName(cls.academic_year_id)}</TableCell>
+                        <TableCell>{getTeacherName(cls.teacher_id)}</TableCell>
+                        <TableCell>{studentCount}</TableCell>
                         <TableCell className="space-x-1 text-right">
-                          <Button variant="outline" size="sm" onClick={() => handleOpenManageStudentsDialog(cls)}><Users className="mr-1 h-3 w-3" /> Students</Button>
-                          <Button variant="outline" size="sm" onClick={() => handleOpenAssignTeacherDialog(cls)}><UserCog className="mr-1 h-3 w-3" /> Teacher</Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteActiveClass(cls.id)}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="sm" onClick={() => handleOpenManageStudentsDialog(cls)} disabled={isLoading}><Users className="mr-1 h-3 w-3" /> Students</Button>
+                          <Button variant="outline" size="sm" onClick={() => handleOpenAssignTeacherDialog(cls)} disabled={isLoading}><UserCog className="mr-1 h-3 w-3" /> Teacher</Button>
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteActiveClass(cls.id)} disabled={isLoading}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
-                    ))}
+                       );
+                    })}
                   </TableBody>
                 </Table>
               ) : <p className="text-center text-muted-foreground py-4">No class-sections activated yet. Activate one to assign students/teachers.</p>}
@@ -375,7 +419,6 @@ export default function ClassManagementPage() {
         </TabsContent>
       </Tabs>
       
-      {/* Activate New Class-Section Dialog */}
       <Dialog open={isActivateClassSectionDialogOpen} onOpenChange={setIsActivateClassSectionDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -385,31 +428,42 @@ export default function ClassManagementPage() {
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="selectClassNameForActivation">Select Class Name (Standard)</Label>
-              <Select value={selectedClassNameForActivation} onValueChange={setSelectedClassNameForActivation}>
+              <Select value={selectedClassNameIdForActivation} onValueChange={setSelectedClassNameIdForActivation} disabled={isLoading}>
                 <SelectTrigger id="selectClassNameForActivation"><SelectValue placeholder="Choose a class name" /></SelectTrigger>
                 <SelectContent>
-                  {classNamesList.length > 0 ? classNamesList.map(cn => (<SelectItem key={cn.id} value={cn.name}>{cn.name}</SelectItem>)) : <SelectItem value="-" disabled>No class names defined</SelectItem>}
+                  {classNamesList.map(cn => (<SelectItem key={cn.id} value={cn.id}>{cn.name}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label htmlFor="selectSectionNameForActivation">Select Section/Division Name</Label>
-              <Select value={selectedSectionNameForActivation} onValueChange={setSelectedSectionNameForActivation}>
+              <Select value={selectedSectionNameIdForActivation} onValueChange={setSelectedSectionNameIdForActivation} disabled={isLoading}>
                 <SelectTrigger id="selectSectionNameForActivation"><SelectValue placeholder="Choose a section name" /></SelectTrigger>
                 <SelectContent>
-                  {sectionNamesList.length > 0 ? sectionNamesList.map(sn => (<SelectItem key={sn.id} value={sn.name}>{sn.name}</SelectItem>)) : <SelectItem value="-" disabled>No section names defined</SelectItem>}
+                  {sectionNamesList.map(sn => (<SelectItem key={sn.id} value={sn.id}>{sn.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+             <div>
+              <Label htmlFor="selectAcademicYearForActivation">Academic Year (Optional)</Label>
+              <Select value={selectedAcademicYearIdForActivation} onValueChange={(val) => setSelectedAcademicYearIdForActivation(val === 'none' ? undefined : val)} disabled={isLoading}>
+                <SelectTrigger id="selectAcademicYearForActivation"><SelectValue placeholder="Select an academic year" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None (General)</SelectItem>
+                  {allAcademicYears.map(ay => (<SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button onClick={handleActivateClassSection}><Combine className="mr-2 h-4 w-4" /> Activate</Button>
+            <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
+            <Button onClick={handleActivateClassSection} disabled={isLoading || !selectedClassNameIdForActivation || !selectedSectionNameIdForActivation}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Combine className="mr-2 h-4 w-4" />} Activate
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Manage Students Dialog */}
       <Dialog open={isManageStudentsDialogOpen} onOpenChange={(isOpen) => { setIsManageStudentsDialogOpen(isOpen); if (!isOpen) setClassToManageStudents(null); }}>
         <DialogContent className="max-h-[80vh] flex flex-col">
           <DialogHeader>
@@ -417,29 +471,31 @@ export default function ClassManagementPage() {
           </DialogHeader>
           <div className="space-y-2 py-2 overflow-y-auto flex-grow">
             <p className="text-sm text-muted-foreground">Select students to assign to this class-section. Only students not currently assigned to another active class-section are shown, plus those already in this one.</p>
-            {mockStudents.filter(s => s.classId === '' || s.classId === classToManageStudents?.id).length > 0 ? 
-                mockStudents.filter(s => s.classId === '' || s.classId === classToManageStudents?.id).map(student => (
+            {allStudentsInSchool.filter(s => !s.class_id || s.class_id === classToManageStudents?.id).length > 0 ? 
+                allStudentsInSchool.filter(s => !s.class_id || s.class_id === classToManageStudents?.id).map(student => (
               <div key={student.id} className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
                 <Checkbox 
                   id={`student-${student.id}`} 
                   checked={selectedStudentIdsForDialog.includes(student.id)}
                   onCheckedChange={(checked) => handleStudentSelectionChange(student.id, !!checked)}
+                  disabled={isLoading}
                 />
                 <Label htmlFor={`student-${student.id}`} className="flex-grow cursor-pointer">
                   {student.name} <span className="text-xs text-muted-foreground">({student.email})</span>
-                  {student.classId && student.classId !== classToManageStudents?.id && <span className="text-xs text-red-500 ml-2">(Assigned elsewhere)</span>}
+                  {student.class_id && student.class_id !== classToManageStudents?.id && <span className="text-xs text-red-500 ml-2">(Assigned elsewhere)</span>}
                 </Label>
               </div>
-            )) : <p className="text-sm text-muted-foreground text-center py-4">No unassigned students available or all students are assigned elsewhere. Add students via Admissions or check their current assignments.</p>}
+            )) : <p className="text-sm text-muted-foreground text-center py-4">No unassigned students available or all students are assigned elsewhere.</p>}
           </div>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button onClick={handleSaveStudentAssignments}><Save className="mr-2 h-4 w-4" /> Save Assignments</Button>
+            <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
+            <Button onClick={handleSaveStudentAssignments} disabled={isLoading}>
+                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Assignments
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Assign Teacher Dialog */}
       <Dialog open={isAssignTeacherDialogOpen} onOpenChange={(isOpen) => { setIsAssignTeacherDialogOpen(isOpen); if (!isOpen) setClassToAssignTeacher(null); }}>
         <DialogContent>
           <DialogHeader>
@@ -448,19 +504,21 @@ export default function ClassManagementPage() {
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="teacherSelect">Select Teacher</Label>
-              <Select value={selectedTeacherIdForDialog} onValueChange={(val) => setSelectedTeacherIdForDialog(val === 'unassign' ? undefined : val)}>
+              <Select value={selectedTeacherIdForDialog} onValueChange={(val) => setSelectedTeacherIdForDialog(val === 'unassign' ? undefined : val)} disabled={isLoading}>
                 <SelectTrigger id="teacherSelect"><SelectValue placeholder="Select a teacher" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassign">Unassign Teacher</SelectItem>
-                  {mockTeachers.map(teacher => (<SelectItem key={teacher.id} value={teacher.id}>{teacher.name} ({teacher.subject})</SelectItem>))}
+                  {allTeachersInSchool.map(teacher => (<SelectItem key={teacher.id} value={teacher.id}>{teacher.name} ({teacher.subject})</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
-             {mockTeachers.length === 0 && <p className="text-sm text-muted-foreground">No teachers available. Add teachers via Manage Teachers page.</p>}
+             {allTeachersInSchool.length === 0 && <p className="text-sm text-muted-foreground">No teachers available. Add teachers via Manage Teachers page.</p>}
           </div>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button onClick={handleSaveTeacherAssignment}><Save className="mr-2 h-4 w-4" /> Assign Teacher</Button>
+            <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
+            <Button onClick={handleSaveTeacherAssignment} disabled={isLoading}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Assign Teacher
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

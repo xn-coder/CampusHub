@@ -11,14 +11,10 @@ import { Label } from '@/components/ui/label';
 import type { ClassData, Student, Exam, Subject, StudentScore } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Award, Save, BookOpenText, Users, FileText } from 'lucide-react';
-import { format } from 'date-fns';
-
-const MOCK_CLASSES_KEY = 'mockClassesData';
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_EXAMS_KEY = 'mockExamsData';
-const MOCK_SUBJECTS_KEY = 'mockSubjectsData';
-const MOCK_STUDENT_SCORES_KEY = 'mockStudentScoresData';
+import { Award, Save, Users, FileText, Loader2 } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { supabase } from '@/lib/supabaseClient';
+import { saveStudentScoresAction } from './actions';
 
 export default function TeacherStudentScoresPage() {
   const { toast } = useToast();
@@ -29,63 +25,92 @@ export default function TeacherStudentScoresPage() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [studentsInSelectedClass, setStudentsInSelectedClass] = useState<Student[]>([]);
   const [selectedExamId, setSelectedExamId] = useState<string>('');
-  const [scores, setScores] = useState<Record<string, string | number>>({}); // studentId: score
+  const [scores, setScores] = useState<Record<string, string | number>>({}); 
   
   const [isLoading, setIsLoading] = useState(false);
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
+  const [isFetchingInitialData, setIsFetchingInitialData] = useState(true);
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const teacherId = localStorage.getItem('currentUserId');
-      setCurrentTeacherId(teacherId);
+    const teacherUserId = localStorage.getItem('currentUserId');
+    if (teacherUserId) {
+      supabase.from('teachers').select('id, school_id').eq('user_id', teacherUserId).single()
+        .then(({ data: teacherProfile, error: profileError }) => {
+          if (profileError || !teacherProfile) {
+            toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive"});
+            setIsFetchingInitialData(false); return;
+          }
+          setCurrentTeacherId(teacherProfile.id);
+          setCurrentSchoolId(teacherProfile.school_id);
 
-      const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      const allClasses: ClassData[] = storedClasses ? JSON.parse(storedClasses) : [];
-      setAssignedClasses(teacherId ? allClasses.filter(c => c.teacherId === teacherId) : []);
+          Promise.all([
+            supabase.from('classes').select('*').eq('teacher_id', teacherProfile.id).eq('school_id', teacherProfile.school_id),
+            supabase.from('exams').select('*').eq('school_id', teacherProfile.school_id),
+            supabase.from('subjects').select('*').eq('school_id', teacherProfile.school_id),
+          ]).then(([classesRes, examsRes, subjectsRes]) => {
+            if (classesRes.error) toast({ title: "Error fetching classes", variant: "destructive" });
+            else setAssignedClasses(classesRes.data || []);
+            
+            if (examsRes.error) toast({ title: "Error fetching exams", variant: "destructive" });
+            else setAllExams(examsRes.data || []);
 
-      const storedExams = localStorage.getItem(MOCK_EXAMS_KEY);
-      setAllExams(storedExams ? JSON.parse(storedExams) : []);
-      
-      const storedSubjects = localStorage.getItem(MOCK_SUBJECTS_KEY);
-      setAllSubjects(storedSubjects ? JSON.parse(storedSubjects) : []);
-      
-      if (!localStorage.getItem(MOCK_STUDENT_SCORES_KEY)) {
-        localStorage.setItem(MOCK_STUDENT_SCORES_KEY, JSON.stringify([]));
-      }
+            if (subjectsRes.error) toast({ title: "Error fetching subjects", variant: "destructive" });
+            else setAllSubjects(subjectsRes.data || []);
+            
+            setIsFetchingInitialData(false);
+          }).catch(err => {
+            toast({ title: "Error fetching initial data", description: err.message, variant: "destructive"});
+            setIsFetchingInitialData(false);
+          });
+        });
+    } else {
+        toast({ title: "Error", description: "Teacher not identified.", variant: "destructive"});
+        setIsFetchingInitialData(false);
     }
-  }, []);
+  }, [toast]);
 
-  useEffect(() => { // Load students when class changes
-    if (selectedClassId) {
-      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      const allStudents: Student[] = storedStudents ? JSON.parse(storedStudents) : [];
-      setStudentsInSelectedClass(allStudents.filter(s => s.classId === selectedClassId));
-      setScores({}); // Reset scores when class changes
-      setSelectedExamId(''); // Reset exam selection
+  useEffect(() => { 
+    if (selectedClassId && currentSchoolId) {
+      setIsLoading(true);
+      supabase.from('students').select('*').eq('class_id', selectedClassId).eq('school_id', currentSchoolId)
+        .then(({ data, error }) => {
+          if (error) toast({ title: "Error fetching students for class", variant: "destructive" });
+          else setStudentsInSelectedClass(data || []);
+          setScores({}); 
+          setSelectedExamId(''); 
+          setIsLoading(false);
+        });
     } else {
       setStudentsInSelectedClass([]);
       setScores({});
       setSelectedExamId('');
     }
-  }, [selectedClassId]);
+  }, [selectedClassId, currentSchoolId, toast]);
 
-  useEffect(() => { // Load existing scores when exam changes
-    if (selectedClassId && selectedExamId && studentsInSelectedClass.length > 0) {
-      const storedStudentScores: StudentScore[] = JSON.parse(localStorage.getItem(MOCK_STUDENT_SCORES_KEY) || '[]');
-      const newScores: Record<string, string | number> = {};
-      studentsInSelectedClass.forEach(student => {
-        const existingScore = storedStudentScores.find(
-          ss => ss.studentId === student.id && ss.examId === selectedExamId && ss.classSectionId === selectedClassId
-        );
-        if (existingScore) {
-          newScores[student.id] = existingScore.score;
-        }
-      });
-      setScores(newScores);
+  useEffect(() => { 
+    if (selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && currentSchoolId) {
+      setIsLoading(true);
+      supabase.from('student_scores')
+        .select('student_id, score')
+        .eq('exam_id', selectedExamId)
+        .eq('class_id', selectedClassId)
+        .eq('school_id', currentSchoolId)
+        .in('student_id', studentsInSelectedClass.map(s => s.id))
+        .then(({ data, error }) => {
+          if (error) {
+            toast({ title: "Error fetching existing scores", variant: "destructive" });
+          } else {
+            const newScores: Record<string, string | number> = {};
+            (data || []).forEach(ss => { newScores[ss.student_id] = ss.score; });
+            setScores(newScores);
+          }
+          setIsLoading(false);
+        });
     } else {
         setScores({});
     }
-  }, [selectedExamId, selectedClassId, studentsInSelectedClass]);
+  }, [selectedExamId, selectedClassId, studentsInSelectedClass, currentSchoolId, toast]);
 
 
   const handleScoreChange = (studentId: string, value: string) => {
@@ -95,55 +120,56 @@ export default function TeacherStudentScoresPage() {
   const getSubjectName = (subjectId: string) => allSubjects.find(s => s.id === subjectId)?.name || 'N/A';
 
   const filteredExamsForSelectedClass = selectedClassId 
-    ? allExams.filter(exam => exam.classSectionId === selectedClassId || !exam.classSectionId) // Show exams for this class OR general exams
+    ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id)
     : [];
   
   const selectedExamDetails = allExams.find(ex => ex.id === selectedExamId);
 
-  const handleSaveScores = () => {
-    if (!selectedClassId || !selectedExamId || !currentTeacherId || !selectedExamDetails) {
-      toast({ title: "Error", description: "Please select class and exam.", variant: "destructive"});
+  const handleSaveScores = async () => {
+    if (!selectedClassId || !selectedExamId || !currentTeacherId || !selectedExamDetails || !currentSchoolId) {
+      toast({ title: "Error", description: "Class, exam, teacher, and school context are required.", variant: "destructive"});
       return;
     }
+    setIsLoading(true);
 
-    const storedStudentScores: StudentScore[] = JSON.parse(localStorage.getItem(MOCK_STUDENT_SCORES_KEY) || '[]');
-    let updatedScoresCount = 0;
+    const scoresToSave = studentsInSelectedClass
+      .filter(student => scores[student.id] !== undefined && String(scores[student.id]).trim() !== '')
+      .map(student => ({
+        student_id: student.id,
+        exam_id: selectedExamId,
+        subject_id: selectedExamDetails.subject_id,
+        class_id: selectedClassId,
+        score: scores[student.id],
+        max_marks: selectedExamDetails.max_marks,
+        recorded_by_teacher_id: currentTeacherId,
+        school_id: currentSchoolId,
+      }));
 
-    studentsInSelectedClass.forEach(student => {
-      const scoreValue = scores[student.id];
-      if (scoreValue !== undefined && scoreValue !== '') { // Only save if a score is entered
-        const existingScoreIndex = storedStudentScores.findIndex(
-          ss => ss.studentId === student.id && ss.examId === selectedExamId && ss.classSectionId === selectedClassId
-        );
-
-        const scoreRecord: StudentScore = {
-          id: existingScoreIndex > -1 ? storedStudentScores[existingScoreIndex].id : `score-${Date.now()}-${student.id}`,
-          studentId: student.id,
-          examId: selectedExamId,
-          subjectId: selectedExamDetails.subjectId,
-          classSectionId: selectedClassId,
-          score: typeof scoreValue === 'string' && !isNaN(parseFloat(scoreValue)) ? parseFloat(scoreValue) : scoreValue, // Convert to number if possible
-          maxMarks: selectedExamDetails.maxMarks,
-          recordedByTeacherId: currentTeacherId,
-          dateRecorded: new Date().toISOString(),
-        };
-
-        if (existingScoreIndex > -1) {
-          storedStudentScores[existingScoreIndex] = scoreRecord;
-        } else {
-          storedStudentScores.push(scoreRecord);
-        }
-        updatedScoresCount++;
-      }
-    });
-
-    localStorage.setItem(MOCK_STUDENT_SCORES_KEY, JSON.stringify(storedStudentScores));
-    if (updatedScoresCount > 0) {
-      toast({ title: "Scores Saved", description: `Scores for ${updatedScoresCount} student(s) have been saved/updated for ${selectedExamDetails.name}.`});
-    } else {
-      toast({ title: "No Scores Entered", description: "No new scores were entered to save.", variant: "default"});
+    if (scoresToSave.length === 0) {
+        toast({ title: "No Scores Entered", description: "Please enter scores before saving.", variant: "default"});
+        setIsLoading(false);
+        return;
     }
+
+    const result = await saveStudentScoresAction(scoresToSave);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    setIsLoading(false);
   };
+
+
+  if (isFetchingInitialData) {
+      return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading initial data...</span></div>;
+  }
+  if (!currentTeacherId || !currentSchoolId) {
+       return (
+        <div className="flex flex-col gap-6">
+        <PageHeader title="Gradebook" />
+        <Card><CardContent className="pt-6 text-center text-destructive">
+            Could not load teacher profile or school association. Ensure your account is set up.
+        </CardContent></Card>
+        </div>
+    );
+  }
 
 
   return (
@@ -161,7 +187,7 @@ export default function TeacherStudentScoresPage() {
           <div className="grid md:grid-cols-2 gap-4 items-end">
             <div>
               <Label htmlFor="classSelect">Select Class</Label>
-              <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+              <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading}>
                 <SelectTrigger id="classSelect">
                   <SelectValue placeholder="Choose your class" />
                 </SelectTrigger>
@@ -174,28 +200,30 @@ export default function TeacherStudentScoresPage() {
             </div>
             <div>
               <Label htmlFor="examSelect">Select Exam</Label>
-              <Select value={selectedExamId} onValueChange={setSelectedExamId} disabled={!selectedClassId || filteredExamsForSelectedClass.length === 0}>
+              <Select value={selectedExamId} onValueChange={setSelectedExamId} disabled={isLoading || !selectedClassId || filteredExamsForSelectedClass.length === 0}>
                 <SelectTrigger id="examSelect">
                   <SelectValue placeholder="Choose an exam" />
                 </SelectTrigger>
                 <SelectContent>
                   {filteredExamsForSelectedClass.length > 0 ? filteredExamsForSelectedClass.map(exam => (
-                    <SelectItem key={exam.id} value={exam.id}>{exam.name} ({getSubjectName(exam.subjectId)}) - {format(parseISO(exam.date), 'PP')}</SelectItem>
+                    <SelectItem key={exam.id} value={exam.id}>{exam.name} ({getSubjectName(exam.subject_id)}) - {format(parseISO(exam.date), 'PP')}</SelectItem>
                   )) : <SelectItem value="-" disabled>No exams for this class or no class selected</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          {selectedClassId && selectedExamId && studentsInSelectedClass.length === 0 && (
+          {isLoading && selectedClassId && selectedExamId && <div className="text-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>}
+
+          {!isLoading && selectedClassId && selectedExamId && studentsInSelectedClass.length === 0 && (
              <p className="text-muted-foreground text-center py-4">No students found in the selected class.</p>
           )}
 
-          {selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && (
+          {!isLoading && selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && (
             <div>
               <h3 className="text-lg font-medium mb-2">
-                Enter Scores for: <span className="font-semibold">{selectedExamDetails?.name}</span> (Subject: {selectedExamDetails ? getSubjectName(selectedExamDetails.subjectId) : 'N/A'})
-                {selectedExamDetails?.maxMarks && <span className="text-sm text-muted-foreground"> - Max Marks: {selectedExamDetails.maxMarks}</span>}
+                Enter Scores for: <span className="font-semibold">{selectedExamDetails?.name}</span> (Subject: {selectedExamDetails ? getSubjectName(selectedExamDetails.subject_id) : 'N/A'})
+                {selectedExamDetails?.max_marks && <span className="text-sm text-muted-foreground"> - Max Marks: {selectedExamDetails.max_marks}</span>}
               </h3>
               <Table>
                 <TableHeader>
@@ -210,10 +238,11 @@ export default function TeacherStudentScoresPage() {
                       <TableCell className="font-medium">{student.name}</TableCell>
                       <TableCell>
                         <Input 
-                          type="text" // Use text to allow for grade strings like "A+" or numeric
+                          type="text" 
                           value={scores[student.id] || ''}
                           onChange={(e) => handleScoreChange(student.id, e.target.value)}
-                          placeholder={selectedExamDetails?.maxMarks ? `Score / ${selectedExamDetails.maxMarks}` : "Enter score/grade"}
+                          placeholder={selectedExamDetails?.max_marks ? `Score / ${selectedExamDetails.max_marks}` : "Enter score/grade"}
+                          disabled={isLoading}
                         />
                       </TableCell>
                     </TableRow>
@@ -223,12 +252,15 @@ export default function TeacherStudentScoresPage() {
             </div>
           )}
         </CardContent>
-        {selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && (
+        {!isLoading && selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && (
           <CardFooter>
-            <Button onClick={handleSaveScores} disabled={isLoading}><Save className="mr-2 h-4 w-4" /> Save Scores</Button>
+            <Button onClick={handleSaveScores} disabled={isLoading}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> :<Save className="mr-2 h-4 w-4" />} Save Scores
+            </Button>
           </CardFooter>
         )}
       </Card>
     </div>
   );
 }
+
