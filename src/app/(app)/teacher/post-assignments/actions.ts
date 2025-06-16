@@ -1,9 +1,12 @@
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { Assignment } from '@/types';
+
+const NO_SUBJECT_VALUE_INTERNAL = "__NO_SUBJECT__";
 
 interface PostAssignmentInput {
   title: string;
@@ -26,7 +29,7 @@ export async function postAssignmentAction(
     .insert({ 
         id: assignmentId, 
         ...input,
-        subject_id: input.subject_id || null, // Ensure null if undefined
+        subject_id: (input.subject_id === NO_SUBJECT_VALUE_INTERNAL || !input.subject_id) ? null : input.subject_id,
     })
     .select()
     .single();
@@ -75,7 +78,7 @@ export async function updateAssignmentAction(
     .from('assignments')
     .update({ 
         ...updateData,
-        subject_id: updateData.subject_id || null,
+        subject_id: (updateData.subject_id === NO_SUBJECT_VALUE_INTERNAL || !updateData.subject_id) ? null : updateData.subject_id,
      })
     .eq('id', id)
     .eq('teacher_id', teacher_id) // Ensure teacher can only update their own assignments

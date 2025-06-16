@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -14,6 +15,8 @@ import { ClipboardPlus, Send, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { postAssignmentAction } from './actions';
 
+const NO_SUBJECT_VALUE = "__NO_SUBJECT__";
+
 export default function PostAssignmentsPage() {
   const { toast } = useToast();
   const [assignedClasses, setAssignedClasses] = useState<ClassData[]>([]);
@@ -28,7 +31,7 @@ export default function PostAssignmentsPage() {
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(''); // Optional subject
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(NO_SUBJECT_VALUE); // Optional subject, default to no subject
 
   useEffect(() => {
     const teacherUserId = localStorage.getItem('currentUserId');
@@ -73,7 +76,7 @@ export default function PostAssignmentsPage() {
     setDescription('');
     setDueDate('');
     setSelectedClassId('');
-    setSelectedSubjectId('');
+    setSelectedSubjectId(NO_SUBJECT_VALUE);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -90,7 +93,7 @@ export default function PostAssignmentsPage() {
       due_date: dueDate,
       class_id: selectedClassId,
       teacher_id: currentTeacherId,
-      subject_id: selectedSubjectId || undefined, // Pass undefined if not selected
+      subject_id: selectedSubjectId === NO_SUBJECT_VALUE ? undefined : selectedSubjectId,
       school_id: currentSchoolId,
     });
     setIsLoading(false);
@@ -170,7 +173,7 @@ export default function PostAssignmentsPage() {
                   <SelectValue placeholder="Select subject (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value={NO_SUBJECT_VALUE}>None</SelectItem>
                   {allSubjects.map(subject => (
                     <SelectItem key={subject.id} value={subject.id}>{subject.name} ({subject.code})</SelectItem>
                   ))}

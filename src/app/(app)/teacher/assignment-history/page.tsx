@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -17,6 +18,8 @@ import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { getTeacherAssignmentsAction, updateAssignmentAction, deleteAssignmentAction } from '../post-assignments/actions';
 
+const NO_SUBJECT_VALUE = "__NO_SUBJECT__";
+
 export default function TeacherAssignmentHistoryPage() {
   const { toast } = useToast();
   const [postedAssignments, setPostedAssignments] = useState<Assignment[]>([]);
@@ -31,7 +34,7 @@ export default function TeacherAssignmentHistoryPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
-  const [editSubjectId, setEditSubjectId] = useState<string | undefined>('');
+  const [editSubjectId, setEditSubjectId] = useState<string>(NO_SUBJECT_VALUE);
   // Target class remains non-editable for this iteration
 
   useEffect(() => {
@@ -92,7 +95,7 @@ export default function TeacherAssignmentHistoryPage() {
     setEditTitle(assignment.title);
     setEditDescription(assignment.description || '');
     setEditDueDate(assignment.due_date);
-    setEditSubjectId(assignment.subject_id || '');
+    setEditSubjectId(assignment.subject_id || NO_SUBJECT_VALUE);
     setIsEditDialogOpen(true);
   };
 
@@ -108,7 +111,7 @@ export default function TeacherAssignmentHistoryPage() {
       title: editTitle.trim(),
       description: editDescription.trim(),
       due_date: editDueDate,
-      subject_id: editSubjectId || null,
+      subject_id: editSubjectId === NO_SUBJECT_VALUE ? null : editSubjectId,
       teacher_id: currentTeacherId, // Include these for the action
       school_id: currentSchoolId,   // Include these for the action
       // class_id is not part of input for update action as it's not editable here
@@ -238,7 +241,7 @@ export default function TeacherAssignmentHistoryPage() {
                  <Select value={editSubjectId} onValueChange={setEditSubjectId} disabled={isLoading}>
                     <SelectTrigger id="editSubjectId"><SelectValue placeholder="Select subject (optional)"/></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value={NO_SUBJECT_VALUE}>None</SelectItem>
                         {allSubjects.map(s => (<SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>))}
                     </SelectContent>
                  </Select>
