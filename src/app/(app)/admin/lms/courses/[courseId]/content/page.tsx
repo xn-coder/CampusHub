@@ -13,8 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2, ExternalLink } from 'lucide-react';
 import type { Course, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient';
-import { addCourseResourceAction, deleteCourseResourceAction } from '../../actions';
+import { supabase } from '@/lib/supabaseClient'; // Still needed for course details
+import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction } from '../../actions';
 
 type ResourceTabKey = 'ebooks' | 'videos' | 'notes' | 'webinars';
 const resourceTypeMapping: Record<ResourceTabKey, CourseResourceType> = {
@@ -34,6 +34,7 @@ export default function ManageCourseContentPage() {
   const [courseResources, setCourseResources] = useState<CourseResource[]>([]);
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingResources, setIsLoadingResources] = useState(false);
 
   const [activeTab, setActiveTab] = useState<ResourceTabKey>('ebooks');
   const [resourceTitle, setResourceTitle] = useState('');
@@ -49,33 +50,31 @@ export default function ManageCourseContentPage() {
 
   async function fetchCourseDetails() {
     setIsLoadingPage(true);
-    const { data, error } = await supabase
+    const { data, error } = await supabase // Client-side fetch for course details is fine if RLS allows admins to see courses
       .from('lms_courses')
       .select('*')
       .eq('id', courseId)
       .single();
     if (error || !data) {
       toast({ title: "Error", description: "Course not found or failed to load.", variant: "destructive" });
-      router.push('/admin/lms/courses');
+      router.push('/admin/lms/courses'); // Redirect if course itself can't be found
     } else {
       setCourse(data as Course);
     }
-    setIsLoadingPage(false);
+    setIsLoadingPage(false); // Page loading (course details) is done
   }
   
   async function fetchCourseResources() {
     if (!courseId) return;
-    const { data, error } = await supabase
-        .from('lms_course_resources')
-        .select('*')
-        .eq('course_id', courseId)
-        .order('created_at', { ascending: false });
-    if (error) {
-        toast({title: "Error", description: "Failed to load course resources.", variant: "destructive"});
-        setCourseResources([]);
+    setIsLoadingResources(true);
+    const result = await getCourseResourcesAction(courseId);
+    if (result.ok && result.resources) {
+        setCourseResources(result.resources);
     } else {
-        setCourseResources(data || []);
+        toast({title: "Error Loading Resources", description: result.message || "Failed to load course resources.", variant: "destructive"});
+        setCourseResources([]);
     }
+    setIsLoadingResources(false);
   }
 
 
@@ -100,7 +99,7 @@ export default function ManageCourseContentPage() {
       setResourceUrlOrContent('');
       fetchCourseResources(); 
     } else {
-      toast({ title: "Error", description: result.message, variant: "destructive" });
+      toast({ title: "Error Adding Resource", description: result.message, variant: "destructive" });
     }
     setIsSubmitting(false);
   };
@@ -114,7 +113,7 @@ export default function ManageCourseContentPage() {
         toast({ title: "Resource Deleted", variant: "destructive" });
         fetchCourseResources(); 
       } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
+        toast({ title: "Error Deleting Resource", description: result.message, variant: "destructive" });
       }
       setIsSubmitting(false);
     }
@@ -144,11 +143,11 @@ export default function ManageCourseContentPage() {
 
 
   if (isLoadingPage) {
-    return <div className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Loading course content...</div>;
+    return <div className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Loading course details...</div>;
   }
 
   if (!course) {
-    return <div className="text-center py-10 text-destructive">Course not found.</div>;
+    return <div className="text-center py-10 text-destructive">Course not found. It might have been deleted.</div>;
   }
 
   return (
@@ -220,8 +219,10 @@ export default function ManageCourseContentPage() {
                 </CardContent>
               </form>
               <CardContent className="mt-6">
-                <h4 className="text-lg font-medium mb-2">Existing {getResourceTypeLabel(tabKey as ResourceTabKey)}s ({displayedResources.length}):</h4>
-                {displayedResources.length > 0 ? (
+                <h4 className="text-lg font-medium mb-2">Existing {getResourceTypeLabel(tabKey as ResourceTabKey)}s ({isLoadingResources ? 'loading...' : displayedResources.length}):</h4>
+                {isLoadingResources ? (
+                    <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading resources...</div>
+                ) : displayedResources.length > 0 ? (
                   <ul className="space-y-3 max-h-96 overflow-y-auto">
                     {displayedResources.map((res: CourseResource) => (
                       <li key={res.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
@@ -263,5 +264,3 @@ export default function ManageCourseContentPage() {
     </div>
   );
 }
-
-    

@@ -25,7 +25,9 @@ export async function createCourseAction(
   const insertData = {
     ...input,
     id: courseId,
-    price: input.is_paid ? input.price : null, // Ensure price is null if not paid
+    price: input.is_paid ? input.price : null, 
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 
   const { error, data } = await supabaseAdmin
@@ -51,6 +53,7 @@ export async function updateCourseAction(
    const updateData = {
     ...input,
     price: input.is_paid ? input.price : null,
+    updated_at: new Date().toISOString(),
   };
   const { error, data } = await supabaseAdmin
     .from('lms_courses')
@@ -74,8 +77,6 @@ export async function updateCourseAction(
 export async function deleteCourseAction(id: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   
-  // Cascade delete should handle these if FKs are set up with ON DELETE CASCADE
-  // Otherwise, manual deletion is needed:
   await supabaseAdmin.from('lms_course_resources').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_activation_codes').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_student_course_enrollments').delete().eq('course_id', id);
@@ -89,7 +90,6 @@ export async function deleteCourseAction(id: string): Promise<{ ok: boolean; mes
   }
   revalidatePath('/admin/lms/courses');
   revalidatePath('/lms/available-courses');
-  // Also revalidate individual course pages if they exist dynamically
   return { ok: true, message: 'Course and related data deleted successfully.' };
 }
 
@@ -101,6 +101,25 @@ interface CourseResourceInput {
   url_or_content: string;
 }
 
+export async function getCourseResourcesAction(courseId: string): Promise<{ok: boolean; resources?: CourseResource[]; message?: string}> {
+    const supabaseAdmin = createSupabaseServerClient();
+    if (!courseId) {
+        return { ok: false, message: "Course ID is required."};
+    }
+    const { data, error } = await supabaseAdmin
+        .from('lms_course_resources')
+        .select('*')
+        .eq('course_id', courseId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching course resources via action:", error);
+        return { ok: false, message: `Failed to fetch resources: ${error.message}` };
+    }
+    return { ok: true, resources: data || [] };
+}
+
+
 export async function addCourseResourceAction(
   input: CourseResourceInput
 ): Promise<{ ok: boolean; message: string; resource?: CourseResource }> {
@@ -108,7 +127,7 @@ export async function addCourseResourceAction(
   const resourceId = uuidv4();
   const { error, data } = await supabaseAdmin
     .from('lms_course_resources')
-    .insert({ ...input, id: resourceId })
+    .insert({ ...input, id: resourceId, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .select()
     .single();
 
@@ -140,7 +159,7 @@ interface GenerateCodesInput {
   course_id: string;
   num_codes: number;
   expires_in_days: number;
-  school_id?: string; // Optional: if codes are school-specific for a global course
+  school_id?: string; 
 }
 
 export async function generateActivationCodesAction(
@@ -161,7 +180,6 @@ export async function generateActivationCodesAction(
 
 
   for (let i = 0; i < num_codes; i++) {
-    // Generate a more unique code, less prone to collision if course_id is short/similar
     const uniqueCode = `CRS-${course_id.substring(0, 4).toUpperCase()}-${uuidv4().substring(0, 4).toUpperCase()}-${uuidv4().substring(9, 13).toUpperCase()}`;
     newCodes.push({
       id: uuidv4(),
@@ -171,6 +189,8 @@ export async function generateActivationCodesAction(
       generated_date: currentDate.toISOString(),
       expiry_date: expiryDate,
       school_id: school_id || null, 
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
     displayableCodes.push(uniqueCode);
   }
@@ -181,7 +201,7 @@ export async function generateActivationCodesAction(
     console.error("Error generating activation codes:", error);
     return { ok: false, message: `Failed to generate codes: ${error.message}` };
   }
-  revalidatePath(`/admin/lms/courses/${course_id}/activation-codes`); // Or similar page if one exists
+  revalidatePath(`/admin/lms/courses/${course_id}/activation-codes`); 
   return { ok: true, message: `${num_codes} activation code(s) generated.`, generatedCodes: displayableCodes };
 }
 
@@ -189,9 +209,9 @@ export async function generateActivationCodesAction(
 // --- Enrollment Management ---
 interface ManageEnrollmentInput {
   course_id: string;
-  user_profile_id: string; // This should be student_id or teacher_id (from their respective profile tables)
+  user_profile_id: string; 
   user_type: 'student' | 'teacher';
-  school_id: string; // School ID of the student/teacher for school-specific enrollments
+  school_id: string; 
 }
 
 export async function enrollUserInCourseAction(
@@ -203,16 +223,15 @@ export async function enrollUserInCourseAction(
   const userIdColumn = user_type === 'student' ? 'student_id' : 'teacher_id';
   const enrolledAtColumn = user_type === 'student' ? 'enrolled_at' : 'assigned_at';
 
-  // Check if already enrolled
   const { data: existingEnrollment, error: fetchError } = await supabaseAdmin
     .from(enrollmentTable)
     .select('id')
     .eq(userIdColumn, user_profile_id)
     .eq('course_id', course_id)
-    .eq('school_id', school_id) // Enrollments are school-specific
+    .eq('school_id', school_id) 
     .single();
   
-  if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 means no rows found, which is fine for new enrollment
+  if (fetchError && fetchError.code !== 'PGRST116') { 
     console.error(`Error checking existing enrollment for ${user_type}:`, fetchError);
     return { ok: false, message: `Database error checking enrollment: ${fetchError.message}` };
   }
@@ -223,7 +242,9 @@ export async function enrollUserInCourseAction(
   const enrollmentData: any = { 
       id: uuidv4(), 
       course_id, 
-      school_id 
+      school_id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
   };
   enrollmentData[userIdColumn] = user_profile_id;
   enrollmentData[enrolledAtColumn] = new Date().toISOString();
@@ -254,7 +275,7 @@ export async function unenrollUserFromCourseAction(
     .delete()
     .eq(userIdColumn, user_profile_id)
     .eq('course_id', course_id)
-    .eq('school_id', school_id); // Ensure school_id match for deletion
+    .eq('school_id', school_id); 
 
   if (error) {
     console.error(`Error unenrolling ${user_type}:`, error);
