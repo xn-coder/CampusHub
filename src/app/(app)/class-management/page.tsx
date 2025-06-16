@@ -15,7 +15,7 @@ import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord, Acade
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient'; // client-side supabase
 import { 
   addClassNameAction, deleteClassNameAction, 
   addSectionNameAction, deleteSectionNameAction,
@@ -30,7 +30,7 @@ async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
     .eq('admin_user_id', adminUserId)
     .single();
   if (error || !school) {
-    console.error("Error fetching admin's school or admin not linked:", error);
+    console.error("Error fetching admin's school or admin not linked:", error?.message || "No school record found for this admin_user_id.");
     return null;
   }
   return school.id;
@@ -39,6 +39,7 @@ async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
 export default function ClassManagementPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
@@ -63,7 +64,8 @@ export default function ClassManagementPage() {
   const [classToManageStudents, setClassToManageStudents] = useState<ClassData | null>(null);
   const [selectedStudentIdsForDialog, setSelectedStudentIdsForDialog] = useState<string[]>([]);
   const [classToAssignTeacher, setClassToAssignTeacher] = useState<ClassData | null>(null);
-  const [selectedTeacherIdForDialog, setSelectedTeacherIdForDialog] = useState<string | undefined>(undefined);
+  const [selectedTeacherIdForDialog, setSelectedTeacherIdForDialog] = useState<string | undefined | null>(undefined);
+
 
   useEffect(() => {
     const adminId = localStorage.getItem('currentUserId');
@@ -110,7 +112,7 @@ export default function ClassManagementPage() {
   async function fetchActiveClasses(schoolId: string) {
     const { data, error } = await supabase.from('classes').select('*').eq('school_id', schoolId).order('name').order('division');
     if (error) toast({ title: "Error fetching active classes", description: error.message, variant: "destructive" });
-    else setActiveClasses( (data || []).map(ac => ({...ac, studentIds: []})) ); // studentIds will be populated if needed by specific features
+    else setActiveClasses( (data || []).map(ac => ({...ac, studentIds: []} as ClassData)) );
   }
    async function fetchStudents(schoolId: string) {
     const { data, error } = await supabase.from('students').select('*').eq('school_id', schoolId);
@@ -133,50 +135,50 @@ export default function ClassManagementPage() {
     return allTeachersInSchool.find(t => t.id === teacherId)?.name || 'N/A';
   };
   const getAcademicYearName = (yearId?: string | null): string => {
-    if (!yearId) return 'N/A';
+    if (!yearId) return 'General'; // Default to General if no academic year
     return allAcademicYears.find(ay => ay.id === yearId)?.name || 'N/A';
   };
 
   const handleAddClassName = async () => {
     if (!currentSchoolId) return;
-    setIsLoading(true);
+    setIsSubmitting(true);
     const result = await addClassNameAction(newClassNameInput, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
       setNewClassNameInput('');
       fetchClassNames(currentSchoolId);
     }
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
   const handleDeleteClassName = async (id: string) => {
     if (!currentSchoolId) return;
-    setIsLoading(true);
+    setIsSubmitting(true);
     const result = await deleteClassNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) fetchClassNames(currentSchoolId);
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
   const handleAddSectionName = async () => {
     if (!currentSchoolId) return;
-    setIsLoading(true);
+    setIsSubmitting(true);
     const result = await addSectionNameAction(newSectionNameInput, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
       setNewSectionNameInput('');
       fetchSectionNames(currentSchoolId);
     }
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
   const handleDeleteSectionName = async (id: string) => {
     if (!currentSchoolId) return;
-    setIsLoading(true);
+    setIsSubmitting(true);
     const result = await deleteSectionNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) fetchSectionNames(currentSchoolId);
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
   const handleOpenActivateDialog = () => {
@@ -191,7 +193,7 @@ export default function ClassManagementPage() {
       toast({ title: "Error", description: "Please select Class Name, Section Name, and ensure school context.", variant: "destructive" });
       return;
     }
-    setIsLoading(true);
+    setIsSubmitting(true);
     const className = classNamesList.find(cn => cn.id === selectedClassNameIdForActivation)?.name || '';
     const sectionName = sectionNamesList.find(sn => sn.id === selectedSectionNameIdForActivation)?.name || '';
 
@@ -207,26 +209,25 @@ export default function ClassManagementPage() {
       fetchActiveClasses(currentSchoolId);
       setIsActivateClassSectionDialogOpen(false);
     }
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
   const handleDeleteActiveClass = async (activeClassId: string) => {
     if (!currentSchoolId) return;
     if (confirm(`Are you sure you want to delete this active class-section? This will unassign all students.`)) {
-      setIsLoading(true);
+      setIsSubmitting(true);
       const result = await deleteActiveClassAction(activeClassId, currentSchoolId);
       toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
       if (result.ok) {
         fetchActiveClasses(currentSchoolId);
         fetchStudents(currentSchoolId); // Refresh student list as their class_id might change
       }
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   const handleOpenManageStudentsDialog = (cls: ClassData) => {
     setClassToManageStudents(cls);
-    // Fetch students currently in this class
     const currentStudentIdsInClass = allStudentsInSchool.filter(s => s.class_id === cls.id).map(s => s.id);
     setSelectedStudentIdsForDialog(currentStudentIdsInClass);
     setIsManageStudentsDialogOpen(true);
@@ -240,15 +241,15 @@ export default function ClassManagementPage() {
 
   const handleSaveStudentAssignments = async () => {
     if (!classToManageStudents || !currentSchoolId) return;
-    setIsLoading(true);
+    setIsSubmitting(true);
     const result = await assignStudentsToClassAction(classToManageStudents.id, selectedStudentIdsForDialog, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
-      fetchActiveClasses(currentSchoolId); // To update student count display
-      fetchStudents(currentSchoolId); // To update students' class_id
+      fetchActiveClasses(currentSchoolId); 
+      fetchStudents(currentSchoolId); 
       setIsManageStudentsDialogOpen(false);
     }
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
   const handleOpenAssignTeacherDialog = (cls: ClassData) => {
@@ -259,17 +260,17 @@ export default function ClassManagementPage() {
 
   const handleSaveTeacherAssignment = async () => {
     if (!classToAssignTeacher || !currentSchoolId) return;
-    setIsLoading(true);
+    setIsSubmitting(true);
     const result = await assignTeacherToClassAction(classToAssignTeacher.id, selectedTeacherIdForDialog, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
       fetchActiveClasses(currentSchoolId);
       setIsAssignTeacherDialogOpen(false);
     }
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
-  if (!currentSchoolId && isLoading) {
+  if (isLoading && !currentSchoolId) {
      return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading school data...</span></div>;
   }
   if (!currentSchoolId && !isLoading) {
@@ -308,13 +309,13 @@ export default function ClassManagementPage() {
                   onChange={(e) => setNewClassNameInput(e.target.value)} 
                   placeholder="Enter new class name (e.g., Grade 10)" 
                   className="flex-grow"
-                  disabled={isLoading}
+                  disabled={isSubmitting}
                 />
-                <Button onClick={handleAddClassName} disabled={isLoading || !newClassNameInput.trim()}>
-                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} Add Class Name
+                <Button onClick={handleAddClassName} disabled={isSubmitting || !newClassNameInput.trim()}>
+                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} Add Class Name
                 </Button>
               </div>
-              {classNamesList.length > 0 ? (
+              {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : classNamesList.length > 0 ? (
                 <Table>
                   <TableHeader><TableRow><TableHead>Class Name</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                   <TableBody>
@@ -322,7 +323,7 @@ export default function ClassManagementPage() {
                       <TableRow key={cn.id}>
                         <TableCell>{cn.name}</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteClassName(cn.id)} disabled={isLoading}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteClassName(cn.id)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -346,13 +347,13 @@ export default function ClassManagementPage() {
                   onChange={(e) => setNewSectionNameInput(e.target.value)} 
                   placeholder="Enter new section name (e.g., Section A)"
                   className="flex-grow"
-                  disabled={isLoading}
+                  disabled={isSubmitting}
                 />
-                <Button onClick={handleAddSectionName} disabled={isLoading || !newSectionNameInput.trim()}>
-                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} Add Section Name
+                <Button onClick={handleAddSectionName} disabled={isSubmitting || !newSectionNameInput.trim()}>
+                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} Add Section Name
                 </Button>
               </div>
-              {sectionNamesList.length > 0 ? (
+              {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : sectionNamesList.length > 0 ? (
                 <Table>
                   <TableHeader><TableRow><TableHead>Section Name</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                   <TableBody>
@@ -360,7 +361,7 @@ export default function ClassManagementPage() {
                       <TableRow key={sn.id}>
                         <TableCell>{sn.name}</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteSectionName(sn.id)} disabled={isLoading}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteSectionName(sn.id)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -378,10 +379,10 @@ export default function ClassManagementPage() {
                 <CardTitle>Activated Class-Sections</CardTitle>
                 <CardDescription>Combine class names and section names to create assignable units. Students and teachers are assigned here.</CardDescription>
               </div>
-              <Button onClick={handleOpenActivateDialog} className="mt-2 sm:mt-0" disabled={isLoading}><PlusCircle className="mr-2 h-4 w-4" /> Activate New Class-Section</Button>
+              <Button onClick={handleOpenActivateDialog} className="mt-2 sm:mt-0" disabled={isSubmitting}><PlusCircle className="mr-2 h-4 w-4" /> Activate New Class-Section</Button>
             </CardHeader>
             <CardContent>
-              {activeClasses.length > 0 ? (
+             {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : activeClasses.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -404,9 +405,9 @@ export default function ClassManagementPage() {
                         <TableCell>{getTeacherName(cls.teacher_id)}</TableCell>
                         <TableCell>{studentCount}</TableCell>
                         <TableCell className="space-x-1 text-right">
-                          <Button variant="outline" size="sm" onClick={() => handleOpenManageStudentsDialog(cls)} disabled={isLoading}><Users className="mr-1 h-3 w-3" /> Students</Button>
-                          <Button variant="outline" size="sm" onClick={() => handleOpenAssignTeacherDialog(cls)} disabled={isLoading}><UserCog className="mr-1 h-3 w-3" /> Teacher</Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteActiveClass(cls.id)} disabled={isLoading}><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="sm" onClick={() => handleOpenManageStudentsDialog(cls)} disabled={isSubmitting}><Users className="mr-1 h-3 w-3" /> Students</Button>
+                          <Button variant="outline" size="sm" onClick={() => handleOpenAssignTeacherDialog(cls)} disabled={isSubmitting}><UserCog className="mr-1 h-3 w-3" /> Teacher</Button>
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteActiveClass(cls.id)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
                        );
@@ -428,7 +429,7 @@ export default function ClassManagementPage() {
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="selectClassNameForActivation">Select Class Name (Standard)</Label>
-              <Select value={selectedClassNameIdForActivation} onValueChange={setSelectedClassNameIdForActivation} disabled={isLoading}>
+              <Select value={selectedClassNameIdForActivation} onValueChange={setSelectedClassNameIdForActivation} disabled={isSubmitting}>
                 <SelectTrigger id="selectClassNameForActivation"><SelectValue placeholder="Choose a class name" /></SelectTrigger>
                 <SelectContent>
                   {classNamesList.map(cn => (<SelectItem key={cn.id} value={cn.id}>{cn.name}</SelectItem>))}
@@ -437,7 +438,7 @@ export default function ClassManagementPage() {
             </div>
             <div>
               <Label htmlFor="selectSectionNameForActivation">Select Section/Division Name</Label>
-              <Select value={selectedSectionNameIdForActivation} onValueChange={setSelectedSectionNameIdForActivation} disabled={isLoading}>
+              <Select value={selectedSectionNameIdForActivation} onValueChange={setSelectedSectionNameIdForActivation} disabled={isSubmitting}>
                 <SelectTrigger id="selectSectionNameForActivation"><SelectValue placeholder="Choose a section name" /></SelectTrigger>
                 <SelectContent>
                   {sectionNamesList.map(sn => (<SelectItem key={sn.id} value={sn.id}>{sn.name}</SelectItem>))}
@@ -446,7 +447,7 @@ export default function ClassManagementPage() {
             </div>
              <div>
               <Label htmlFor="selectAcademicYearForActivation">Academic Year (Optional)</Label>
-              <Select value={selectedAcademicYearIdForActivation} onValueChange={(val) => setSelectedAcademicYearIdForActivation(val === 'none' ? undefined : val)} disabled={isLoading}>
+              <Select value={selectedAcademicYearIdForActivation} onValueChange={(val) => setSelectedAcademicYearIdForActivation(val === 'none' ? undefined : val)} disabled={isSubmitting}>
                 <SelectTrigger id="selectAcademicYearForActivation"><SelectValue placeholder="Select an academic year" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None (General)</SelectItem>
@@ -456,9 +457,9 @@ export default function ClassManagementPage() {
             </div>
           </div>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
-            <Button onClick={handleActivateClassSection} disabled={isLoading || !selectedClassNameIdForActivation || !selectedSectionNameIdForActivation}>
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Combine className="mr-2 h-4 w-4" />} Activate
+            <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+            <Button onClick={handleActivateClassSection} disabled={isSubmitting || !selectedClassNameIdForActivation || !selectedSectionNameIdForActivation}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Combine className="mr-2 h-4 w-4" />} Activate
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -470,7 +471,7 @@ export default function ClassManagementPage() {
             <DialogTitle>Manage Students for {classToManageStudents?.name} - {classToManageStudents?.division}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2 py-2 overflow-y-auto flex-grow">
-            <p className="text-sm text-muted-foreground">Select students to assign to this class-section. Only students not currently assigned to another active class-section are shown, plus those already in this one.</p>
+            <p className="text-sm text-muted-foreground">Select students to assign to this class-section. Only students not currently assigned to another active class-section (within the same school) are shown, plus those already in this one.</p>
             {allStudentsInSchool.filter(s => !s.class_id || s.class_id === classToManageStudents?.id).length > 0 ? 
                 allStudentsInSchool.filter(s => !s.class_id || s.class_id === classToManageStudents?.id).map(student => (
               <div key={student.id} className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
@@ -478,7 +479,7 @@ export default function ClassManagementPage() {
                   id={`student-${student.id}`} 
                   checked={selectedStudentIdsForDialog.includes(student.id)}
                   onCheckedChange={(checked) => handleStudentSelectionChange(student.id, !!checked)}
-                  disabled={isLoading}
+                  disabled={isSubmitting}
                 />
                 <Label htmlFor={`student-${student.id}`} className="flex-grow cursor-pointer">
                   {student.name} <span className="text-xs text-muted-foreground">({student.email})</span>
@@ -488,9 +489,9 @@ export default function ClassManagementPage() {
             )) : <p className="text-sm text-muted-foreground text-center py-4">No unassigned students available or all students are assigned elsewhere.</p>}
           </div>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
-            <Button onClick={handleSaveStudentAssignments} disabled={isLoading}>
-                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Assignments
+            <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+            <Button onClick={handleSaveStudentAssignments} disabled={isSubmitting}>
+                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Assignments
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -504,7 +505,7 @@ export default function ClassManagementPage() {
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="teacherSelect">Select Teacher</Label>
-              <Select value={selectedTeacherIdForDialog} onValueChange={(val) => setSelectedTeacherIdForDialog(val === 'unassign' ? undefined : val)} disabled={isLoading}>
+              <Select value={selectedTeacherIdForDialog || undefined} onValueChange={(val) => setSelectedTeacherIdForDialog(val === 'unassign' ? null : val)} disabled={isSubmitting}>
                 <SelectTrigger id="teacherSelect"><SelectValue placeholder="Select a teacher" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassign">Unassign Teacher</SelectItem>
@@ -515,9 +516,9 @@ export default function ClassManagementPage() {
              {allTeachersInSchool.length === 0 && <p className="text-sm text-muted-foreground">No teachers available. Add teachers via Manage Teachers page.</p>}
           </div>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
-            <Button onClick={handleSaveTeacherAssignment} disabled={isLoading}>
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Assign Teacher
+            <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+            <Button onClick={handleSaveTeacherAssignment} disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Assign Teacher
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -526,3 +527,4 @@ export default function ClassManagementPage() {
   );
 }
 
+    

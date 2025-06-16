@@ -10,21 +10,36 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { PlusCircle, Edit2, Trash2, Save, Library, Users, FileTextIcon, KeyRound, Copy, Settings, UserPlus } from 'lucide-react';
-import type { Course, CourseActivationCode } from '@/types';
+import { PlusCircle, Edit2, Trash2, Save, Library, Users, Settings, UserPlus, KeyRound, Copy, Loader2 } from 'lucide-react';
+import type { Course, CourseActivationCode, User } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { v4 as uuidv4 } from 'uuid';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabaseClient';
+import { createCourseAction, updateCourseAction, deleteCourseAction, generateActivationCodesAction } from './actions';
 
-const MOCK_LMS_COURSES_KEY = 'mockLMSCoursesData';
-const MOCK_LMS_ACTIVATION_CODES_KEY = 'mockLMSActivationCodesData';
+async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
+  const { data: school, error } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUserId)
+    .single();
+  if (error || !school) {
+    console.error("Error fetching admin's school:", error?.message);
+    return null;
+  }
+  return school.id;
+}
 
 export default function ManageCoursesPage() {
   const { toast } = useToast();
   const [courses, setCourses] = useState<Course[]>([]);
-  const [activationCodes, setActivationCodes] = useState<CourseActivationCode[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
+  const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null); // For school-specific courses
+
   const [isCourseDialogOpen, setIsCourseDialogOpen] = useState(false);
   const [isCodeDialogOpen, setIsCodeDialogOpen] = useState(false);
   
@@ -34,39 +49,49 @@ export default function ManageCoursesPage() {
   const [numCodesToGenerate, setNumCodesToGenerate] = useState<number>(1);
   const [codeExpiresInDays, setCodeExpiresInDays] = useState<number>(365);
 
-
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState<number | ''>('');
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedCoursesRaw = localStorage.getItem(MOCK_LMS_COURSES_KEY);
-        setCourses(storedCoursesRaw ? JSON.parse(storedCoursesRaw) : []);
-      } catch (error) {
-        console.error("Error parsing courses from localStorage:", error);
-        setCourses([]); 
-        // localStorage.removeItem(MOCK_LMS_COURSES_KEY); // Optionally clear corrupted data
-      }
-
-      try {
-        const storedCodesRaw = localStorage.getItem(MOCK_LMS_ACTIVATION_CODES_KEY);
-        setActivationCodes(storedCodesRaw ? JSON.parse(storedCodesRaw) : []);
-      } catch (error) {
-        console.error("Error parsing activation codes from localStorage:", error);
-        setActivationCodes([]); 
-        // localStorage.removeItem(MOCK_LMS_ACTIVATION_CODES_KEY); // Optionally clear corrupted data
-      }
+    const adminId = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(adminId);
+    if (adminId) {
+      fetchAdminSchoolId(adminId).then(schoolId => {
+        setCurrentSchoolId(schoolId); // May be null if admin is not school-specific (e.g. superadmin creating global courses)
+        fetchCourses(schoolId); // Pass schoolId to fetch relevant courses
+      });
+    } else {
+        toast({title: "Error", description: "Admin user not identified.", variant: "destructive"});
+        setIsLoading(false);
     }
-  }, []);
+  }, [toast]);
 
-  const updateLocalStorage = (key: string, data: any[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(data));
+  async function fetchCourses(schoolId: string | null) {
+    setIsLoading(true);
+    let query = supabase.from('lms_courses').select('*').order('created_at', { ascending: false });
+    // If schoolId is available, filter by it OR allow courses with NULL school_id (global courses)
+    // This logic depends on how you want to scope courses (global vs school-specific)
+    // For now, let's assume an admin sees courses they created or that are for their school, or global ones
+    // This might require more complex filtering based on created_by_user_id or school_id
+    if (schoolId && currentAdminUserId) { // A school admin might only see their school's courses or global ones
+        query = query.or(`school_id.eq.${schoolId},school_id.is.null,created_by_user_id.eq.${currentAdminUserId}`);
+    } else if (currentAdminUserId) { // A superadmin might see all courses, or only global ones they made
+        query = query.or(`school_id.is.null,created_by_user_id.eq.${currentAdminUserId}`);
     }
-  };
+
+
+    const { data, error } = await query;
+    if (error) {
+      toast({ title: "Error", description: "Failed to fetch courses.", variant: "destructive" });
+      setCourses([]);
+    } else {
+      setCourses(data || []);
+    }
+    setIsLoading(false);
+  }
+
 
   const resetCourseForm = () => {
     setTitle('');
@@ -80,8 +105,8 @@ export default function ManageCoursesPage() {
     if (course) {
       setEditingCourse(course);
       setTitle(course.title);
-      setDescription(course.description);
-      setIsPaid(course.isPaid);
+      setDescription(course.description || '');
+      setIsPaid(course.is_paid);
       setPrice(course.price ?? '');
     } else {
       resetCourseForm();
@@ -89,111 +114,97 @@ export default function ManageCoursesPage() {
     setIsCourseDialogOpen(true);
   };
 
-  const handleCourseSubmit = (e: FormEvent) => {
+  const handleCourseSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) {
-      toast({ title: "Error", description: "Course Title is required.", variant: "destructive" });
+    if (!title.trim() || !currentAdminUserId) {
+      toast({ title: "Error", description: "Course Title and admin context are required.", variant: "destructive" });
       return;
     }
     if (isPaid && (price === '' || Number(price) <= 0)) {
       toast({ title: "Error", description: "Price is required for paid courses and must be greater than 0.", variant: "destructive" });
       return;
     }
+    setIsSubmitting(true);
 
-    let updatedCourses;
     const courseData = {
       title: title.trim(),
-      description: description.trim(),
-      isPaid,
+      description: description.trim() || undefined,
+      is_paid: isPaid,
       price: isPaid ? Number(price) : undefined,
-      resources: editingCourse?.resources || { ebooks: [], videos: [], notes: [], webinars: [] },
-      enrolledStudentIds: editingCourse?.enrolledStudentIds || [],
-      enrolledTeacherIds: editingCourse?.enrolledTeacherIds || [],
+      created_by_user_id: currentAdminUserId,
+      school_id: currentSchoolId || undefined, // Assign to current admin's school if available
     };
 
+    let result;
     if (editingCourse) {
-      updatedCourses = courses.map(c =>
-        c.id === editingCourse.id ? { ...c, ...courseData } : c
-      );
-      toast({ title: "Course Updated", description: `"${title.trim()}" has been updated.` });
+      result = await updateCourseAction(editingCourse.id, courseData);
     } else {
-      const newCourse: Course = {
-        id: `course-${uuidv4()}`,
-        ...courseData,
-      };
-      updatedCourses = [newCourse, ...courses];
-      toast({ title: "Course Added", description: `"${title.trim()}" has been added.` });
+      result = await createCourseAction(courseData);
     }
-    
-    setCourses(updatedCourses);
-    updateLocalStorage(MOCK_LMS_COURSES_KEY, updatedCourses);
-    resetCourseForm();
-    setIsCourseDialogOpen(false);
+
+    if (result.ok) {
+      toast({ title: editingCourse ? "Course Updated" : "Course Added", description: result.message });
+      resetCourseForm();
+      setIsCourseDialogOpen(false);
+      fetchCourses(currentSchoolId);
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsSubmitting(false);
   };
   
-  const handleDeleteCourse = (courseId: string) => {
+  const handleDeleteCourse = async (courseId: string) => {
     const courseToDelete = courses.find(c => c.id === courseId);
     if (!courseToDelete) return;
-    if (confirm(`Are you sure you want to delete the course "${courseToDelete.title}"? This will also remove related activation codes.`)) {
-      const updatedCourses = courses.filter(c => c.id !== courseId);
-      setCourses(updatedCourses);
-      updateLocalStorage(MOCK_LMS_COURSES_KEY, updatedCourses);
-
-      const updatedCodes = activationCodes.filter(code => code.courseId !== courseId);
-      setActivationCodes(updatedCodes);
-      updateLocalStorage(MOCK_LMS_ACTIVATION_CODES_KEY, updatedCodes);
-
-      toast({ title: "Course Deleted", variant: "destructive" });
+    if (confirm(`Are you sure you want to delete the course "${courseToDelete.title}"? This will also remove related resources, activation codes, and enrollments.`)) {
+      setIsSubmitting(true);
+      const result = await deleteCourseAction(courseId);
+      toast({ title: result.ok ? "Course Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
+      if (result.ok) {
+        fetchCourses(currentSchoolId);
+      }
+      setIsSubmitting(false);
     }
   };
 
   const handleOpenCodeGenerationDialog = (course: Course) => {
-    if (!course.isPaid) {
+    if (!course.is_paid) {
       toast({ title: "Not a Paid Course", description: "Activation codes can only be generated for paid courses.", variant: "destructive" });
       return;
     }
     setCourseForCodeGeneration(course);
     setNumCodesToGenerate(1);
-    setCodeExpiresInDays(365); // Reset to default
+    setCodeExpiresInDays(365);
     setGeneratedCodesForDisplay([]);
     setIsCodeDialogOpen(true);
   };
 
-  const handleGenerateCodes = () => {
-    if (!courseForCodeGeneration || numCodesToGenerate <= 0) {
-      toast({ title: "Error", description: "Please select a course and specify a valid number of codes.", variant: "destructive"});
+  const handleGenerateCodes = async () => {
+    if (!courseForCodeGeneration || numCodesToGenerate <= 0 || !currentAdminUserId) {
+      toast({ title: "Error", description: "Course, valid number of codes, and admin context are required.", variant: "destructive"});
       return;
     }
     if (codeExpiresInDays <=0) {
       toast({ title: "Error", description: "Expiration days must be a positive number.", variant: "destructive"});
       return;
     }
+    setIsSubmitting(true);
 
-    const newCodes: CourseActivationCode[] = [];
-    const displayableCodes: string[] = [];
-    const currentDate = new Date();
-    const expiryDate = new Date(currentDate);
-    expiryDate.setDate(currentDate.getDate() + codeExpiresInDays);
+    const result = await generateActivationCodesAction({
+      course_id: courseForCodeGeneration.id,
+      num_codes: numCodesToGenerate,
+      expires_in_days: codeExpiresInDays,
+      school_id: courseForCodeGeneration.school_id || undefined, // Pass school_id if course is school-specific
+    });
 
-
-    for (let i = 0; i < numCodesToGenerate; i++) {
-      const uniqueCode = `COURSE-${courseForCodeGeneration.id.substring(0,4)}-${uuidv4().substring(0, 8).toUpperCase()}`;
-      newCodes.push({
-        id: `code-${uuidv4()}`,
-        courseId: courseForCodeGeneration.id,
-        code: uniqueCode,
-        isUsed: false,
-        generatedDate: new Date().toISOString(),
-        expiryDate: expiryDate.toISOString(),
-      });
-      displayableCodes.push(uniqueCode);
+    if (result.ok && result.generatedCodes) {
+      setGeneratedCodesForDisplay(result.generatedCodes);
+      toast({ title: `${numCodesToGenerate} Activation Code(s) Generated`, description: result.message});
+    } else {
+      toast({ title: "Error Generating Codes", description: result.message, variant: "destructive"});
     }
-    
-    const updatedActivationCodes = [...activationCodes, ...newCodes];
-    setActivationCodes(updatedActivationCodes);
-    updateLocalStorage(MOCK_LMS_ACTIVATION_CODES_KEY, updatedActivationCodes);
-    setGeneratedCodesForDisplay(displayableCodes);
-    toast({ title: `${numCodesToGenerate} Activation Code(s) Generated`, description: `For course: ${courseForCodeGeneration.title}. Codes expire in ${codeExpiresInDays} days.`});
+    setIsSubmitting(false);
+    // Don't close dialog, let admin see codes
   };
 
   const handleCopyCode = (code: string) => {
@@ -208,7 +219,7 @@ export default function ManageCoursesPage() {
         title="LMS Course Management"
         description="Create, edit, and manage online courses and their activation codes."
         actions={
-          <Button onClick={() => handleOpenCourseDialog()}>
+          <Button onClick={() => handleOpenCourseDialog()} disabled={isLoading || isSubmitting}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Course
           </Button>
         }
@@ -219,7 +230,9 @@ export default function ManageCoursesPage() {
           <CardDescription>List of all courses offered in the LMS.</CardDescription>
         </CardHeader>
         <CardContent>
-          {courses.length === 0 ? (
+          {isLoading ? (
+            <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
+          ) : courses.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">No courses created yet.</p>
           ) : (
             <Table>
@@ -229,6 +242,7 @@ export default function ManageCoursesPage() {
                   <TableHead>Description</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Price</TableHead>
+                  <TableHead>School</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -237,28 +251,29 @@ export default function ManageCoursesPage() {
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
                     <TableCell className="max-w-xs truncate">{course.description}</TableCell>
-                    <TableCell>{course.isPaid ? 'Paid' : 'Unpaid'}</TableCell>
-                    <TableCell>{course.isPaid && course.price ? `$${course.price.toFixed(2)}` : 'N/A'}</TableCell>
+                    <TableCell>{course.is_paid ? 'Paid' : 'Unpaid'}</TableCell>
+                    <TableCell>{course.is_paid && course.price ? `$${course.price.toFixed(2)}` : 'N/A'}</TableCell>
+                    <TableCell>{course.school_id ? 'School-Specific' : 'Global'}</TableCell>
                     <TableCell className="space-x-1 text-right">
-                      <Button variant="outline" size="sm" asChild>
+                      <Button variant="outline" size="sm" asChild disabled={isSubmitting}>
                         <Link href={`/admin/lms/courses/${course.id}/content`}>
                            <Settings className="mr-1 h-3 w-3" /> Content
                         </Link>
                       </Button>
-                       <Button variant="outline" size="sm" asChild>
+                       <Button variant="outline" size="sm" asChild disabled={isSubmitting}>
                         <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
                           <UserPlus className="mr-1 h-3 w-3" /> Enroll
                         </Link>
                       </Button>
-                      {course.isPaid && (
-                        <Button variant="outline" size="sm" onClick={() => handleOpenCodeGenerationDialog(course)}>
+                      {course.is_paid && (
+                        <Button variant="outline" size="sm" onClick={() => handleOpenCodeGenerationDialog(course)} disabled={isSubmitting}>
                           <KeyRound className="mr-1 h-3 w-3" /> Codes
                         </Button>
                       )}
-                      <Button variant="outline" size="icon" onClick={() => handleOpenCourseDialog(course)}>
+                      <Button variant="outline" size="icon" onClick={() => handleOpenCourseDialog(course)} disabled={isSubmitting}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteCourse(course.id)}>
+                      <Button variant="destructive" size="icon" onClick={() => handleDeleteCourse(course.id)} disabled={isSubmitting}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -279,15 +294,15 @@ export default function ManageCoursesPage() {
             <div className="grid gap-4 py-4">
               <div>
                 <Label htmlFor="title">Course Title</Label>
-                <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Introduction to Programming" required />
+                <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Introduction to Programming" required disabled={isSubmitting} />
               </div>
               <div>
                 <Label htmlFor="description">Description</Label>
-                <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief overview of the course" />
+                <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief overview of the course" disabled={isSubmitting}/>
               </div>
               <div>
                 <Label>Course Type</Label>
-                <RadioGroup value={isPaid ? "paid" : "unpaid"} onValueChange={(val) => setIsPaid(val === "paid")} className="flex space-x-4 mt-1">
+                <RadioGroup value={isPaid ? "paid" : "unpaid"} onValueChange={(val) => setIsPaid(val === "paid")} className="flex space-x-4 mt-1" disabled={isSubmitting}>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="unpaid" id="unpaid" />
                     <Label htmlFor="unpaid">Unpaid (Free)</Label>
@@ -301,13 +316,16 @@ export default function ManageCoursesPage() {
               {isPaid && (
                 <div>
                   <Label htmlFor="price">Price ($)</Label>
-                  <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 49.99" step="0.01" min="0.01" required={isPaid}/>
+                  <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 49.99" step="0.01" min="0.01" required={isPaid} disabled={isSubmitting}/>
                 </div>
               )}
+              {/* Add school_id selection if superadmin is creating and it can be school-specific */}
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit"><Save className="mr-2 h-4 w-4" /> {editingCourse ? 'Save Changes' : 'Add Course'}</Button>
+              <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingCourse ? 'Save Changes' : 'Add Course'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -329,6 +347,7 @@ export default function ManageCoursesPage() {
                 max="100"
                 value={numCodesToGenerate} 
                 onChange={(e) => setNumCodesToGenerate(parseInt(e.target.value))} 
+                disabled={isSubmitting}
               />
             </div>
             <div>
@@ -339,9 +358,12 @@ export default function ManageCoursesPage() {
                 min="1"
                 value={codeExpiresInDays} 
                 onChange={(e) => setCodeExpiresInDays(parseInt(e.target.value))} 
+                disabled={isSubmitting}
               />
             </div>
-            <Button onClick={handleGenerateCodes}>Generate Codes</Button>
+            <Button onClick={handleGenerateCodes} disabled={isSubmitting}>
+             {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <KeyRound className="mr-2 h-4 w-4"/>} Generate Codes
+            </Button>
             {generatedCodesForDisplay.length > 0 && (
               <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
                 <h4 className="font-medium">Generated Codes:</h4>
@@ -357,7 +379,7 @@ export default function ManageCoursesPage() {
             )}
           </div>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
+            <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Close</Button></DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -365,3 +387,4 @@ export default function ManageCoursesPage() {
   );
 }
 
+    

@@ -7,16 +7,26 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { Course, Student, Teacher, UserRole } from '@/types';
+import type { Course, Student, Teacher, StudentCourseEnrollment, TeacherCourseEnrollment } from '@/types';
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, UserMinus, Users, Briefcase } from 'lucide-react';
+import { UserPlus, UserMinus, Users, Briefcase, Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
+import { enrollUserInCourseAction, unenrollUserFromCourseAction } from '../actions';
 
-const MOCK_LMS_COURSES_KEY = 'mockLMSCoursesData';
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_TEACHERS_KEY = 'mockTeachersData';
+async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
+  const { data: school, error } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUserId)
+    .single();
+  if (error || !school) {
+    console.error("Error fetching admin's school:", error?.message);
+    return null;
+  }
+  return school.id;
+}
 
 export default function ManageCourseEnrollmentsPage() {
   const params = useParams();
@@ -27,75 +37,143 @@ export default function ManageCourseEnrollmentsPage() {
   const [course, setCourse] = useState<Course | null>(null);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allTeachers, setAllTeachers] = useState<Teacher[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [studentEnrollments, setStudentEnrollments] = useState<StudentCourseEnrollment[]>([]);
+  const [teacherEnrollments, setTeacherEnrollments] = useState<TeacherCourseEnrollment[]>([]);
+  
+  const [isLoadingPage, setIsLoadingPage] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
-  const [selectedStudentIdsToEnroll, setSelectedStudentIdsToEnroll] = useState<string[]>([]);
-  const [selectedTeacherIdsToEnroll, setSelectedTeacherIdsToEnroll] = useState<string[]>([]);
+  const [selectedStudentIdToEnroll, setSelectedStudentIdToEnroll] = useState<string>('');
+  const [selectedTeacherIdToEnroll, setSelectedTeacherIdToEnroll] = useState<string>('');
 
   useEffect(() => {
-    if (courseId && typeof window !== 'undefined') {
-      const storedCourses = localStorage.getItem(MOCK_LMS_COURSES_KEY);
-      const courses: Course[] = storedCourses ? JSON.parse(storedCourses) : [];
-      const foundCourse = courses.find(c => c.id === courseId);
-      
-      if (foundCourse) {
-        setCourse(foundCourse);
-      } else {
-        toast({ title: "Error", description: "Course not found.", variant: "destructive" });
-        router.push('/admin/lms/courses');
-      }
-
-      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      setAllStudents(storedStudents ? JSON.parse(storedStudents) : []);
-      
-      const storedTeachers = localStorage.getItem(MOCK_TEACHERS_KEY);
-      setAllTeachers(storedTeachers ? JSON.parse(storedTeachers) : []);
-
-      setIsLoading(false);
+    const adminId = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(adminId);
+    if (adminId) {
+      fetchAdminSchoolId(adminId).then(schoolId => {
+        setCurrentSchoolId(schoolId); // May be null for superadmin
+        if (courseId) {
+          fetchCourseDetails(courseId);
+          fetchEnrollments(courseId, schoolId);
+          fetchPotentialEnrollees(schoolId);
+        }
+      });
+    } else {
+        toast({title: "Error", description: "Admin user not identified.", variant: "destructive"});
+        setIsLoadingPage(false);
     }
-  }, [courseId, router, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId, toast]);
+  
+  async function fetchCourseDetails(cId: string) {
+    const { data, error } = await supabase.from('lms_courses').select('*').eq('id', cId).single();
+    if (error || !data) {
+      toast({ title: "Error", description: "Course not found.", variant: "destructive" });
+      router.push('/admin/lms/courses');
+    } else {
+      setCourse(data as Course);
+    }
+  }
 
-  const updateCourseInStorage = (updatedCourse: Course) => {
-    const storedCourses = localStorage.getItem(MOCK_LMS_COURSES_KEY);
-    let courses: Course[] = storedCourses ? JSON.parse(storedCourses) : [];
-    courses = courses.map(c => c.id === updatedCourse.id ? updatedCourse : c);
-    localStorage.setItem(MOCK_LMS_COURSES_KEY, JSON.stringify(courses));
-    setCourse(updatedCourse);
-  };
+  async function fetchEnrollments(cId: string, schoolId: string | null) {
+    // If schoolId is null (e.g. superadmin viewing a global course), fetch all enrollments for that course.
+    // If schoolId is present, fetch only enrollments for that school.
+    let studentQuery = supabase.from('lms_student_course_enrollments').select('*').eq('course_id', cId);
+    let teacherQuery = supabase.from('lms_teacher_course_enrollments').select('*').eq('course_id', cId);
+    if (schoolId) {
+        studentQuery = studentQuery.eq('school_id', schoolId);
+        teacherQuery = teacherQuery.eq('school_id', schoolId);
+    }
+    const { data: sEnroll, error: sError } = await studentQuery;
+    const { data: tEnroll, error: tError } = await teacherQuery;
 
-  const handleEnrollUsers = (userType: 'student' | 'teacher') => {
-    if (!course) return;
-    const updatedCourse = { ...course };
-    const idsToEnroll = userType === 'student' ? selectedStudentIdsToEnroll : selectedTeacherIdsToEnroll;
-    const enrollmentArrayKey = userType === 'student' ? 'enrolledStudentIds' : 'enrolledTeacherIds';
+    if (sError) toast({ title: "Error fetching student enrollments", variant: "destructive"}); else setStudentEnrollments(sEnroll || []);
+    if (tError) toast({ title: "Error fetching teacher enrollments", variant: "destructive"}); else setTeacherEnrollments(tEnroll || []);
+  }
+
+  async function fetchPotentialEnrollees(schoolId: string | null) {
+    setIsLoadingPage(true); // Also covers loading these lists
+    if (schoolId) { // Only fetch school-specific students/teachers if admin is school-bound
+        const { data: studentsData, error: studentsError } = await supabase.from('students').select('*').eq('school_id', schoolId);
+        if (studentsError) toast({ title: "Error fetching students", variant: "destructive"}); else setAllStudents(studentsData || []);
+        
+        const { data: teachersData, error: teachersError } = await supabase.from('teachers').select('*').eq('school_id', schoolId);
+        if (teachersError) toast({ title: "Error fetching teachers", variant: "destructive"}); else setAllTeachers(teachersData || []);
+    } else { // Superadmin might be enrolling any student/teacher to a global course (complex scenario, simplified here)
+        const { data: studentsData, error: studentsError } = await supabase.from('students').select('*');
+        if (studentsError) toast({ title: "Error fetching students", variant: "destructive"}); else setAllStudents(studentsData || []);
+        
+        const { data: teachersData, error: teachersError } = await supabase.from('teachers').select('*');
+        if (teachersError) toast({ title: "Error fetching teachers", variant: "destructive"}); else setAllTeachers(teachersData || []);
+    }
+    setIsLoadingPage(false);
+  }
+
+
+  const handleEnrollUser = async (userType: 'student' | 'teacher') => {
+    if (!course || !currentSchoolId) { // Requires school context for enrollment for now
+        toast({title: "Error", description: "Course or school context missing.", variant: "destructive"});
+        return;
+    }
+    const userProfileId = userType === 'student' ? selectedStudentIdToEnroll : selectedTeacherIdToEnroll;
+    if (!userProfileId) {
+        toast({title: "Error", description: `Please select a ${userType} to enroll.`, variant: "destructive"});
+        return;
+    }
+    setIsSubmitting(true);
     
-    const currentEnrollments = updatedCourse[enrollmentArrayKey] || [];
-    const newEnrollments = Array.from(new Set([...currentEnrollments, ...idsToEnroll]));
-    updatedCourse[enrollmentArrayKey] = newEnrollments;
+    const result = await enrollUserInCourseAction({
+      course_id: course.id,
+      user_profile_id: userProfileId,
+      user_type: userType,
+      school_id: currentSchoolId, // Assuming enrollments are school-specific for now
+    });
 
-    updateCourseInStorage(updatedCourse);
-    toast({ title: `${userType.charAt(0).toUpperCase() + userType.slice(1)}(s) Enrolled`, description: `${idsToEnroll.length} user(s) enrolled.` });
-    if (userType === 'student') setSelectedStudentIdsToEnroll([]);
-    else setSelectedTeacherIdsToEnroll([]);
+    if (result.ok) {
+      toast({ title: `${userType.charAt(0).toUpperCase() + userType.slice(1)} Enrolled`, description: result.message });
+      fetchEnrollments(course.id, currentSchoolId); // Re-fetch enrollments
+      if(userType === 'student') setSelectedStudentIdToEnroll(''); else setSelectedTeacherIdToEnroll('');
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsSubmitting(false);
   };
 
-  const handleUnenrollUser = (userId: string, userType: 'student' | 'teacher') => {
-    if (!course) return;
+  const handleUnenrollUser = async (userProfileId: string, userType: 'student' | 'teacher') => {
+    if (!course || !currentSchoolId) return;
     if (confirm(`Are you sure you want to unenroll this ${userType}?`)) {
-      const updatedCourse = { ...course };
-      const enrollmentArrayKey = userType === 'student' ? 'enrolledStudentIds' : 'enrolledTeacherIds';
-      updatedCourse[enrollmentArrayKey] = (updatedCourse[enrollmentArrayKey] || []).filter(id => id !== userId);
-      updateCourseInStorage(updatedCourse);
-      toast({ title: `${userType.charAt(0).toUpperCase() + userType.slice(1)} Unenrolled`, variant: "destructive" });
+      setIsSubmitting(true);
+      const result = await unenrollUserFromCourseAction({
+        course_id: course.id,
+        user_profile_id: userProfileId,
+        user_type: userType,
+        school_id: currentSchoolId,
+      });
+      if (result.ok) {
+        toast({ title: `${userType.charAt(0).toUpperCase() + userType.slice(1)} Unenrolled`, variant: "destructive" });
+        fetchEnrollments(course.id, currentSchoolId);
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+      }
+      setIsSubmitting(false);
     }
   };
   
-  const availableStudentsToEnroll = allStudents.filter(s => !course?.enrolledStudentIds?.includes(s.id));
-  const availableTeachersToEnroll = allTeachers.filter(t => !course?.enrolledTeacherIds?.includes(t.id));
+  const enrolledStudentIds = studentEnrollments.map(e => e.student_id);
+  const enrolledTeacherIds = teacherEnrollments.map(e => e.teacher_id);
 
+  const availableStudentsToEnroll = allStudents.filter(s => !enrolledStudentIds.includes(s.id));
+  const availableTeachersToEnroll = allTeachers.filter(t => !enrolledTeacherIds.includes(t.id));
 
-  if (isLoading) return <div className="text-center py-10">Loading enrollment data...</div>;
+  if (isLoadingPage) return <div className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Loading enrollment data...</div>;
   if (!course) return <div className="text-center py-10 text-destructive">Course not found.</div>;
+  if (!currentSchoolId && course.school_id) { // If it's a school-specific course but admin isn't linked to a school
+    return <div className="text-center py-10 text-destructive">Admin not associated with a school to manage enrollments for this school-specific course.</div>;
+  }
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -110,11 +188,7 @@ export default function ManageCourseEnrollmentsPage() {
           <CardContent>
             <div className="space-y-2 mb-4">
               <Label>Enroll New Students</Label>
-              <Select onValueChange={(value) => {
-                if (value && !selectedStudentIdsToEnroll.includes(value)) {
-                    setSelectedStudentIdsToEnroll(prev => [...prev, value]);
-                }
-              }}>
+              <Select value={selectedStudentIdToEnroll} onValueChange={setSelectedStudentIdToEnroll} disabled={isSubmitting}>
                 <SelectTrigger><SelectValue placeholder="Select student(s) to enroll" /></SelectTrigger>
                 <SelectContent>
                   {availableStudentsToEnroll.length > 0 ? availableStudentsToEnroll.map(s => (
@@ -122,27 +196,22 @@ export default function ManageCourseEnrollmentsPage() {
                   )) : <SelectItem value="-" disabled>No students available to enroll</SelectItem>}
                 </SelectContent>
               </Select>
-              {selectedStudentIdsToEnroll.length > 0 && (
-                <div className="mt-2 text-sm">
-                    Selected: {selectedStudentIdsToEnroll.map(id => allStudents.find(s=>s.id===id)?.name).join(', ')}
-                </div>
-              )}
-              <Button onClick={() => handleEnrollUsers('student')} disabled={selectedStudentIdsToEnroll.length === 0}>
-                <UserPlus className="mr-2 h-4 w-4" /> Enroll Selected Students
+              <Button onClick={() => handleEnrollUser('student')} disabled={isSubmitting || !selectedStudentIdToEnroll}>
+                {isSubmitting && selectedStudentIdToEnroll ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserPlus className="mr-2 h-4 w-4" />} Enroll Student
               </Button>
             </div>
             <h4 className="font-medium mb-2">Currently Enrolled Students:</h4>
-            {(course.enrolledStudentIds?.length ?? 0) > 0 ? (
+            {studentEnrollments.length > 0 ? (
               <Table>
                 <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {course.enrolledStudentIds.map(id => {
-                    const student = allStudents.find(s => s.id === id);
+                  {studentEnrollments.map(enrollment => {
+                    const student = allStudents.find(s => s.id === enrollment.student_id);
                     return student ? (
-                      <TableRow key={id}>
+                      <TableRow key={enrollment.id}>
                         <TableCell>{student.name}</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="destructive" size="sm" onClick={() => handleUnenrollUser(id, 'student')}>
+                          <Button variant="destructive" size="sm" onClick={() => handleUnenrollUser(student.id, 'student')} disabled={isSubmitting}>
                             <UserMinus className="mr-1 h-3 w-3" /> Unenroll
                           </Button>
                         </TableCell>
@@ -163,11 +232,7 @@ export default function ManageCourseEnrollmentsPage() {
           <CardContent>
             <div className="space-y-2 mb-4">
               <Label>Enroll New Teachers</Label>
-               <Select onValueChange={(value) => {
-                if (value && !selectedTeacherIdsToEnroll.includes(value)) {
-                    setSelectedTeacherIdsToEnroll(prev => [...prev, value]);
-                }
-              }}>
+               <Select value={selectedTeacherIdToEnroll} onValueChange={setSelectedTeacherIdToEnroll} disabled={isSubmitting}>
                 <SelectTrigger><SelectValue placeholder="Select teacher(s) to enroll" /></SelectTrigger>
                 <SelectContent>
                   {availableTeachersToEnroll.length > 0 ? availableTeachersToEnroll.map(t => (
@@ -175,27 +240,22 @@ export default function ManageCourseEnrollmentsPage() {
                   )) : <SelectItem value="-" disabled>No teachers available to enroll</SelectItem>}
                 </SelectContent>
               </Select>
-              {selectedTeacherIdsToEnroll.length > 0 && (
-                <div className="mt-2 text-sm">
-                    Selected: {selectedTeacherIdsToEnroll.map(id => allTeachers.find(t=>t.id===id)?.name).join(', ')}
-                </div>
-              )}
-              <Button onClick={() => handleEnrollUsers('teacher')} disabled={selectedTeacherIdsToEnroll.length === 0}>
-                <UserPlus className="mr-2 h-4 w-4" /> Enroll Selected Teachers
+              <Button onClick={() => handleEnrollUser('teacher')} disabled={isSubmitting || !selectedTeacherIdToEnroll}>
+                {isSubmitting && selectedTeacherIdToEnroll ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserPlus className="mr-2 h-4 w-4" />} Enroll Teacher
               </Button>
             </div>
             <h4 className="font-medium mb-2">Currently Enrolled Teachers:</h4>
-            {(course.enrolledTeacherIds?.length ?? 0) > 0 ? (
+            {teacherEnrollments.length > 0 ? (
               <Table>
                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {course.enrolledTeacherIds.map(id => {
-                    const teacher = allTeachers.find(t => t.id === id);
+                  {teacherEnrollments.map(enrollment => {
+                    const teacher = allTeachers.find(t => t.id === enrollment.teacher_id);
                     return teacher ? (
-                      <TableRow key={id}>
+                      <TableRow key={enrollment.id}>
                         <TableCell>{teacher.name}</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="destructive" size="sm" onClick={() => handleUnenrollUser(id, 'teacher')}>
+                          <Button variant="destructive" size="sm" onClick={() => handleUnenrollUser(teacher.id, 'teacher')} disabled={isSubmitting}>
                             <UserMinus className="mr-1 h-3 w-3" /> Unenroll
                           </Button>
                         </TableCell>
@@ -208,9 +268,11 @@ export default function ManageCourseEnrollmentsPage() {
           </CardContent>
         </Card>
       </div>
-       <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} className="mt-4 self-start">
+       <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} className="mt-4 self-start" disabled={isSubmitting}>
         Back to Courses
       </Button>
     </div>
   );
 }
+
+    

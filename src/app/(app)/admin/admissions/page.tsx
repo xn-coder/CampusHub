@@ -7,46 +7,97 @@ import { Button } from '@/components/ui/button';
 import type { AdmissionRecord, ClassData } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { ListChecks, CheckSquare } from 'lucide-react';
+import { ListChecks, CheckSquare, Loader2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { supabase } from '@/lib/supabaseClient';
+import { updateAdmissionStatusAction } from './actions';
 
-const MOCK_ADMISSIONS_KEY = 'mockAdmissionsData';
-const MOCK_CLASSES_KEY = 'mockClassesData'; // For activated class-sections
+async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
+  const { data: school, error } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUserId)
+    .single();
+  if (error || !school) {
+    console.error("Error fetching admin's school:", error?.message);
+    return null;
+  }
+  return school.id;
+}
 
 export default function AdmissionsPage() {
   const { toast } = useToast();
   const [admissionRecords, setAdmissionRecords] = useState<AdmissionRecord[]>([]);
   const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedAdmissions = localStorage.getItem(MOCK_ADMISSIONS_KEY);
-      if (storedAdmissions) setAdmissionRecords(JSON.parse(storedAdmissions));
-      else localStorage.setItem(MOCK_ADMISSIONS_KEY, JSON.stringify([]));
-      
-      const storedActiveClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      if (storedActiveClasses) setActiveClasses(JSON.parse(storedActiveClasses));
-      else localStorage.setItem(MOCK_CLASSES_KEY, JSON.stringify([]));
+    const adminId = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(adminId);
+    if (adminId) {
+      fetchAdminSchoolId(adminId).then(schoolId => {
+        setCurrentSchoolId(schoolId);
+        if (schoolId) {
+          fetchAdmissionData(schoolId);
+        } else {
+          toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+          setIsLoading(false);
+        }
+      });
+    } else {
+      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      setIsLoading(false);
     }
-  }, []);
+  }, [toast]);
 
-  const updateLocalStorage = (key: string, data: any) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(data));
+  async function fetchAdmissionData(schoolId: string) {
+    setIsLoading(true);
+    const { data: admissionsData, error: admissionsError } = await supabase
+      .from('admission_records')
+      .select('*')
+      .eq('school_id', schoolId)
+      .order('created_at', { ascending: false });
+
+    if (admissionsError) {
+      toast({ title: "Error fetching admissions", description: admissionsError.message, variant: "destructive" });
+    } else {
+      setAdmissionRecords(admissionsData || []);
     }
-  };
+
+    const { data: classesData, error: classesError } = await supabase
+      .from('classes')
+      .select('id, name, division')
+      .eq('school_id', schoolId);
+    
+    if (classesError) {
+      toast({ title: "Error fetching classes", description: classesError.message, variant: "destructive" });
+    } else {
+      setActiveClasses(classesData || []);
+    }
+    setIsLoading(false);
+  }
   
-  const handleEnrollStudent = (admissionId: string) => {
+  const handleEnrollStudent = async (admissionId: string) => {
+    if (!currentSchoolId) {
+        toast({title: "Error", description: "School context missing.", variant: "destructive"});
+        return;
+    }
+    setIsSubmitting(true);
     const admission = admissionRecords.find(ar => ar.id === admissionId);
     if (admission) {
-        const updatedRecords = admissionRecords.map(ar => 
-            ar.id === admissionId ? {...ar, status: 'Enrolled'} : ar
-        );
-        setAdmissionRecords(updatedRecords);
-        updateLocalStorage(MOCK_ADMISSIONS_KEY, updatedRecords);
-        toast({ title: "Student Enrolled", description: `${admission.name} is now marked as enrolled.` });
+        const result = await updateAdmissionStatusAction(admissionId, 'Enrolled', currentSchoolId);
+        if (result.ok) {
+            toast({ title: "Student Enrolled", description: `${admission.name} is now marked as enrolled.` });
+            fetchAdmissionData(currentSchoolId); // Re-fetch to update UI
+        } else {
+            toast({ title: "Error", description: result.message, variant: "destructive" });
+        }
     }
+    setIsSubmitting(false);
   };
 
 
@@ -62,8 +113,12 @@ export default function AdmissionsPage() {
             <CardDescription>List of submitted student admission applications. New students are registered by teachers.</CardDescription>
           </CardHeader>
           <CardContent className="max-h-[calc(theme(space.96)_*_2.5)] overflow-y-auto">
-            {admissionRecords.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">No admission records found.</p>
+            {isLoading ? (
+                <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            ) : !currentSchoolId ? (
+                <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot view admissions.</p>
+            ) : admissionRecords.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">No admission records found for this school.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -76,8 +131,8 @@ export default function AdmissionsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {admissionRecords.slice().reverse().map(record => {
-                    const assignedClassDetails = activeClasses.find(c => c.id === record.classId);
+                  {admissionRecords.map(record => {
+                    const assignedClassDetails = activeClasses.find(c => c.id === record.class_id);
                     const classText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'N/A';
                     return (
                     <TableRow key={record.id}>
@@ -96,8 +151,8 @@ export default function AdmissionsPage() {
                       </TableCell>
                       <TableCell>
                         {record.status === 'Admitted' && (
-                           <Button variant="outline" size="sm" onClick={() => handleEnrollStudent(record.id)}>
-                             <CheckSquare className="mr-1 h-3 w-3" /> Enroll
+                           <Button variant="outline" size="sm" onClick={() => handleEnrollStudent(record.id)} disabled={isSubmitting}>
+                             {isSubmitting ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <CheckSquare className="mr-1 h-3 w-3" />} Enroll
                            </Button>
                         )}
                          {record.status === 'Enrolled' && (
@@ -115,3 +170,5 @@ export default function AdmissionsPage() {
     </div>
   );
 }
+
+    
