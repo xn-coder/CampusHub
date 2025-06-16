@@ -4,6 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { sendEmail } from '@/services/emailService';
+import type { ClassData, Exam, Student, Subject } from '@/types';
 
 interface SaveScoreInput {
   student_id: string;
@@ -15,6 +16,121 @@ interface SaveScoreInput {
   recorded_by_teacher_id: string; 
   school_id: string;
 }
+
+export async function getTeacherStudentScoresPageInitialDataAction(teacherUserId: string): Promise<{
+  ok: boolean;
+  message?: string;
+  teacherProfileId?: string;
+  schoolId?: string;
+  assignedClasses?: ClassData[];
+  allExams?: Exam[];
+  allSubjects?: Subject[];
+}> {
+  if (!teacherUserId) {
+    return { ok: false, message: "Teacher user ID is required." };
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data: teacherProfile, error: profileError } = await supabase
+      .from('teachers')
+      .select('id, school_id')
+      .eq('user_id', teacherUserId)
+      .single();
+
+    if (profileError || !teacherProfile) {
+      return { ok: false, message: profileError?.message || "Teacher profile not found." };
+    }
+    const { id: teacherProfileId, school_id: schoolId } = teacherProfile;
+
+    if (!schoolId) {
+      return { ok: false, message: "Teacher is not associated with a school." };
+    }
+
+    const [classesRes, examsRes, subjectsRes] = await Promise.all([
+      supabase.from('classes').select('*').eq('teacher_id', teacherProfileId).eq('school_id', schoolId),
+      supabase.from('exams').select('*').eq('school_id', schoolId),
+      supabase.from('subjects').select('*').eq('school_id', schoolId),
+    ]);
+
+    if (classesRes.error) throw new Error(`Fetching classes failed: ${classesRes.error.message}`);
+    if (examsRes.error) throw new Error(`Fetching exams failed: ${examsRes.error.message}`);
+    if (subjectsRes.error) throw new Error(`Fetching subjects failed: ${subjectsRes.error.message}`);
+    
+    return {
+      ok: true,
+      teacherProfileId,
+      schoolId,
+      assignedClasses: (classesRes.data || []) as ClassData[],
+      allExams: (examsRes.data || []) as Exam[],
+      allSubjects: (subjectsRes.data || []) as Subject[],
+    };
+
+  } catch (error: any) {
+    console.error("Error in getTeacherStudentScoresPageInitialDataAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred." };
+  }
+}
+
+export async function getStudentsForClassAction(classId: string, schoolId: string): Promise<{
+  ok: boolean;
+  message?: string;
+  students?: Student[];
+}> {
+  if (!classId || !schoolId) {
+    return { ok: false, message: "Class ID and School ID are required." };
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data, error } = await supabase
+      .from('students')
+      .select('*')
+      .eq('class_id', classId)
+      .eq('school_id', schoolId);
+    
+    if (error) throw error;
+    return { ok: true, students: (data || []) as Student[] };
+  } catch (error: any) {
+    console.error("Error in getStudentsForClassAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred." };
+  }
+}
+
+export async function getScoresForExamAndClassAction(
+  examId: string,
+  classId: string,
+  schoolId: string,
+  studentIds: string[]
+): Promise<{
+  ok: boolean;
+  message?: string;
+  scores?: Record<string, string | number>;
+}> {
+  if (!examId || !classId || !schoolId || studentIds.length === 0) {
+    return { ok: true, scores: {} }; // Nothing to fetch or no students
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data: fetchedScoresData, error } = await supabase
+      .from('student_scores')
+      .select('student_id, score')
+      .eq('exam_id', examId)
+      .eq('class_id', classId)
+      .eq('school_id', schoolId)
+      .in('student_id', studentIds);
+
+    if (error) throw error;
+
+    const scoresMap: Record<string, string | number> = {};
+    (fetchedScoresData || []).forEach(fetchedScore => {
+      scoresMap[fetchedScore.student_id] = fetchedScore.score;
+    });
+    return { ok: true, scores: scoresMap };
+  } catch (error: any) {
+    console.error("Error in getScoresForExamAndClassAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred." };
+  }
+}
+
 
 export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): Promise<{ ok: boolean; message: string; savedCount: number }> {
   const supabaseAdmin = createSupabaseServerClient();

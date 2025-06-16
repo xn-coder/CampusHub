@@ -9,12 +9,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { ClassData, Student, Exam, Subject } from '@/types';
-import { useState, useEffect, type FormEvent, useMemo } from 'react';
+import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Award, Save, Users, FileText, Loader2, Edit2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { supabase } from '@/lib/supabaseClient';
-import { saveStudentScoresAction } from './actions';
+import { 
+  getTeacherStudentScoresPageInitialDataAction, 
+  getStudentsForClassAction, 
+  getScoresForExamAndClassAction,
+  saveStudentScoresAction 
+} from './actions';
 
 export default function TeacherStudentScoresPage() {
   const { toast } = useToast();
@@ -27,10 +31,10 @@ export default function TeacherStudentScoresPage() {
   const [selectedExamId, setSelectedExamId] = useState<string>('');
   const [scores, setScores] = useState<Record<string, string | number>>({}); 
   
-  const [isLoading, setIsLoading] = useState(false); // General loading for operations like saving
-  const [isFetchingInitialData, setIsFetchingInitialData] = useState(true); // For initial setup
-  const [isFetchingStudents, setIsFetchingStudents] = useState(false); // For fetching students of a class
-  const [isFetchingScores, setIsFetchingScores] = useState(false); // For fetching scores for an exam
+  const [isLoading, setIsLoading] = useState(false); 
+  const [isFetchingInitialData, setIsFetchingInitialData] = useState(true); 
+  const [isFetchingStudents, setIsFetchingStudents] = useState(false); 
+  const [isFetchingScores, setIsFetchingScores] = useState(false); 
 
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
@@ -39,107 +43,88 @@ export default function TeacherStudentScoresPage() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [currentScoreInput, setCurrentScoreInput] = useState<string | number>('');
 
-  useEffect(() => {
+  const fetchInitialData = useCallback(async () => {
+    setIsFetchingInitialData(true);
     const teacherUserId = localStorage.getItem('currentUserId');
-    if (teacherUserId) {
-      supabase.from('teachers').select('id, school_id').eq('user_id', teacherUserId).single()
-        .then(({ data: teacherProfile, error: profileError }) => {
-          if (profileError || !teacherProfile) {
-            toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive"});
-            setIsFetchingInitialData(false); return;
-          }
-          setCurrentTeacherId(teacherProfile.id);
-          setCurrentSchoolId(teacherProfile.school_id);
-
-          if (teacherProfile.id && teacherProfile.school_id) {
-            Promise.all([
-                supabase.from('classes').select('*').eq('teacher_id', teacherProfile.id).eq('school_id', teacherProfile.school_id),
-                supabase.from('exams').select('*').eq('school_id', teacherProfile.school_id),
-                supabase.from('subjects').select('*').eq('school_id', teacherProfile.school_id),
-            ]).then(([classesRes, examsRes, subjectsRes]) => {
-                if (classesRes.error) toast({ title: "Error fetching classes", variant: "destructive" });
-                else setAssignedClasses(classesRes.data || []);
-                
-                if (examsRes.error) toast({ title: "Error fetching exams", variant: "destructive" });
-                else setAllExams(examsRes.data || []);
-
-                if (subjectsRes.error) toast({ title: "Error fetching subjects", variant: "destructive" });
-                else setAllSubjects(subjectsRes.data || []);
-                
-                setIsFetchingInitialData(false);
-            }).catch(err => {
-                toast({ title: "Error fetching initial data", description: err.message, variant: "destructive"});
-                setIsFetchingInitialData(false);
-            });
-          } else {
-            setIsFetchingInitialData(false);
-          }
-        });
-    } else {
-        toast({ title: "Error", description: "Teacher not identified.", variant: "destructive"});
-        setIsFetchingInitialData(false);
+    if (!teacherUserId) {
+      toast({ title: "Error", description: "Teacher not identified.", variant: "destructive"});
+      setIsFetchingInitialData(false);
+      return;
     }
+    const result = await getTeacherStudentScoresPageInitialDataAction(teacherUserId);
+    if (result.ok) {
+      setCurrentTeacherId(result.teacherProfileId || null);
+      setCurrentSchoolId(result.schoolId || null);
+      setAssignedClasses(result.assignedClasses || []);
+      setAllExams(result.allExams || []);
+      setAllSubjects(result.allSubjects || []);
+    } else {
+      toast({ title: "Error loading initial data", description: result.message, variant: "destructive" });
+    }
+    setIsFetchingInitialData(false);
+  }, [toast]);
+
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
+
+  const fetchStudentsForClass = useCallback(async (classId: string, schoolId: string) => {
+    setIsFetchingStudents(true);
+    setStudentsInSelectedClass([]); 
+    setScores({});                 
+    setSelectedExamId('');         
+    const result = await getStudentsForClassAction(classId, schoolId);
+    if (result.ok && result.students) {
+      setStudentsInSelectedClass(result.students);
+    } else {
+      toast({ title: "Error fetching students for class", description: result.message, variant: "destructive" });
+    }
+    setIsFetchingStudents(false);
   }, [toast]);
 
   useEffect(() => { 
     if (selectedClassId && currentSchoolId) {
-      setIsFetchingStudents(true);
-      setStudentsInSelectedClass([]); // Reset students when class changes
-      setScores({});                 // Reset scores
-      setSelectedExamId('');         // Reset selected exam
-      supabase.from('students').select('*').eq('class_id', selectedClassId).eq('school_id', currentSchoolId)
-        .then(({ data, error }) => {
-          if (error) toast({ title: "Error fetching students for class", variant: "destructive" });
-          else setStudentsInSelectedClass(data || []);
-          setIsFetchingStudents(false);
-        });
+      fetchStudentsForClass(selectedClassId, currentSchoolId);
     } else {
       setStudentsInSelectedClass([]);
       setScores({});
       setSelectedExamId('');
     }
-  }, [selectedClassId, currentSchoolId, toast]);
+  }, [selectedClassId, currentSchoolId, fetchStudentsForClass]);
 
-  useEffect(() => {
+  const fetchScoresForExam = useCallback(async () => {
     if (selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && currentSchoolId) {
       setIsFetchingScores(true);
-      supabase.from('student_scores')
-        .select('student_id, score')
-        .eq('exam_id', selectedExamId)
-        .eq('class_id', selectedClassId)
-        .eq('school_id', currentSchoolId)
-        .in('student_id', studentsInSelectedClass.map(s => s.id))
-        .then(({ data: fetchedScoresData, error }) => {
-          const newScoresState: Record<string, string | number> = {};
-          // Initialize all students in the current class view with an empty score string
-          studentsInSelectedClass.forEach(student => {
-            newScoresState[student.id] = '';
-          });
+      const studentIds = studentsInSelectedClass.map(s => s.id);
+      const result = await getScoresForExamAndClassAction(selectedExamId, selectedClassId, currentSchoolId, studentIds);
+      
+      const newScoresState: Record<string, string | number> = {};
+      studentsInSelectedClass.forEach(student => {
+        newScoresState[student.id] = result.ok && result.scores?.[student.id] !== undefined ? result.scores[student.id] : '';
+      });
 
-          if (error) {
-            toast({ title: "Error fetching existing scores", description: error.message, variant: "destructive" });
-            // newScoresState remains initialized with empty strings
-          } else {
-            // Populate with fetched scores for those who have them
-            (fetchedScoresData || []).forEach(fetchedScore => {
-              if (newScoresState.hasOwnProperty(fetchedScore.student_id)) {
-                newScoresState[fetchedScore.student_id] = fetchedScore.score;
-              }
-            });
-          }
-          setScores(newScoresState);
-          setIsFetchingScores(false);
-        });
-    } else {
-      // If no exam selected or no students, reset scores to empty for current students
+      if (!result.ok) {
+        toast({ title: "Error fetching existing scores", description: result.message, variant: "destructive" });
+      }
+      setScores(newScoresState);
+      setIsFetchingScores(false);
+    } else if (studentsInSelectedClass.length > 0) {
+      // If exam deselected or no students, but class is selected, init scores to empty for current students
       const initialScores: Record<string, string | number> = {};
       studentsInSelectedClass.forEach(student => {
         initialScores[student.id] = '';
       });
       setScores(initialScores);
       setIsFetchingScores(false);
+    } else {
+      setScores({});
+      setIsFetchingScores(false);
     }
   }, [selectedExamId, selectedClassId, studentsInSelectedClass, currentSchoolId, toast]);
+
+  useEffect(() => {
+    fetchScoresForExam();
+  }, [selectedExamId, studentsInSelectedClass, fetchScoresForExam]);
 
 
   const handleOpenScoreDialog = (student: Student) => {
@@ -158,7 +143,7 @@ export default function TeacherStudentScoresPage() {
         toast({ title: "Input Required", description: "Please enter a score or grade.", variant: "default"});
         return;
     }
-    setIsLoading(true); // Use general loading for save operations
+    setIsLoading(true); 
 
     const scoreToSave = {
       student_id: editingStudent.id,
@@ -174,11 +159,7 @@ export default function TeacherStudentScoresPage() {
     const result = await saveStudentScoresAction([scoreToSave]);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
-      // Optimistically update local state
       setScores(prev => ({ ...prev, [editingStudent.id]: currentScoreInput }));
-      // Optionally, could re-fetch scores for this exam to ensure consistency, but optimistic update is usually enough for single edits.
-      // To re-fetch: trigger the score fetching useEffect again, e.g., by slightly changing a dependency or calling a refetch function.
-      // For now, relying on the optimistic update.
       setIsScoreDialogOpen(false);
       setEditingStudent(null);
     }
@@ -187,9 +168,11 @@ export default function TeacherStudentScoresPage() {
   
   const getSubjectName = (subjectId: string) => allSubjects.find(s => s.id === subjectId)?.name || 'N/A';
 
-  const filteredExamsForSelectedClass = selectedClassId 
-    ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id)
-    : [];
+  const filteredExamsForSelectedClass = useMemo(() => {
+    return selectedClassId 
+      ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id) // Show class-specific and school-wide exams
+      : [];
+  }, [allExams, selectedClassId]);
   
   const selectedExamDetails = allExams.find(ex => ex.id === selectedExamId);
 
@@ -222,7 +205,15 @@ export default function TeacherStudentScoresPage() {
           <div className="grid md:grid-cols-2 gap-4 items-end">
             <div>
               <Label htmlFor="classSelect">Select Class</Label>
-              <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading || isFetchingStudents || isFetchingScores}>
+              <Select 
+                value={selectedClassId} 
+                onValueChange={(value) => {
+                  setSelectedClassId(value);
+                  setSelectedExamId(''); // Reset exam when class changes
+                  setScores({});
+                }} 
+                disabled={isLoading || isFetchingStudents || isFetchingScores || assignedClasses.length === 0}
+              >
                 <SelectTrigger id="classSelect">
                   <SelectValue placeholder="Choose your class" />
                 </SelectTrigger>
@@ -235,7 +226,11 @@ export default function TeacherStudentScoresPage() {
             </div>
             <div>
               <Label htmlFor="examSelect">Select Exam</Label>
-              <Select value={selectedExamId} onValueChange={setSelectedExamId} disabled={isLoading || isFetchingStudents || isFetchingScores || !selectedClassId || filteredExamsForSelectedClass.length === 0}>
+              <Select 
+                value={selectedExamId} 
+                onValueChange={setSelectedExamId} 
+                disabled={isLoading || isFetchingStudents || isFetchingScores || !selectedClassId || filteredExamsForSelectedClass.length === 0}
+              >
                 <SelectTrigger id="examSelect">
                   <SelectValue placeholder="Choose an exam" />
                 </SelectTrigger>
@@ -322,4 +317,3 @@ export default function TeacherStudentScoresPage() {
     </div>
   );
 }
-
