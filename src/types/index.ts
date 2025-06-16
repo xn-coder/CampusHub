@@ -374,12 +374,12 @@ export interface CourseActivationCode {
 
 export interface StudentCourseEnrollment {
     id: string;
-    student_id: string;
+    student_profile_id: string; // Changed from student_id
     course_id: string;
     enrolled_at?: string;
     school_id: string;
-    created_at?: string;
-    updated_at?: string;
+    // created_at?: string; // Removed based on previous DB schema alignment
+    // updated_at?: string; // Removed based on previous DB schema alignment
 }
 
 export interface TeacherCourseEnrollment {
@@ -387,9 +387,9 @@ export interface TeacherCourseEnrollment {
     teacher_id: string;
     course_id: string;
     assigned_at?: string;
-    school_id?: string | null; // Made optional to align with DB error fix
-    created_at?: string;
-    updated_at?: string;
+    school_id?: string | null; 
+    // created_at?: string; // Already removed based on previous DB schema alignment
+    // updated_at?: string; // Already removed based on previous DB schema alignment
 }
 
     

@@ -90,18 +90,18 @@ export default function AvailableLmsCoursesPage() {
 
   async function fetchEnrollmentStatuses(courseIds: string[], userProfileId: string, role: UserRole, schoolId: string | null) {
     const enrollmentTable = role === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
-    const userIdColumn = role === 'student' ? 'student_id' : 'teacher_id';
+    const userIdColumn = role === 'student' ? 'student_profile_id' : 'teacher_id'; // Changed to student_profile_id
 
     let query = supabase
       .from(enrollmentTable)
-      .select('course_id, student_id') // Select only what's needed
+      .select('course_id') // Select only course_id, removed student_id as it's redundant here
       .eq(userIdColumn, userProfileId)
       .in('course_id', courseIds);
 
     if (role === 'student' && schoolId) {
-        query = query.eq('school_id', schoolId); // Student enrollments are school-scoped
+        query = query.eq('school_id', schoolId); 
     }
-    // Teacher enrollments are not directly filtered by school_id on the enrollment table itself.
+    
 
     const { data: enrollments, error } = await query;
 
@@ -211,4 +211,5 @@ export default function AvailableLmsCoursesPage() {
     </div>
   );
 }
+
 

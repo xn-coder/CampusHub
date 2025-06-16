@@ -219,7 +219,7 @@ export async function enrollUserInCourseAction(
   const supabaseAdmin = createSupabaseServerClient();
   const { course_id, user_profile_id, user_type, school_id } = input;
   const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
-  const userIdColumn = user_type === 'student' ? 'student_id' : 'teacher_id';
+  const userIdColumn = user_type === 'student' ? 'student_profile_id' : 'teacher_id'; // Changed student_id to student_profile_id
   const enrolledAtColumn = user_type === 'student' ? 'enrolled_at' : 'assigned_at';
 
   let existingEnrollmentCheckQuery = supabaseAdmin
@@ -250,8 +250,8 @@ export async function enrollUserInCourseAction(
   enrollmentData[enrolledAtColumn] = new Date().toISOString();
 
   if (user_type === 'student') {
-    enrollmentData.school_id = school_id; // Student enrollments are school-scoped
-    // created_at and updated_at are handled by DB defaults for students if columns exist
+    enrollmentData.school_id = school_id; 
+    // Removed created_at and updated_at for student enrollments to rely on DB defaults or absence
   }
 
 
@@ -273,7 +273,7 @@ export async function unenrollUserFromCourseAction(
   const supabaseAdmin = createSupabaseServerClient();
   const { course_id, user_profile_id, user_type, school_id } = input;
   const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
-  const userIdColumn = user_type === 'student' ? 'student_id' : 'teacher_id';
+  const userIdColumn = user_type === 'student' ? 'student_profile_id' : 'teacher_id'; // Changed student_id to student_profile_id
 
   let deleteQuery = supabaseAdmin
     .from(enrollmentTable)
@@ -305,7 +305,7 @@ export async function getEnrolledStudentsForCourseAction(
   
   const { data: enrollments, error: enrollmentError } = await supabaseAdmin
     .from('lms_student_course_enrollments')
-    .select('student_id')
+    .select('student_profile_id') // Changed from student_id
     .eq('course_id', courseId);
 
   if (enrollmentError) {
@@ -317,12 +317,12 @@ export async function getEnrolledStudentsForCourseAction(
     return { ok: true, students: [] };
   }
 
-  const studentIds = enrollments.map(e => e.student_id);
+  const studentProfileIds = enrollments.map(e => e.student_profile_id); // Changed from e.student_id
   
   const { data: studentsData, error: studentsError } = await supabaseAdmin
     .from('students')
-    .select('*') // Select all student fields
-    .in('id', studentIds);
+    .select('*') 
+    .in('id', studentProfileIds); // Assuming 'id' in 'students' table is the student_profile_id
 
   if (studentsError) {
     console.error("Error fetching student details:", studentsError);
@@ -339,7 +339,7 @@ export async function getEnrolledTeachersForCourseAction(
 
   const { data: enrollments, error: enrollmentError } = await supabaseAdmin
     .from('lms_teacher_course_enrollments')
-    .select('teacher_id')
+    .select('teacher_id') // Assuming this table is correct
     .eq('course_id', courseId);
 
   if (enrollmentError) {
@@ -355,8 +355,8 @@ export async function getEnrolledTeachersForCourseAction(
 
   const { data: teachersData, error: teachersError } = await supabaseAdmin
     .from('teachers')
-    .select('*') // Select all teacher fields
-    .in('id', teacherIds);
+    .select('*') 
+    .in('id', teacherIds); // Assuming 'id' in 'teachers' table is the teacher_id
 
   if (teachersError) {
     console.error("Error fetching teacher details:", teachersError);
