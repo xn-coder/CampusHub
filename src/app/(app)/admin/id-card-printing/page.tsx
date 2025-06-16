@@ -4,15 +4,15 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Printer, Users, User, Aperture } from 'lucide-react';
+import { Printer, Users, User, Aperture, Loader2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import type { Student, ClassData, User as AppUser, UserRole } from '@/types';
+import type { Student, ClassData, AppUser, UserRole } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { supabase } from '@/lib/supabaseClient';
+import { getIdCardPageDataAction } from './actions';
 
 
 interface DisplayStudent extends Student {
@@ -25,6 +25,7 @@ export default function AdminIdCardPrintingPage() {
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [currentSchoolId, setCurrentSchoolId] = useState<string|null>(null);
+  const [isLoadingPage, setIsLoadingPage] = useState(true);
 
 
   const [selectedUserType, setSelectedUserType] = useState<'student'>('student'); // Staff removed
@@ -34,33 +35,30 @@ export default function AdminIdCardPrintingPage() {
 
 
   useEffect(() => {
-    const adminUserId = localStorage.getItem('currentUserId');
-    if (adminUserId) {
-        supabase.from('schools').select('id').eq('admin_user_id', adminUserId).single()
-            .then(({data: schoolData, error: schoolError}) => {
-                if (schoolError || !schoolData) {
-                    toast({title: "Error", description: "Admin not linked to a school.", variant: "destructive"});
-                    return;
-                }
-                setCurrentSchoolId(schoolData.id);
-                fetchStudents(schoolData.id);
-                fetchClasses(schoolData.id);
-            });
+    async function loadData() {
+      setIsLoadingPage(true);
+      const adminUserId = localStorage.getItem('currentUserId');
+      if (!adminUserId) {
+        toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+        setIsLoadingPage(false);
+        return;
+      }
+
+      const result = await getIdCardPageDataAction(adminUserId);
+      if (result.ok) {
+        setCurrentSchoolId(result.schoolId || null);
+        setAllStudents(result.students || []);
+        setAllClasses(result.classes || []);
+      } else {
+        toast({ title: "Error loading data", description: result.message, variant: "destructive" });
+        setCurrentSchoolId(null);
+        setAllStudents([]);
+        setAllClasses([]);
+      }
+      setIsLoadingPage(false);
     }
+    loadData();
   }, [toast]);
-  
-  async function fetchStudents(schoolId: string) {
-    const { data, error } = await supabase.from('students').select('*').eq('school_id', schoolId);
-    if (error) toast({ title: "Error fetching students", description: error.message, variant: "destructive" });
-    else setAllStudents(data || []);
-  }
-
-  async function fetchClasses(schoolId: string) {
-    const { data, error } = await supabase.from('classes').select('*').eq('school_id', schoolId);
-    if (error) toast({ title: "Error fetching classes", description: error.message, variant: "destructive" });
-    else setAllClasses(data || []);
-  }
-
   
   const getClassDetails = (classId: string): Pick<ClassData, 'name' | 'division'> | null => {
     const cls = allClasses.find(c => c.id === classId);
@@ -118,6 +116,33 @@ export default function AdminIdCardPrintingPage() {
     return user !== null && 'class_id' in user; // Using class_id to differentiate
   }
 
+  if (isLoadingPage) {
+    return (
+        <div className="flex flex-col gap-6">
+            <PageHeader title="ID Card Printing Administration" />
+            <Card>
+                <CardContent className="pt-6 text-center">
+                    <Loader2 className="h-8 w-8 animate-spin inline-block mr-2"/> Loading page data...
+                </CardContent>
+            </Card>
+        </div>
+    );
+  }
+
+  if (!currentSchoolId && !isLoadingPage) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="ID Card Printing Administration" />
+        <Card>
+            <CardContent className="pt-6 text-center text-destructive">
+                Admin not associated with a school or school data could not be loaded.
+            </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
@@ -135,7 +160,7 @@ export default function AdminIdCardPrintingPage() {
               {selectedUserType === 'student' && (
                 <div className="mt-4">
                   <Label htmlFor="classFilter">Filter by Class</Label>
-                  <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+                  <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingPage}>
                     <SelectTrigger id="classFilter">
                       <SelectValue placeholder="Select a class" />
                     </SelectTrigger>
@@ -179,7 +204,7 @@ export default function AdminIdCardPrintingPage() {
                       <Button variant="ghost" size="sm" onClick={() => handlePreviewCard(student)}>Preview</Button>
                     </div>
                   ))}
-                  {displayStudents.length === 0 && <p className="text-muted-foreground text-center py-4">No students match filters.</p>}
+                  {displayStudents.length === 0 && <p className="text-muted-foreground text-center py-4">No students match filters for this school.</p>}
                 </>
               )}
              {/* Staff selection UI removed */}
