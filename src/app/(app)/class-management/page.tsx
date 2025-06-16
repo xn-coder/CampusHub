@@ -21,7 +21,7 @@ import {
   addSectionNameAction, deleteSectionNameAction,
   activateClassSectionAction, deleteActiveClassAction,
   assignStudentsToClassAction, assignTeacherToClassAction,
-  getClassNamesAction, getSectionNamesAction, getActiveClassesAction // New actions
+  getClassNamesAction, getSectionNamesAction, getActiveClassesAction
 } from './actions';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
@@ -93,7 +93,7 @@ export default function ClassManagementPage() {
         classNamesResult, 
         sectionNamesResult, 
         activeClassesResult,
-        studentsResult, // Keep direct Supabase call for these as they aren't actions yet
+        studentsResult, 
         teachersResult,
         academicYearsResult
     ] = await Promise.all([
@@ -145,10 +145,10 @@ export default function ClassManagementPage() {
     const result = await addClassNameAction(newClassNameInput, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     setNewClassNameInput(''); 
-    if (result.classNames) {
+    if (result.classNames) { // Use the returned list from the action
       setClassNamesList(result.classNames);
-    } else if (currentSchoolId) {
-      fetchAllData(currentSchoolId); // Fallback if list isn't returned
+    } else if (currentSchoolId) { // Fallback if list isn't returned, less ideal
+      fetchAllData(currentSchoolId);
     }
     setIsSubmitting(false);
   };
@@ -158,7 +158,7 @@ export default function ClassManagementPage() {
     setIsSubmitting(true);
     const result = await deleteClassNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    if (result.ok && currentSchoolId) fetchAllData(currentSchoolId); // Re-fetch all as dependencies might change
+    if (currentSchoolId) fetchAllData(currentSchoolId); 
     setIsSubmitting(false);
   };
 
@@ -171,9 +171,9 @@ export default function ClassManagementPage() {
     const result = await addSectionNameAction(newSectionNameInput, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     setNewSectionNameInput('');
-    if (result.sectionNames) {
+    if (result.sectionNames) { // Use the returned list from the action
       setSectionNamesList(result.sectionNames);
-    } else if (currentSchoolId) {
+    } else if (currentSchoolId) { // Fallback
       fetchAllData(currentSchoolId);
     }
     setIsSubmitting(false);
@@ -184,7 +184,7 @@ export default function ClassManagementPage() {
     setIsSubmitting(true);
     const result = await deleteSectionNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    if (result.ok && currentSchoolId) fetchAllData(currentSchoolId);
+    if (currentSchoolId) fetchAllData(currentSchoolId);
     setIsSubmitting(false);
   };
 
@@ -201,14 +201,11 @@ export default function ClassManagementPage() {
       return;
     }
     setIsSubmitting(true);
-    const className = classNamesList.find(cn => cn.id === selectedClassNameIdForActivation)?.name || '';
-    const sectionName = sectionNamesList.find(sn => sn.id === selectedSectionNameIdForActivation)?.name || '';
 
     const result = await activateClassSectionAction({ 
       classNameId: selectedClassNameIdForActivation, 
       sectionNameId: selectedSectionNameIdForActivation, 
       schoolId: currentSchoolId,
-      className, sectionName,
       academicYearId: selectedAcademicYearIdForActivation === 'none' ? undefined : selectedAcademicYearIdForActivation
     });
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
