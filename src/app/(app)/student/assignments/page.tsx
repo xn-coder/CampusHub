@@ -5,109 +5,56 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import type { Student, Teacher, Assignment, Subject } from '@/types';
+import type { Assignment } from '@/types';
 import { useState, useEffect } from 'react';
-import { ClipboardList, CalendarClock, Upload, CheckCircle, Loader2, BookOpenText } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
+import { ClipboardList, CalendarClock, Upload, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, isPast } from 'date-fns';
+import { getStudentAssignmentsAction } from './actions'; // Import the server action
 
-interface EnrichedAssignment extends Assignment {
+interface EnrichedAssignmentClient extends Assignment {
   teacherName?: string;
   subjectName?: string;
 }
 
 export default function StudentAssignmentsPage() {
   const { toast } = useToast();
-  const [myAssignments, setMyAssignments] = useState<EnrichedAssignment[]>([]);
+  const [myAssignments, setMyAssignments] = useState<EnrichedAssignmentClient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [pageMessage, setPageMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchAssignments() {
       setIsLoading(true);
+      setPageMessage(null);
       const currentUserId = localStorage.getItem('currentUserId');
       if (!currentUserId) {
         toast({ title: "Error", description: "User not identified. Cannot load assignments.", variant: "destructive" });
         setIsLoading(false);
+        setPageMessage("User not identified.");
         return;
       }
 
-      try {
-        const { data: studentData, error: studentError } = await supabase
-          .from('students')
-          .select('class_id, school_id')
-          .eq('user_id', currentUserId)
-          .single();
+      const result = await getStudentAssignmentsAction(currentUserId);
 
-        if (studentError || !studentData || !studentData.school_id || !studentData.class_id) {
-          toast({
-            title: "Cannot Load Assignments",
-            description: "Your student profile is missing essential class or school information. Please contact administration.",
-            variant: "destructive"
-          });
-          setMyAssignments([]);
-          setIsLoading(false);
-          return;
+      if (result.ok) {
+        setMyAssignments(result.assignments || []);
+        if (result.assignments && result.assignments.length === 0) {
+          if (!result.studentClassId || !result.studentSchoolId) {
+             setPageMessage("Your student profile is missing class or school information. Please contact administration.");
+          } else {
+             setPageMessage("No assignments posted for your class yet.");
+          }
         }
-        
-        const { data: assignmentsData, error: assignmentsError } = await supabase
-          .from('assignments')
-          .select('*')
-          .eq('class_id', studentData.class_id)
-          .eq('school_id', studentData.school_id)
-          .order('due_date', { ascending: true });
-
-        if (assignmentsError) {
-          toast({ title: "Error", description: "Failed to fetch assignments. This might be due to access permissions.", variant: "destructive" });
-          setIsLoading(false);
-          return;
-        }
-
-        if (!assignmentsData || assignmentsData.length === 0) {
-          setMyAssignments([]);
-          setIsLoading(false);
-          return;
-        }
-
-        const teacherIds = [...new Set(assignmentsData.map(a => a.teacher_id).filter(Boolean))];
-        const subjectIds = [...new Set(assignmentsData.map(a => a.subject_id).filter(Boolean))];
-        
-        let teachers: Teacher[] = [];
-        if (teacherIds.length > 0) {
-            const { data: teachersData, error: teachersError } = await supabase
-            .from('teachers')
-            .select('id, name')
-            .in('id', teacherIds);
-            if (teachersError) console.error("Error fetching teachers for assignments:", teachersError);
-            else teachers = teachersData || [];
-        }
-        
-        let subjects: Subject[] = [];
-        if (subjectIds.length > 0) {
-            const { data: subjectsData, error: subjectsError } = await supabase
-            .from('subjects')
-            .select('id, name')
-            .in('id', subjectIds);
-            if (subjectsError) console.error("Error fetching subjects for assignments:", subjectsError);
-            else subjects = subjectsData || [];
-        }
-
-        const enrichedAssignments = assignmentsData.map(asm => ({
-          ...asm,
-          teacherName: teachers.find(t => t.id === asm.teacher_id)?.name || 'N/A',
-          subjectName: asm.subject_id ? subjects.find(s => s.id === asm.subject_id)?.name : undefined,
-        }));
-
-        setMyAssignments(enrichedAssignments);
-
-      } catch (error: any) {
-        toast({ title: "Error", description: `An unexpected error occurred: ${error.message}`, variant: "destructive"});
-      } finally {
-        setIsLoading(false);
+      } else {
+        toast({ title: "Error Loading Assignments", description: result.message, variant: "destructive" });
+        setMyAssignments([]);
+        setPageMessage(result.message || "Failed to load assignments.");
       }
+      setIsLoading(false);
     }
     fetchAssignments();
-  }, []); 
+  }, [toast]); 
 
   const handleMockSubmit = (assignmentId: string) => {
     toast({
@@ -124,8 +71,8 @@ export default function StudentAssignmentsPage() {
       />
       {isLoading ? (
         <Card><CardContent className="pt-6 text-center text-muted-foreground flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading your assignments...</CardContent></Card>
-      ) : myAssignments.length === 0 ? (
-         <Card><CardContent className="pt-6 text-center text-muted-foreground">No assignments posted for your class yet, or you might not be assigned to a class/school. If you believe this is an error, please ensure your class enrollment is correct and check your RLS policies on the 'assignments' table.</CardContent></Card>
+      ) : pageMessage ? (
+         <Card><CardContent className="pt-6 text-center text-muted-foreground">{pageMessage}</CardContent></Card>
       ) : (
         <div className="grid md:grid-cols-2 gap-6">
           {myAssignments.map((assignment) => (
@@ -163,3 +110,4 @@ export default function StudentAssignmentsPage() {
     </div>
   );
 }
+    
