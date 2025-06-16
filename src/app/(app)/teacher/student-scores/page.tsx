@@ -1,16 +1,17 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { ClassData, Student, Exam, Subject, StudentScore } from '@/types';
-import { useState, useEffect, useMemo } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import type { ClassData, Student, Exam, Subject } from '@/types'; // Removed StudentScore as direct input is gone
+import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Award, Save, Users, FileText, Loader2 } from 'lucide-react';
+import { Award, Save, Users, FileText, Loader2, Edit2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { saveStudentScoresAction } from './actions';
@@ -28,8 +29,12 @@ export default function TeacherStudentScoresPage() {
   
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingInitialData, setIsFetchingInitialData] = useState(true);
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+
+  const [isScoreDialogOpen, setIsScoreDialogOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [currentScoreInput, setCurrentScoreInput] = useState<string | number>('');
 
   useEffect(() => {
     const teacherUserId = localStorage.getItem('currentUserId');
@@ -106,10 +111,9 @@ export default function TeacherStudentScoresPage() {
           } else {
             const newScores: Record<string, string | number> = {};
             (data || []).forEach(ss => { newScores[ss.student_id] = ss.score; });
-            // Initialize scores for students who don't have one yet, to ensure inputs appear for all
             studentsInSelectedClass.forEach(student => {
                 if (!newScores.hasOwnProperty(student.id)) {
-                    newScores[student.id] = ''; // Or some other default like undefined if preferred
+                    newScores[student.id] = '';
                 }
             });
             setScores(newScores);
@@ -117,79 +121,61 @@ export default function TeacherStudentScoresPage() {
           setIsLoading(false);
         });
     } else if (studentsInSelectedClass.length > 0) {
-        // If exam is deselected or class changes but students are present, clear scores for those students or init to empty
         const initialScores: Record<string, string | number> = {};
-        studentsInSelectedClass.forEach(student => {
-            initialScores[student.id] = '';
-        });
+        studentsInSelectedClass.forEach(student => { initialScores[student.id] = ''; });
         setScores(initialScores);
     } else {
-        setScores({}); // Reset scores if exam or class is not selected, or no students
+        setScores({});
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedExamId, selectedClassId, studentsInSelectedClass, currentSchoolId, toast]); // Changed studentsInSelectedClass.length to studentsInSelectedClass
+  }, [selectedExamId, selectedClassId, studentsInSelectedClass, currentSchoolId, toast]);
 
 
-  const handleScoreChange = (studentId: string, value: string) => {
-    setScores(prev => ({ ...prev, [studentId]: value }));
+  const handleOpenScoreDialog = (student: Student) => {
+    setEditingStudent(student);
+    setCurrentScoreInput(scores[student.id] || '');
+    setIsScoreDialogOpen(true);
+  };
+
+  const handleSaveSingleScore = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent || !selectedExamId || !selectedClassId || !currentTeacherId || !selectedExamDetails || !currentSchoolId) {
+      toast({ title: "Error", description: "Required context for saving score is missing.", variant: "destructive"});
+      return;
+    }
+    if (String(currentScoreInput).trim() === '') {
+        toast({ title: "Input Required", description: "Please enter a score or grade.", variant: "default"});
+        return;
+    }
+    setIsLoading(true);
+
+    const scoreToSave = {
+      student_id: editingStudent.id,
+      exam_id: selectedExamId,
+      subject_id: selectedExamDetails.subject_id,
+      class_id: selectedClassId,
+      score: currentScoreInput,
+      max_marks: selectedExamDetails.max_marks,
+      recorded_by_teacher_id: currentTeacherId,
+      school_id: currentSchoolId,
+    };
+
+    const result = await saveStudentScoresAction([scoreToSave]);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.ok) {
+      setScores(prev => ({ ...prev, [editingStudent.id]: currentScoreInput }));
+      setIsScoreDialogOpen(false);
+      setEditingStudent(null);
+    }
+    setIsLoading(false);
   };
   
   const getSubjectName = (subjectId: string) => allSubjects.find(s => s.id === subjectId)?.name || 'N/A';
 
   const filteredExamsForSelectedClass = selectedClassId 
-    ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id)
+    ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id) // Show class-specific and general exams
     : [];
   
   const selectedExamDetails = allExams.find(ex => ex.id === selectedExamId);
-
-  const handleSaveScores = async () => {
-    if (!selectedClassId || !selectedExamId || !currentTeacherId || !selectedExamDetails || !currentSchoolId) {
-      toast({ title: "Error", description: "Class, exam, teacher, and school context are required.", variant: "destructive"});
-      return;
-    }
-    setIsLoading(true);
-
-    const scoresToSave = studentsInSelectedClass
-      .filter(student => scores[student.id] !== undefined && String(scores[student.id]).trim() !== '')
-      .map(student => ({
-        student_id: student.id,
-        exam_id: selectedExamId,
-        subject_id: selectedExamDetails.subject_id,
-        class_id: selectedClassId,
-        score: scores[student.id],
-        max_marks: selectedExamDetails.max_marks,
-        recorded_by_teacher_id: currentTeacherId,
-        school_id: currentSchoolId,
-      }));
-
-    if (scoresToSave.length === 0) {
-        toast({ title: "No Scores Entered", description: "Please enter scores before saving.", variant: "default"});
-        setIsLoading(false);
-        return;
-    }
-
-    const result = await saveStudentScoresAction(scoresToSave);
-    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    setIsLoading(false);
-  };
-
-  const [studentsWithScores, studentsWithoutScores] = useMemo(() => {
-    if (!selectedExamId || studentsInSelectedClass.length === 0) {
-        return [[], []];
-    }
-    const withScores: Student[] = [];
-    const withoutScores: Student[] = [];
-    studentsInSelectedClass.forEach(student => {
-        // Check if score exists AND is not an empty string
-        if (scores[student.id] !== undefined && String(scores[student.id]).trim() !== '') {
-            withScores.push(student);
-        } else {
-            withoutScores.push(student);
-        }
-    });
-    return [withScores, withoutScores];
-  }, [studentsInSelectedClass, scores, selectedExamId]);
-
 
   if (isFetchingInitialData) {
       return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading initial data...</span></div>;
@@ -205,24 +191,6 @@ export default function TeacherStudentScoresPage() {
     );
   }
 
-  const renderStudentScoreRows = (studentList: Student[]) => {
-    return studentList.map(student => (
-      <TableRow key={student.id}>
-        <TableCell className="font-medium">{student.name}</TableCell>
-        <TableCell>
-          <Input 
-            type="text"
-            value={scores[student.id] || ''}
-            onChange={(e) => handleScoreChange(student.id, e.target.value)}
-            placeholder={selectedExamDetails?.max_marks ? `Score / ${selectedExamDetails.max_marks}` : "Enter score/grade"}
-            disabled={isLoading}
-          />
-        </TableCell>
-      </TableRow>
-    ));
-  };
-
-
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
@@ -232,7 +200,7 @@ export default function TeacherStudentScoresPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><Award className="mr-2 h-5 w-5" /> Manage Scores</CardTitle>
-          <CardDescription>Choose class, then exam, then enter scores for students.</CardDescription>
+          <CardDescription>Choose class, then exam. Click 'Edit Score' to enter/update.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid md:grid-cols-2 gap-4 items-end">
@@ -272,51 +240,68 @@ export default function TeacherStudentScoresPage() {
 
           {!isLoading && selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && (
             <div>
-              <h3 className="text-lg font-medium mb-2">
-                Enter Scores for: <span className="font-semibold">{selectedExamDetails?.name}</span> (Subject: {selectedExamDetails ? getSubjectName(selectedExamDetails.subject_id) : 'N/A'})
-                {selectedExamDetails?.max_marks && <span className="text-sm text-muted-foreground"> - Max Marks: {selectedExamDetails.max_marks}</span>}
+              <h3 className="text-lg font-medium mb-4">
+                Students in {assignedClasses.find(c => c.id === selectedClassId)?.name} - {assignedClasses.find(c => c.id === selectedClassId)?.division}
+                <span className="block text-sm text-muted-foreground">
+                  Exam: {selectedExamDetails?.name} (Subject: {selectedExamDetails ? getSubjectName(selectedExamDetails.subject_id) : 'N/A'})
+                  {selectedExamDetails?.max_marks && ` - Max Marks: ${selectedExamDetails.max_marks}`}
+                </span>
               </h3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead><Users className="inline-block mr-1 h-4 w-4"/>Student Name</TableHead>
-                    <TableHead className="w-1/3"><FileText className="inline-block mr-1 h-4 w-4"/>Score</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {studentsWithScores.length > 0 && (
-                    <>
-                      <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableCell colSpan={2} className="py-2 px-4 text-sm font-semibold text-muted-foreground">
-                          Students with Existing Scores ({studentsWithScores.length})
-                        </TableCell>
-                      </TableRow>
-                      {renderStudentScoreRows(studentsWithScores)}
-                    </>
-                  )}
-                  {studentsWithoutScores.length > 0 && (
-                    <>
-                       <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableCell colSpan={2} className="py-2 px-4 text-sm font-semibold text-muted-foreground">
-                          Students Needing Scores ({studentsWithoutScores.length})
-                        </TableCell>
-                      </TableRow>
-                      {renderStudentScoreRows(studentsWithoutScores)}
-                    </>
-                  )}
-                </TableBody>
-              </Table>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {studentsInSelectedClass.map(student => (
+                  <Card key={student.id}>
+                    <CardHeader>
+                      <CardTitle className="text-base">{student.name}</CardTitle>
+                      <CardDescription>
+                        Current Score: <span className="font-semibold">{scores[student.id] || 'Not Entered'}</span>
+                      </CardDescription>
+                    </CardHeader>
+                    <CardFooter>
+                      <Button variant="outline" size="sm" onClick={() => handleOpenScoreDialog(student)} disabled={isLoading}>
+                        <Edit2 className="mr-1 h-3 w-3"/> Edit Score
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                ))}
+              </div>
             </div>
           )}
         </CardContent>
-        {!isLoading && selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && (
-          <CardFooter>
-            <Button onClick={handleSaveScores} disabled={isLoading}>
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> :<Save className="mr-2 h-4 w-4" />} Save Scores
-            </Button>
-          </CardFooter>
-        )}
       </Card>
+
+      <Dialog open={isScoreDialogOpen} onOpenChange={setIsScoreDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enter Score for {editingStudent?.name}</DialogTitle>
+            <CardDescription>
+              Exam: {selectedExamDetails?.name}
+              {selectedExamDetails?.max_marks && ` (Max Marks: ${selectedExamDetails.max_marks})`}
+            </CardDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveSingleScore}>
+            <div className="grid gap-4 py-4">
+              <div>
+                <Label htmlFor="currentScoreInput">Score/Grade</Label>
+                <Input 
+                  id="currentScoreInput" 
+                  value={currentScoreInput} 
+                  onChange={(e) => setCurrentScoreInput(e.target.value)} 
+                  placeholder={selectedExamDetails?.max_marks ? `Score (out of ${selectedExamDetails.max_marks})` : "Enter score or grade"}
+                  required 
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isLoading || String(currentScoreInput).trim() === ''}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                Save Score
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
