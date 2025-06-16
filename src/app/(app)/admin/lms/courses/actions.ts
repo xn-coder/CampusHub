@@ -208,24 +208,46 @@ export async function generateActivationCodesAction(
 // --- Enrollment Management ---
 interface ManageEnrollmentInput {
   course_id: string;
-  user_profile_id: string; 
+  user_profile_id: string; // This is students.id or teachers.id
   user_type: 'student' | 'teacher';
-  school_id: string; // This is the school_id of the user (student/teacher)
+  school_id: string; 
 }
 
 export async function enrollUserInCourseAction(
   input: ManageEnrollmentInput
 ): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { course_id, user_profile_id, user_type, school_id } = input;
-  const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
-  const userIdColumn = user_type === 'student' ? 'student_profile_id' : 'teacher_id'; // Changed student_id to student_profile_id
-  const enrolledAtColumn = user_type === 'student' ? 'enrolled_at' : 'assigned_at';
+  const { course_id, user_profile_id, user_type, school_id } = input; // user_profile_id is students.id or teachers.id
 
+  const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
+  
+  // Determine the correct ID to use for the enrollment record's foreign key
+  let fkValueForEnrollmentRecord: string;
+  let fkColumnNameInEnrollmentTable: string;
+
+  if (user_type === 'student') {
+    fkColumnNameInEnrollmentTable = 'user_id'; // Assumed column name in lms_student_course_enrollments, referencing users.id
+    // Fetch the users.id for the student using students.id (user_profile_id)
+    const { data: studentUser, error: studentUserError } = await supabaseAdmin
+      .from('students')
+      .select('user_id')
+      .eq('id', user_profile_id) // user_profile_id is students.id
+      .single();
+    if (studentUserError || !studentUser) {
+      console.error(`Error fetching user_id for student profile ${user_profile_id}:`, studentUserError);
+      return { ok: false, message: `Could not find user account for student.` };
+    }
+    fkValueForEnrollmentRecord = studentUser.user_id;
+  } else { // teacher
+    fkColumnNameInEnrollmentTable = 'teacher_id'; // This is teachers.id
+    fkValueForEnrollmentRecord = user_profile_id; // For teachers, user_profile_id IS teachers.id
+  }
+
+  // Check for existing enrollment
   let existingEnrollmentCheckQuery = supabaseAdmin
     .from(enrollmentTable)
     .select('id')
-    .eq(userIdColumn, user_profile_id)
+    .eq(fkColumnNameInEnrollmentTable, fkValueForEnrollmentRecord)
     .eq('course_id', course_id);
 
   if (user_type === 'student') {
@@ -242,18 +264,20 @@ export async function enrollUserInCourseAction(
     return { ok: false, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} is already enrolled in this course.` };
   }
   
+  // Prepare enrollment data
   const enrollmentData: any = { 
       id: uuidv4(), 
       course_id, 
   };
-  enrollmentData[userIdColumn] = user_profile_id;
-  enrollmentData[enrolledAtColumn] = new Date().toISOString();
+  enrollmentData[fkColumnNameInEnrollmentTable] = fkValueForEnrollmentRecord;
 
   if (user_type === 'student') {
     enrollmentData.school_id = school_id; 
-    // Removed created_at and updated_at for student enrollments to rely on DB defaults or absence
+    enrollmentData.enrolled_at = new Date().toISOString();
+  } else { // teacher
+    enrollmentData.assigned_at = new Date().toISOString();
+    // school_id is not part of TeacherCourseEnrollment table schema based on previous fixes
   }
-
 
   const { error } = await supabaseAdmin.from(enrollmentTable).insert(enrollmentData);
 
@@ -271,14 +295,34 @@ export async function unenrollUserFromCourseAction(
   input: ManageEnrollmentInput
 ): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { course_id, user_profile_id, user_type, school_id } = input;
+  const { course_id, user_profile_id, user_type, school_id } = input; // user_profile_id is students.id or teachers.id
+
   const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
-  const userIdColumn = user_type === 'student' ? 'student_profile_id' : 'teacher_id'; // Changed student_id to student_profile_id
+  
+  let fkValueForEnrollmentRecord: string;
+  let fkColumnNameInEnrollmentTable: string;
+
+  if (user_type === 'student') {
+    fkColumnNameInEnrollmentTable = 'user_id'; // Assumed column name in lms_student_course_enrollments
+    const { data: studentUser, error: studentUserError } = await supabaseAdmin
+      .from('students')
+      .select('user_id')
+      .eq('id', user_profile_id) // user_profile_id is students.id
+      .single();
+    if (studentUserError || !studentUser) {
+      console.error(`Error fetching user_id for student profile ${user_profile_id} during unenroll:`, studentUserError);
+      return { ok: false, message: `Could not find user account for student to unenroll.` };
+    }
+    fkValueForEnrollmentRecord = studentUser.user_id;
+  } else { // teacher
+    fkColumnNameInEnrollmentTable = 'teacher_id';
+    fkValueForEnrollmentRecord = user_profile_id;
+  }
 
   let deleteQuery = supabaseAdmin
     .from(enrollmentTable)
     .delete()
-    .eq(userIdColumn, user_profile_id)
+    .eq(fkColumnNameInEnrollmentTable, fkValueForEnrollmentRecord)
     .eq('course_id', course_id);
 
   if (user_type === 'student') {
@@ -305,7 +349,7 @@ export async function getEnrolledStudentsForCourseAction(
   
   const { data: enrollments, error: enrollmentError } = await supabaseAdmin
     .from('lms_student_course_enrollments')
-    .select('student_profile_id') // Changed from student_id
+    .select('user_id') // Select user_id from enrollments
     .eq('course_id', courseId);
 
   if (enrollmentError) {
@@ -317,12 +361,12 @@ export async function getEnrolledStudentsForCourseAction(
     return { ok: true, students: [] };
   }
 
-  const studentProfileIds = enrollments.map(e => e.student_profile_id); // Changed from e.student_id
+  const userIdsFromEnrollments = enrollments.map(e => e.user_id);
   
   const { data: studentsData, error: studentsError } = await supabaseAdmin
-    .from('students')
+    .from('students') // Fetch from students table
     .select('*') 
-    .in('id', studentProfileIds); // Assuming 'id' in 'students' table is the student_profile_id
+    .in('user_id', userIdsFromEnrollments); // Match by user_id in students table
 
   if (studentsError) {
     console.error("Error fetching student details:", studentsError);
@@ -339,7 +383,7 @@ export async function getEnrolledTeachersForCourseAction(
 
   const { data: enrollments, error: enrollmentError } = await supabaseAdmin
     .from('lms_teacher_course_enrollments')
-    .select('teacher_id') // Assuming this table is correct
+    .select('teacher_id') 
     .eq('course_id', courseId);
 
   if (enrollmentError) {
@@ -356,7 +400,7 @@ export async function getEnrolledTeachersForCourseAction(
   const { data: teachersData, error: teachersError } = await supabaseAdmin
     .from('teachers')
     .select('*') 
-    .in('id', teacherIds); // Assuming 'id' in 'teachers' table is the teacher_id
+    .in('id', teacherIds); // teachers.id is the teacher_profile_id
 
   if (teachersError) {
     console.error("Error fetching teacher details:", teachersError);
@@ -365,5 +409,4 @@ export async function getEnrolledTeachersForCourseAction(
 
   return { ok: true, teachers: (teachersData as Teacher[]) || [] };
 }
-
     

@@ -75,8 +75,8 @@ export interface StoredLeaveApplicationDB {
 }
 
 export interface Student {
-  id: string;
-  user_id: string;
+  id: string; // This is students.id (student_profile_id)
+  user_id: string; // This is users.id
   name: string;
   email: string;
   class_id?: string | null;
@@ -97,8 +97,8 @@ export interface Student {
 }
 
 export interface Teacher {
-  id: string;
-  user_id: string;
+  id: string; // This is teachers.id (teacher_profile_id)
+  user_id: string; // This is users.id
   name: string;
   email: string;
   subject?: string | null;
@@ -374,22 +374,18 @@ export interface CourseActivationCode {
 
 export interface StudentCourseEnrollment {
     id: string;
-    student_profile_id: string; // Changed from student_id
+    user_id: string; // Changed from student_profile_id to user_id (references users.id)
     course_id: string;
     enrolled_at?: string;
     school_id: string;
-    // created_at?: string; // Removed based on previous DB schema alignment
-    // updated_at?: string; // Removed based on previous DB schema alignment
 }
 
 export interface TeacherCourseEnrollment {
     id: string;
-    teacher_id: string;
+    teacher_id: string; // This is teachers.id (teacher_profile_id)
     course_id: string;
     assigned_at?: string;
     school_id?: string | null; 
-    // created_at?: string; // Already removed based on previous DB schema alignment
-    // updated_at?: string; // Already removed based on previous DB schema alignment
 }
 
     

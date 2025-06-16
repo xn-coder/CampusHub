@@ -18,7 +18,7 @@ export default function AvailableLmsCoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null); // User's primary UUID from 'users' table
-  const [currentUserProfileId, setCurrentUserProfileId] = useState<string | null>(null); // Student or Teacher profile ID
+  const [currentUserProfileId, setCurrentUserProfileId] = useState<string | null>(null); // Student.id or Teacher.id
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [enrollmentStatus, setEnrollmentStatus] = useState<Record<string, boolean>>({}); // courseId: isEnrolled
@@ -27,23 +27,24 @@ export default function AvailableLmsCoursesPage() {
   useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
-      let userProfileId: string | null = null;
+      let userProfileId: string | null = null; // This will be students.id or teachers.id
       let userSchoolId: string | null = null;
       let userRole: UserRole | null = null;
+      let uId: string | null = null; // This will be users.id
 
       if (typeof window !== 'undefined') {
         userRole = localStorage.getItem('currentUserRole') as UserRole | null;
-        const uId = localStorage.getItem('currentUserId');
+        uId = localStorage.getItem('currentUserId');
         setCurrentUserRole(userRole);
-        setCurrentUserId(uId);
+        setCurrentUserId(uId); // Set the users.id to state
 
         if (uId && userRole) {
           const profileTable = userRole === 'student' ? 'students' : userRole === 'teacher' ? 'teachers' : null;
           if (profileTable) {
             const { data: profile, error: profileError } = await supabase
               .from(profileTable)
-              .select('id, school_id')
-              .eq('user_id', uId)
+              .select('id, school_id') // 'id' here is students.id or teachers.id
+              .eq('user_id', uId) // Link profile via users.id
               .single();
 
             if (profileError || !profile) {
@@ -51,7 +52,7 @@ export default function AvailableLmsCoursesPage() {
             } else {
               userProfileId = profile.id;
               userSchoolId = profile.school_id;
-              setCurrentUserProfileId(profile.id);
+              setCurrentUserProfileId(profile.id); // Set students.id or teachers.id to state
               setCurrentSchoolId(profile.school_id);
             }
           } else if (userRole === 'admin' || userRole === 'superadmin') {
@@ -77,9 +78,13 @@ export default function AvailableLmsCoursesPage() {
         setCourses([]);
       } else {
         setCourses(coursesData || []);
-        if (userProfileId && userRole && (coursesData && coursesData.length > 0)) {
-           // Student or Teacher, fetch their specific enrollments
-          await fetchEnrollmentStatuses(coursesData.map(c => c.id), userProfileId, userRole, userSchoolId);
+        // Pass users.id (currentUserId) for student enrollment check, and profile ID (students.id or teachers.id) for teacher enrollment check.
+        if (uId && userRole && (coursesData && coursesData.length > 0)) {
+          if (userRole === 'student' && uId) {
+            await fetchEnrollmentStatuses(coursesData.map(c => c.id), uId, userRole, userSchoolId);
+          } else if (userRole === 'teacher' && userProfileId) { // Teachers check by their profile ID (teachers.id)
+            await fetchEnrollmentStatuses(coursesData.map(c => c.id), userProfileId, userRole, userSchoolId);
+          }
         }
       }
       setIsLoading(false);
@@ -88,20 +93,21 @@ export default function AvailableLmsCoursesPage() {
   }, [toast]);
 
 
-  async function fetchEnrollmentStatuses(courseIds: string[], userProfileId: string, role: UserRole, schoolId: string | null) {
+  async function fetchEnrollmentStatuses(courseIds: string[], userIdToCheck: string, role: UserRole, schoolId: string | null) {
     const enrollmentTable = role === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
-    const userIdColumn = role === 'student' ? 'student_profile_id' : 'teacher_id'; // Changed to student_profile_id
+    // For students, userIdToCheck is users.id. For teachers, userIdToCheck is teachers.id
+    const fkColumnNameInEnrollmentTable = role === 'student' ? 'user_id' : 'teacher_id';
 
     let query = supabase
       .from(enrollmentTable)
-      .select('course_id') // Select only course_id, removed student_id as it's redundant here
-      .eq(userIdColumn, userProfileId)
+      .select('course_id')
+      .eq(fkColumnNameInEnrollmentTable, userIdToCheck)
       .in('course_id', courseIds);
 
-    if (role === 'student' && schoolId) {
+    if (role === 'student' && schoolId) { // Student enrollments are school-scoped
         query = query.eq('school_id', schoolId); 
     }
-    
+    // Teacher enrollments are not directly school-scoped in lms_teacher_course_enrollments based on latest schema understanding
 
     const { data: enrollments, error } = await query;
 
@@ -119,7 +125,8 @@ export default function AvailableLmsCoursesPage() {
   }
 
   const handleEnrollUnpaid = async (courseId: string) => {
-    if (!currentUserProfileId || !currentUserRole || !currentSchoolId) {
+    // For enrolling, enrollUserInCourseAction expects students.id or teachers.id as user_profile_id
+    if (!currentUserProfileId || !currentUserRole || !currentSchoolId) { 
       toast({ title: "Error", description: "User profile or school not identified. Cannot enroll.", variant: "destructive"});
       return;
     }
@@ -127,9 +134,9 @@ export default function AvailableLmsCoursesPage() {
     setIsEnrolling(prev => ({ ...prev, [courseId]: true }));
     const result = await enrollUserInCourseAction({
       course_id: courseId,
-      user_profile_id: currentUserProfileId,
+      user_profile_id: currentUserProfileId, // Pass students.id or teachers.id
       user_type: currentUserRole,
-      school_id: currentSchoolId, // Pass the user's school_id
+      school_id: currentSchoolId,
     });
     setIsEnrolling(prev => ({ ...prev, [courseId]: false }));
 
@@ -187,7 +194,8 @@ export default function AvailableLmsCoursesPage() {
                    </Button>
                 ) : canEnroll && course.is_paid ? (
                   <Button asChild className="w-full">
-                    <Link href={`/student/lms/activate?courseId=${course.id}`}> {/* Assuming activation is primarily for students */}
+                    {/* Ensure currentUserId is the users.id for activation, and currentUserProfileId is students.id for student role context */}
+                    <Link href={`/student/lms/activate?courseId=${course.id}`}> 
                        <ShoppingCart className="mr-2 h-4 w-4"/> Activate Course
                     </Link>
                   </Button>

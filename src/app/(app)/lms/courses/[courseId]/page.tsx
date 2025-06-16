@@ -33,7 +33,7 @@ export default function ViewCourseContentPage() {
   const [course, setCourse] = useState<Course | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEnrolled, setIsEnrolled] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null); // This is users.id
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
 
   useEffect(() => {
@@ -48,30 +48,26 @@ export default function ViewCourseContentPage() {
 
   useEffect(() => {
     if (!courseId || !currentUserId || !currentUserRole) {
-      if (courseId) setIsLoading(true); // Still loading if only courseId is present
-      else setIsLoading(false); // No courseId, nothing to load
+      if (courseId) setIsLoading(true); 
+      else setIsLoading(false); 
       return;
     }
 
     async function fetchCourseData() {
       setIsLoading(true);
 
-      // Fetch course details
       const { data: courseData, error: courseError } = await supabase
         .from('lms_courses')
         .select('*')
         .eq('id', courseId)
         .single();
 
-
       if (courseError || !courseData) {
         toast({ title: "Error", description: `Course not found or failed to load: ${courseError?.message || ''}`, variant: "destructive" });
         setIsLoading(false);
-        // router.push('/lms/available-courses'); // Option to redirect
         return;
       }
       
-      // Fetch course resources
       const { data: resourcesData, error: resourcesError } = await supabase
         .from('lms_course_resources')
         .select('*')
@@ -79,7 +75,6 @@ export default function ViewCourseContentPage() {
 
       if (resourcesError) {
         toast({ title: "Error", description: `Failed to load course resources: ${resourcesError.message}`, variant: "destructive" });
-        // Continue with course data even if resources fail
       }
       
       const groupedResources: Required<Course>['resources'] = { ebooks: [], videos: [], notes: [], webinars: [] };
@@ -96,45 +91,50 @@ export default function ViewCourseContentPage() {
       setCourse(enrichedCourse);
 
       // Check enrollment status
-      const enrollmentTable = currentUserRole === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
-      const userIdColumn = currentUserRole === 'student' ? 'student_id' : 'teacher_id';
-      
-      // Determine the correct user profile ID to check for enrollment
-      // Student uses their student profile ID, teacher uses their teacher profile ID
-      let userProfileIdToCheck: string | null = null;
+      let enrollmentCheckUserId = currentUserId; // For students, this is users.id
+      let enrollmentTable = '';
+      let fkColumnNameInEnrollmentTable = '';
 
       if (currentUserRole === 'student') {
-        const { data: studentProfile, error: studentProfileError } = await supabase
-          .from('students')
-          .select('id')
-          .eq('user_id', currentUserId)
-          .single();
-        if (studentProfile) userProfileIdToCheck = studentProfile.id;
-        else console.warn("Student profile not found for current user.");
+        enrollmentTable = 'lms_student_course_enrollments';
+        fkColumnNameInEnrollmentTable = 'user_id'; // Referencing users.id
       } else if (currentUserRole === 'teacher') {
-         const { data: teacherProfile, error: teacherProfileError } = await supabase
+        enrollmentTable = 'lms_teacher_course_enrollments';
+        fkColumnNameInEnrollmentTable = 'teacher_id'; // Referencing teachers.id (profile id)
+        // For teacher, we need their teacher profile ID for the check
+        const { data: teacherProfile, error: teacherProfileError } = await supabase
           .from('teachers')
           .select('id')
           .eq('user_id', currentUserId)
           .single();
-        if (teacherProfile) userProfileIdToCheck = teacherProfile.id;
-        else console.warn("Teacher profile not found for current user.");
+        if (teacherProfileError || !teacherProfile) {
+          console.warn("Teacher profile not found for current user, cannot check enrollment.");
+          setIsEnrolled(false);
+          setIsLoading(false);
+          return;
+        }
+        enrollmentCheckUserId = teacherProfile.id; // Use teachers.id for the check
+      } else {
+        // Admin/Superadmin are considered enrolled for viewing purposes if they can access this page
+        setIsEnrolled(true);
+        setIsLoading(false);
+        return;
       }
-
-      if (userProfileIdToCheck) {
+      
+      if (enrollmentCheckUserId && enrollmentTable) {
         const { data: enrollment, error: enrollmentError } = await supabase
           .from(enrollmentTable)
           .select('id')
           .eq('course_id', courseId)
-          .eq(userIdColumn, userProfileIdToCheck)
-          .maybeSingle(); // Use maybeSingle as enrollment might not exist
+          .eq(fkColumnNameInEnrollmentTable, enrollmentCheckUserId)
+          .maybeSingle(); 
 
         if (enrollmentError) {
           toast({ title: "Error", description: `Failed to check enrollment status: ${enrollmentError.message}`, variant: "destructive" });
         }
         setIsEnrolled(!!enrollment);
       } else {
-        setIsEnrolled(false); // Cannot determine profile ID, assume not enrolled
+        setIsEnrolled(false);
       }
       setIsLoading(false);
     }
@@ -150,7 +150,7 @@ export default function ViewCourseContentPage() {
     return <div className="text-center py-10 text-destructive">Course not found or error loading data.</div>;
   }
 
-  if (!isEnrolled) {
+  if (!isEnrolled && (currentUserRole === 'student' || currentUserRole === 'teacher')) {
     return (
       <div className="flex flex-col gap-6 items-center justify-center min-h-[60vh]">
         <PageHeader title="Access Denied" />
@@ -201,7 +201,6 @@ export default function ViewCourseContentPage() {
               <CardContent>
                 {(course.resources?.[tabKey]?.length ?? 0) > 0 ? (
                   <ul className="space-y-3">
-                    {/* Ensure course.resources is defined before trying to access [tabKey] */}
                     {(course.resources?.[tabKey] || []).map((res: CourseResource) => (
                       <li key={res.id} className="p-4 border rounded-md hover:shadow-md transition-shadow">
                         <h4 className="font-semibold text-lg">{res.title}</h4>
@@ -236,3 +235,4 @@ export default function ViewCourseContentPage() {
     </div>
   );
 }
+
