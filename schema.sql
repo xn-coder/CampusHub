@@ -1,113 +1,152 @@
 
--- Enable HTTP extension if not already enabled (needed for some Supabase features, good to have)
-CREATE EXTENSION IF NOT EXISTS "http" WITH SCHEMA "extensions";
+-- Enable UUID generation
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Enable pg_graphql extension if you plan to use Supabase GraphQL features
-CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
+-- Drop existing ENUM types if they exist to redefine them
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role_enum') THEN
+        DROP TYPE user_role_enum;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'school_status_enum') THEN
+        DROP TYPE school_status_enum;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'attendance_status_enum') THEN
+        DROP TYPE attendance_status_enum;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leave_request_status_enum') THEN
+        DROP TYPE leave_request_status_enum;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_status_enum') THEN
+        DROP TYPE payment_status_enum;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'day_of_week_enum') THEN
+        DROP TYPE day_of_week_enum;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'course_resource_type_enum') THEN
+        DROP TYPE course_resource_type_enum;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'admission_status_enum') THEN
+        DROP TYPE admission_status_enum;
+    END IF;
+END$$;
 
--- Enable vector extension if you plan to use embeddings/vector search
-CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "extensions";
-
--- Custom ENUM types
-DO $$ BEGIN
-    CREATE TYPE user_role_enum AS ENUM ('superadmin', 'admin', 'teacher', 'student');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-    CREATE TYPE school_status_enum AS ENUM ('Active', 'Inactive');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-    CREATE TYPE attendance_status_enum AS ENUM ('Present', 'Absent', 'Late', 'Excused');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-    CREATE TYPE leave_request_status_enum AS ENUM ('Pending AI Review', 'Approved', 'Rejected');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-    CREATE TYPE payment_status_enum AS ENUM ('Pending', 'Paid', 'Partially Paid', 'Overdue', 'Failed');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-    CREATE TYPE day_of_week_enum AS ENUM ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-    CREATE TYPE course_resource_type_enum AS ENUM ('ebook', 'video', 'note', 'webinar');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-    CREATE TYPE admission_status_enum AS ENUM ('Pending Review', 'Admitted', 'Enrolled', 'Rejected');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
+-- ENUM Definitions
+CREATE TYPE user_role_enum AS ENUM ('superadmin', 'admin', 'teacher', 'student');
+CREATE TYPE school_status_enum AS ENUM ('Active', 'Inactive');
+CREATE TYPE attendance_status_enum AS ENUM ('Present', 'Absent', 'Late', 'Excused');
+CREATE TYPE leave_request_status_enum AS ENUM ('Pending AI Review', 'Approved', 'Rejected');
+CREATE TYPE payment_status_enum AS ENUM ('Pending', 'Paid', 'Partially Paid', 'Overdue', 'Failed');
+CREATE TYPE day_of_week_enum AS ENUM ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday');
+CREATE TYPE course_resource_type_enum AS ENUM ('ebook', 'video', 'note', 'webinar');
+CREATE TYPE admission_status_enum AS ENUM ('Pending Review', 'Admitted', 'Enrolled', 'Rejected');
 
 
 -- Function to update 'updated_at' timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at = now();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ language 'plpgsql';
 
+-- Tables
+CREATE TABLE schools (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    address TEXT,
+    admin_email TEXT NOT NULL UNIQUE, -- Used for initial setup, might be denormalized
+    admin_name TEXT NOT NULL,    -- Used for initial setup
+    admin_user_id UUID UNIQUE,   -- FK to users table, link established after admin user is created
+    status school_status_enum NOT NULL DEFAULT 'Active',
+    contact_phone TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE TRIGGER trigger_schools_updated_at BEFORE UPDATE ON schools FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Users Table (for login and basic info)
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
     role user_role_enum NOT NULL,
-    password_hash TEXT NOT NULL,
-    school_id UUID REFERENCES schools(id) ON DELETE SET NULL, -- Admin/Teacher can be linked to a school
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    password_hash TEXT, -- Can be NULL if using OAuth or other auth methods not storing password here
+    school_id UUID REFERENCES schools(id) ON DELETE SET NULL, -- If user is directly tied to one school
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE TRIGGER set_users_updated_at
-BEFORE UPDATE ON users
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Add FK constraint for schools.admin_user_id after users table is created
+ALTER TABLE schools ADD CONSTRAINT fk_admin_user FOREIGN KEY (admin_user_id) REFERENCES users(id) ON DELETE SET NULL;
 
--- Schools Table
-CREATE TABLE IF NOT EXISTS schools (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+CREATE TABLE academic_years (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
-    address TEXT,
-    admin_email TEXT NOT NULL UNIQUE, -- Denormalized for easier querying/uniqueness if needed
-    admin_name TEXT NOT NULL,
-    admin_user_id UUID REFERENCES users(id) ON DELETE SET NULL, -- Link to the admin's user record
-    status school_status_enum NOT NULL DEFAULT 'Active',
-    contact_phone TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (name, school_id),
+    CONSTRAINT check_start_end_dates CHECK (start_date < end_date)
 );
-CREATE INDEX IF NOT EXISTS idx_schools_admin_email ON schools(admin_email);
-CREATE TRIGGER set_schools_updated_at
-BEFORE UPDATE ON schools
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_academic_years_updated_at BEFORE UPDATE ON academic_years FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Students Table (Profile information)
-CREATE TABLE IF NOT EXISTS students (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- Student Profile ID
-    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- Link to login user
-    name TEXT NOT NULL, -- Can be inherited from users table or specific here
-    email TEXT UNIQUE NOT NULL, -- Denormalized from users table for easier access
+CREATE TABLE class_names (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(name, school_id)
+);
+CREATE TRIGGER trigger_class_names_updated_at BEFORE UPDATE ON class_names FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE section_names (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(name, school_id)
+);
+CREATE TRIGGER trigger_section_names_updated_at BEFORE UPDATE ON section_names FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE teachers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), -- Teacher Profile ID
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, -- Denormalized from users
+    email TEXT NOT NULL, -- Denormalized from users
+    subject TEXT,
+    profile_picture_url TEXT,
+    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE TRIGGER trigger_teachers_updated_at BEFORE UPDATE ON teachers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE classes ( -- Represents active class-sections
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL, -- Denormalized: e.g., "Grade 10"
+    division TEXT NOT NULL, -- Denormalized: e.g., "A"
+    class_name_id UUID NOT NULL REFERENCES class_names(id) ON DELETE RESTRICT,
+    section_name_id UUID NOT NULL REFERENCES section_names(id) ON DELETE RESTRICT,
+    teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL, -- Teacher's Profile ID
+    academic_year_id UUID REFERENCES academic_years(id) ON DELETE SET NULL,
+    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (class_name_id, section_name_id, school_id, academic_year_id)
+);
+CREATE TRIGGER trigger_classes_updated_at BEFORE UPDATE ON classes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE students ( -- Student Profiles
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), -- Student Profile ID
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, -- Denormalized
+    email TEXT NOT NULL, -- Denormalized
     class_id UUID REFERENCES classes(id) ON DELETE SET NULL,
     profile_picture_url TEXT,
     date_of_birth DATE,
@@ -116,520 +155,480 @@ CREATE TABLE IF NOT EXISTS students (
     address TEXT,
     admission_date DATE,
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id);
-CREATE INDEX IF NOT EXISTS idx_students_school_id ON students(school_id);
-CREATE INDEX IF NOT EXISTS idx_students_class_id ON students(class_id);
-CREATE TRIGGER set_students_updated_at
-BEFORE UPDATE ON students
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_students_updated_at BEFORE UPDATE ON students FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Teachers Table (Profile information)
-CREATE TABLE IF NOT EXISTS teachers (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- Teacher Profile ID
-    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- Link to login user
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL, 
-    subject TEXT,
-    profile_picture_url TEXT,
-    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_teachers_user_id ON teachers(user_id);
-CREATE INDEX IF NOT EXISTS idx_teachers_school_id ON teachers(school_id);
-CREATE TRIGGER set_teachers_updated_at
-BEFORE UPDATE ON teachers
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Class Names Table (e.g., Grade 1, Grade 10)
-CREATE TABLE IF NOT EXISTS class_names (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (name, school_id)
-);
-CREATE TRIGGER set_class_names_updated_at
-BEFORE UPDATE ON class_names
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Section Names Table (e.g., A, B, Blue, Red)
-CREATE TABLE IF NOT EXISTS section_names (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (name, school_id)
-);
-CREATE TRIGGER set_section_names_updated_at
-BEFORE UPDATE ON section_names
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Academic Years Table
-CREATE TABLE IF NOT EXISTS academic_years (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (name, school_id),
-    CONSTRAINT check_dates CHECK (start_date < end_date)
-);
-CREATE TRIGGER set_academic_years_updated_at
-BEFORE UPDATE ON academic_years
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Classes Table (Active combination of ClassName, SectionName, Teacher, AcademicYear)
-CREATE TABLE IF NOT EXISTS classes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL, -- Denormalized: e.g., "Grade 10"
-    division TEXT NOT NULL, -- Denormalized: e.g., "A"
-    class_name_id UUID NOT NULL REFERENCES class_names(id) ON DELETE RESTRICT,
-    section_name_id UUID NOT NULL REFERENCES section_names(id) ON DELETE RESTRICT,
-    teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL, -- Teacher's profile ID
-    academic_year_id UUID REFERENCES academic_years(id) ON DELETE SET NULL,
-    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (class_name_id, section_name_id, school_id, academic_year_id) -- A class-section can only exist once per year (or once if no year)
-);
-CREATE TRIGGER set_classes_updated_at
-BEFORE UPDATE ON classes
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Subjects Table
-CREATE TABLE IF NOT EXISTS subjects (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE subjects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     code TEXT NOT NULL,
     academic_year_id UUID REFERENCES academic_years(id) ON DELETE SET NULL,
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (code, school_id, academic_year_id)
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(code, school_id, academic_year_id)
 );
-CREATE TRIGGER set_subjects_updated_at
-BEFORE UPDATE ON subjects
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_subjects_updated_at BEFORE UPDATE ON subjects FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Exams Table
-CREATE TABLE IF NOT EXISTS exams (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE exams (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
-    class_id UUID REFERENCES classes(id) ON DELETE SET NULL, -- Optional: Exam specific to a class
+    class_id UUID REFERENCES classes(id) ON DELETE SET NULL, -- Optional: for class-specific exams
     academic_year_id UUID REFERENCES academic_years(id) ON DELETE SET NULL,
     date DATE NOT NULL,
     start_time TIME,
     end_time TIME,
-    max_marks INTEGER,
+    max_marks NUMERIC(5,2),
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE TRIGGER set_exams_updated_at
-BEFORE UPDATE ON exams
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_exams_updated_at BEFORE UPDATE ON exams FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Student Scores Table
-CREATE TABLE IF NOT EXISTS student_scores (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE student_scores (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     exam_id UUID NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
-    subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE, -- Denormalized for easier querying if exam doesn't directly link subject
-    class_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE, -- Class student was in when score was recorded
-    score TEXT NOT NULL, -- Using TEXT to accommodate various grading systems (e.g., A+, 95, Pass)
-    max_marks INTEGER,
-    recorded_by_teacher_id UUID NOT NULL REFERENCES teachers(id) ON DELETE RESTRICT, -- Teacher's profile ID
-    date_recorded DATE NOT NULL DEFAULT CURRENT_DATE,
+    subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE, -- Denormalized from exam for easier query
+    class_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE, -- Class at time of exam
+    score TEXT NOT NULL, -- Can be numeric or grade
+    max_marks NUMERIC(5,2), -- Max marks for this specific part if exam has multiple parts, or same as exam.max_marks
+    recorded_by_teacher_id UUID NOT NULL REFERENCES teachers(id) ON DELETE RESTRICT, -- Teacher Profile ID
+    date_recorded DATE NOT NULL,
     comments TEXT,
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (student_id, exam_id, class_id) -- A student can have one score per exam in a class
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(student_id, exam_id, class_id) -- Student can only have one score for a given exam in a class
 );
-CREATE TRIGGER set_student_scores_updated_at
-BEFORE UPDATE ON student_scores
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_student_scores_updated_at BEFORE UPDATE ON student_scores FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Assignments Table
-CREATE TABLE IF NOT EXISTS assignments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE assignments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title TEXT NOT NULL,
     description TEXT,
     due_date DATE NOT NULL,
     class_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
-    teacher_id UUID NOT NULL REFERENCES teachers(id) ON DELETE CASCADE, -- Teacher's profile ID
+    teacher_id UUID NOT NULL REFERENCES teachers(id) ON DELETE CASCADE, -- Teacher Profile ID
     subject_id UUID REFERENCES subjects(id) ON DELETE SET NULL,
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE TRIGGER set_assignments_updated_at
-BEFORE UPDATE ON assignments
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_assignments_updated_at BEFORE UPDATE ON assignments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-
--- Admission Records Table
-CREATE TABLE IF NOT EXISTS admission_records (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    date_of_birth DATE,
-    guardian_name TEXT,
-    contact_number TEXT,
-    address TEXT,
-    admission_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    status admission_status_enum NOT NULL,
-    class_id UUID REFERENCES classes(id) ON DELETE SET NULL, -- Intended class
-    student_profile_id UUID REFERENCES students(id) ON DELETE SET NULL, -- Link to actual student profile if enrolled
-    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE TRIGGER set_admission_records_updated_at
-BEFORE UPDATE ON admission_records
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Leave Applications Table
-CREATE TABLE IF NOT EXISTS leave_applications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE leave_applications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     student_profile_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    student_name TEXT NOT NULL, -- Denormalized for display
+    student_name TEXT NOT NULL, -- Name of student this leave is for (denormalized)
     reason TEXT NOT NULL,
     medical_notes_data_uri TEXT,
-    submission_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    submission_date TIMESTAMPTZ NOT NULL DEFAULT now(),
     status leave_request_status_enum NOT NULL DEFAULT 'Pending AI Review',
     ai_reasoning TEXT,
-    applicant_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- User who submitted
+    applicant_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     applicant_role user_role_enum NOT NULL,
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE TRIGGER set_leave_applications_updated_at
-BEFORE UPDATE ON leave_applications
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_leave_applications_updated_at BEFORE UPDATE ON leave_applications FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Announcements Table
-CREATE TABLE IF NOT EXISTS announcements (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE announcements (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title TEXT NOT NULL,
     content TEXT NOT NULL,
-    date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    author_name TEXT NOT NULL, -- Name of person/dept posting
+    date TIMESTAMPTZ NOT NULL DEFAULT now(),
+    author_name TEXT NOT NULL,
     posted_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     posted_by_role user_role_enum NOT NULL,
-    target_class_id UUID REFERENCES classes(id) ON DELETE SET NULL, -- Optional: for class-specific announcements
+    target_class_id UUID REFERENCES classes(id) ON DELETE SET NULL,
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE TRIGGER set_announcements_updated_at
-BEFORE UPDATE ON announcements
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_announcements_updated_at BEFORE UPDATE ON announcements FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Calendar Events Table
-CREATE TABLE IF NOT EXISTS calendar_events (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE calendar_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title TEXT NOT NULL,
     description TEXT,
     date DATE NOT NULL,
     start_time TIME,
     end_time TIME,
-    is_all_day BOOLEAN NOT NULL DEFAULT FALSE,
+    is_all_day BOOLEAN NOT NULL DEFAULT false,
     posted_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE TRIGGER set_calendar_events_updated_at
-BEFORE UPDATE ON calendar_events
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_calendar_events_updated_at BEFORE UPDATE ON calendar_events FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Fee Categories Table
-CREATE TABLE IF NOT EXISTS fee_categories (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE fee_categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     description TEXT,
     amount NUMERIC(10, 2), -- Optional default amount
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (name, school_id)
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(name, school_id)
 );
-CREATE TRIGGER set_fee_categories_updated_at
-BEFORE UPDATE ON fee_categories
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_fee_categories_updated_at BEFORE UPDATE ON fee_categories FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Student Fee Payments Table
-CREATE TABLE IF NOT EXISTS student_fee_payments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE student_fee_payments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     fee_category_id UUID NOT NULL REFERENCES fee_categories(id) ON DELETE RESTRICT,
     academic_year_id UUID REFERENCES academic_years(id) ON DELETE SET NULL,
     assigned_amount NUMERIC(10, 2) NOT NULL,
     paid_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     due_date DATE,
-    payment_date DATE,
+    payment_date DATE, -- Date of last payment
     status payment_status_enum NOT NULL DEFAULT 'Pending',
     notes TEXT,
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE TRIGGER set_student_fee_payments_updated_at
-BEFORE UPDATE ON student_fee_payments
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_student_fee_payments_updated_at BEFORE UPDATE ON student_fee_payments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Class Schedule Items Table
-CREATE TABLE IF NOT EXISTS class_schedule_items (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE class_schedules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     class_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
     subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
-    teacher_id UUID NOT NULL REFERENCES teachers(id) ON DELETE CASCADE, -- Teacher's profile ID
+    teacher_id UUID NOT NULL REFERENCES teachers(id) ON DELETE CASCADE, -- Teacher Profile ID
     day_of_week day_of_week_enum NOT NULL,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    CONSTRAINT check_schedule_times CHECK (start_time < end_time)
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(class_id, day_of_week, start_time, school_id),
+    CONSTRAINT check_start_end_time_schedule CHECK (start_time < end_time)
 );
-CREATE TRIGGER set_class_schedule_items_updated_at
-BEFORE UPDATE ON class_schedule_items
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_class_schedules_updated_at BEFORE UPDATE ON class_schedules FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Attendance Records Table
-CREATE TABLE IF NOT EXISTS attendance_records (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE attendance_records (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     class_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
     date DATE NOT NULL,
     status attendance_status_enum NOT NULL,
     remarks TEXT,
-    taken_by_teacher_id UUID NOT NULL REFERENCES teachers(id) ON DELETE RESTRICT, -- Teacher's profile ID
+    taken_by_teacher_id UUID NOT NULL REFERENCES teachers(id) ON DELETE RESTRICT, -- Teacher Profile ID
     school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (student_id, class_id, date) -- One record per student, per class, per day
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(student_id, class_id, date)
 );
-CREATE TRIGGER set_attendance_records_updated_at
-BEFORE UPDATE ON attendance_records
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_attendance_records_updated_at BEFORE UPDATE ON attendance_records FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- LMS Courses Table
-CREATE TABLE IF NOT EXISTS lms_courses (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE admission_records (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    date_of_birth DATE,
+    guardian_name TEXT,
+    contact_number TEXT,
+    address TEXT,
+    admission_date DATE NOT NULL,
+    status admission_status_enum NOT NULL,
+    class_id UUID REFERENCES classes(id) ON DELETE SET NULL, -- Target class for admission
+    student_profile_id UUID UNIQUE REFERENCES students(id) ON DELETE SET NULL, -- Link to student profile once enrolled
+    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE TRIGGER trigger_admission_records_updated_at BEFORE UPDATE ON admission_records FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+
+-- LMS Tables
+CREATE TABLE lms_courses (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title TEXT NOT NULL,
     description TEXT,
-    is_paid BOOLEAN NOT NULL DEFAULT FALSE,
-    price NUMERIC(10, 2),
-    school_id UUID REFERENCES schools(id) ON DELETE CASCADE, -- Can be school-specific or general
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    is_paid BOOLEAN NOT NULL DEFAULT false,
+    price NUMERIC(10, 2) CHECK (is_paid = false OR price IS NOT NULL AND price > 0),
+    school_id UUID REFERENCES schools(id) ON DELETE SET NULL, -- Can be global (NULL school_id)
+    created_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL, -- Creator of the course
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE TRIGGER set_lms_courses_updated_at
-BEFORE UPDATE ON lms_courses
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_lms_courses_updated_at BEFORE UPDATE ON lms_courses FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- LMS Course Resources Table
-CREATE TABLE IF NOT EXISTS lms_course_resources (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE lms_course_resources (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     course_id UUID NOT NULL REFERENCES lms_courses(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     type course_resource_type_enum NOT NULL,
     url_or_content TEXT NOT NULL,
-    file_name TEXT, -- For downloadable resources
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    file_name TEXT, -- If it's an uploaded file, store original name
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE TRIGGER set_lms_course_resources_updated_at
-BEFORE UPDATE ON lms_course_resources
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_lms_course_resources_updated_at BEFORE UPDATE ON lms_course_resources FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- LMS Course Activation Codes Table
-CREATE TABLE IF NOT EXISTS lms_course_activation_codes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE lms_course_activation_codes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     course_id UUID NOT NULL REFERENCES lms_courses(id) ON DELETE CASCADE,
-    code TEXT UNIQUE NOT NULL,
-    is_used BOOLEAN NOT NULL DEFAULT FALSE,
+    code TEXT NOT NULL UNIQUE,
+    is_used BOOLEAN NOT NULL DEFAULT false,
     used_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    generated_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    generated_date TIMESTAMPTZ NOT NULL DEFAULT now(),
     expiry_date TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    school_id UUID REFERENCES schools(id) ON DELETE SET NULL, -- For school-specific codes for a global course
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE TRIGGER set_lms_course_activation_codes_updated_at
-BEFORE UPDATE ON lms_course_activation_codes
-FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trigger_lms_course_activation_codes_updated_at BEFORE UPDATE ON lms_course_activation_codes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- LMS Student Course Enrollments Table (Explicit Join Table)
-CREATE TABLE IF NOT EXISTS lms_student_course_enrollments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE lms_student_course_enrollments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE, -- Student Profile ID
     course_id UUID NOT NULL REFERENCES lms_courses(id) ON DELETE CASCADE,
-    enrolled_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (student_user_id, course_id)
+    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE, -- School of the student
+    enrolled_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(student_id, course_id)
 );
+CREATE TRIGGER trigger_lms_student_course_enrollments_updated_at BEFORE UPDATE ON lms_student_course_enrollments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- LMS Teacher Course Enrollments Table (Explicit Join Table)
-CREATE TABLE IF NOT EXISTS lms_teacher_course_enrollments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE lms_teacher_course_enrollments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    teacher_id UUID NOT NULL REFERENCES teachers(id) ON DELETE CASCADE, -- Teacher Profile ID
     course_id UUID NOT NULL REFERENCES lms_courses(id) ON DELETE CASCADE,
-    assigned_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (teacher_user_id, course_id)
+    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE, -- School of the teacher
+    assigned_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(teacher_id, course_id)
 );
+CREATE TRIGGER trigger_lms_teacher_course_enrollments_updated_at BEFORE UPDATE ON lms_teacher_course_enrollments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 
 -- RLS Policies --
--- IMPORTANT: These are basic policies. Review and enhance them for production.
--- The service_role key will bypass these, so server actions using it will work.
--- For client-side, 'anon' and 'authenticated' roles are relevant if using Supabase built-in auth (which we are not for user/pass).
--- Since custom auth is used, `auth.uid()` and `auth.role()` in RLS policies won't map directly to your `users` table roles/IDs without additional setup (like setting session variables via custom claims if you were using JWTs from Supabase Auth).
--- For now, `anon` policies will be very restrictive for write operations.
+-- Note: These are basic policies. Production environments need more granular security.
+-- Service role key bypasses RLS, so server actions using it will work.
+-- Anon key (client-side) access needs to be carefully managed.
 
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public read access to users" ON users;
-CREATE POLICY "Allow public read access to users" ON users FOR SELECT TO anon, authenticated USING (true);
--- Allow users to update their own profiles (name, non-critical fields)
--- This would typically use auth.uid() = id. For custom auth, this is tricky.
--- Server actions using service_role should handle user updates.
-DROP POLICY IF EXISTS "Allow individual user update own data" ON users;
--- CREATE POLICY "Allow individual user update own data" ON users FOR UPDATE TO authenticated
--- USING (auth.uid() = id)
--- WITH CHECK (auth.uid() = id);
--- For now, only service_role can update users.
-
+-- schools table
 ALTER TABLE schools ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public read access to schools" ON schools;
-CREATE POLICY "Allow public read access to schools" ON schools FOR SELECT TO anon, authenticated USING (true);
--- Only service_role (via server actions) can create/update/delete schools.
+CREATE POLICY "Schools are publicly viewable." ON schools FOR SELECT USING (true);
+-- Mutations typically done by superadmin via service_role.
 
+-- users table
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view their own user record." ON users FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can update their own user record." ON users FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+-- Superadmin (via service_role) can manage all users.
+-- Allow anon to attempt to read user for login, but not list all users.
+CREATE POLICY "Anon can read specific user for login by email (limited columns)." ON users FOR SELECT TO anon USING (true); -- This is broad, be careful. In a real app, you might use a security definer function.
+-- Allow anon to insert for superadmin creation script
+CREATE POLICY "Anon can insert new users (for superadmin script only)." ON users FOR INSERT TO anon WITH CHECK (true);
+
+
+-- academic_years table
 ALTER TABLE academic_years ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public read access to academic years" ON academic_years;
-CREATE POLICY "Allow public read access to academic years" ON academic_years FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "Academic years are publicly viewable." ON academic_years FOR SELECT USING (true);
+-- Mutations by admin via service_role.
 
-ALTER TABLE students ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public read access to student profiles" ON students;
-CREATE POLICY "Allow public read access to student profiles" ON students FOR SELECT TO anon, authenticated USING (true);
--- Teacher might select students of their school_id. Admin might select students of their school_id.
--- Student can select their own profile.
--- User-specific policies would be needed for updates (e.g., student updating their own contact, admin updating any student in their school).
+-- class_names table
+ALTER TABLE class_names ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Class names are publicly viewable." ON class_names FOR SELECT USING (true);
+-- Mutations by admin via service_role.
 
+-- section_names table
+ALTER TABLE section_names ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Section names are publicly viewable." ON section_names FOR SELECT USING (true);
+-- Mutations by admin via service_role.
+
+-- teachers table
 ALTER TABLE teachers ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public read access to teacher profiles" ON teachers;
-CREATE POLICY "Allow public read access to teacher profiles" ON teachers FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "Teacher profiles are publicly viewable." ON teachers FOR SELECT USING (true);
+CREATE POLICY "Teachers can update their own profile." ON teachers FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+-- Creation/deletion by admin via service_role.
 
+-- classes table
 ALTER TABLE classes ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public read access to classes" ON classes;
-CREATE POLICY "Allow public read access to classes" ON classes FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "Active classes are publicly viewable." ON classes FOR SELECT USING (true);
+-- Mutations by admin via service_role.
 
+-- students table
+ALTER TABLE students ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Students can view their own profile." ON students FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Students can update limited fields of their own profile." ON students FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id); -- Specify columns if needed
+-- Teachers and admins can view students in their school/classes (complex RLS, often handled by server logic).
+CREATE POLICY "Admins/Teachers can view students of their school (simplified)." ON students FOR SELECT USING (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = students.school_id AND (u.role = 'admin' OR u.role = 'teacher'))
+    OR students.school_id IS NULL -- Or global students if any (unlikely for this app)
+);
+-- Creation/deletion by admin/teacher via service_role or specific actions.
+
+-- subjects table
 ALTER TABLE subjects ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public read access to subjects" ON subjects;
-CREATE POLICY "Allow public read access to subjects" ON subjects FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "Subjects are publicly viewable." ON subjects FOR SELECT USING (true);
+-- Mutations by admin via service_role.
 
+-- exams table
 ALTER TABLE exams ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public read access to exams" ON exams;
-CREATE POLICY "Allow public read access to exams" ON exams FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "Exams are publicly viewable." ON exams FOR SELECT USING (true);
+-- Mutations by admin via service_role.
 
+-- student_scores table
 ALTER TABLE student_scores ENABLE ROW LEVEL SECURITY;
--- Students should only see their own scores. Teachers should only see/manage scores for their students.
--- For simplicity here, allowing broader read for now. This needs to be tightened.
-DROP POLICY IF EXISTS "Allow authenticated read access to student scores" ON student_scores;
-CREATE POLICY "Allow authenticated read access to student scores" ON student_scores FOR SELECT TO authenticated USING (true);
--- Example: Teacher can insert/update for their school
--- CREATE POLICY "Allow teachers to manage scores in their school" ON student_scores
--- FOR ALL TO authenticated -- Assuming teacher has 'authenticated' role
--- USING (school_id = (SELECT school_id FROM users WHERE id = auth.uid()))
--- WITH CHECK (school_id = (SELECT school_id FROM users WHERE id = auth.uid()));
+CREATE POLICY "Students can view their own scores." ON student_scores FOR SELECT USING (EXISTS (SELECT 1 FROM students s WHERE s.id = student_id AND s.user_id = auth.uid()));
+CREATE POLICY "Teachers can manage scores for students in their school." ON student_scores FOR ALL USING (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = student_scores.school_id AND u.role = 'teacher')
+);
+-- Admins can also manage all scores via service_role.
 
+-- assignments table
+ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Assignments can be viewed by students of the target class or by school staff." ON assignments FOR SELECT USING (
+    EXISTS (SELECT 1 FROM students s WHERE s.user_id = auth.uid() AND s.class_id = assignments.class_id) -- Student in class
+    OR EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = assignments.school_id AND (u.role = 'admin' OR u.role = 'teacher')) -- School staff
+);
+CREATE POLICY "Teachers can manage assignments for their school." ON assignments FOR ALL USING (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = assignments.school_id AND u.role = 'teacher')
+    AND teacher_id = (SELECT t.id FROM teachers t WHERE t.user_id = auth.uid() LIMIT 1) -- Teacher owns assignment
+) WITH CHECK (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = assignments.school_id AND u.role = 'teacher')
+    AND teacher_id = (SELECT t.id FROM teachers t WHERE t.user_id = auth.uid() LIMIT 1)
+);
+-- Admins via service_role.
+
+
+-- leave_applications table
+ALTER TABLE leave_applications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own leave applications (or for their students if teacher/admin)." ON leave_applications FOR ALL USING (auth.uid() = applicant_user_id);
+CREATE POLICY "Admins and relevant teachers can view leave applications." ON leave_applications FOR SELECT USING (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = leave_applications.school_id AND u.role = 'admin')
+    OR EXISTS (
+        SELECT 1 FROM students s
+        JOIN classes c ON s.class_id = c.id
+        JOIN users u_teacher ON c.teacher_id = (SELECT t.id from teachers t where t.user_id = u_teacher.id) -- This join needs to be user_id to teachers.id
+        WHERE s.id = leave_applications.student_profile_id AND u_teacher.id = auth.uid() AND u_teacher.role = 'teacher'
+    )
+);
+-- More specific teacher RLS would involve joining students to classes to teachers.
+
+-- announcements table
+ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Announcements are publicly viewable or targeted." ON announcements FOR SELECT USING (
+    target_class_id IS NULL -- General announcement
+    OR EXISTS (SELECT 1 FROM students s WHERE s.user_id = auth.uid() AND s.class_id = announcements.target_class_id) -- Student in target class
+    OR EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = announcements.school_id AND (u.role = 'admin' OR u.role = 'teacher')) -- Staff of school
+);
+-- Mutations by authorized roles via service_role or specific checks.
+
+-- calendar_events table
+ALTER TABLE calendar_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Calendar events are publicly viewable for the school." ON calendar_events FOR SELECT USING (true); -- Simplified, could be school-specific
+-- Mutations by authorized roles via service_role.
+
+-- fee_categories table
+ALTER TABLE fee_categories ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Fee categories are publicly viewable." ON fee_categories FOR SELECT USING (true);
+-- Mutations by admin via service_role.
+
+-- student_fee_payments table
+ALTER TABLE student_fee_payments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Students can view their own fee payments." ON student_fee_payments FOR SELECT USING (EXISTS (SELECT 1 FROM students s WHERE s.id = student_id AND s.user_id = auth.uid()));
+-- Admin/staff can view all for their school.
+CREATE POLICY "School staff can view all fee payments for their school." ON student_fee_payments FOR SELECT USING (
+  EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = student_fee_payments.school_id AND (u.role = 'admin' OR u.role = 'teacher')) -- Teacher might need to see too
+);
+-- Mutations by admin via service_role.
+
+-- class_schedules table
+ALTER TABLE class_schedules ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Class schedules are publicly viewable." ON class_schedules FOR SELECT USING (true);
+-- Mutations by admin via service_role.
+
+-- attendance_records table
+ALTER TABLE attendance_records ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Students can view their own attendance." ON attendance_records FOR SELECT USING (EXISTS (SELECT 1 FROM students s WHERE s.id = student_id AND s.user_id = auth.uid()));
+CREATE POLICY "Teachers can manage attendance for their school." ON attendance_records FOR ALL USING (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = attendance_records.school_id AND u.role = 'teacher')
+);
+-- Admin via service_role.
+
+-- admission_records table
+ALTER TABLE admission_records ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins can manage all admission records." ON admission_records FOR ALL USING (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = admission_records.school_id AND u.role = 'admin')
+);
+CREATE POLICY "Teachers can view admission records for their school (limited scope)." ON admission_records FOR SELECT USING (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = admission_records.school_id AND u.role = 'teacher')
+);
+
+
+-- LMS RLS Policies
 ALTER TABLE lms_courses ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public read access to lms_courses" ON lms_courses;
-CREATE POLICY "Allow public read access to lms_courses" ON lms_courses FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "LMS courses are publicly viewable." ON lms_courses FOR SELECT USING (true);
+CREATE POLICY "Course creators or admins can manage their courses." ON lms_courses FOR ALL USING (
+    auth.uid() = created_by_user_id
+    OR EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.role = 'admin' AND (u.school_id = lms_courses.school_id OR lms_courses.school_id IS NULL))
+    OR EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.role = 'superadmin')
+);
+
 
 ALTER TABLE lms_course_resources ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow enrolled users to read lms_course_resources" ON lms_course_resources;
--- This policy is more complex and would require checking enrollment status.
--- For now, allow broader read access, to be refined.
-CREATE POLICY "Allow enrolled users to read lms_course_resources" ON lms_course_resources FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Enrolled users or course managers can view resources." ON lms_course_resources FOR SELECT USING (
+    EXISTS (SELECT 1 FROM lms_student_course_enrollments sce JOIN students s ON sce.student_id = s.id WHERE sce.course_id = lms_course_resources.course_id AND s.user_id = auth.uid())
+    OR EXISTS (SELECT 1 FROM lms_teacher_course_enrollments tce JOIN teachers t ON tce.teacher_id = t.id WHERE tce.course_id = lms_course_resources.course_id AND t.user_id = auth.uid())
+    OR EXISTS (SELECT 1 FROM lms_courses lc WHERE lc.id = lms_course_resources.course_id AND lc.created_by_user_id = auth.uid())
+    OR EXISTS (SELECT 1 FROM users u JOIN lms_courses lc ON u.school_id = lc.school_id OR lc.school_id IS NULL WHERE u.id = auth.uid() AND u.role = 'admin' AND lc.id = lms_course_resources.course_id)
+    OR EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.role = 'superadmin')
+);
+CREATE POLICY "Course managers can manage resources." ON lms_course_resources FOR ALL USING (
+    EXISTS (SELECT 1 FROM lms_courses lc WHERE lc.id = lms_course_resources.course_id AND lc.created_by_user_id = auth.uid())
+    OR EXISTS (SELECT 1 FROM users u JOIN lms_courses lc ON u.school_id = lc.school_id OR lc.school_id IS NULL WHERE u.id = auth.uid() AND u.role = 'admin' AND lc.id = lms_course_resources.course_id)
+    OR EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.role = 'superadmin')
+);
+
 
 ALTER TABLE lms_course_activation_codes ENABLE ROW LEVEL SECURITY;
--- Highly restrictive. Only service_role should manage these.
--- Anon/authenticated shouldn't read these directly typically.
+CREATE POLICY "Admin/Superadmin can manage activation codes." ON lms_course_activation_codes FOR ALL USING (
+    EXISTS (SELECT 1 FROM users u JOIN lms_courses lc ON (u.school_id = lc.school_id OR lc.school_id IS NULL) WHERE u.id = auth.uid() AND lc.id = lms_course_activation_codes.course_id AND u.role = 'admin')
+    OR EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.role = 'superadmin')
+);
+-- Allow specific code lookup if needed, but generally codes are managed by admins.
 
 ALTER TABLE lms_student_course_enrollments ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow student to see their own enrollments" ON lms_student_course_enrollments;
--- CREATE POLICY "Allow student to see their own enrollments" ON lms_student_course_enrollments
--- FOR SELECT TO authenticated USING (student_user_id = auth.uid());
+CREATE POLICY "Students can view their own enrollments." ON lms_student_course_enrollments FOR SELECT USING (EXISTS (SELECT 1 FROM students s WHERE s.id = student_id AND s.user_id = auth.uid()));
+CREATE POLICY "Admins/Teachers can manage student enrollments for their school/courses." ON lms_student_course_enrollments FOR ALL USING (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = lms_student_course_enrollments.school_id AND (u.role = 'admin' OR u.role = 'teacher'))
+);
 
 ALTER TABLE lms_teacher_course_enrollments ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow teacher to see their own assignments to courses" ON lms_teacher_course_enrollments;
--- CREATE POLICY "Allow teacher to see their own assignments to courses" ON lms_teacher_course_enrollments
--- FOR SELECT TO authenticated USING (teacher_user_id = auth.uid());
+CREATE POLICY "Teachers can view their own enrollments." ON lms_teacher_course_enrollments FOR SELECT USING (EXISTS (SELECT 1 FROM teachers t WHERE t.id = teacher_id AND t.user_id = auth.uid()));
+CREATE POLICY "Admins can manage teacher enrollments." ON lms_teacher_course_enrollments FOR ALL USING (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = auth.uid() AND u.school_id = lms_teacher_course_enrollments.school_id AND u.role = 'admin')
+);
 
--- Default DENY for all other tables not explicitly granted for anon/authenticated
--- (Service role bypasses RLS anyway)
-ALTER TABLE class_names ENABLE ROW LEVEL SECURITY;
-ALTER TABLE section_names ENABLE ROW LEVEL SECURITY;
-ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE admission_records ENABLE ROW LEVEL SECURITY;
-ALTER TABLE leave_applications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE calendar_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE fee_categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE student_fee_payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE class_schedule_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE attendance_records ENABLE ROW LEVEL SECURITY;
+-- Ensure RLS is enforced for public schema by default
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM public;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM public;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM public;
 
--- Ensure all tables not explicitly granting SELECT to anon/authenticated are protected by default.
--- Example:
--- ALTER TABLE some_sensitive_table ENABLE ROW LEVEL SECURITY;
--- CREATE POLICY "Deny all access to sensitive table" ON some_sensitive_table FOR ALL USING (false);
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; -- Service role bypasses RLS
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
 
--- It's good practice to make sure RLS is enabled for ALL tables and default to deny.
--- Then explicitly grant permissions. The above policies grant broad read access to anon/authenticated
--- which might need to be tightened for specific tables based on your app's logic.
--- For example, announcements might be public, but student_scores should be very restricted.
+-- Grant basic select for anon/authenticated where RLS policies allow
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+-- For insert/update/delete, RLS policies WITH CHECK or USING auth.uid() will gate access.
+-- Specific insert/update/delete grants can be added if anon/authenticated need direct DML (uncommon for anon).
+GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
 
--- Final step: ensure the `postgres` user (default superuser) owns these tables.
--- This is usually handled by Supabase, but ensure the user running these commands has permissions.
 
-GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres;
-GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO postgres;
-
--- Grant usage on schema public to anon and authenticated roles.
-GRANT USAGE ON SCHEMA public TO anon;
-GRANT USAGE ON SCHEMA public TO authenticated;
-
--- Selectively grant permissions to anon and authenticated roles.
--- Example: For public tables, you might grant SELECT.
--- For tables where users interact (even with custom auth), you'll need more specific RLS.
--- Since service_role is used for mutations, anon/authenticated typically need fewer direct write permissions.
-
-GRANT SELECT ON TABLE users TO anon;
-GRANT SELECT ON TABLE schools TO anon;
-GRANT SELECT ON TABLE academic_years TO anon;
-GRANT SELECT ON TABLE students TO anon;
-GRANT SELECT ON TABLE teachers TO anon;
-GRANT SELECT ON TABLE classes TO anon;
-GRANT SELECT ON TABLE subjects TO anon;
-GRANT SELECT ON TABLE exams TO anon;
-GRANT SELECT ON TABLE lms_courses TO anon;
--- etc. for other tables that need to be publicly readable.
-
--- IMPORTANT: The RLS policy of "USING (true)" for SELECT grants access to all rows.
--- This should be replaced with more specific conditions based on user roles and ownership
--- if client-side components are fetching data directly without server actions.
--- e.g., FOR SELECT USING (school_id = current_user_school_id_function())
--- Or for user-specific data: USING (user_id = auth.uid()) if using Supabase auth.
--- With custom auth, these become more complex to implement purely in RLS without helper functions.
+-- Seed Superadmin (if not exists, to be run once or handled by app logic on startup)
+-- This should ideally be run by your application startup logic if ensureSuperAdminExists is used.
+-- Or run manually once. The app's ensureSuperAdminExists function handles this now.
+-- INSERT INTO users (email, name, role, password_hash)
+-- SELECT 'superadmin@campushub.com', 'Super Admin', 'superadmin', crypt('password', gen_salt('bf'))
+-- WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'superadmin@campushub.com');
+```

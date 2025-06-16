@@ -21,9 +21,17 @@ export async function createCourseAction(
 ): Promise<{ ok: boolean; message: string; course?: Course }> {
   const supabaseAdmin = createSupabaseServerClient();
   const courseId = uuidv4();
+  
+  // Ensure created_by_user_id is part of the object being inserted
+  const insertData = {
+    ...input,
+    id: courseId,
+    // created_by_user_id is already in input if CourseInput is correctly populated by caller
+  };
+
   const { error, data } = await supabaseAdmin
     .from('lms_courses')
-    .insert({ ...input, id: courseId })
+    .insert(insertData)
     .select()
     .single();
 
@@ -59,16 +67,11 @@ export async function updateCourseAction(
 
 export async function deleteCourseAction(id: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-
-  // Add checks for dependencies if necessary (e.g., resources, enrollments, activation codes) before deleting.
-  // For simplicity, direct delete is shown. In a real app, handle cascading deletes or prevent deletion if dependencies exist.
   
-  // Example: Delete related resources (optional, depends on desired behavior)
   await supabaseAdmin.from('lms_course_resources').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_activation_codes').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_student_course_enrollments').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_teacher_course_enrollments').delete().eq('course_id', id);
-
 
   const { error } = await supabaseAdmin.from('lms_courses').delete().eq('id', id);
 
@@ -154,7 +157,7 @@ export async function generateActivationCodesAction(
       is_used: false,
       generated_date: currentDate.toISOString(),
       expiry_date: expiryDate,
-      school_id: school_id || null, // If codes can be school specific for a global course
+      school_id: school_id || null, 
     });
     displayableCodes.push(uniqueCode);
   }
@@ -165,7 +168,7 @@ export async function generateActivationCodesAction(
     console.error("Error generating activation codes:", error);
     return { ok: false, message: `Failed to generate codes: ${error.message}` };
   }
-  revalidatePath('/admin/lms/courses'); // Or a more specific path if codes are listed elsewhere
+  revalidatePath('/admin/lms/courses'); 
   return { ok: true, message: `${num_codes} activation code(s) generated.`, generatedCodes: displayableCodes };
 }
 
@@ -173,9 +176,9 @@ export async function generateActivationCodesAction(
 // --- Enrollment Management ---
 interface ManageEnrollmentInput {
   course_id: string;
-  user_profile_id: string; // This is student_id or teacher_id (profile IDs)
+  user_profile_id: string; 
   user_type: 'student' | 'teacher';
-  school_id: string; // School of the student/teacher
+  school_id: string; 
 }
 
 export async function enrollUserInCourseAction(
@@ -240,5 +243,4 @@ export async function unenrollUserFromCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} unenrolled successfully.` };
 }
-
     
