@@ -87,7 +87,7 @@ export default function AvailableLmsCoursesPage() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                     <CardTitle className="flex items-center"><Library className="mr-2 h-5 w-5 text-primary" />{course.title}</CardTitle>
-                    {course.isPaid ? (
+                    {course.is_paid ? (
                         <span className="text-xs font-semibold bg-destructive/20 text-destructive px-2 py-1 rounded-full flex items-center">
                             <Lock className="mr-1 h-3 w-3"/> Paid
                         </span>
@@ -100,7 +100,7 @@ export default function AvailableLmsCoursesPage() {
                 <CardDescription className="line-clamp-3">{course.description}</CardDescription>
               </CardHeader>
               <CardContent className="flex-grow">
-                {course.isPaid && course.price && (
+                {course.is_paid && course.price && (
                   <p className="text-lg font-semibold text-foreground mb-2">${course.price.toFixed(2)}</p>
                 )}
                 <p className="text-sm text-muted-foreground">
@@ -114,7 +114,7 @@ export default function AvailableLmsCoursesPage() {
                        <Eye className="mr-2 h-4 w-4"/> View Course
                      </Link>
                    </Button>
-                ) : course.isPaid ? (
+                ) : course.is_paid ? (
                   <Button asChild className="w-full">
                     <Link href={`/student/lms/activate?courseId=${course.id}`}>
                        <ShoppingCart className="mr-2 h-4 w-4"/> Activate Course

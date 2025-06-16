@@ -131,7 +131,6 @@ export default function ManageCoursesPage() {
       description: description.trim() || undefined,
       is_paid: isPaid,
       price: isPaid ? Number(price) : undefined,
-      created_by_user_id: currentAdminUserId,
       school_id: currentSchoolId || undefined, // Assign to current admin's school if available
     };
 

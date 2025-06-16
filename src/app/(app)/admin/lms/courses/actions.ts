@@ -13,7 +13,6 @@ interface CourseInput {
   is_paid: boolean;
   price?: number;
   school_id?: string; // Optional: for school-specific courses
-  created_by_user_id: string;
 }
 
 export async function createCourseAction(

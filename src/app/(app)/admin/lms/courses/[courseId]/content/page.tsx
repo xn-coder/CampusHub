@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2 } from 'lucide-react';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2, ExternalLink } from 'lucide-react';
 import type { Course, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
@@ -64,10 +64,12 @@ export default function ManageCourseContentPage() {
   }
   
   async function fetchCourseResources() {
+    if (!courseId) return;
     const { data, error } = await supabase
         .from('lms_course_resources')
         .select('*')
-        .eq('course_id', courseId);
+        .eq('course_id', courseId)
+        .order('created_at', { ascending: false });
     if (error) {
         toast({title: "Error", description: "Failed to load course resources.", variant: "destructive"});
         setCourseResources([]);
@@ -96,7 +98,7 @@ export default function ManageCourseContentPage() {
       toast({ title: "Resource Added", description: result.message });
       setResourceTitle('');
       setResourceUrlOrContent('');
-      fetchCourseResources(); // Re-fetch resources
+      fetchCourseResources(); 
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -110,7 +112,7 @@ export default function ManageCourseContentPage() {
       const result = await deleteCourseResourceAction(resourceId, course.id);
       if (result.ok) {
         toast({ title: "Resource Deleted", variant: "destructive" });
-        fetchCourseResources(); // Re-fetch resources
+        fetchCourseResources(); 
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
       }
@@ -155,10 +157,10 @@ export default function ManageCourseContentPage() {
       
       <Tabs value={activeTab} onValueChange={(value) => {
         setActiveTab(value as ResourceTabKey);
-        setResourceTitle(''); // Reset form when tab changes
+        setResourceTitle(''); 
         setResourceUrlOrContent('');
       }} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
           <TabsTrigger value="ebooks"><BookOpen className="mr-2 h-4 w-4" /> E-books</TabsTrigger>
           <TabsTrigger value="videos"><Video className="mr-2 h-4 w-4" /> Videos</TabsTrigger>
           <TabsTrigger value="notes"><FileText className="mr-2 h-4 w-4" /> Notes</TabsTrigger>
@@ -218,23 +220,37 @@ export default function ManageCourseContentPage() {
                 </CardContent>
               </form>
               <CardContent className="mt-6">
-                <h4 className="font-medium mb-2">Existing {getResourceTypeLabel(tabKey as ResourceTabKey)}s:</h4>
+                <h4 className="text-lg font-medium mb-2">Existing {getResourceTypeLabel(tabKey as ResourceTabKey)}s ({displayedResources.length}):</h4>
                 {displayedResources.length > 0 ? (
-                  <ul className="space-y-2">
+                  <ul className="space-y-3 max-h-96 overflow-y-auto">
                     {displayedResources.map((res: CourseResource) => (
-                      <li key={res.id} className="flex items-center justify-between p-3 border rounded-md">
-                        <div>
-                          <p className="font-medium">{res.title}</p>
-                          <p className="text-xs text-muted-foreground truncate max-w-md">{res.url_or_content}</p>
+                      <li key={res.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate" title={res.title}>{res.title}</p>
+                          {res.type === 'note' ? (
+                             <div className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2 mt-1 rounded-sm max-h-24 overflow-y-auto">
+                                {res.url_or_content}
+                             </div>
+                          ) : (
+                            <a 
+                                href={res.url_or_content} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-xs text-primary hover:underline flex items-center truncate"
+                                title={res.url_or_content}
+                            >
+                                {res.url_or_content} <ExternalLink className="ml-1 h-3 w-3 shrink-0"/>
+                            </a>
+                          )}
                         </div>
-                        <Button variant="destructive" size="icon" onClick={() => handleDeleteResource(res.id)} disabled={isSubmitting}>
-                          <Trash2 className="h-4 w-4" />
+                        <Button variant="destructive" size="icon" onClick={() => handleDeleteResource(res.id)} disabled={isSubmitting} className="ml-2 shrink-0">
+                          {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         </Button>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No {tabKey.toLowerCase()} added yet for this course.</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">No {tabKey.toLowerCase()} added yet for this course.</p>
                 )}
               </CardContent>
             </Card>
@@ -247,3 +263,5 @@ export default function ManageCourseContentPage() {
     </div>
   );
 }
+
+    
