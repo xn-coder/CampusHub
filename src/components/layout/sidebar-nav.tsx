@@ -26,14 +26,12 @@ import {
   UserCircle,
   CreditCard,
   ClipboardList, 
-  BookMarked,
+  // BookMarked, // Icon for Study Material, removed
   Settings, 
   FilePlus2,
   Tags,
   Receipt,
   Printer,
-  // UsersRound, // Icon for Employee Registration, removed
-  // DollarSign, // Icon for Payroll, removed
   Clock, 
   CalendarRange, 
   BookOpenText,
@@ -43,7 +41,7 @@ import {
   ScrollText,
   Library,
   KeyRound,
-  BookOpenCheck // Added for Grade Assignments
+  BookOpenCheck
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -62,7 +60,6 @@ const adminNavItems: NavItem[] = [
   { href: '/school-details', label: 'School Details', icon: School },
   { href: '/admin/manage-students', label: 'Manage Students', icon: Users },
   { href: '/admin/manage-teachers', label: 'Manage Teachers', icon: Briefcase }, 
-  // { href: '/admin/employee-registration', label: 'Employee Registration', icon: UsersRound }, // Removed
   { href: '/class-management', label: 'Class Management', icon: Presentation },
   { href: '/admin/lms/courses', label: 'LMS Courses', icon: Library }, 
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
@@ -74,7 +71,6 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/student-scores', label: 'Student Scores', icon: Award },
   { href: '/admin/attendance', label: 'Attendance Records', icon: ClipboardCheck }, 
   { href: '/admin/id-card-printing', label: 'ID Card Printing', icon: Printer },
-  // { href: '/admin/payroll', label: 'Payroll', icon: DollarSign }, // Removed
   { href: '/admin/class-schedule', label: 'Class Schedule', icon: Clock },
   { href: '/communication', label: 'Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'Calendar & Events', icon: CalendarDays },
@@ -107,7 +103,7 @@ const studentNavItems: NavItem[] = [
   { href: '/student/subjects', label: 'My Subjects', icon: BookOpenText }, 
   { href: '/student/assignments', label: 'My Assignments', icon: ClipboardList }, 
   { href: '/student/my-scores', label: 'My Scores', icon: Award },
-  { href: '/student/study-material', label: 'Study Material', icon: BookMarked },
+  // { href: '/student/study-material', label: 'Study Material', icon: BookMarked }, // Removed
   { href: '/lms/available-courses', label: 'LMS Courses', icon: Library },
   { href: '/student/lms/activate', label: 'Activate Course', icon: KeyRound },
   { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit },
@@ -125,7 +121,7 @@ export default function SidebarNav() {
     setIsMounted(true); 
     if (typeof window !== 'undefined') {
       const storedRole = localStorage.getItem('currentUserRole') as UserRole | null;
-      const validRoles: UserRole[] = ['superadmin', 'admin', 'teacher', 'student']; // Removed 'staff'
+      const validRoles: UserRole[] = ['superadmin', 'admin', 'teacher', 'student'];
       if (storedRole && validRoles.includes(storedRole)) {
         setCurrentUserRole(storedRole);
       } else {

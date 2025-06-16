@@ -3,6 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { UserRole } from '@/types';
+import nodemailer from 'nodemailer';
 
 interface EmailOptions {
   to: string | string[];
@@ -11,20 +12,60 @@ interface EmailOptions {
   text?: string;
 }
 
+const emailFrom = process.env.EMAIL_FROM;
+const emailHost = process.env.EMAIL_HOST;
+const emailPort = Number(process.env.EMAIL_PORT || 587);
+const emailUser = process.env.EMAIL_USER;
+const emailPass = process.env.EMAIL_PASS;
+
+let transporter: nodemailer.Transporter | null = null;
+
+if (emailHost && emailUser && emailPass && emailFrom) {
+  transporter = nodemailer.createTransport({
+    host: emailHost,
+    port: emailPort,
+    secure: emailPort === 465, // true for 465, false for other ports
+    auth: {
+      user: emailUser,
+      pass: emailPass,
+    },
+  });
+  console.log("Nodemailer transporter configured.");
+} else {
+  console.warn(
+    "Nodemailer is not configured. Email environment variables (EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM) are missing. Emails will not be sent."
+  );
+}
+
 /**
- * MOCK Email Sending Service.
- * In a real application, this would integrate with an actual email provider.
+ * Sends an email using Nodemailer if configured, otherwise logs a mock request.
  */
 export async function sendEmail(options: EmailOptions): Promise<{ success: boolean; message: string }> {
-  console.log("--- MOCK EMAIL SEND REQUEST ---");
-  console.log("To:", Array.isArray(options.to) ? options.to.join(', ') : options.to);
-  console.log("Subject:", options.subject);
-  // console.log("HTML Body:", options.html); // Keep console clean for now
-  console.log("--- END MOCK EMAIL ---");
+  if (!transporter || !emailFrom) {
+    console.log("--- MOCK EMAIL SEND REQUEST (Nodemailer not configured) ---");
+    console.log("To:", Array.isArray(options.to) ? options.to.join(', ') : options.to);
+    console.log("Subject:", options.subject);
+    // console.log("HTML Body:", options.html);
+    console.log("--- END MOCK EMAIL ---");
+    return { success: true, message: "Email sending is mocked as Nodemailer is not configured." };
+  }
 
-  // Simulate email sending
-  await new Promise(resolve => setTimeout(resolve, 300)); 
-  return { success: true, message: "Email queued for sending (mock)." };
+  try {
+    const mailOptions = {
+      from: emailFrom,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+      text: options.text,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log("Message sent: %s", info.messageId);
+    return { success: true, message: `Email sent successfully to ${Array.isArray(options.to) ? options.to.join(', ') : options.to}. Message ID: ${info.messageId}` };
+  } catch (error: any) {
+    console.error("Error sending email with Nodemailer:", error);
+    return { success: false, message: `Failed to send email: ${error.message}` };
+  }
 }
 
 
