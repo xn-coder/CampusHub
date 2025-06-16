@@ -63,16 +63,17 @@ export default function CalendarEventsPage() {
             .single();
 
           if (userErr || !userRec ) {
-            if (role !== 'superadmin') {
+            if (role && role !== 'superadmin') { // Only show error if not superadmin and user context was expected
                  toast({title: "Error", description: "Could not determine user's school context.", variant: "destructive"});
             }
-            schoolId = null;
+            // For superadmin, schoolId can remain null if they are not tied to a specific school
+            schoolId = userRec?.school_id || null; 
           } else {
             schoolId = userRec.school_id;
           }
           setCurrentSchoolId(schoolId);
         } else {
-           if (role !== null) { // Only show toast if role was expected but userId is missing
+           if (role !== null) { 
              toast({ title: "Context Missing", description: "Cannot load calendar without user context.", variant: "destructive"});
            }
            schoolId = null;
@@ -80,29 +81,30 @@ export default function CalendarEventsPage() {
         }
       }
 
-      if (schoolId) {
-        const result = await getCalendarEventsAction(schoolId);
+      if (schoolId && userId && role) { // Ensure all necessary params are available
+        const result = await getCalendarEventsAction(schoolId, userId, role);
         if (result.ok && result.events) {
           setEvents(result.events);
         } else {
           toast({ title: "Error", description: result.message || "Failed to fetch calendar events.", variant: "destructive" });
           setEvents([]);
         }
-      } else if (currentUserRole === 'superadmin' && !schoolId) {
-        setEvents([]); // Superadmin without school context sees no specific events
-      } else if (role !== null) { // User with role but no school_id (and not superadmin)
+      } else if (role === 'superadmin' && !schoolId) {
+        setEvents([]); 
+      } else if (role !== null && !schoolId) { // Other roles need a schoolId
         setEvents([]);
       }
       setIsLoading(false);
     }
     loadUserContextAndEvents();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
   const fetchEventsForSchool = async () => {
-    if (!currentSchoolId) return;
+    if (!currentSchoolId || !currentUserId || !currentUserRole) return;
     setIsLoading(true);
-    const result = await getCalendarEventsAction(currentSchoolId);
+    const result = await getCalendarEventsAction(currentSchoolId, currentUserId, currentUserRole);
     if (result.ok && result.events) {
       setEvents(result.events);
     } else {
@@ -124,7 +126,7 @@ export default function CalendarEventsPage() {
   };
 
   const handleOpenFormDialog = (eventToEdit?: CalendarEvent) => {
-    if (currentUserRole === 'student') return;
+    if (currentUserRole === 'student' || currentUserRole === 'superadmin' && !currentSchoolId) return; // Superadmin needs school context to post
     if (eventToEdit) {
       setEditingEvent(eventToEdit);
       setEventTitle(eventToEdit.title);
@@ -149,6 +151,11 @@ export default function CalendarEventsPage() {
       toast({ title: "Error", description: "Action not permitted or missing context.", variant: "destructive" });
       return;
     }
+    if (currentUserRole === 'superadmin' && !currentSchoolId){ // Superadmin must have school context to post
+        toast({ title: "Error", description: "Superadmin must have a school context to post events.", variant: "destructive" });
+        return;
+    }
+
 
     if (!eventTitle.trim() || !eventDate) {
       toast({ title: "Error", description: "Event Title and Date are required.", variant: "destructive" });
@@ -195,7 +202,7 @@ export default function CalendarEventsPage() {
   };
 
   const handleDeleteEvent = async (id: string) => {
-    if (currentUserRole === 'student' || !currentSchoolId) {
+    if (currentUserRole === 'student' || !currentSchoolId || (currentUserRole === 'superadmin' && !currentSchoolId) ) {
         toast({title: "Error", description: "Action not permitted.", variant: "destructive"});
         return;
     }
@@ -239,7 +246,7 @@ export default function CalendarEventsPage() {
       {isLoading && currentUserRole !== null && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading calendar data...</div>}
 
       {!isLoading && !currentSchoolId && currentUserRole === 'superadmin' && (
-         <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Calendar events are school-specific. Please select a school to manage its events.</CardContent></Card>
+         <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Calendar events are school-specific. A school context is required to view or manage events.</CardContent></Card>
       )}
       {!isLoading && !currentSchoolId && currentUserRole !== 'superadmin' && currentUserRole !== null && (
         <Card><CardContent className="pt-6 text-center text-destructive">Cannot load calendar. User is not associated with a school or school context is missing.</CardContent></Card>
@@ -260,11 +267,11 @@ export default function CalendarEventsPage() {
                           }}
                           className="rounded-md border"
                           initialFocus
-                          disabled={isSubmitting || !currentSchoolId && currentUserRole !== 'superadmin'}
+                          disabled={isSubmitting || (!currentSchoolId && currentUserRole !== 'superadmin')}
                       />
                   </CardContent>
                    {!currentSchoolId && currentUserRole === 'superadmin' && (
-                    <CardFooter><p className="text-xs text-muted-foreground">Superadmin: Select a school context to manage or view events.</p></CardFooter>
+                    <CardFooter><p className="text-xs text-muted-foreground">Superadmin: A school context is needed to view or post events.</p></CardFooter>
                   )}
               </Card>
           </div>
@@ -314,7 +321,7 @@ export default function CalendarEventsPage() {
                   </Card>
                 )) : !isLoading && (
                   <p className="text-muted-foreground text-center py-4">
-                    {currentSchoolId ? 'No events scheduled for this day.' : (currentUserRole === 'superadmin' ? 'Select a school context to view events.' : 'No school associated.')}
+                    {currentSchoolId ? 'No events scheduled for this day for your role.' : (currentUserRole === 'superadmin' ? 'Select a school context to view events.' : 'No school associated to view events.')}
                   </p>
                 )}
               </CardContent>

@@ -58,15 +58,16 @@ export async function updateCalendarEventAction(
 ): Promise<{ ok: boolean; message: string; event?: CalendarEventDB }> {
   const supabase = createSupabaseServerClient();
   
-  const updateData: Partial<CalendarEventDB> = { // Ensure we only pass fields relevant to the table
+  const updateData: Partial<CalendarEventDB> = { 
     title: input.title,
     date: input.date,
     is_all_day: input.is_all_day,
     description: input.description,
+    // posted_by_user_id and posted_by_role might not need to be updated if the original poster should remain owner
+    // For simplicity, allow update if provided, or keep them as they are if not part of input
     posted_by_user_id: input.posted_by_user_id,
     posted_by_role: input.posted_by_role,
     target_audience: input.target_audience,
-    // school_id is used for .eq() and not updated itself
   };
 
   if (input.is_all_day) {
@@ -83,7 +84,7 @@ export async function updateCalendarEventAction(
       .from('calendar_events')
       .update(updateData)
       .eq('id', id)
-      .eq('school_id', input.school_id) // Scope update to school
+      .eq('school_id', input.school_id) 
       .select()
       .single();
 
@@ -106,7 +107,7 @@ export async function deleteCalendarEventAction(id: string, school_id: string): 
       .from('calendar_events')
       .delete()
       .eq('id', id)
-      .eq('school_id', school_id); // Scope delete
+      .eq('school_id', school_id); 
 
     if (error) {
       console.error("Error deleting calendar event:", error);
@@ -120,15 +121,31 @@ export async function deleteCalendarEventAction(id: string, school_id: string): 
   }
 }
 
-export async function getCalendarEventsAction(school_id: string): Promise<{ ok: boolean; message?: string; events?: CalendarEventDB[] }> {
+export async function getCalendarEventsAction(
+  school_id: string,
+  requesting_user_id: string,
+  requesting_user_role: UserRole
+): Promise<{ ok: boolean; message?: string; events?: CalendarEventDB[] }> {
   const supabase = createSupabaseServerClient();
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('calendar_events')
       .select('*')
-      .eq('school_id', school_id)
-      .order('date', { ascending: true })
+      .eq('school_id', school_id);
+
+    if (requesting_user_role === 'student') {
+      query = query.in('target_audience', ['all_school', 'students_only']);
+    } else if (requesting_user_role === 'teacher') {
+      // Teachers see events targeted to 'all_school', 'teachers_only', 
+      // or events they posted themselves (regardless of target_audience for their own posts).
+      query = query.or(`target_audience.eq.all_school,target_audience.eq.teachers_only,posted_by_user_id.eq.${requesting_user_id}`);
+    }
+    // For 'admin' and 'superadmin' (with a school_id context), no additional target_audience filter is applied; they see all events for the school.
+    
+    query = query.order('date', { ascending: true })
       .order('start_time', { ascending: true, nullsFirst: true });
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Error fetching calendar events:", error);
