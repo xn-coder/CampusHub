@@ -146,7 +146,7 @@ export default function ClassManagementPage() {
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
       setNewClassNameInput('');
-      fetchClassNames(currentSchoolId);
+      fetchAllData(currentSchoolId); // Refresh all data
     }
     setIsSubmitting(false);
   };
@@ -156,7 +156,7 @@ export default function ClassManagementPage() {
     setIsSubmitting(true);
     const result = await deleteClassNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    if (result.ok) fetchClassNames(currentSchoolId);
+    if (result.ok) fetchAllData(currentSchoolId); // Refresh all data
     setIsSubmitting(false);
   };
 
@@ -167,7 +167,7 @@ export default function ClassManagementPage() {
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
       setNewSectionNameInput('');
-      fetchSectionNames(currentSchoolId);
+      fetchAllData(currentSchoolId); // Refresh all data
     }
     setIsSubmitting(false);
   };
@@ -177,7 +177,7 @@ export default function ClassManagementPage() {
     setIsSubmitting(true);
     const result = await deleteSectionNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    if (result.ok) fetchSectionNames(currentSchoolId);
+    if (result.ok) fetchAllData(currentSchoolId); // Refresh all data
     setIsSubmitting(false);
   };
 
@@ -206,7 +206,7 @@ export default function ClassManagementPage() {
     });
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
-      fetchActiveClasses(currentSchoolId);
+      fetchAllData(currentSchoolId); // Refresh all data
       setIsActivateClassSectionDialogOpen(false);
     }
     setIsSubmitting(false);
@@ -219,8 +219,7 @@ export default function ClassManagementPage() {
       const result = await deleteActiveClassAction(activeClassId, currentSchoolId);
       toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
       if (result.ok) {
-        fetchActiveClasses(currentSchoolId);
-        fetchStudents(currentSchoolId); 
+        fetchAllData(currentSchoolId); // Refresh all data
       }
       setIsSubmitting(false);
     }
@@ -245,8 +244,7 @@ export default function ClassManagementPage() {
     const result = await assignStudentsToClassAction(classToManageStudents.id, selectedStudentIdsForDialog, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
-      fetchActiveClasses(currentSchoolId); 
-      fetchStudents(currentSchoolId); 
+      fetchAllData(currentSchoolId); // Refresh all data
       setIsManageStudentsDialogOpen(false);
     }
     setIsSubmitting(false);
@@ -264,7 +262,7 @@ export default function ClassManagementPage() {
     const result = await assignTeacherToClassAction(classToAssignTeacher.id, selectedTeacherIdForDialog, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
-      fetchActiveClasses(currentSchoolId);
+      fetchAllData(currentSchoolId); // Refresh all data
       setIsAssignTeacherDialogOpen(false);
     }
     setIsSubmitting(false);
