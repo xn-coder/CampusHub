@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord, AcademicYear } from '@/types';
-import { useState, useEffect, type FormEvent, useMemo } from 'react';
+import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
 import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
@@ -74,63 +74,74 @@ export default function ClassManagementPage() {
   const [selectedTeacherIdForDialog, setSelectedTeacherIdForDialog] = useState<string | undefined | null>(undefined);
 
 
+  const fetchAllData = useCallback(async (schoolId: string) => {
+    setIsLoading(true);
+    try {
+        const [
+            classNamesResult, 
+            sectionNamesResult, 
+            activeClassesResult,
+            studentsResult, 
+            teachersResult,
+            academicYearsResult
+        ] = await Promise.all([
+          getClassNamesAction(schoolId),
+          getSectionNamesAction(schoolId),
+          getActiveClassesAction(schoolId),
+          supabase.from('students').select('*').eq('school_id', schoolId),
+          supabase.from('teachers').select('*').eq('school_id', schoolId),
+          supabase.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
+        ]);
+
+        if (classNamesResult.ok && classNamesResult.classNames) setClassNamesList(classNamesResult.classNames);
+        else toast({ title: "Error fetching class names", description: classNamesResult.message || "Unknown error", variant: "destructive" });
+
+        if (sectionNamesResult.ok && sectionNamesResult.sectionNames) setSectionNamesList(sectionNamesResult.sectionNames);
+        else toast({ title: "Error fetching section names", description: sectionNamesResult.message || "Unknown error", variant: "destructive" });
+        
+        if (activeClassesResult.ok && activeClassesResult.activeClasses) setActiveClasses(activeClassesResult.activeClasses);
+        else toast({ title: "Error fetching active classes", description: activeClassesResult.message || "Unknown error", variant: "destructive" });
+
+        if (studentsResult.error) toast({ title: "Error fetching students", description: studentsResult.error.message, variant: "destructive" });
+        else setAllStudentsInSchool(studentsResult.data || []);
+
+        if (teachersResult.error) toast({ title: "Error fetching teachers", description: teachersResult.error.message, variant: "destructive" });
+        else setAllTeachersInSchool(teachersResult.data || []);
+
+        if (academicYearsResult.error) toast({ title: "Error fetching academic years", description: academicYearsResult.error.message, variant: "destructive" });
+        else setAllAcademicYears(academicYearsResult.data || []);
+    } catch (err: any) {
+        console.error("Error in fetchAllData Promise.all:", err);
+        toast({ title: "Data Fetch Error", description: err.message || "An unexpected error occurred while fetching page data.", variant: "destructive" });
+    } finally {
+        setIsLoading(false);
+    }
+  }, [toast]);
+
+
   useEffect(() => {
-    const adminId = localStorage.getItem('currentUserId');
-    setCurrentAdminUserId(adminId);
-    if (adminId) {
-      fetchAdminSchoolId(adminId).then(schoolId => {
-        setCurrentSchoolId(schoolId);
-        if (schoolId) {
-          fetchAllData(schoolId);
-        } else {
+    const adminIdFromStorage = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(adminIdFromStorage);
+
+    if (adminIdFromStorage) {
+      fetchAdminSchoolId(adminIdFromStorage).then(fetchedSchoolId => {
+        setCurrentSchoolId(fetchedSchoolId);
+        if (!fetchedSchoolId) {
           setIsLoading(false);
-          toast({ title: "Error", description: "Admin not linked to a school. Cannot manage classes.", variant: "destructive"});
+          toast({ title: "School Not Found", description: "Admin not linked to a school. Cannot manage classes.", variant: "destructive"});
         }
       });
     } else {
        setIsLoading(false);
-       toast({ title: "Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
+       toast({ title: "Authentication Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
     }
   }, [toast]);
 
-  async function fetchAllData(schoolId: string) {
-    setIsLoading(true);
-    const [
-        classNamesResult, 
-        sectionNamesResult, 
-        activeClassesResult,
-        studentsResult, 
-        teachersResult,
-        academicYearsResult
-    ] = await Promise.all([
-      getClassNamesAction(schoolId),
-      getSectionNamesAction(schoolId),
-      getActiveClassesAction(schoolId),
-      supabase.from('students').select('*').eq('school_id', schoolId),
-      supabase.from('teachers').select('*').eq('school_id', schoolId),
-      supabase.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
-    ]);
-
-    if (classNamesResult.ok && classNamesResult.classNames) setClassNamesList(classNamesResult.classNames);
-    else toast({ title: "Error fetching class names", description: classNamesResult.message, variant: "destructive" });
-
-    if (sectionNamesResult.ok && sectionNamesResult.sectionNames) setSectionNamesList(sectionNamesResult.sectionNames);
-    else toast({ title: "Error fetching section names", description: sectionNamesResult.message, variant: "destructive" });
-    
-    if (activeClassesResult.ok && activeClassesResult.activeClasses) setActiveClasses(activeClassesResult.activeClasses);
-    else toast({ title: "Error fetching active classes", description: activeClassesResult.message, variant: "destructive" });
-
-    if (studentsResult.error) toast({ title: "Error fetching students", description: studentsResult.error.message, variant: "destructive" });
-    else setAllStudentsInSchool(studentsResult.data || []);
-
-    if (teachersResult.error) toast({ title: "Error fetching teachers", description: teachersResult.error.message, variant: "destructive" });
-    else setAllTeachersInSchool(teachersResult.data || []);
-
-    if (academicYearsResult.error) toast({ title: "Error fetching academic years", description: academicYearsResult.error.message, variant: "destructive" });
-    else setAllAcademicYears(academicYearsResult.data || []);
-
-    setIsLoading(false);
-  }
+  useEffect(() => {
+    if (currentSchoolId) {
+        fetchAllData(currentSchoolId);
+    }
+  }, [currentSchoolId, fetchAllData]);
 
 
   const getTeacherName = (teacherId?: string | null): string => {
@@ -153,7 +164,7 @@ export default function ClassManagementPage() {
     setNewClassNameInput(''); 
     if (result.classNames) {
       setClassNamesList(result.classNames);
-    } else if (currentSchoolId && !result.ok) { // If error but list might be out of sync
+    } else if (currentSchoolId) { 
       fetchAllData(currentSchoolId);
     }
     setIsSubmitting(false);
@@ -175,7 +186,7 @@ export default function ClassManagementPage() {
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.classNames) {
       setClassNamesList(result.classNames);
-    } else if (currentSchoolId && !result.ok) {
+    } else if (currentSchoolId) {
       fetchAllData(currentSchoolId);
     }
     setIsEditClassNameDialogOpen(false);
@@ -207,7 +218,7 @@ export default function ClassManagementPage() {
     setNewSectionNameInput('');
     if (result.sectionNames) { 
       setSectionNamesList(result.sectionNames);
-    } else if (currentSchoolId && !result.ok) {
+    } else if (currentSchoolId) {
       fetchAllData(currentSchoolId);
     }
     setIsSubmitting(false);
@@ -229,7 +240,7 @@ export default function ClassManagementPage() {
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.sectionNames) {
       setSectionNamesList(result.sectionNames);
-    } else if (currentSchoolId && !result.ok) {
+    } else if (currentSchoolId) {
       fetchAllData(currentSchoolId);
     }
     setIsEditSectionNameDialogOpen(false);
@@ -310,7 +321,7 @@ export default function ClassManagementPage() {
     const result = await assignStudentsToClassAction(classToManageStudents.id, selectedStudentIdsForDialog, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok && currentSchoolId) {
-      fetchAllData(currentSchoolId); // Re-fetch all data to update student counts etc.
+      fetchAllData(currentSchoolId); 
       setIsManageStudentsDialogOpen(false);
     }
     setIsSubmitting(false);
@@ -318,7 +329,7 @@ export default function ClassManagementPage() {
 
   const handleOpenAssignTeacherDialog = (cls: ClassData) => {
     setClassToAssignTeacher(cls);
-    setSelectedTeacherIdForDialog(cls.teacher_id || 'unassign'); // Use 'unassign' value for Select
+    setSelectedTeacherIdForDialog(cls.teacher_id || 'unassign'); 
     setIsAssignTeacherDialogOpen(true);
   };
 
@@ -445,7 +456,7 @@ export default function ClassManagementPage() {
                 <CardTitle>Activated Class-Sections</CardTitle>
                 <CardDescription>Combine class names and section names to create assignable units. Students and teachers are assigned here.</CardDescription>
               </div>
-              <Button onClick={handleOpenActivateDialog} className="mt-2 sm:mt-0" disabled={isSubmitting}><PlusCircle className="mr-2 h-4 w-4" /> Activate New Class-Section</Button>
+              <Button onClick={handleOpenActivateDialog} className="mt-2 sm:mt-0" disabled={isSubmitting || isLoading}><PlusCircle className="mr-2 h-4 w-4" /> Activate New Class-Section</Button>
             </CardHeader>
             <CardContent>
              {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : activeClasses.length > 0 ? (
@@ -500,6 +511,7 @@ export default function ClassManagementPage() {
                 <SelectTrigger id="selectClassNameForActivation"><SelectValue placeholder="Choose a class name" /></SelectTrigger>
                 <SelectContent>
                   {classNamesList.map(cn => (<SelectItem key={cn.id} value={cn.id}>{cn.name}</SelectItem>))}
+                  {classNamesList.length === 0 && <SelectItem value="" disabled>No class names defined</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -509,6 +521,7 @@ export default function ClassManagementPage() {
                 <SelectTrigger id="selectSectionNameForActivation"><SelectValue placeholder="Choose a section name" /></SelectTrigger>
                 <SelectContent>
                   {sectionNamesList.map(sn => (<SelectItem key={sn.id} value={sn.id}>{sn.name}</SelectItem>))}
+                  {sectionNamesList.length === 0 && <SelectItem value="" disabled>No section names defined</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -519,6 +532,7 @@ export default function ClassManagementPage() {
                 <SelectContent>
                   <SelectItem value="none">None (General)</SelectItem>
                   {allAcademicYears.map(ay => (<SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>))}
+                  {allAcademicYears.length === 0 && <SelectItem value="" disabled>No academic years defined</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -629,6 +643,7 @@ export default function ClassManagementPage() {
                 <SelectContent>
                   <SelectItem value="unassign">Unassign Teacher</SelectItem>
                   {allTeachersInSchool.map(teacher => (<SelectItem key={teacher.id} value={teacher.id}>{teacher.name} ({teacher.subject})</SelectItem>))}
+                  {allTeachersInSchool.length === 0 && <SelectItem value="" disabled>No teachers available</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
