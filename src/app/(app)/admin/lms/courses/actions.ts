@@ -13,6 +13,7 @@ interface CourseInput {
   is_paid: boolean;
   price?: number;
   school_id?: string; // Optional: for school-specific courses
+  created_by_user_id: string; // Creator's User ID
 }
 
 export async function createCourseAction(
@@ -21,11 +22,10 @@ export async function createCourseAction(
   const supabaseAdmin = createSupabaseServerClient();
   const courseId = uuidv4();
   
-  // Ensure created_by_user_id is part of the object being inserted
   const insertData = {
     ...input,
     id: courseId,
-    // created_by_user_id is already in input if CourseInput is correctly populated by caller
+    price: input.is_paid ? input.price : null, // Ensure price is null if not paid
   };
 
   const { error, data } = await supabaseAdmin
@@ -39,6 +39,7 @@ export async function createCourseAction(
     return { ok: false, message: `Failed to create course: ${error.message}` };
   }
   revalidatePath('/admin/lms/courses');
+  revalidatePath('/lms/available-courses');
   return { ok: true, message: 'Course created successfully.', course: data as Course };
 }
 
@@ -47,9 +48,13 @@ export async function updateCourseAction(
   input: Partial<CourseInput>
 ): Promise<{ ok: boolean; message: string; course?: Course }> {
   const supabaseAdmin = createSupabaseServerClient();
+   const updateData = {
+    ...input,
+    price: input.is_paid ? input.price : null,
+  };
   const { error, data } = await supabaseAdmin
     .from('lms_courses')
-    .update(input)
+    .update(updateData)
     .eq('id', id)
     .select()
     .single();
@@ -61,12 +66,16 @@ export async function updateCourseAction(
   revalidatePath('/admin/lms/courses');
   revalidatePath(`/admin/lms/courses/${id}/content`);
   revalidatePath(`/admin/lms/courses/${id}/enrollments`);
+  revalidatePath(`/lms/courses/${id}`);
+  revalidatePath('/lms/available-courses');
   return { ok: true, message: 'Course updated successfully.', course: data as Course };
 }
 
 export async function deleteCourseAction(id: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   
+  // Cascade delete should handle these if FKs are set up with ON DELETE CASCADE
+  // Otherwise, manual deletion is needed:
   await supabaseAdmin.from('lms_course_resources').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_activation_codes').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_student_course_enrollments').delete().eq('course_id', id);
@@ -79,6 +88,8 @@ export async function deleteCourseAction(id: string): Promise<{ ok: boolean; mes
     return { ok: false, message: `Failed to delete course: ${error.message}` };
   }
   revalidatePath('/admin/lms/courses');
+  revalidatePath('/lms/available-courses');
+  // Also revalidate individual course pages if they exist dynamically
   return { ok: true, message: 'Course and related data deleted successfully.' };
 }
 
@@ -106,6 +117,7 @@ export async function addCourseResourceAction(
     return { ok: false, message: `Failed to add resource: ${error.message}` };
   }
   revalidatePath(`/admin/lms/courses/${input.course_id}/content`);
+  revalidatePath(`/lms/courses/${input.course_id}`);
   return { ok: true, message: 'Resource added successfully.', resource: data as CourseResource };
 }
 
@@ -118,6 +130,7 @@ export async function deleteCourseResourceAction(id: string, courseId: string): 
     return { ok: false, message: `Failed to delete resource: ${error.message}` };
   }
   revalidatePath(`/admin/lms/courses/${courseId}/content`);
+  revalidatePath(`/lms/courses/${courseId}`);
   return { ok: true, message: 'Resource deleted successfully.' };
 }
 
@@ -127,7 +140,7 @@ interface GenerateCodesInput {
   course_id: string;
   num_codes: number;
   expires_in_days: number;
-  school_id?: string;
+  school_id?: string; // Optional: if codes are school-specific for a global course
 }
 
 export async function generateActivationCodesAction(
@@ -148,7 +161,8 @@ export async function generateActivationCodesAction(
 
 
   for (let i = 0; i < num_codes; i++) {
-    const uniqueCode = `CRS-${course_id.substring(0, 4)}-${uuidv4().substring(0, 8).toUpperCase()}`;
+    // Generate a more unique code, less prone to collision if course_id is short/similar
+    const uniqueCode = `CRS-${course_id.substring(0, 4).toUpperCase()}-${uuidv4().substring(0, 4).toUpperCase()}-${uuidv4().substring(9, 13).toUpperCase()}`;
     newCodes.push({
       id: uuidv4(),
       course_id,
@@ -167,7 +181,7 @@ export async function generateActivationCodesAction(
     console.error("Error generating activation codes:", error);
     return { ok: false, message: `Failed to generate codes: ${error.message}` };
   }
-  revalidatePath('/admin/lms/courses'); 
+  revalidatePath(`/admin/lms/courses/${course_id}/activation-codes`); // Or similar page if one exists
   return { ok: true, message: `${num_codes} activation code(s) generated.`, generatedCodes: displayableCodes };
 }
 
@@ -175,9 +189,9 @@ export async function generateActivationCodesAction(
 // --- Enrollment Management ---
 interface ManageEnrollmentInput {
   course_id: string;
-  user_profile_id: string; 
+  user_profile_id: string; // This should be student_id or teacher_id (from their respective profile tables)
   user_type: 'student' | 'teacher';
-  school_id: string; 
+  school_id: string; // School ID of the student/teacher for school-specific enrollments
 }
 
 export async function enrollUserInCourseAction(
@@ -189,23 +203,28 @@ export async function enrollUserInCourseAction(
   const userIdColumn = user_type === 'student' ? 'student_id' : 'teacher_id';
   const enrolledAtColumn = user_type === 'student' ? 'enrolled_at' : 'assigned_at';
 
+  // Check if already enrolled
   const { data: existingEnrollment, error: fetchError } = await supabaseAdmin
     .from(enrollmentTable)
     .select('id')
     .eq(userIdColumn, user_profile_id)
     .eq('course_id', course_id)
-    .eq('school_id', school_id)
+    .eq('school_id', school_id) // Enrollments are school-specific
     .single();
   
-  if (fetchError && fetchError.code !== 'PGRST116') {
+  if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 means no rows found, which is fine for new enrollment
     console.error(`Error checking existing enrollment for ${user_type}:`, fetchError);
     return { ok: false, message: `Database error checking enrollment: ${fetchError.message}` };
   }
   if (existingEnrollment) {
-    return { ok: false, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} is already enrolled.` };
+    return { ok: false, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} is already enrolled in this course.` };
   }
   
-  const enrollmentData: any = { id: uuidv4(), course_id, school_id };
+  const enrollmentData: any = { 
+      id: uuidv4(), 
+      course_id, 
+      school_id 
+  };
   enrollmentData[userIdColumn] = user_profile_id;
   enrollmentData[enrolledAtColumn] = new Date().toISOString();
 
@@ -217,6 +236,8 @@ export async function enrollUserInCourseAction(
     return { ok: false, message: `Failed to enroll ${user_type}: ${error.message}` };
   }
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
+  revalidatePath(`/lms/courses/${course_id}`);
+  revalidatePath('/lms/available-courses');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} enrolled successfully.` };
 }
 
@@ -233,13 +254,14 @@ export async function unenrollUserFromCourseAction(
     .delete()
     .eq(userIdColumn, user_profile_id)
     .eq('course_id', course_id)
-    .eq('school_id', school_id);
+    .eq('school_id', school_id); // Ensure school_id match for deletion
 
   if (error) {
     console.error(`Error unenrolling ${user_type}:`, error);
     return { ok: false, message: `Failed to unenroll ${user_type}: ${error.message}` };
   }
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
+  revalidatePath(`/lms/courses/${course_id}`);
+  revalidatePath('/lms/available-courses');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} unenrolled successfully.` };
 }
-    

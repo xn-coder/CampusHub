@@ -8,7 +8,7 @@ export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending AI Review' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar'; // Ensure singular form if DB stores singular
+export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar'; 
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 
 
@@ -18,7 +18,7 @@ export interface User {
   name: string;
   role: UserRole;
   password_hash?: string; 
-  school_id?: string | null; 
+  school_id?: string | null; // School this user is primarily associated with, if any (e.g. admin's school, student's school)
   created_at?: string; 
   updated_at?: string; 
 }
@@ -39,7 +39,7 @@ export interface SchoolEntry {
   address?: string | null;
   admin_email: string; 
   admin_name: string;   
-  admin_user_id?: string | null; 
+  admin_user_id?: string | null; // This is the User.id of the admin
   status: SchoolStatus; 
   contact_phone?: string | null; 
   created_at?: string; 
@@ -49,27 +49,25 @@ export interface SchoolEntry {
 export interface SchoolDetails extends SchoolEntry {}
 
 
-// Matches 'holidays' table
+// Matches 'holidays' table (Placeholder, not fully implemented with DB)
 export interface Holiday {
   id: string; 
   name: string;
-  date: string; // Store as YYYY-MM-DD string
-  school_id: string; 
-  created_at?: string; 
-  updated_at?: string; 
+  date: Date; // Use Date object for easier manipulation client-side
+  // school_id: string; // If holidays are school-specific
 }
 
 // Matches 'leave_applications' table
 export interface StoredLeaveApplication {
   id: string; 
-  student_profile_id: string; 
+  student_profile_id: string; // FK to students table (profile ID)
   student_name: string; // Name of student this leave is for
   reason: string;
   medical_notes_data_uri?: string | null;
   submission_date: string; // ISO string
   status: LeaveRequestStatus;
   ai_reasoning?: string | null;
-  applicant_user_id: string; // User who submitted the application
+  applicant_user_id: string; // User who submitted the application (User.id)
   applicant_role: UserRole; // Role of the user who submitted
   school_id: string; 
   created_at?: string; 
@@ -78,8 +76,8 @@ export interface StoredLeaveApplication {
 
 // Matches 'students' table (student profiles)
 export interface Student {
-  id: string; // Student Profile ID (UUID)
-  user_id: string; // Foreign key to 'users' table
+  id: string; // Student Profile ID (UUID) - This is the primary key for students table
+  user_id: string; // Foreign key to 'users' table (User.id)
   name: string;
   email: string; // Denormalized from users table for convenience
   class_id?: string | null; // Foreign key to 'classes' table
@@ -102,8 +100,8 @@ export interface Student {
 
 // Matches 'teachers' table (teacher profiles)
 export interface Teacher {
-  id: string; // Teacher Profile ID (UUID)
-  user_id: string; // Foreign key to 'users' table
+  id: string; // Teacher Profile ID (UUID) - Primary key for teachers table
+  user_id: string; // Foreign key to 'users' table (User.id)
   name: string;
   email: string; // Denormalized from users table
   subject?: string | null; // Main subject, can be more complex if needed
@@ -156,7 +154,7 @@ export interface Announcement {
   id:string; 
   title: string;
   content: string;
-  date: string; // ISO string or YYYY-MM-DD
+  date: Date; // Use Date object for easier manipulation client-side
   author_name: string; // Person/department posting
   posted_by_user_id: string; // FK to users table
   posted_by_role: UserRole; 
@@ -171,12 +169,12 @@ export interface CalendarEvent {
   id: string; 
   title: string;
   description?: string | null;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD string for consistency with form input, parse when needed
   start_time?: string | null; // HH:MM
   end_time?: string | null; // HH:MM
   is_all_day: boolean;
-  posted_by_user_id: string; // FK to users table
-  school_id: string; 
+  // posted_by_user_id: string; // FK to users table - Consider if needed vs authorName
+  // school_id: string; // If events are school-specific
   created_at?: string; 
   updated_at?: string; 
 }
@@ -208,7 +206,7 @@ export interface Exam {
   id: string; 
   name: string;
   subject_id: string; // FK to subjects
-  class_id?: string | null; // FK to classes (optional, for class-specific exams)
+  class_id?: string | null; // FK to classes (optional, for class-specific exams) - Should be class_section_id
   academic_year_id?: string | null; // FK to academic_years
   date: string; // YYYY-MM-DD
   start_time?: string | null; // HH:MM
@@ -225,7 +223,7 @@ export interface Assignment {
   title: string;
   description?: string | null;
   due_date: string; // YYYY-MM-DD
-  class_id: string; // FK to classes
+  class_id: string; // FK to classes (active class-section ID)
   teacher_id: string; // FK to teachers (profile ID)
   subject_id?: string | null; // FK to subjects
   school_id: string; 
@@ -268,18 +266,21 @@ export interface AdmissionRecord {
   updated_at?: string; 
 }
 
-// Matches 'class_schedules' table
+// Matches 'class_schedules' table (Mocked for now)
 export interface ClassScheduleItem {
   id: string; 
-  class_id: string; // FK to classes
-  subject_id: string; // FK to subjects
-  teacher_id: string; // FK to teachers (profile ID)
-  day_of_week: DayOfWeek; 
+  className: string; // Denormalized or FK to ClassData.name
+  subject: string;   // Denormalized or FK to Subject.name
+  teacherName: string; // Denormalized or FK to Teacher.name
+  day_of_week: DayOfWeek; // Use DayOfWeek from above
   start_time: string; // HH:MM
   end_time: string;   // HH:MM
-  school_id: string; 
-  created_at?: string; 
-  updated_at?: string; 
+  // class_id: string; 
+  // subject_id: string; 
+  // teacher_id: string;
+  // school_id: string; 
+  // created_at?: string; 
+  // updated_at?: string; 
 }
 
 // Matches 'attendance_records' table
@@ -299,6 +300,7 @@ export interface AttendanceRecord {
 // Helper type for UI, not a DB table
 export interface ClassAttendance { 
   classSectionId: string; // class_id from classes table
+  date: string; // Date of this attendance record
   records: AttendanceRecord[];
 }
 
@@ -346,14 +348,15 @@ export interface Course {
   updated_at?: string; 
 
   // For UI convenience, not direct DB columns in lms_courses table
+  // These are populated client-side after fetching related resources/enrollments
   resources?: { 
     ebooks: CourseResource[];
     videos: CourseResource[];
     notes: CourseResource[];
     webinars: CourseResource[];
   };
-  enrolledStudentIds?: string[]; // Student Profile IDs
-  enrolledTeacherIds?: string[]; // Teacher Profile IDs
+  // enrolledStudentIds?: string[]; // DEPRECATED: Use enrollmentStatus map on client
+  // enrolledTeacherIds?: string[]; // DEPRECATED: Use enrollmentStatus map on client
 }
 
 // Matches 'lms_course_resources' table
@@ -374,7 +377,8 @@ export interface CourseActivationCode {
   course_id: string; // FK to lms_courses
   code: string; // The unique activation code
   is_used: boolean;
-  used_by_user_id?: string | null; // FK to users (who used it)
+  used_by_user_id?: string | null; // FK to users (User.id who used it)
+  used_at?: string | null; // Timestamp when used
   generated_date: string; // ISO string
   expiry_date?: string | null; // ISO string
   school_id?: string | null; // If codes are school-specific for a global course
@@ -389,6 +393,8 @@ export interface StudentCourseEnrollment {
     course_id: string; // FK to lms_courses
     enrolled_at?: string; // ISO string
     school_id: string; // School of the student
+    created_at?: string;
+    updated_at?: string;
 }
 
 // Matches 'lms_teacher_course_enrollments' table
@@ -398,6 +404,6 @@ export interface TeacherCourseEnrollment {
     course_id: string; // FK to lms_courses
     assigned_at?: string; // ISO string
     school_id: string; // School of the teacher
+    created_at?: string;
+    updated_at?: string;
 }
-
-    

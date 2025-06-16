@@ -11,9 +11,8 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { KeyRound, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-
-const MOCK_LMS_COURSES_KEY = 'mockLMSCoursesData';
-const MOCK_LMS_ACTIVATION_CODES_KEY = 'mockLMSActivationCodesData';
+import { supabase } from '@/lib/supabaseClient';
+import { enrollUserInCourseAction } from '../../../../admin/lms/courses/actions'; // Re-use action
 
 export default function ActivateLmsCoursePage() {
   const { toast } = useToast();
@@ -26,19 +25,20 @@ export default function ActivateLmsCoursePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
   
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null); // User's primary UUID
+  const [currentUserProfileId, setCurrentUserProfileId] = useState<string | null>(null); // Student or Teacher profile ID
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   useEffect(() => {
     const courseIdFromQuery = searchParams.get('courseId');
     if (courseIdFromQuery) {
       setTargetCourseId(courseIdFromQuery);
-      const storedCourses = localStorage.getItem(MOCK_LMS_COURSES_KEY);
-      if (storedCourses) {
-        const courses: Course[] = JSON.parse(storedCourses);
-        const foundCourse = courses.find(c => c.id === courseIdFromQuery);
-        if (foundCourse) setTargetCourse(foundCourse);
-      }
+      supabase.from('lms_courses').select('*').eq('id', courseIdFromQuery).single()
+        .then(({data, error}) => {
+          if (error || !data) console.error("Error fetching target course for activation page:", error);
+          else setTargetCourse(data as Course);
+        });
     }
 
     if (typeof window !== 'undefined') {
@@ -46,10 +46,23 @@ export default function ActivateLmsCoursePage() {
         const userId = localStorage.getItem('currentUserId');
         setCurrentUserRole(role);
         setCurrentUserId(userId);
-    }
-  }, [searchParams]);
 
-  const handleSubmit = (e: FormEvent) => {
+        if (userId && role) {
+            const profileTable = role === 'student' ? 'students' : 'teachers';
+            supabase.from(profileTable).select('id, school_id').eq('user_id', userId).single()
+            .then(({ data: userProfile, error: profileError }) => {
+                if (profileError || !userProfile) {
+                    toast({ title: "Error", description: "Could not load user profile for activation.", variant: "destructive"});
+                } else {
+                    setCurrentUserProfileId(userProfile.id);
+                    setCurrentSchoolId(userProfile.school_id);
+                }
+            });
+        }
+    }
+  }, [searchParams, toast]);
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setMessage(null);
@@ -59,60 +72,81 @@ export default function ActivateLmsCoursePage() {
       setIsLoading(false);
       return;
     }
-    if (!currentUserId || !currentUserRole) {
-      toast({ title: "Error", description: "User not identified. Please log in.", variant: "destructive"});
+    if (!currentUserProfileId || !currentUserRole || !currentSchoolId) {
+      toast({ title: "Error", description: "User profile or school not identified. Please log in or ensure your profile is complete.", variant: "destructive"});
       setIsLoading(false);
       return;
     }
 
-    const allCodes: CourseActivationCode[] = JSON.parse(localStorage.getItem(MOCK_LMS_ACTIVATION_CODES_KEY) || '[]');
-    const codeToActivate = allCodes.find(c => c.code === activationCode.trim());
-
-    if (!codeToActivate) {
+    // Check code validity
+    const {data: codeToActivate, error: codeError} = await supabase
+        .from('lms_course_activation_codes')
+        .select('*')
+        .eq('code', activationCode.trim())
+        .single();
+    
+    if (codeError || !codeToActivate) {
       setMessage({type: 'error', text: "Invalid activation code."});
       toast({ title: "Activation Failed", description: "Invalid activation code.", variant: "destructive"});
       setIsLoading(false);
       return;
     }
-    if (codeToActivate.isUsed) {
+    if (codeToActivate.is_used) {
       setMessage({type: 'error', text: "This activation code has already been used."});
       toast({ title: "Activation Failed", description: "This activation code has already been used.", variant: "destructive"});
       setIsLoading(false);
       return;
     }
-    if (codeToActivate.expiryDate && new Date() > new Date(codeToActivate.expiryDate)) {
+    if (codeToActivate.expiry_date && new Date() > new Date(codeToActivate.expiry_date)) {
       setMessage({type: 'error', text: "This activation code has expired."});
       toast({ title: "Activation Failed", description: "This activation code has expired.", variant: "destructive"});
       setIsLoading(false);
       return;
     }
-    
-    const updatedCodes = allCodes.map(c => 
-      c.id === codeToActivate.id ? { ...c, isUsed: true, usedByUserId: currentUserId } : c
-    );
-    localStorage.setItem(MOCK_LMS_ACTIVATION_CODES_KEY, JSON.stringify(updatedCodes));
+    // If code is school-specific, ensure it matches current user's school
+    if (codeToActivate.school_id && codeToActivate.school_id !== currentSchoolId) {
+      setMessage({type: 'error', text: "This activation code is not valid for your institution."});
+      toast({ title: "Activation Failed", description: "Code not valid for your institution.", variant: "destructive"});
+      setIsLoading(false);
+      return;
+    }
 
-    const allCourses: Course[] = JSON.parse(localStorage.getItem(MOCK_LMS_COURSES_KEY) || '[]');
-    const updatedCourses = allCourses.map(course => {
-      if (course.id === codeToActivate.courseId) {
-        const enrollmentArrayKey = currentUserRole === 'student' ? 'enrolledStudentIds' : 'enrolledTeacherIds';
-        const currentEnrollments = course[enrollmentArrayKey] || [];
-        if (!currentEnrollments.includes(currentUserId)) {
-          return { ...course, [enrollmentArrayKey]: [...currentEnrollments, currentUserId] };
-        }
-      }
-      return course;
+    // Enroll user
+    const enrollmentResult = await enrollUserInCourseAction({
+      course_id: codeToActivate.course_id,
+      user_profile_id: currentUserProfileId,
+      user_type: currentUserRole,
+      school_id: currentSchoolId, 
     });
-    localStorage.setItem(MOCK_LMS_COURSES_KEY, JSON.stringify(updatedCourses));
+
+    if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) { // Allow if already enrolled by another means
+      setMessage({type: 'error', text: `Enrollment failed: ${enrollmentResult.message}`});
+      toast({ title: "Activation Failed", description: `Enrollment failed: ${enrollmentResult.message}`, variant: "destructive"});
+      setIsLoading(false);
+      return;
+    }
     
-    const activatedCourseDetails = allCourses.find(c => c.id === codeToActivate.courseId);
+    // Mark code as used
+    const { error: updateCodeError } = await supabase
+      .from('lms_course_activation_codes')
+      .update({ is_used: true, used_by_user_id: currentUserId, used_at: new Date().toISOString() })
+      .eq('id', codeToActivate.id);
+
+    if (updateCodeError) {
+      // This is problematic, user is enrolled but code not marked. Needs monitoring/manual fix.
+      console.error("Critical: Failed to mark activation code as used after enrollment:", updateCodeError);
+      toast({ title: "Warning", description: "Course enrolled, but there was an issue finalizing code. Contact support if problems persist.", variant: "default"});
+    }
+    
+    const activatedCourseDetails = targetCourseId === codeToActivate.course_id ? targetCourse : await supabase.from('lms_courses').select('title').eq('id', codeToActivate.course_id).single().then(res => res.data);
+
     setMessage({type: 'success', text: `Successfully activated and enrolled in: ${activatedCourseDetails?.title || 'the course'}`});
     toast({ title: "Course Activated!", description: `You are now enrolled in ${activatedCourseDetails?.title || 'the course'}.`});
     setIsLoading(false);
     setActivationCode('');
 
     setTimeout(() => {
-        router.push('/lms/available-courses');
+        router.push(`/lms/courses/${codeToActivate.course_id}`);
     }, 2000);
   };
 
@@ -126,7 +160,7 @@ export default function ActivateLmsCoursePage() {
       <Card className="max-w-lg mx-auto w-full">
         <CardHeader>
           <CardTitle className="flex items-center"><KeyRound className="mr-2 h-5 w-5" /> Enter Activation Code</CardTitle>
-          {targetCourse && <CardDescription>You are activating: <strong>{targetCourse.title}</strong></CardDescription>}
+          {targetCourse && <CardDescription>You are attempting to activate: <strong>{targetCourse.title}</strong></CardDescription>}
           {!targetCourse && <CardDescription>Enter the code provided to you after purchase.</CardDescription>}
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -136,9 +170,10 @@ export default function ActivateLmsCoursePage() {
               <Input 
                 id="activationCode" 
                 value={activationCode} 
-                onChange={(e) => setActivationCode(e.target.value)} 
+                onChange={(e) => setActivationCode(e.target.value.toUpperCase())} 
                 placeholder="XXXX-XXXX-XXXX-XXXX" 
                 required 
+                disabled={isLoading}
               />
             </div>
              {message && (
@@ -149,7 +184,7 @@ export default function ActivateLmsCoursePage() {
             )}
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading || !currentUserProfileId || !currentSchoolId}>
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
               {isLoading ? 'Activating...' : 'Activate Course'}
             </Button>
@@ -159,4 +194,3 @@ export default function ActivateLmsCoursePage() {
     </div>
   );
 }
-
