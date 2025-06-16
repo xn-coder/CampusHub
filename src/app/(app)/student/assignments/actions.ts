@@ -21,7 +21,7 @@ export async function getStudentAssignmentsAction(userId: string): Promise<{
   studentSchoolId?: string | null;
 }> {
   if (!userId) {
-    return { ok: false, message: "User not identified." };
+    return { ok: false, message: "User not identified.", studentProfileId: null, studentClassId: null, studentSchoolId: null };
   }
 
   const supabase = createSupabaseServerClient();
@@ -36,7 +36,7 @@ export async function getStudentAssignmentsAction(userId: string): Promise<{
     if (studentError || !studentData) {
       return {
         ok: false,
-        message: studentError?.message || "Student profile not found.",
+        message: studentError?.message || "Student profile not found. Ensure you are logged in as a student and your profile is set up.",
         studentProfileId: null, studentClassId: null, studentSchoolId: null,
       };
     }
@@ -46,7 +46,7 @@ export async function getStudentAssignmentsAction(userId: string): Promise<{
     if (!studentSchoolId || !studentClassId) {
       return {
         ok: true, assignments: [],
-        message: "Student not assigned to a class or school.",
+        message: "Student not assigned to a class or school. Assignments cannot be displayed.",
         studentProfileId, studentClassId, studentSchoolId,
       };
     }
@@ -135,11 +135,11 @@ export async function submitAssignmentFileAction(formData: FormData): Promise<{
   message: string;
   submission?: AssignmentSubmission;
 }> {
-  const supabase = createSupabaseServerClient(); // Use admin client for upload if RLS is restrictive
+  const supabase = createSupabaseServerClient(); 
 
   const file = formData.get('submissionFile') as File | null;
   const assignmentId = formData.get('assignmentId') as string | null;
-  const studentId = formData.get('studentId') as string | null; // This should be students.id (profile ID)
+  const studentId = formData.get('studentId') as string | null; 
   const schoolId = formData.get('schoolId') as string | null;
   const notes = formData.get('notes') as string | null;
 
@@ -152,7 +152,7 @@ export async function submitAssignmentFileAction(formData: FormData): Promise<{
 
   try {
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('assignment_submissions') // Ensure this bucket exists and has RLS set up
+      .from('assignment_submissions') 
       .upload(filePath, file);
 
     if (uploadError) {
@@ -165,25 +165,24 @@ export async function submitAssignmentFileAction(formData: FormData): Promise<{
       student_id: studentId,
       school_id: schoolId,
       submission_date: new Date().toISOString(),
-      file_path: filePath, // Store the path returned by Supabase if needed, or just the constructed one
+      file_path: filePath, 
       file_name: sanitizedFileName,
       notes: notes || undefined,
     };
 
     const { data: dbData, error: dbError } = await supabase
-      .from('lms_assignment_submissions') // Ensure this table name is correct
+      .from('lms_assignment_submissions') 
       .insert(submissionData)
       .select()
       .single();
 
     if (dbError) {
       console.error("Database insert error for submission:", dbError);
-      // Optionally, try to delete the uploaded file if DB insert fails
       await supabase.storage.from('assignment_submissions').remove([filePath]);
       return { ok: false, message: `Failed to record submission: ${dbError.message}` };
     }
     
-    revalidatePath('/student/assignments'); // Revalidate the assignments page
+    revalidatePath('/student/assignments'); 
 
     return { ok: true, message: "Assignment submitted successfully!", submission: dbData as AssignmentSubmission };
 
@@ -192,3 +191,4 @@ export async function submitAssignmentFileAction(formData: FormData): Promise<{
     return { ok: false, message: `An unexpected error occurred: ${error.message}` };
   }
 }
+
