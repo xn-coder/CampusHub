@@ -9,21 +9,7 @@ import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { ListChecks, CheckSquare, Loader2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { supabase } from '@/lib/supabaseClient';
-import { updateAdmissionStatusAction } from './actions';
-
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
-    .single();
-  if (error || !school) {
-    console.error("Error fetching admin's school:", error?.message);
-    return null;
-  }
-  return school.id;
-}
+import { updateAdmissionStatusAction, fetchAdminSchoolIdForAdmissions, fetchAdmissionPageDataAction } from './actions';
 
 export default function AdmissionsPage() {
   const { toast } = useToast();
@@ -31,56 +17,52 @@ export default function AdmissionsPage() {
   const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
-
   useEffect(() => {
-    const adminId = localStorage.getItem('currentUserId');
-    setCurrentAdminUserId(adminId);
-    if (adminId) {
-      fetchAdminSchoolId(adminId).then(schoolId => {
-        setCurrentSchoolId(schoolId);
-        if (schoolId) {
-          fetchAdmissionData(schoolId);
-        } else {
-          toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
-          setIsLoading(false);
-        }
-      });
-    } else {
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (!adminUserId) {
       toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
       setIsLoading(false);
+      return;
     }
+
+    async function loadInitialData() {
+      setIsLoading(true);
+      const schoolId = await fetchAdminSchoolIdForAdmissions(adminUserId);
+      setCurrentSchoolId(schoolId);
+
+      if (schoolId) {
+        const pageDataResult = await fetchAdmissionPageDataAction(schoolId);
+        if (pageDataResult.ok) {
+          setAdmissionRecords(pageDataResult.admissions || []);
+          setActiveClasses(pageDataResult.classes || []);
+        } else {
+          toast({ title: "Error loading data", description: pageDataResult.message, variant: "destructive" });
+          setAdmissionRecords([]);
+          setActiveClasses([]);
+        }
+      } else {
+        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+      }
+      setIsLoading(false);
+    }
+    loadInitialData();
   }, [toast]);
 
-  async function fetchAdmissionData(schoolId: string) {
+  async function refreshAdmissionData() {
+    if (!currentSchoolId) return;
     setIsLoading(true);
-    const { data: admissionsData, error: admissionsError } = await supabase
-      .from('admission_records')
-      .select('*')
-      .eq('school_id', schoolId)
-      .order('created_at', { ascending: false });
-
-    if (admissionsError) {
-      toast({ title: "Error fetching admissions", description: admissionsError.message, variant: "destructive" });
+    const pageDataResult = await fetchAdmissionPageDataAction(currentSchoolId);
+    if (pageDataResult.ok) {
+        setAdmissionRecords(pageDataResult.admissions || []);
+        setActiveClasses(pageDataResult.classes || []);
     } else {
-      setAdmissionRecords(admissionsData || []);
-    }
-
-    const { data: classesData, error: classesError } = await supabase
-      .from('classes')
-      .select('id, name, division')
-      .eq('school_id', schoolId);
-    
-    if (classesError) {
-      toast({ title: "Error fetching classes", description: classesError.message, variant: "destructive" });
-    } else {
-      setActiveClasses(classesData || []);
+        toast({ title: "Error refreshing data", description: pageDataResult.message, variant: "destructive" });
     }
     setIsLoading(false);
   }
-  
+
   const handleEnrollStudent = async (admissionId: string) => {
     if (!currentSchoolId) {
         toast({title: "Error", description: "School context missing.", variant: "destructive"});
@@ -92,14 +74,13 @@ export default function AdmissionsPage() {
         const result = await updateAdmissionStatusAction(admissionId, 'Enrolled', currentSchoolId);
         if (result.ok) {
             toast({ title: "Student Enrolled", description: `${admission.name} is now marked as enrolled.` });
-            fetchAdmissionData(currentSchoolId); // Re-fetch to update UI
+            refreshAdmissionData();
         } else {
             toast({ title: "Error", description: result.message, variant: "destructive" });
         }
     }
     setIsSubmitting(false);
   };
-
 
   return (
     <div className="flex flex-col gap-6">
@@ -114,7 +95,7 @@ export default function AdmissionsPage() {
           </CardHeader>
           <CardContent className="max-h-[calc(theme(space.96)_*_2.5)] overflow-y-auto">
             {isLoading ? (
-                <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin" /> Loading records...</div>
             ) : !currentSchoolId ? (
                 <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot view admissions.</p>
             ) : admissionRecords.length === 0 ? (
@@ -141,7 +122,7 @@ export default function AdmissionsPage() {
                       <TableCell>{classText}</TableCell>
                       <TableCell>
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          record.status === 'Enrolled' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 
+                          record.status === 'Enrolled' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                           record.status === 'Admitted' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
                           record.status === 'Pending Review' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
                           'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
@@ -170,5 +151,3 @@ export default function AdmissionsPage() {
     </div>
   );
 }
-
-    

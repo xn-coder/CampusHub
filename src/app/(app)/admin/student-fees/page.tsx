@@ -12,24 +12,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Receipt, DollarSign, Search, CalendarClock, Loader2 } from 'lucide-react';
+import { PlusCircle, Trash2, Save, Receipt, DollarSign, Search, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid } from 'date-fns';
-import { supabase } from '@/lib/supabaseClient';
-import { assignStudentFeeAction, recordStudentFeePaymentAction, deleteStudentFeeAssignmentAction } from './actions';
-
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
-    .single();
-  if (error || !school) {
-    console.error("Error fetching admin's school:", error?.message);
-    return null;
-  }
-  return school.id;
-}
+import {
+  assignStudentFeeAction,
+  recordStudentFeePaymentAction,
+  deleteStudentFeeAssignmentAction,
+  fetchAdminSchoolIdForFees,
+  fetchStudentFeesPageDataAction
+} from './actions';
 
 export default function AdminStudentFeesPage() {
   const { toast } = useToast();
@@ -38,14 +30,13 @@ export default function AdminStudentFeesPage() {
   const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   const [isAssignFeeDialogOpen, setIsAssignFeeDialogOpen] = useState(false);
   const [isRecordPaymentDialogOpen, setIsRecordPaymentDialogOpen] = useState(false);
-  
+
   const [editingFeePayment, setEditingFeePayment] = useState<StudentFeePayment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -60,48 +51,41 @@ export default function AdminStudentFeesPage() {
   const [paymentDate, setPaymentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
   useEffect(() => {
-    const adminId = localStorage.getItem('currentUserId');
-    setCurrentAdminUserId(adminId);
-    if (adminId) {
-      fetchAdminSchoolId(adminId).then(schoolId => {
-        setCurrentSchoolId(schoolId);
-        if (schoolId) {
-          fetchAllFeeData(schoolId);
-        } else {
-          toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
-          setIsLoading(false);
-        }
-      });
-    } else {
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (!adminUserId) {
       toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
-      setIsLoading(false);
+      setIsLoadingPage(false);
+      return;
     }
+
+    async function loadInitialData() {
+      setIsLoadingPage(true);
+      const schoolId = await fetchAdminSchoolIdForFees(adminUserId);
+      setCurrentSchoolId(schoolId);
+
+      if (schoolId) {
+        await refreshAllFeeData(schoolId);
+      } else {
+        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+      }
+      setIsLoadingPage(false);
+    }
+    loadInitialData();
   }, [toast]);
 
-  async function fetchAllFeeData(schoolId: string) {
-    setIsLoading(true);
-    const results = await Promise.all([
-      supabase.from('student_fee_payments').select('*').eq('school_id', schoolId).order('due_date', { ascending: false, nullsFirst: false }),
-      supabase.from('students').select('*').eq('school_id', schoolId).order('name'),
-      supabase.from('fee_categories').select('*').eq('school_id', schoolId).order('name'),
-      supabase.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
-    ]);
-    
-    const [feePaymentsRes, studentsRes, feeCategoriesRes, academicYearsRes] = results;
-
-    if (feePaymentsRes.error) toast({ title: "Error fetching fee payments", description: feePaymentsRes.error.message, variant: "destructive" });
-    else setFeePayments(feePaymentsRes.data || []);
-
-    if (studentsRes.error) toast({ title: "Error fetching students", description: studentsRes.error.message, variant: "destructive" });
-    else setStudents(studentsRes.data || []);
-
-    if (feeCategoriesRes.error) toast({ title: "Error fetching fee categories", description: feeCategoriesRes.error.message, variant: "destructive" });
-    else setFeeCategories(feeCategoriesRes.data || []);
-
-    if (academicYearsRes.error) toast({ title: "Error fetching academic years", description: academicYearsRes.error.message, variant: "destructive" });
-    else setAcademicYears(academicYearsRes.data || []);
-    
-    setIsLoading(false);
+  async function refreshAllFeeData(schoolId: string) {
+    if (!schoolId) return;
+    setIsLoadingPage(true); // Indicate loading for refresh
+    const pageDataResult = await fetchStudentFeesPageDataAction(schoolId);
+    if (pageDataResult.ok) {
+      setFeePayments(pageDataResult.feePayments || []);
+      setStudents(pageDataResult.students || []);
+      setFeeCategories(pageDataResult.feeCategories || []);
+      setAcademicYears(pageDataResult.academicYears || []);
+    } else {
+      toast({ title: "Error loading fee data", description: pageDataResult.message, variant: "destructive" });
+    }
+    setIsLoadingPage(false);
   }
 
   const getStudentName = (studentId: string) => students.find(s => s.id === studentId)?.name || 'N/A';
@@ -111,16 +95,16 @@ export default function AdminStudentFeesPage() {
   const resetAssignFeeForm = () => {
     setSelectedStudentId(''); setSelectedFeeCategoryId(''); setAssignedAmount('');
     setDueDate(''); setNotes(''); setSelectedAcademicYearId(undefined);
-    setEditingFeePayment(null); 
+    setEditingFeePayment(null);
   };
-  
+
   const resetRecordPaymentForm = () => {
     setPaymentAmount(''); setPaymentDate(format(new Date(), 'yyyy-MM-dd'));
     setEditingFeePayment(null);
   };
 
   const handleOpenAssignFeeDialog = () => { resetAssignFeeForm(); setIsAssignFeeDialogOpen(true); };
-  
+
   const handleOpenRecordPaymentDialog = (feePayment: StudentFeePayment) => {
     resetRecordPaymentForm(); setEditingFeePayment(feePayment); setIsRecordPaymentDialogOpen(true);
   };
@@ -144,7 +128,7 @@ export default function AdminStudentFeesPage() {
     if (result.ok) {
       toast({ title: "Fee Assigned", description: result.message });
       setIsAssignFeeDialogOpen(false);
-      fetchAllFeeData(currentSchoolId);
+      if (currentSchoolId) refreshAllFeeData(currentSchoolId);
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -167,13 +151,13 @@ export default function AdminStudentFeesPage() {
     if (result.ok) {
       toast({ title: "Payment Recorded", description: result.message });
       setIsRecordPaymentDialogOpen(false);
-      fetchAllFeeData(currentSchoolId);
+      if (currentSchoolId) refreshAllFeeData(currentSchoolId);
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
     setIsSubmitting(false);
   };
-  
+
   const handleDeleteFeeAssignment = async (feePaymentId: string) => {
      if (!currentSchoolId) return;
      const feeToDelete = feePayments.find(fp => fp.id === feePaymentId);
@@ -183,20 +167,20 @@ export default function AdminStudentFeesPage() {
       setIsSubmitting(true);
       const result = await deleteStudentFeeAssignmentAction(feePaymentId, currentSchoolId);
       toast({ title: result.ok ? "Fee Assignment Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
-      if (result.ok) {
-        fetchAllFeeData(currentSchoolId);
+      if (result.ok && currentSchoolId) {
+        refreshAllFeeData(currentSchoolId);
       }
       setIsSubmitting(false);
     }
   };
-  
+
   const filteredFeePayments = useMemo(() => {
     return feePayments.filter(fp => {
       const studentName = getStudentName(fp.student_id).toLowerCase();
       const feeCategoryName = getFeeCategoryName(fp.fee_category_id).toLowerCase();
       const search = searchTerm.toLowerCase();
       return studentName.includes(search) || feeCategoryName.includes(search) || fp.status.toLowerCase().includes(search);
-    }); // Sorting is now done by Supabase query
+    });
   }, [feePayments, searchTerm, students, feeCategories]);
 
 
@@ -206,7 +190,7 @@ export default function AdminStudentFeesPage() {
         title="Student Fee Management"
         description="Assign fees to students, record payments, and track financial records."
         actions={
-          <Button onClick={handleOpenAssignFeeDialog} disabled={!currentSchoolId || isSubmitting}>
+          <Button onClick={handleOpenAssignFeeDialog} disabled={!currentSchoolId || isSubmitting || isLoadingPage}>
             <PlusCircle className="mr-2 h-4 w-4" /> Assign New Fee
           </Button>
         }
@@ -218,16 +202,16 @@ export default function AdminStudentFeesPage() {
         </CardHeader>
         <CardContent>
            <div className="mb-4">
-             <Input 
+             <Input
                 placeholder="Search by student, fee category, or status..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="max-w-md"
-                disabled={isLoading}
+                disabled={isLoadingPage}
             />
            </div>
-          {isLoading ? (
-            <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
+          {isLoadingPage ? (
+            <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>
           ) : !currentSchoolId ? (
              <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>
           ) : filteredFeePayments.length === 0 ? (
@@ -345,7 +329,7 @@ export default function AdminStudentFeesPage() {
           </form>
         </DialogContent>
       </Dialog>
-      
+
       <Dialog open={isRecordPaymentDialogOpen} onOpenChange={setIsRecordPaymentDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -378,5 +362,3 @@ export default function AdminStudentFeesPage() {
     </div>
   );
 }
-
-    

@@ -4,17 +4,75 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { StudentFeePayment, PaymentStatus } from '@/types';
+import type { StudentFeePayment, PaymentStatus, Student, FeeCategory, AcademicYear } from '@/types';
 
 interface AssignFeeInput {
   student_id: string;
   fee_category_id: string;
   assigned_amount: number;
-  due_date?: string; // YYYY-MM-DD
+  due_date?: string;
   notes?: string;
   academic_year_id?: string;
   school_id: string;
 }
+
+export async function fetchAdminSchoolIdForFees(adminUserId: string): Promise<string | null> {
+  if (!adminUserId) {
+    console.error("fetchAdminSchoolIdForFees: Admin User ID is required.");
+    return null;
+  }
+  const supabaseAdmin = createSupabaseServerClient();
+  const { data: school, error } = await supabaseAdmin
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUserId)
+    .single();
+
+  if (error || !school) {
+    console.error("Error fetching admin's school for fees:", error?.message);
+    return null;
+  }
+  return school.id;
+}
+
+export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<{
+  ok: boolean;
+  feePayments?: StudentFeePayment[];
+  students?: Student[];
+  feeCategories?: FeeCategory[];
+  academicYears?: AcademicYear[];
+  message?: string;
+}> {
+  if (!schoolId) {
+    return { ok: false, message: "School ID is required." };
+  }
+  const supabaseAdmin = createSupabaseServerClient();
+  try {
+    const [paymentsRes, studentsRes, categoriesRes, academicYearsRes] = await Promise.all([
+      supabaseAdmin.from('student_fee_payments').select('*').eq('school_id', schoolId).order('due_date', { ascending: false, nullsFirst: false }),
+      supabaseAdmin.from('students').select('*').eq('school_id', schoolId).order('name'),
+      supabaseAdmin.from('fee_categories').select('*').eq('school_id', schoolId).order('name'),
+      supabaseAdmin.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
+    ]);
+
+    if (paymentsRes.error) throw new Error(`Fetching fee payments failed: ${paymentsRes.error.message}`);
+    if (studentsRes.error) throw new Error(`Fetching students failed: ${studentsRes.error.message}`);
+    if (categoriesRes.error) throw new Error(`Fetching fee categories failed: ${categoriesRes.error.message}`);
+    if (academicYearsRes.error) throw new Error(`Fetching academic years failed: ${academicYearsRes.error.message}`);
+
+    return {
+      ok: true,
+      feePayments: paymentsRes.data || [],
+      students: studentsRes.data || [],
+      feeCategories: categoriesRes.data || [],
+      academicYears: academicYearsRes.data || [],
+    };
+  } catch (error: any) {
+    console.error("Error in fetchStudentFeesPageDataAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred." };
+  }
+}
+
 
 export async function assignStudentFeeAction(
   input: AssignFeeInput
@@ -28,7 +86,7 @@ export async function assignStudentFeeAction(
       ...input,
       id: feePaymentId,
       paid_amount: 0,
-      status: 'Pending' as PaymentStatus, // Initial status
+      status: 'Pending' as PaymentStatus,
     })
     .select()
     .single();
@@ -44,7 +102,7 @@ export async function assignStudentFeeAction(
 interface RecordPaymentInput {
   fee_payment_id: string;
   payment_amount: number;
-  payment_date: string; // YYYY-MM-DD
+  payment_date: string;
   school_id: string;
 }
 
@@ -74,15 +132,13 @@ export async function recordStudentFeePaymentAction(
   } else if (newPaidAmount > 0) {
     newStatus = 'Partially Paid';
   }
-  // Note: 'Overdue' status would typically be determined by comparing due_date with current date,
-  // which might be better handled by a scheduled task or view logic, not directly here on payment.
 
   const { error, data } = await supabaseAdmin
     .from('student_fee_payments')
     .update({
       paid_amount: newPaidAmount,
       status: newStatus,
-      payment_date: payment_date, // Update with the date of this specific payment
+      payment_date: payment_date,
     })
     .eq('id', fee_payment_id)
     .eq('school_id', school_id)
@@ -97,14 +153,11 @@ export async function recordStudentFeePaymentAction(
   return { ok: true, message: 'Payment recorded successfully.', feePayment: data as StudentFeePayment };
 }
 
-
 export async function deleteStudentFeeAssignmentAction(
-  feePaymentId: string, 
+  feePaymentId: string,
   schoolId: string
 ): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-
-  // Optionally, add a check here: if fee_payment.paid_amount > 0, prevent deletion or require special handling.
   const { data: feePayment, error: fetchError } = await supabaseAdmin
     .from('student_fee_payments')
     .select('paid_amount')
@@ -120,7 +173,6 @@ export async function deleteStudentFeeAssignmentAction(
     return { ok: false, message: "Cannot delete: This fee assignment has payments recorded. Consider refunding or voiding first." };
   }
 
-
   const { error } = await supabaseAdmin
     .from('student_fee_payments')
     .delete()
@@ -134,5 +186,3 @@ export async function deleteStudentFeeAssignmentAction(
   revalidatePath('/admin/student-fees');
   return { ok: true, message: 'Fee assignment deleted successfully.' };
 }
-
-    

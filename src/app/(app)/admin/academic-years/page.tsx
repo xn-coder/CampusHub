@@ -1,84 +1,52 @@
 
+"use client";
+
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CalendarRange } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient'; // Import supabase client
+import { CalendarRange, Loader2 } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import AcademicYearActions from './academic-year-actions';
-import type { User } from '@/types'; // For User type
+import type { AcademicYear } from '@/types';
+import { useState, useEffect } from 'react';
+import { useToast } from "@/hooks/use-toast";
+import { getAdminSchoolIdAction, getAcademicYearsForSchoolAction } from './actions';
 
-// Define a type for academic year data fetched from Supabase
-// Assuming your Supabase table has columns like id, name, start_date, end_date, school_id
-interface AcademicYear {
-  id: string;
-  name: string;
-  start_date: string; // Supabase returns date strings
-  end_date: string;
-  school_id: string;
-}
+export default function AcademicYearsPage() {
+  const { toast } = useToast();
+  const [schoolId, setSchoolId] = useState<string | null>(null);
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-export const revalidate = 0; // Revalidate on every request for dynamic data
+  useEffect(() => {
+    async function fetchData() {
+      setIsLoading(true);
+      const adminUserId = localStorage.getItem('currentUserId');
+      if (!adminUserId) {
+        toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
 
-async function getAcademicYears(adminSchoolId: string | null): Promise<AcademicYear[]> {
-  if (!adminSchoolId) return [];
-  try {
-    const { data, error } = await supabase
-      .from('academic_years')
-      .select('id, name, start_date, end_date, school_id')
-      .eq('school_id', adminSchoolId)
-      .order('start_date', { ascending: false });
+      const fetchedSchoolId = await getAdminSchoolIdAction(adminUserId);
+      setSchoolId(fetchedSchoolId);
 
-    if (error) {
-      console.error("Failed to fetch academic years from Supabase:", error);
-      return [];
+      if (fetchedSchoolId) {
+        const result = await getAcademicYearsForSchoolAction(fetchedSchoolId);
+        if (result.ok && result.years) {
+          setAcademicYears(result.years);
+        } else {
+          toast({ title: "Error", description: result.message || "Failed to load academic years.", variant: "destructive" });
+          setAcademicYears([]);
+        }
+      } else {
+        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+        setAcademicYears([]);
+      }
+      setIsLoading(false);
     }
-    return data || [];
-  } catch (error) {
-    console.error("Unexpected error fetching academic years:", error);
-    return [];
-  }
-}
-
-async function getCurrentAdminSchoolId(): Promise<string | null> {
-  // This is a placeholder. In a real app, you'd get this from the user's session or context.
-  // For Supabase, you might get the logged-in user's ID from session, then query their school.
-  // For now, let's simulate by finding an admin user and their associated school.
-  // This logic needs to be robustly implemented based on your auth system.
-  // Assuming user ID is stored in a way that can be retrieved server-side (e.g., via cookies or Supabase auth context)
-
-  // This part would ideally use Supabase auth to get current user, then query their school
-  // For now, fetching the first admin from 'users' and then their school from 'schools'
-  const { data: adminUser, error: userError } = await supabase
-    .from('users')
-    .select('id')
-    .eq('role', 'admin')
-    .limit(1)
-    .single();
-
-  if (userError || !adminUser) {
-    console.error("Error fetching admin user or no admin found:", userError);
-    return null;
-  }
-
-  const { data: school, error: schoolError } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUser.id) // Assuming schools table has admin_user_id
-    .limit(1)
-    .single();
-  
-  if (schoolError || !school) {
-    console.error("Error fetching school for admin or admin not linked:", schoolError);
-    return null;
-  }
-  return school.id;
-}
-
-
-export default async function AcademicYearsPage() {
-  const schoolId = await getCurrentAdminSchoolId(); 
-  const academicYears = await getAcademicYears(schoolId);
+    fetchData();
+  }, [toast]);
 
   const formatDateString = (dateString: string | Date) => {
     if (!dateString) return 'N/A';
@@ -86,12 +54,21 @@ export default async function AcademicYearsPage() {
     return isValid(dateObj) ? format(dateObj, 'MMM d, yyyy') : 'Invalid Date';
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Academic Year Management" />
+        <Card><CardContent className="pt-6 text-center"><Loader2 className="h-6 w-6 animate-spin inline-block mr-2" />Loading academic years...</CardContent></Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader 
-        title="Academic Year Management" 
+      <PageHeader
+        title="Academic Year Management"
         description="Define and manage academic years for the school."
-        actions={<AcademicYearActions schoolId={schoolId} />} // Pass schoolId
+        actions={<AcademicYearActions schoolId={schoolId} />}
       />
       <Card>
         <CardHeader>
@@ -120,16 +97,15 @@ export default async function AcademicYearsPage() {
                     <TableCell>{formatDateString(year.start_date)}</TableCell>
                     <TableCell>{formatDateString(year.end_date)}</TableCell>
                     <TableCell className="space-x-1 text-right">
-                      {/* Map Supabase row to the expected PrismaAcademicYearType or adjust AcademicYearActions */}
-                      <AcademicYearActions 
-                        schoolId={schoolId} 
+                      <AcademicYearActions
+                        schoolId={schoolId}
                         existingYear={{
                           id: year.id,
                           name: year.name,
-                          startDate: new Date(year.start_date), // Convert string to Date
-                          endDate: new Date(year.end_date),     // Convert string to Date
+                          startDate: new Date(year.start_date),
+                          endDate: new Date(year.end_date),
                           schoolId: year.school_id
-                        }} 
+                        }}
                       />
                     </TableCell>
                   </TableRow>
