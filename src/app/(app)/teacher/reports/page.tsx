@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -6,62 +5,67 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
 import type { Student, ClassData } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ArrowDownUp, BarChartHorizontalBig } from 'lucide-react';
-import { format } from 'date-fns';
-
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_CLASSES_KEY = 'mockClassesData';
-
-// Helper to generate mock activity data (can be shared or duplicated)
-const generateMockActivity = (student: Student): Student => {
-  const today = new Date();
-  // Ensure mockLoginDate is a Date object, or create one if missing
-  const loginDateSeed = student.mockLoginDate instanceof Date ? student.mockLoginDate : new Date(today.setDate(today.getDate() - Math.floor(Math.random() * 30)));
-  
-  return {
-    ...student,
-    mockLoginDate: loginDateSeed, // Ensure this is a Date object
-    lastLogin: student.lastLogin || format(loginDateSeed, 'PPpp'),
-    assignmentsSubmitted: student.assignmentsSubmitted ?? Math.floor(Math.random() * 20),
-    attendancePercentage: student.attendancePercentage ?? Math.floor(Math.random() * 51) + 50, // 50-100%
-  };
-};
+import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2 } from 'lucide-react';
+import { format, parseISO, isValid } from 'date-fns';
+import { useToast } from "@/hooks/use-toast";
+import { getTeacherStudentsAndClassesAction } from './actions';
+import { supabase } from '@/lib/supabaseClient'; // For fetching teacher's profile initially
 
 export default function TeacherReportsPage() {
+  const { toast } = useToast();
   const [teacherStudents, setTeacherStudents] = useState<Student[]>([]);
   const [teacherClasses, setTeacherClasses] = useState<ClassData[]>([]);
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
+  const [currentTeacherProfileId, setCurrentTeacherProfileId] = useState<string | null>(null); // Teacher Profile ID
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all'); // classId or 'all'
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<keyof Student | ''>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const teacherId = localStorage.getItem('currentUserId');
-      setCurrentTeacherId(teacherId);
-
-      const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      const allClasses: ClassData[] = storedClasses ? JSON.parse(storedClasses) : [];
-      const assignedClasses = teacherId ? allClasses.filter(c => c.teacherId === teacherId) : [];
-      setTeacherClasses(assignedClasses);
-      
-      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      const allStudentsData: Student[] = storedStudents ? JSON.parse(storedStudents) : [];
-
-      if (teacherId) {
-        const assignedClassIds = assignedClasses.map(c => c.id);
-        const studentsForTeacher = allStudentsData
-          .filter(s => s.classId && assignedClassIds.includes(s.classId))
-          .map(generateMockActivity);
-        setTeacherStudents(studentsForTeacher);
+    async function loadInitialData() {
+      setIsLoading(true);
+      const teacherUserId = localStorage.getItem('currentUserId'); // This is User.id
+      if (!teacherUserId) {
+        toast({ title: "Error", description: "Teacher user not identified.", variant: "destructive" });
+        setIsLoading(false);
+        return;
       }
+
+      // Get Teacher Profile ID and School ID
+      const { data: teacherProfile, error: profileError } = await supabase
+        .from('teachers')
+        .select('id, school_id') // 'id' here is the teacher's profile ID
+        .eq('user_id', teacherUserId)
+        .single();
+
+      if (profileError || !teacherProfile) {
+        toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
+      setCurrentTeacherProfileId(teacherProfile.id);
+      setCurrentSchoolId(teacherProfile.school_id);
+
+      if (teacherProfile.id && teacherProfile.school_id) {
+        const result = await getTeacherStudentsAndClassesAction(teacherProfile.id, teacherProfile.school_id);
+        if (result.ok) {
+          setTeacherStudents(result.students || []);
+          setTeacherClasses(result.classes || []);
+        } else {
+          toast({ title: "Error loading report data", description: result.message, variant: "destructive" });
+        }
+      } else {
+        toast({ title: "Error", description: "Teacher profile or school ID missing.", variant: "destructive" });
+      }
+      setIsLoading(false);
     }
-  }, []);
+    loadInitialData();
+  }, [toast]);
 
   const handleSort = (column: keyof Student | '') => {
     if (sortBy === column) {
@@ -72,44 +76,41 @@ export default function TeacherReportsPage() {
     }
   };
 
-  const getClassDisplayName = (classId: string): string => {
+  const getClassDisplayName = (classId?: string | null): string => {
+    if (!classId) return 'N/A';
     const classInfo = teacherClasses.find(c => c.id === classId);
     return classInfo ? `${classInfo.name} - ${classInfo.division}` : 'N/A';
   };
 
+  const formatDateSafe = (dateInput?: string | Date): string => {
+    if (!dateInput) return 'N/A';
+    const dateObj = typeof dateInput === 'string' ? parseISO(dateInput) : dateInput;
+    return isValid(dateObj) ? format(dateObj, 'PP') : 'N/A';
+  };
+
   const filteredAndSortedStudents = useMemo(() => {
     let students = [...teacherStudents];
-
     if (searchTerm) {
       students = students.filter(s => 
         s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (s.email && s.email.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
-
     if (selectedClassFilter !== 'all') {
-      students = students.filter(s => s.classId === selectedClassFilter);
+      students = students.filter(s => s.class_id === selectedClassFilter);
     }
-    
     if (sortBy) {
       students.sort((a, b) => {
         let valA = a[sortBy];
         let valB = b[sortBy];
-
         if (sortBy === 'mockLoginDate') {
-           valA = a.mockLoginDate ? a.mockLoginDate.getTime() : 0;
-           valB = b.mockLoginDate ? b.mockLoginDate.getTime() : 0;
-        } else if (typeof valA === 'string') {
-          valA = valA.toLowerCase();
-        } else if (typeof valA === 'undefined') {
-           valA = sortBy === 'assignmentsSubmitted' || sortBy === 'attendancePercentage' ? -1 : '';
-        }
+           valA = a.mockLoginDate ? new Date(a.mockLoginDate).getTime() : 0;
+           valB = b.mockLoginDate ? new Date(b.mockLoginDate).getTime() : 0;
+        } else if (typeof valA === 'string') valA = valA.toLowerCase();
+        else if (typeof valA === 'undefined' || valA === null) valA = sortBy === 'assignmentsSubmitted' || sortBy === 'attendancePercentage' ? -Infinity : '';
         
-        if (typeof valB === 'string') {
-          valB = valB.toLowerCase();
-        } else if (typeof valB === 'undefined') {
-           valB = sortBy === 'assignmentsSubmitted' || sortBy === 'attendancePercentage' ? -1 : '';
-        }
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        else if (typeof valB === 'undefined' || valB === null) valB = sortBy === 'assignmentsSubmitted' || sortBy === 'attendancePercentage' ? -Infinity : '';
 
         if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
         if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
@@ -128,16 +129,28 @@ export default function TeacherReportsPage() {
     </TableHead>
   );
   
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading reports...</span></div>;
+  }
+  if (!currentTeacherProfileId || !currentSchoolId) {
+    return (
+        <div className="flex flex-col gap-6">
+        <PageHeader title="Student Activity Reports (Teacher)" />
+        <Card><CardContent className="pt-6 text-center text-destructive">Could not load teacher profile. Cannot view reports.</CardContent></Card>
+        </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Student Activity Reports (Teacher)" 
-        description="View activity for students in your assigned classes." 
+        description="View activity for students in your assigned classes. Activity data is currently simplified/mocked." 
       />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-5 w-5" />My Students' Activity</CardTitle>
-          <CardDescription>Monitor engagement for students you teach.</CardDescription>
+          <CardDescription>Monitor engagement for students you teach. Note: 'Last Login', 'Assignments Submitted', and 'Attendance %' are illustrative mock data for now.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4">
@@ -178,9 +191,9 @@ export default function TeacherReportsPage() {
                   <SortableHeader column="name" label="Student Name" />
                   <SortableHeader column="email" label="Email" />
                   <TableHead>Class</TableHead>
-                  <SortableHeader column="mockLoginDate" label="Last Login" />
-                  <SortableHeader column="assignmentsSubmitted" label="Assignments Submitted" />
-                  <SortableHeader column="attendancePercentage" label="Attendance (%)" />
+                  <SortableHeader column="mockLoginDate" label="Last Login (Mock)" />
+                  <SortableHeader column="assignmentsSubmitted" label="Assignments Submitted (Mock)" />
+                  <SortableHeader column="attendancePercentage" label="Attendance % (Mock)" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -188,10 +201,10 @@ export default function TeacherReportsPage() {
                   <TableRow key={student.id}>
                     <TableCell className="font-medium">{student.name}</TableCell>
                     <TableCell>{student.email}</TableCell>
-                    <TableCell>{getClassDisplayName(student.classId)}</TableCell>
-                    <TableCell>{student.lastLogin || 'N/A'}</TableCell>
+                    <TableCell>{getClassDisplayName(student.class_id)}</TableCell>
+                    <TableCell>{formatDateSafe(student.mockLoginDate)}</TableCell>
                     <TableCell>{student.assignmentsSubmitted ?? 'N/A'}</TableCell>
-                    <TableCell>{student.attendancePercentage !== undefined ? `${student.attendancePercentage}%` : 'N/A'}</TableCell>
+                    <TableCell>{student.attendancePercentage !== undefined && student.attendancePercentage !== null ? `${student.attendancePercentage}%` : 'N/A'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

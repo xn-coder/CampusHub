@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, type FormEvent, useEffect } from 'react';
@@ -14,26 +13,14 @@ import { fileToDataUri } from '@/lib/utils';
 import { leaveApplicationApproval, type LeaveApplicationInput, type LeaveApplicationOutput } from '@/ai/flows/leave-application-approval';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CheckCircle, XCircle, Loader2, UploadCloud } from 'lucide-react';
-import type { User, Student, UserRole } from '@/types'; // Import User and Student types
-
-const MOCK_ALL_LEAVE_APPLICATIONS_KEY = 'mockAllLeaveApplicationsData';
-const MOCK_USER_DB_KEY = 'mockUserDatabase';
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-
-
-interface StoredLeaveApplication extends LeaveApplicationInput {
-  id: string;
-  studentName: string; // The name entered in the form
-  studentId?: string; // ID of the student if logged in as student
-  applicantRole: UserRole | 'guest';
-  submissionDate: string; // ISO string
-  status: 'Pending AI Review' | 'Approved' | 'Rejected';
-  aiReasoning?: string;
-}
+import type { User, Student, UserRole, SchoolEntry } from '@/types';
+import { submitLeaveApplicationAction } from '@/app/(app)/leave-application/actions';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabaseClient';
 
 
 const formSchema = z.object({
-  studentName: z.string().min(1, "Student name is required"), // This could be pre-filled if user is logged in as student
+  studentName: z.string().min(1, "Student name is required"),
   reason: z.string().min(10, "Reason must be at least 10 characters long"),
   medicalNotes: z.any().optional(),
 });
@@ -41,14 +28,16 @@ const formSchema = z.object({
 type LeaveFormValues = z.infer<typeof formSchema>;
 
 export default function LeaveForm() {
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [aiResponse, setAiResponse] = useState<LeaveApplicationOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   
-  const [currentUserName, setCurrentUserName] = useState<string>('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  const [studentProfile, setStudentProfile] = useState<Student | null>(null); // For logged-in student
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
 
   const { control, handleSubmit, register, formState: { errors }, reset, watch, setValue } = useForm<LeaveFormValues>({
@@ -60,26 +49,49 @@ export default function LeaveForm() {
   });
   
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const role = localStorage.getItem('currentUserRole') as UserRole | null;
-      const userId = localStorage.getItem('currentUserId');
-      setCurrentUserRole(role);
-      setCurrentUserId(userId);
+    async function loadUserContext() {
+      if (typeof window !== 'undefined') {
+        const role = localStorage.getItem('currentUserRole') as UserRole | null;
+        const userId = localStorage.getItem('currentUserId'); // This is User.id
+        setCurrentUserRole(role);
+        setCurrentUserId(userId);
 
-      if (role === 'student' && userId) {
-        const users: User[] = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '[]');
-        const studentUser = users.find(u => u.id === userId);
-        if (studentUser) {
-          setValue('studentName', studentUser.name); // Pre-fill student name
-          setCurrentUserName(studentUser.name);
+        if (userId) {
+          // Fetch school_id from the user's record
+          const { data: userRec, error: userErr } = await supabase
+            .from('users')
+            .select('school_id, name')
+            .eq('id', userId)
+            .single();
+          
+          if (userErr || !userRec) {
+            toast({title: "Error", description: "Could not determine user's school.", variant: "destructive"});
+            return;
+          }
+          setCurrentSchoolId(userRec.school_id);
+
+          if (role === 'student') {
+            const { data: studentData, error: studentError } = await supabase
+              .from('students')
+              .select('*')
+              .eq('user_id', userId) // Student profile linked by User.id
+              .single();
+            if (studentError || !studentData) {
+              toast({title: "Error", description: "Could not load student profile.", variant: "destructive"});
+            } else {
+              setStudentProfile(studentData as Student);
+              setValue('studentName', studentData.name); // Pre-fill student name
+            }
+          } else {
+             // For admin/teacher, they might be applying for a student, so studentName is manual
+             // Or we could add a student selector if they are applying for others
+             // For now, studentName is manually entered by admin/teacher if not student themselves
+          }
         }
-      } else if (userId) { // For admin/teacher, get their name for record-keeping if they apply for someone
-         const users: User[] = JSON.parse(localStorage.getItem(MOCK_USER_DB_KEY) || '[]');
-         const applierUser = users.find(u => u.id === userId);
-         if(applierUser) setCurrentUserName(applierUser.name);
       }
     }
-  }, [setValue]);
+    loadUserContext();
+  }, [setValue, toast]);
 
 
   const medicalNotesFileList = watch("medicalNotes");
@@ -89,6 +101,12 @@ export default function LeaveForm() {
     setAiResponse(null);
     setError(null);
 
+    if (!currentUserId || !currentUserRole || !currentSchoolId) {
+      setError("User context or school ID is missing. Cannot submit application.");
+      setIsLoading(false);
+      return;
+    }
+    
     let medicalNotesDataUri: string | undefined = undefined;
     if (data.medicalNotes && data.medicalNotes.length > 0) {
       try {
@@ -109,33 +127,36 @@ export default function LeaveForm() {
       const response = await leaveApplicationApproval(aiInput);
       setAiResponse(response);
 
-      // Save to localStorage
-      const storedApplications: StoredLeaveApplication[] = JSON.parse(localStorage.getItem(MOCK_ALL_LEAVE_APPLICATIONS_KEY) || '[]');
-      const newApplication: StoredLeaveApplication = {
-        id: `leave-${Date.now()}`,
-        studentName: data.studentName, // Name from the form
-        studentId: currentUserRole === 'student' ? currentUserId || undefined : undefined, // Actual student ID if student applied
+      const submissionResult = await submitLeaveApplicationAction({
+        student_profile_id: studentProfile?.id, // Logged-in student's profile ID
+        student_name: data.studentName, // Name from form (pre-filled for student)
         reason: data.reason,
-        medicalNotesDataUri: medicalNotesDataUri,
-        submissionDate: new Date().toISOString(),
+        medical_notes_data_uri: medicalNotesDataUri,
         status: response.approved ? 'Approved' : 'Rejected',
-        aiReasoning: response.reasoning,
-        applicantRole: currentUserRole || 'guest', // Role of person submitting
-      };
-      storedApplications.unshift(newApplication); // Add to top
-      localStorage.setItem(MOCK_ALL_LEAVE_APPLICATIONS_KEY, JSON.stringify(storedApplications));
-      
-      // Reset form, but keep student name if they are a student
-      const resetValues = { reason: '', medicalNotes: undefined };
-      if(currentUserRole === 'student' && currentUserName) {
-        reset({...resetValues, studentName: currentUserName });
+        ai_reasoning: response.reasoning,
+        applicant_user_id: currentUserId,
+        applicant_role: currentUserRole,
+        school_id: currentSchoolId,
+      });
+
+      if (submissionResult.ok) {
+        toast({ title: "Application Submitted", description: "Your leave application has been processed and recorded."});
+        const resetValues = { reason: '', medicalNotes: undefined };
+        if(currentUserRole === 'student' && studentProfile) {
+          reset({...resetValues, studentName: studentProfile.name });
+        } else {
+          reset({...resetValues, studentName: ''});
+        }
+        setFileName(null); 
       } else {
-        reset({...resetValues, studentName: ''});
+        setError(submissionResult.message || "Failed to save application to database.");
+        toast({ title: "Submission Error", description: submissionResult.message || "Failed to save application.", variant: "destructive"});
       }
-      setFileName(null); 
-    } catch (e) {
-      console.error("AI processing error:", e);
-      setError("An error occurred while processing your application.");
+      
+    } catch (e: any) {
+      console.error("AI or DB processing error:", e);
+      setError(e.message || "An error occurred while processing your application.");
+      toast({ title: "Processing Error", description: e.message || "An error occurred.", variant: "destructive"});
     } finally {
       setIsLoading(false);
     }
@@ -164,7 +185,7 @@ export default function LeaveForm() {
             <Controller
               name="studentName"
               control={control}
-              render={({ field }) => <Input id="studentName" placeholder="Enter student's full name" {...field} disabled={currentUserRole === 'student'} />}
+              render={({ field }) => <Input id="studentName" placeholder="Enter student's full name" {...field} disabled={currentUserRole === 'student' && !!studentProfile} />}
             />
             {errors.studentName && <p className="text-sm text-destructive mt-1">{errors.studentName.message}</p>}
           </div>
@@ -202,7 +223,7 @@ export default function LeaveForm() {
             {errors.medicalNotes && <p className="text-sm text-destructive mt-1">{errors.medicalNotes.message?.toString()}</p>}
           </div>
 
-          <Button type="submit" disabled={isLoading} className="w-full">
+          <Button type="submit" disabled={isLoading || !currentSchoolId} className="w-full">
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

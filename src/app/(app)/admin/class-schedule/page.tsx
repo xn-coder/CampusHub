@@ -1,113 +1,165 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { ClassScheduleItem } from '@/types';
+import type { ClassScheduleDB as ClassScheduleItem, ClassData, Subject, Teacher, DayOfWeek as DayOfWeekType, User } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Clock } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Clock, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { addClassScheduleAction, updateClassScheduleAction, deleteClassScheduleAction, fetchClassSchedulePageData } from './actions';
+import { supabase } from '@/lib/supabaseClient'; // For fetching current user's school ID
 
-const MOCK_CLASS_SCHEDULES_KEY = 'mockClassSchedulesData';
+async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
+  const { data: school, error } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUserId)
+    .single();
+  if (error || !school) {
+    console.error("Error fetching admin's school for class schedule:", error?.message);
+    return null;
+  }
+  return school.id;
+}
 
 export default function ClassSchedulePage() {
   const { toast } = useToast();
   const [scheduleItems, setScheduleItems] = useState<ClassScheduleItem[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<Partial<ClassScheduleItem> | null>(null);
+  const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
 
-  // Form state
-  const [className, setClassName] = useState('');
-  const [subject, setSubject] = useState('');
-  const [teacherName, setTeacherName] = useState('');
-  const [dayOfWeek, setDayOfWeek] = useState<'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday'>('Monday');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<ClassScheduleItem | null>(null);
+
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [selectedTeacherId, setSelectedTeacherId] = useState('');
+  const [dayOfWeek, setDayOfWeek] = useState<DayOfWeekType>('Monday');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedSchedules = localStorage.getItem(MOCK_CLASS_SCHEDULES_KEY);
-      if (storedSchedules) {
-        setScheduleItems(JSON.parse(storedSchedules));
-      }
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (adminUserId) {
+      fetchAdminSchoolId(adminUserId).then(schoolId => {
+        setCurrentSchoolId(schoolId);
+        if (schoolId) {
+          loadPageData(schoolId);
+        } else {
+          toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+          setIsLoading(false);
+        }
+      });
+    } else {
+      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      setIsLoading(false);
     }
-  }, []);
+  }, [toast]);
 
-  const updateLocalStorage = (data: ClassScheduleItem[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(MOCK_CLASS_SCHEDULES_KEY, JSON.stringify(data));
+  async function loadPageData(schoolId: string) {
+    setIsLoading(true);
+    const result = await fetchClassSchedulePageData(schoolId);
+    if (result.ok) {
+      setScheduleItems(result.schedules || []);
+      setActiveClasses(result.activeClasses || []);
+      setSubjects(result.subjects || []);
+      setTeachers(result.teachers || []);
+    } else {
+      toast({ title: "Error loading data", description: result.message, variant: "destructive" });
     }
-  };
+    setIsLoading(false);
+  }
 
   const resetForm = () => {
-    setClassName('');
-    setSubject('');
-    setTeacherName('');
-    setDayOfWeek('Monday');
-    setStartTime('');
-    setEndTime('');
+    setSelectedClassId(''); setSelectedSubjectId(''); setSelectedTeacherId('');
+    setDayOfWeek('Monday'); setStartTime(''); setEndTime('');
     setEditingItem(null);
   };
 
   const handleOpenDialog = (item?: ClassScheduleItem) => {
     if (item) {
       setEditingItem(item);
-      setClassName(item.className);
-      setSubject(item.subject);
-      setTeacherName(item.teacherName);
-      setDayOfWeek(item.dayOfWeek);
-      setStartTime(item.startTime);
-      setEndTime(item.endTime);
+      setSelectedClassId(item.class_id);
+      setSelectedSubjectId(item.subject_id);
+      setSelectedTeacherId(item.teacher_id);
+      setDayOfWeek(item.day_of_week as DayOfWeekType);
+      setStartTime(item.start_time);
+      setEndTime(item.end_time);
     } else {
       resetForm();
     }
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!className || !subject || !teacherName || !dayOfWeek || !startTime || !endTime) {
+    if (!currentSchoolId || !selectedClassId || !selectedSubjectId || !selectedTeacherId || !dayOfWeek || !startTime || !endTime) {
       toast({ title: "Error", description: "All fields are required.", variant: "destructive" });
       return;
     }
+    setIsSubmitting(true);
 
-    let updatedSchedules;
-    if (editingItem && editingItem.id) {
-      updatedSchedules = scheduleItems.map(item =>
-        item.id === editingItem.id ? { ...item, className, subject, teacherName, dayOfWeek, startTime, endTime } : item
-      );
-      toast({ title: "Schedule Updated", description: `Schedule for ${className} on ${dayOfWeek} updated.` });
+    const scheduleData = {
+      school_id: currentSchoolId,
+      class_id: selectedClassId,
+      subject_id: selectedSubjectId,
+      teacher_id: selectedTeacherId,
+      day_of_week: dayOfWeek,
+      start_time: startTime,
+      end_time: endTime,
+    };
+
+    let result;
+    if (editingItem) {
+      result = await updateClassScheduleAction(editingItem.id, scheduleData);
     } else {
-      const newItem: ClassScheduleItem = {
-        id: `cs-${Date.now()}`,
-        className, subject, teacherName, dayOfWeek, startTime, endTime,
-      };
-      updatedSchedules = [...scheduleItems, newItem];
-      toast({ title: "Schedule Added", description: `New schedule for ${className} on ${dayOfWeek} added.` });
+      result = await addClassScheduleAction(scheduleData);
     }
-    
-    setScheduleItems(updatedSchedules);
-    updateLocalStorage(updatedSchedules);
-    resetForm();
-    setIsDialogOpen(false);
+    setIsSubmitting(false);
+
+    if (result.ok) {
+      toast({ title: editingItem ? "Schedule Updated" : "Schedule Added", description: result.message });
+      if (currentSchoolId) loadPageData(currentSchoolId); // Re-fetch
+      setIsDialogOpen(false);
+      resetForm();
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
   };
   
-  const handleDeleteItem = (itemId: string) => {
+  const handleDeleteItem = async (itemId: string) => {
+    if (!currentSchoolId) return;
     if (confirm("Are you sure you want to delete this schedule item?")) {
-      const updatedSchedules = scheduleItems.filter(item => item.id !== itemId);
-      setScheduleItems(updatedSchedules);
-      updateLocalStorage(updatedSchedules);
-      toast({ title: "Schedule Item Deleted", variant: "destructive" });
+      setIsSubmitting(true);
+      const result = await deleteClassScheduleAction(itemId, currentSchoolId);
+      setIsSubmitting(false);
+      if (result.ok) {
+        toast({ title: "Schedule Item Deleted", variant: "destructive" });
+        if (currentSchoolId) loadPageData(currentSchoolId); // Re-fetch
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+      }
     }
   };
 
-  const daysOfWeek: ClassScheduleItem['dayOfWeek'][] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const daysOfWeekList: DayOfWeekType[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  
+  // Helper to get names from IDs for display
+  const getClassName = (id: string) => activeClasses.find(c => c.id === id)?.name || 'N/A';
+  const getSubjectName = (id: string) => subjects.find(s => s.id === id)?.name || 'N/A';
+  const getTeacherName = (id: string) => teachers.find(t => t.id === id)?.name || 'N/A';
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -115,7 +167,7 @@ export default function ClassSchedulePage() {
         title="Class Schedule Management" 
         description="Define and manage class schedules for the school."
         actions={
-          <Button onClick={() => handleOpenDialog()}>
+          <Button onClick={() => handleOpenDialog()} disabled={isLoading || isSubmitting || !currentSchoolId}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add Schedule Item
           </Button>
         }
@@ -126,13 +178,15 @@ export default function ClassSchedulePage() {
           <CardDescription>List of all planned class schedules.</CardDescription>
         </CardHeader>
         <CardContent>
-          {scheduleItems.length === 0 ? (
+          {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> :
+           !currentSchoolId ? <p className="text-destructive text-center py-4">Admin not associated with a school.</p> :
+           scheduleItems.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">No class schedules defined yet.</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Class Name</TableHead>
+                  <TableHead>Class</TableHead>
                   <TableHead>Subject</TableHead>
                   <TableHead>Teacher</TableHead>
                   <TableHead>Day</TableHead>
@@ -143,16 +197,16 @@ export default function ClassSchedulePage() {
               <TableBody>
                 {scheduleItems.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.className}</TableCell>
-                    <TableCell>{item.subject}</TableCell>
-                    <TableCell>{item.teacherName}</TableCell>
-                    <TableCell>{item.dayOfWeek}</TableCell>
-                    <TableCell>{item.startTime} - {item.endTime}</TableCell>
+                    <TableCell className="font-medium">{(item.class as ClassData)?.name || getClassName(item.class_id)} - {(item.class as ClassData)?.division}</TableCell>
+                    <TableCell>{(item.subject as Subject)?.name || getSubjectName(item.subject_id)}</TableCell>
+                    <TableCell>{(item.teacher as Teacher)?.name || getTeacherName(item.teacher_id)}</TableCell>
+                    <TableCell>{item.day_of_week}</TableCell>
+                    <TableCell>{item.start_time} - {item.end_time}</TableCell>
                     <TableCell className="space-x-1 text-right">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(item)}>
+                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(item)} disabled={isSubmitting}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteItem(item.id)}>
+                      <Button variant="destructive" size="icon" onClick={() => handleDeleteItem(item.id)} disabled={isSubmitting}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -165,49 +219,57 @@ export default function ClassSchedulePage() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[525px]">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center"><Clock className="mr-2 h-5 w-5" /> {editingItem ? 'Edit' : 'Add New'} Class Schedule</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="className" className="text-right">Class Name</Label>
-                <Input id="className" value={className} onChange={(e) => setClassName(e.target.value)} className="col-span-3" placeholder="e.g., Grade 10A" required />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="subject" className="text-right">Subject</Label>
-                <Input id="subject" value={subject} onChange={(e) => setSubject(e.target.value)} className="col-span-3" placeholder="e.g., Mathematics" required />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="teacherName" className="text-right">Teacher</Label>
-                <Input id="teacherName" value={teacherName} onChange={(e) => setTeacherName(e.target.value)} className="col-span-3" placeholder="e.g., Mr. Smith" required />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="dayOfWeek" className="text-right">Day</Label>
-                <Select value={dayOfWeek} onValueChange={(val) => setDayOfWeek(val as ClassScheduleItem['dayOfWeek'])}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select day" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {daysOfWeek.map(day => (
-                      <SelectItem key={day} value={day}>{day}</SelectItem>
-                    ))}
-                  </SelectContent>
+            <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
+              <div>
+                <Label htmlFor="classId">Class</Label>
+                <Select value={selectedClassId} onValueChange={setSelectedClassId} required disabled={isSubmitting}>
+                  <SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger>
+                  <SelectContent>{activeClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="startTime" className="text-right">Start Time</Label>
-                <Input id="startTime" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="col-span-3" required />
+              <div>
+                <Label htmlFor="subjectId">Subject</Label>
+                <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} required disabled={isSubmitting}>
+                  <SelectTrigger><SelectValue placeholder="Select subject" /></SelectTrigger>
+                  <SelectContent>{subjects.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>)}</SelectContent>
+                </Select>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="endTime" className="text-right">End Time</Label>
-                <Input id="endTime" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="col-span-3" required />
+              <div>
+                <Label htmlFor="teacherId">Teacher</Label>
+                <Select value={selectedTeacherId} onValueChange={setSelectedTeacherId} required disabled={isSubmitting}>
+                  <SelectTrigger><SelectValue placeholder="Select teacher" /></SelectTrigger>
+                  <SelectContent>{teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="dayOfWeek">Day of Week</Label>
+                <Select value={dayOfWeek} onValueChange={(val) => setDayOfWeek(val as DayOfWeekType)} required disabled={isSubmitting}>
+                  <SelectTrigger><SelectValue placeholder="Select day" /></SelectTrigger>
+                  <SelectContent>{daysOfWeekList.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="startTime">Start Time</Label>
+                  <Input id="startTime" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required disabled={isSubmitting}/>
+                </div>
+                <div>
+                  <Label htmlFor="endTime">End Time</Label>
+                  <Input id="endTime" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required disabled={isSubmitting}/>
+                </div>
               </div>
             </div>
-            <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit"><Save className="mr-2 h-4 w-4" /> {editingItem ? 'Save Changes' : 'Add Schedule'}</Button>
+            <DialogFooter className="mt-4">
+              <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} 
+                {editingItem ? 'Save Changes' : 'Add Schedule'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

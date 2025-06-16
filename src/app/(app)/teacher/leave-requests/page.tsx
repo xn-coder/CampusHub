@@ -1,68 +1,66 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { UserRole, Student, ClassData } from '@/types'; // Assuming StoredLeaveApplication will be added
+import type { UserRole, Student, StoredLeaveApplicationDB, User } from '@/types';
 import { useState, useEffect } from 'react';
-import { ClipboardCheck, ExternalLink, User, CalendarDays, MessageSquare, CheckCircle, XCircle } from 'lucide-react';
+import { ClipboardCheck, ExternalLink, User as UserIcon, CalendarDays, MessageSquare, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { getLeaveRequestsAction } from '@/app/(app)/leave-application/actions';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabaseClient';
 
-// This type should match the one in leave-form.tsx or be imported if centralized
-interface StoredLeaveApplication {
-  id: string;
-  studentName: string; 
-  studentId?: string; 
-  applicantRole: UserRole | 'guest';
-  reason: string;
-  medicalNotesDataUri?: string;
-  submissionDate: string; 
-  status: 'Pending AI Review' | 'Approved' | 'Rejected'; // Reflects AI decision
-  aiReasoning?: string;
-}
-
-const MOCK_ALL_LEAVE_APPLICATIONS_KEY = 'mockAllLeaveApplicationsData';
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_CLASSES_KEY = 'mockClassesData';
 
 export default function TeacherLeaveRequestsPage() {
-  const [leaveRequests, setLeaveRequests] = useState<StoredLeaveApplication[]>([]);
+  const { toast } = useToast();
+  const [leaveRequests, setLeaveRequests] = useState<StoredLeaveApplicationDB[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [teacherClassIds, setTeacherClassIds] = useState<string[]>([]);
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   useEffect(() => {
-    setIsLoading(true);
-    if (typeof window !== 'undefined') {
-      const currentTeacherId = localStorage.getItem('currentUserId');
-      const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      const allClasses: ClassData[] = storedClasses ? JSON.parse(storedClasses) : [];
-      const assignedClassIds = allClasses.filter(c => c.teacherId === currentTeacherId).map(c => c.id);
-      setTeacherClassIds(assignedClassIds);
+    async function fetchTeacherAndLeaveData() {
+      setIsLoading(true);
+      if (typeof window !== 'undefined') {
+        const teacherUserId = localStorage.getItem('currentUserId'); // This is User.id
 
-      const storedApplications = localStorage.getItem(MOCK_ALL_LEAVE_APPLICATIONS_KEY);
-      const allApplications: StoredLeaveApplication[] = storedApplications ? JSON.parse(storedApplications) : [];
-      
-      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      const allStudents: Student[] = storedStudents ? JSON.parse(storedStudents) : [];
-
-      // Filter applications for students in the teacher's classes
-      const teacherStudentApplications = allApplications.filter(app => {
-        if (app.studentId) { // If studentId is present (student applied for themselves)
-          const student = allStudents.find(s => s.id === app.studentId);
-          return student && assignedClassIds.includes(student.classId);
+        if (!teacherUserId) {
+          toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
+          setIsLoading(false);
+          return;
         }
-        // If studentId is not present, it might be an application made by someone else FOR a student.
-        // This scenario requires more robust linking of application to student, perhaps by student name if studentId is missing.
-        // For simplicity now, we focus on studentId. A more complex system would be needed for applications not made by students themselves.
-        return false; 
-      });
-      
-      setLeaveRequests(teacherStudentApplications.sort((a,b) => parseISO(b.submissionDate).getTime() - parseISO(a.submissionDate).getTime()));
+        
+        // Get Teacher Profile ID and School ID
+        const { data: teacherProfile, error: profileError } = await supabase
+          .from('teachers')
+          .select('id, school_id') // 'id' here is the teacher's profile ID
+          .eq('user_id', teacherUserId)
+          .single();
+
+        if (profileError || !teacherProfile) {
+          toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
+          setIsLoading(false);
+          return;
+        }
+        setCurrentTeacherId(teacherProfile.id);
+        setCurrentSchoolId(teacherProfile.school_id);
+
+        if (teacherProfile.id && teacherProfile.school_id) {
+          const result = await getLeaveRequestsAction({ school_id: teacherProfile.school_id, teacher_id: teacherProfile.id });
+          if (result.ok && result.applications) {
+            setLeaveRequests(result.applications);
+          } else {
+            toast({ title: "Error", description: result.message || "Failed to fetch leave requests.", variant: "destructive" });
+            setLeaveRequests([]);
+          }
+        }
+      }
       setIsLoading(false);
     }
-  }, []);
+    fetchTeacherAndLeaveData();
+  }, [toast]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -77,14 +75,14 @@ export default function TeacherLeaveRequestsPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-muted-foreground text-center py-4">Loading leave requests...</p>
+            <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading leave requests...</div>
           ) : leaveRequests.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">No leave requests found from students in your classes.</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead><User className="inline-block mr-1 h-4 w-4"/>Student Name</TableHead>
+                  <TableHead><UserIcon className="inline-block mr-1 h-4 w-4"/>Student Name</TableHead>
                   <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4"/>Submitted</TableHead>
                   <TableHead><MessageSquare className="inline-block mr-1 h-4 w-4"/>Reason</TableHead>
                   <TableHead>Medical Note</TableHead>
@@ -95,12 +93,12 @@ export default function TeacherLeaveRequestsPage() {
               <TableBody>
                 {leaveRequests.map((req) => (
                   <TableRow key={req.id}>
-                    <TableCell className="font-medium">{req.studentName}</TableCell>
-                    <TableCell>{format(parseISO(req.submissionDate), 'PPpp')}</TableCell>
+                    <TableCell className="font-medium">{req.student_name}</TableCell>
+                    <TableCell>{format(parseISO(req.submission_date), 'PPpp')}</TableCell>
                     <TableCell className="max-w-xs truncate">{req.reason}</TableCell>
                     <TableCell>
-                      {req.medicalNotesDataUri ? (
-                        <a href={req.medicalNotesDataUri} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                      {req.medical_notes_data_uri ? (
+                        <a href={req.medical_notes_data_uri} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                           View Note <ExternalLink className="inline-block ml-1 h-3 w-3"/>
                         </a>
                       ) : (
@@ -114,7 +112,7 @@ export default function TeacherLeaveRequestsPage() {
                         {req.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="max-w-sm truncate text-xs">{req.aiReasoning || 'N/A'}</TableCell>
+                    <TableCell className="max-w-sm truncate text-xs">{req.ai_reasoning || 'N/A'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

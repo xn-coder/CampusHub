@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -8,15 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
-import type { CalendarEvent, UserRole } from '@/types';
+import type { CalendarEventDB as CalendarEvent, UserRole, User } from '@/types'; // Use CalendarEventDB
 import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Save } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Loader2 } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { format, parseISO, isValid } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-
-const MOCK_CALENDAR_EVENTS_KEY = 'mockCalendarEventsData';
+import { addCalendarEventAction, updateCalendarEventAction, deleteCalendarEventAction, getCalendarEventsAction } from './actions';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function CalendarEventsPage() {
   const { toast } = useToast();
@@ -25,10 +24,13 @@ export default function CalendarEventsPage() {
   
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   
-  // Form state
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [eventIsAllDay, setEventIsAllDay] = useState(false);
@@ -37,34 +39,57 @@ export default function CalendarEventsPage() {
   const [eventDescription, setEventDescription] = useState('');
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedRole = localStorage.getItem('currentUserRole') as UserRole | null;
-      setCurrentUserRole(storedRole);
+    async function loadUserContextAndEvents() {
+      setIsLoading(true);
+      if (typeof window !== 'undefined') {
+        const role = localStorage.getItem('currentUserRole') as UserRole | null;
+        const userId = localStorage.getItem('currentUserId');
+        setCurrentUserRole(role);
+        setCurrentUserId(userId);
 
-      const storedEvents = localStorage.getItem(MOCK_CALENDAR_EVENTS_KEY);
-      if (storedEvents) {
-        const parsedEvents: CalendarEvent[] = JSON.parse(storedEvents).map((ev:any) => ({
-            ...ev,
-            // date: parseISO(ev.date) // Keep as string from localStorage
-        }));
-        setEvents(parsedEvents);
-      } else {
-        // Initialize with some default events if none are stored
-        const initialEvents = [
-          { id: '1', title: 'School Assembly', date: format(new Date(2024, 6, 20), 'yyyy-MM-dd'), isAllDay: false, startTime: '09:00', endTime: '10:00', description: 'All students to attend.' },
-          { id: '2', title: 'Parent-Teacher Meeting', date: format(new Date(2024, 6, 25), 'yyyy-MM-dd'), isAllDay: true, description: 'Meetings throughout the day.' },
-        ];
-        setEvents(initialEvents);
-        localStorage.setItem(MOCK_CALENDAR_EVENTS_KEY, JSON.stringify(initialEvents));
+        if (userId) {
+          const { data: userRec, error: userErr } = await supabase
+            .from('users')
+            .select('school_id')
+            .eq('id', userId)
+            .single();
+          
+          if (userErr || !userRec || !userRec.school_id) {
+            toast({title: "Error", description: "Could not determine user's school. Calendar events cannot be loaded.", variant: "destructive"});
+            setIsLoading(false);
+            return;
+          }
+          setCurrentSchoolId(userRec.school_id);
+          
+          // Fetch events once school_id is known
+          const result = await getCalendarEventsAction(userRec.school_id);
+          if (result.ok && result.events) {
+            setEvents(result.events);
+          } else {
+            toast({ title: "Error", description: result.message || "Failed to fetch calendar events.", variant: "destructive" });
+          }
+        } else {
+           // No user logged in, or user has no school_id
+           toast({ title: "Context Missing", description: "Cannot load calendar without user or school context.", variant: "destructive"});
+        }
       }
+      setIsLoading(false);
     }
-  }, []);
+    loadUserContextAndEvents();
+  }, [toast]);
 
-  const updateLocalStorage = (updatedEvents: CalendarEvent[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(MOCK_CALENDAR_EVENTS_KEY, JSON.stringify(updatedEvents));
+  const fetchEventsForSchool = async () => {
+    if (!currentSchoolId) return;
+    setIsLoading(true);
+    const result = await getCalendarEventsAction(currentSchoolId);
+    if (result.ok && result.events) {
+      setEvents(result.events);
+    } else {
+      toast({ title: "Error", description: result.message || "Failed to refresh events.", variant: "destructive" });
     }
+    setIsLoading(false);
   };
+
 
   const resetForm = () => {
     setEventTitle('');
@@ -77,14 +102,14 @@ export default function CalendarEventsPage() {
   };
 
   const handleOpenFormDialog = (eventToEdit?: CalendarEvent) => {
-    if (currentUserRole === 'student') return; // Students cannot open form
+    if (currentUserRole === 'student') return; 
     if (eventToEdit) {
       setEditingEvent(eventToEdit);
       setEventTitle(eventToEdit.title);
       setEventDate(eventToEdit.date); 
-      setEventIsAllDay(eventToEdit.isAllDay);
-      setEventStartTime(eventToEdit.startTime || '');
-      setEventEndTime(eventToEdit.endTime || '');
+      setEventIsAllDay(eventToEdit.is_all_day);
+      setEventStartTime(eventToEdit.start_time || '');
+      setEventEndTime(eventToEdit.end_time || '');
       setEventDescription(eventToEdit.description || '');
     } else {
       resetForm();
@@ -95,146 +120,159 @@ export default function CalendarEventsPage() {
     setIsFormDialogOpen(true);
   };
 
-  const handleSubmitEvent = (e: FormEvent) => {
+  const handleSubmitEvent = async (e: FormEvent) => {
     e.preventDefault();
-    if (currentUserRole === 'student') return; 
+    if (currentUserRole === 'student' || !currentSchoolId || !currentUserId) {
+      toast({ title: "Error", description: "Action not permitted or missing context.", variant: "destructive" });
+      return;
+    }
 
     if (!eventTitle.trim() || !eventDate) {
       toast({ title: "Error", description: "Event Title and Date are required.", variant: "destructive" });
       return;
     }
+    setIsSubmitting(true);
+    let result;
+    const eventData = {
+      title: eventTitle.trim(),
+      date: eventDate,
+      is_all_day: eventIsAllDay,
+      start_time: eventIsAllDay ? null : eventStartTime || null,
+      end_time: eventIsAllDay ? null : eventEndTime || null,
+      description: eventDescription.trim() || null,
+      school_id: currentSchoolId,
+      // posted_by_user_id: currentUserId, // If tracking creator
+    };
 
-    let updatedEvents;
     if (editingEvent) {
-      updatedEvents = events.map(event => 
-        event.id === editingEvent.id ? { 
-          ...event, 
-          title: eventTitle.trim(),
-          date: eventDate,
-          isAllDay: eventIsAllDay,
-          startTime: eventIsAllDay ? undefined : eventStartTime,
-          endTime: eventIsAllDay ? undefined : eventEndTime,
-          description: eventDescription.trim() || undefined,
-        } : event
-      );
-      toast({ title: "Event Updated", description: "The event has been successfully updated."});
+      result = await updateCalendarEventAction(editingEvent.id, eventData);
     } else {
-      const newEventToAdd: CalendarEvent = {
-        id: String(Date.now()),
-        title: eventTitle.trim(),
-        date: eventDate,
-        isAllDay: eventIsAllDay,
-        startTime: eventIsAllDay ? undefined : eventStartTime,
-        endTime: eventIsAllDay ? undefined : eventEndTime,
-        description: eventDescription.trim() || undefined,
-      };
-      updatedEvents = [...events, newEventToAdd];
-      toast({ title: "Event Added", description: "The new event has been added to the calendar."});
+      result = await addCalendarEventAction(eventData);
     }
-    
-    updatedEvents.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    setEvents(updatedEvents);
-    updateLocalStorage(updatedEvents);
-    setIsFormDialogOpen(false);
-    resetForm();
+    setIsSubmitting(false);
+
+    if (result.ok) {
+      toast({ title: editingEvent ? "Event Updated" : "Event Added", description: result.message });
+      fetchEventsForSchool(); // Re-fetch events
+      setIsFormDialogOpen(false);
+      resetForm();
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
   };
 
-  const handleDeleteEvent = (id: string) => {
-    if (currentUserRole === 'student') return; 
+  const handleDeleteEvent = async (id: string) => {
+    if (currentUserRole === 'student' || !currentSchoolId) {
+        toast({title: "Error", description: "Action not permitted.", variant: "destructive"});
+        return;
+    }
     if (confirm("Are you sure you want to delete this event?")) {
-      const updatedEvents = events.filter(event => event.id !== id);
-      setEvents(updatedEvents);
-      updateLocalStorage(updatedEvents);
-      toast({ title: "Event Deleted", variant: "destructive" });
+      setIsSubmitting(true);
+      const result = await deleteCalendarEventAction(id, currentSchoolId);
+      setIsSubmitting(false);
+      if (result.ok) {
+        toast({ title: "Event Deleted", variant: "destructive" });
+        fetchEventsForSchool(); // Re-fetch events
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+      }
     }
   };
 
   const eventsOnSelectedDate = selectedDate 
     ? events.filter(event => {
-        // Compare dates by parsing them first to avoid timezone issues with direct string comparison
-        const eventDateObj = parseISO(event.date);
+        const eventDateObj = parseISO(event.date); // DB stores date as YYYY-MM-DD string
         return isValid(eventDateObj) && format(eventDateObj, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
       })
     : [];
 
-  const canManageEvents = currentUserRole !== 'student';
+  const canManageEvents = currentUserRole !== 'student' && !!currentSchoolId;
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Calendar & Events" 
-        description="Organize and view school events and activities. Events are saved locally."
+        description="Organize and view school events and activities."
         actions={
           canManageEvents ? (
-            <Button onClick={() => handleOpenFormDialog()}>
+            <Button onClick={() => handleOpenFormDialog()} disabled={isSubmitting}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add Event
             </Button>
           ) : null
         }
       />
+      
+      {isLoading && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading events...</div>}
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="md:col-span-1">
+      {!isLoading && !currentSchoolId && currentUserRole !== 'superadmin' && (
+        <Card><CardContent className="pt-6 text-center text-destructive">Cannot load calendar. User is not associated with a school.</CardContent></Card>
+      )}
+
+      {!isLoading && currentSchoolId && (
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="md:col-span-1">
+              <Card>
+                  <CardHeader><CardTitle>Calendar</CardTitle></CardHeader>
+                  <CardContent className="flex justify-center">
+                      <Calendar
+                          mode="single"
+                          selected={selectedDate}
+                          onSelect={(date) => {
+                              setSelectedDate(date);
+                              if(date && canManageEvents) setEventDate(format(date, 'yyyy-MM-dd'));
+                          }}
+                          className="rounded-md border"
+                          initialFocus
+                          disabled={isSubmitting}
+                      />
+                  </CardContent>
+              </Card>
+          </div>
+
+          <div className="md:col-span-2">
             <Card>
-                <CardHeader><CardTitle>Calendar</CardTitle></CardHeader>
-                <CardContent className="flex justify-center">
-                    <Calendar
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={(date) => {
-                            setSelectedDate(date);
-                            if(date && canManageEvents) setEventDate(format(date, 'yyyy-MM-dd'));
-                        }}
-                        className="rounded-md border"
-                        initialFocus
-                    />
-                </CardContent>
-            </Card>
-        </div>
-
-        <div className="md:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                Events for {selectedDate ? format(selectedDate, "MMMM d, yyyy") : 'Today'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 max-h-[calc(theme(space.96)_*_2)] overflow-y-auto">
-              {eventsOnSelectedDate.length > 0 ? eventsOnSelectedDate.map(event => (
-                <Card key={event.id} className="overflow-hidden">
-                  <CardHeader className="p-4">
-                    <div className="flex justify-between items-start gap-2">
-                      <div>
-                        <CardTitle className="text-lg">{event.title}</CardTitle>
-                        <CardDescription>
-                          {event.isAllDay ? 'All Day' : `${event.startTime || ''}${event.startTime && event.endTime ? ' - ' : ''}${event.endTime || ''}`}
-                        </CardDescription>
-                      </div>
-                      {canManageEvents && (
-                        <div className="flex gap-1 shrink-0">
-                          <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(event)}>
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteEvent(event.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+              <CardHeader>
+                <CardTitle>
+                  Events for {selectedDate ? format(selectedDate, "MMMM d, yyyy") : 'Today'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 max-h-[calc(theme(space.96)_*_2)] overflow-y-auto">
+                {eventsOnSelectedDate.length > 0 ? eventsOnSelectedDate.map(event => (
+                  <Card key={event.id} className="overflow-hidden">
+                    <CardHeader className="p-4">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <CardTitle className="text-lg">{event.title}</CardTitle>
+                          <CardDescription>
+                            {event.is_all_day ? 'All Day' : `${event.start_time || ''}${event.start_time && event.end_time ? ' - ' : ''}${event.end_time || ''}`}
+                          </CardDescription>
                         </div>
-                      )}
-                    </div>
-                  </CardHeader>
-                  {event.description && (
-                    <CardContent className="p-4 pt-0">
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p>
-                    </CardContent>
-                  )}
-                </Card>
-              )) : (
-                <p className="text-muted-foreground text-center py-4">No events scheduled for this day.</p>
-              )}
-            </CardContent>
-          </Card>
+                        {canManageEvents && (
+                          <div className="flex gap-1 shrink-0">
+                            <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(event)} disabled={isSubmitting}>
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button variant="destructive" size="icon" onClick={() => handleDeleteEvent(event.id)} disabled={isSubmitting}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </CardHeader>
+                    {event.description && (
+                      <CardContent className="p-4 pt-0">
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p>
+                      </CardContent>
+                    )}
+                  </Card>
+                )) : (
+                  <p className="text-muted-foreground text-center py-4">No events scheduled for this day.</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </div>
+      )}
 
       {canManageEvents && (
         <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
@@ -246,36 +284,39 @@ export default function CalendarEventsPage() {
               <div className="grid gap-4 py-4">
                 <div>
                   <Label htmlFor="eventTitle">Event Title</Label>
-                  <Input id="eventTitle" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder="Event Title" required />
+                  <Input id="eventTitle" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder="Event Title" required disabled={isSubmitting}/>
                 </div>
                 <div>
                   <Label htmlFor="eventDate">Date</Label>
-                  <Input type="date" id="eventDate" value={eventDate} onChange={(e) => setEventDate(e.target.value)} required />
+                  <Input type="date" id="eventDate" value={eventDate} onChange={(e) => setEventDate(e.target.value)} required disabled={isSubmitting}/>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <Checkbox id="eventIsAllDay" checked={eventIsAllDay} onCheckedChange={(checked) => setEventIsAllDay(!!checked)} />
+                  <Checkbox id="eventIsAllDay" checked={eventIsAllDay} onCheckedChange={(checked) => setEventIsAllDay(!!checked)} disabled={isSubmitting}/>
                   <Label htmlFor="eventIsAllDay">All-day event</Label>
                 </div>
                 {!eventIsAllDay && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="eventStartTime">Start Time</Label>
-                      <Input id="eventStartTime" type="time" value={eventStartTime} onChange={(e) => setEventStartTime(e.target.value)} />
+                      <Input id="eventStartTime" type="time" value={eventStartTime} onChange={(e) => setEventStartTime(e.target.value)} disabled={isSubmitting}/>
                     </div>
                     <div>
                       <Label htmlFor="eventEndTime">End Time</Label>
-                      <Input id="eventEndTime" type="time" value={eventEndTime} onChange={(e) => setEventEndTime(e.target.value)} />
+                      <Input id="eventEndTime" type="time" value={eventEndTime} onChange={(e) => setEventEndTime(e.target.value)} disabled={isSubmitting}/>
                     </div>
                   </div>
                 )}
                 <div>
                   <Label htmlFor="eventDescription">Description (Optional)</Label>
-                  <Textarea id="eventDescription" value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} placeholder="Event details..." />
+                  <Textarea id="eventDescription" value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} placeholder="Event details..." disabled={isSubmitting}/>
                 </div>
               </div>
               <DialogFooter>
-                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                <Button type="submit"><Save className="mr-2 h-4 w-4" /> {editingEvent ? 'Save Changes' : 'Add Event'}</Button>
+                <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
+                  {editingEvent ? 'Save Changes' : 'Add Event'}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
