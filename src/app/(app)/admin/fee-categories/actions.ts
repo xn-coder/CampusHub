@@ -13,6 +13,25 @@ interface FeeCategoryInput {
   school_id: string;
 }
 
+export async function getFeeCategoriesAction(schoolId: string): Promise<{ ok: boolean; message?: string; categories?: FeeCategory[] }> {
+  if (!schoolId) {
+    return { ok: false, message: "School ID is required." };
+  }
+  const supabaseAdmin = createSupabaseServerClient();
+  const { data, error } = await supabaseAdmin
+    .from('fee_categories')
+    .select('*')
+    .eq('school_id', schoolId)
+    .order('name');
+
+  if (error) {
+    console.error("Error fetching fee categories:", error);
+    return { ok: false, message: `Failed to fetch fee categories: ${error.message}` };
+  }
+  return { ok: true, categories: data || [] };
+}
+
+
 export async function createFeeCategoryAction(
   input: FeeCategoryInput
 ): Promise<{ ok: boolean; message: string; category?: FeeCategory }> {

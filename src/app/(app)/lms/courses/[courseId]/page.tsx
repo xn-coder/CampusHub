@@ -63,6 +63,7 @@ export default function ViewCourseContentPage() {
         .eq('id', courseId)
         .single();
 
+
       if (courseError || !courseData) {
         toast({ title: "Error", description: `Course not found or failed to load: ${courseError?.message || ''}`, variant: "destructive" });
         setIsLoading(false);

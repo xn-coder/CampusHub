@@ -14,7 +14,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, Tags, Search, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { createFeeCategoryAction, updateFeeCategoryAction, deleteFeeCategoryAction } from './actions';
+import { createFeeCategoryAction, updateFeeCategoryAction, deleteFeeCategoryAction, getFeeCategoriesAction } from './actions';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -66,15 +66,13 @@ export default function FeeCategoriesPage() {
 
   async function fetchFeeCategories(schoolId: string) {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('fee_categories')
-      .select('*')
-      .eq('school_id', schoolId)
-      .order('name');
-    if (error) {
-      toast({ title: "Error fetching fee categories", description: error.message, variant: "destructive" });
+    const result = await getFeeCategoriesAction(schoolId);
+      
+    if (result.ok && result.categories) {
+      setFeeCategories(result.categories);
     } else {
-      setFeeCategories(data || []);
+      toast({ title: "Error fetching fee categories", description: result.message || "An unknown error occurred", variant: "destructive" });
+      setFeeCategories([]);
     }
     setIsLoading(false);
   }
@@ -128,7 +126,7 @@ export default function FeeCategoriesPage() {
       toast({ title: editingCategory ? "Fee Category Updated" : "Fee Category Added", description: result.message });
       resetForm();
       setIsDialogOpen(false);
-      fetchFeeCategories(currentSchoolId);
+      if (currentSchoolId) fetchFeeCategories(currentSchoolId); // Re-fetch after action
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -141,8 +139,8 @@ export default function FeeCategoriesPage() {
       setIsSubmitting(true);
       const result = await deleteFeeCategoryAction(categoryId, currentSchoolId);
       toast({ title: result.ok ? "Fee Category Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
-      if (result.ok) {
-        fetchFeeCategories(currentSchoolId);
+      if (result.ok && currentSchoolId) {
+        fetchFeeCategories(currentSchoolId); // Re-fetch after action
       }
       setIsSubmitting(false);
     }
