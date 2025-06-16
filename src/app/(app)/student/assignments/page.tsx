@@ -21,15 +21,13 @@ export default function StudentAssignmentsPage() {
   const { toast } = useToast();
   const [myAssignments, setMyAssignments] = useState<EnrichedAssignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  // Removed studentSchoolId and studentClassId state as they are not strictly needed here
-  // if their values are directly used from the fetched studentData within the effect.
 
   useEffect(() => {
     async function fetchAssignments() {
       setIsLoading(true);
       const currentUserId = localStorage.getItem('currentUserId');
       if (!currentUserId) {
-        toast({ title: "Error", description: "User not identified.", variant: "destructive" });
+        toast({ title: "Error", description: "User not identified. Cannot load assignments.", variant: "destructive" });
         setIsLoading(false);
         return;
       }
@@ -42,14 +40,12 @@ export default function StudentAssignmentsPage() {
           .single();
 
         if (studentError || !studentData || !studentData.school_id || !studentData.class_id) {
-          toast({ title: "No Assignments", description: "No assignments found. This might be because you are not yet assigned to a class or school.", variant: "default" });
+          toast({ title: "No Assignments Found", description: "You may not be assigned to a class or school, or there are no assignments for your class yet.", variant: "default" });
           setMyAssignments([]);
           setIsLoading(false);
           return;
         }
         
-        // studentData.class_id and studentData.school_id are used directly below
-
         const { data: assignmentsData, error: assignmentsError } = await supabase
           .from('assignments')
           .select('*')
@@ -107,7 +103,7 @@ export default function StudentAssignmentsPage() {
       }
     }
     fetchAssignments();
-  }, []); // Changed dependency array to []
+  }, []); 
 
   const handleMockSubmit = (assignmentId: string) => {
     toast({
@@ -124,7 +120,7 @@ export default function StudentAssignmentsPage() {
       />
       {isLoading ? (
         <Card><CardContent className="pt-6 text-center text-muted-foreground flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading your assignments...</CardContent></Card>
-      ) : myAssignments.length === 0 ? ( // This check is fine, as it relies on the updated myAssignments state
+      ) : myAssignments.length === 0 ? (
          <Card><CardContent className="pt-6 text-center text-muted-foreground">No assignments posted for your class yet, or you might not be assigned to a class/school.</CardContent></Card>
       ) : (
         <div className="grid md:grid-cols-2 gap-6">
