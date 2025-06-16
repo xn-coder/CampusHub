@@ -158,14 +158,14 @@ interface GenerateCodesInput {
   course_id: string;
   num_codes: number;
   expires_in_days: number;
-  school_id?: string; // school_id from the course itself, not for the activation_codes table
+  school_id?: string; 
 }
 
 export async function generateActivationCodesAction(
   input: GenerateCodesInput
 ): Promise<{ ok: boolean; message: string; generatedCodes?: string[] }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { course_id, num_codes, expires_in_days } = input; // school_id is destructured but not used for newCodes
+  const { course_id, num_codes, expires_in_days } = input; 
   const newCodes: Partial<CourseActivationCode>[] = [];
   const displayableCodes: string[] = [];
   const currentDate = new Date();
@@ -187,7 +187,6 @@ export async function generateActivationCodesAction(
       is_used: false,
       generated_date: currentDate.toISOString(),
       expiry_date: expiryDate,
-      // school_id: school_id || null, // Removed as column doesn't exist in lms_course_activation_codes
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
@@ -208,8 +207,8 @@ export async function generateActivationCodesAction(
 // --- Enrollment Management ---
 interface ManageEnrollmentInput {
   course_id: string;
-  user_profile_id: string; // This is students.id or teachers.id
-  user_type: UserRole; // UserRole is 'student' | 'teacher' | 'admin' | 'superadmin'
+  user_profile_id: string; 
+  user_type: UserRole; 
 }
 
 export async function enrollUserInCourseAction(
@@ -380,10 +379,8 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
     if (userSchoolId && userRole !== 'superadmin') {
       courseQuery = courseQuery.or(`school_id.eq.${userSchoolId},school_id.is.null`);
     } else if (userRole !== 'superadmin') { 
-      // Non-superadmin without school ID sees only global courses
       courseQuery = courseQuery.is('school_id', null);
     }
-    // Superadmin sees all courses if userSchoolId is not specified by them for filtering
 
     const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
 
@@ -517,7 +514,7 @@ export async function activateCourseWithCodeAction(
     const { data: codeToActivate, error: codeError } = await supabase
       .from('lms_course_activation_codes')
       .select('*')
-      .eq('code', activationCode.toUpperCase()) // Ensure code is checked in uppercase
+      .eq('code', activationCode.toUpperCase())
       .single();
 
     if (codeError || !codeToActivate) {
@@ -540,12 +537,8 @@ export async function activateCourseWithCodeAction(
         return { ok: false, message: "Course associated with this code not found."};
     }
 
-    // Check if the course is school-specific and if the user belongs to that school
     if (courseDetails.school_id && courseDetails.school_id !== schoolId) {
-        // Only restrict if the user is not a superadmin. Superadmins might activate codes for any school.
-        // However, the activation process itself might be tied to the user's current school context.
-        // For now, if user's schoolId doesn't match course's school_id (and course has one), it's an error.
-        return { ok: false, message: "This activation code is for a course not available to your school or context."};
+        return { ok: false, message: "This activation code is for a course not available to your school."};
     }
 
 
@@ -555,7 +548,6 @@ export async function activateCourseWithCodeAction(
       user_type: userRole,
     });
 
-    // If enrollmentResult.ok is false but the message indicates already enrolled, proceed to mark code as used.
     if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
       return { ok: false, message: `Enrollment failed: ${enrollmentResult.message}` };
     }
@@ -567,17 +559,18 @@ export async function activateCourseWithCodeAction(
 
     if (updateCodeError) {
       console.error("Critical: Failed to mark activation code as used after enrollment:", updateCodeError);
-      // Even if marking the code fails, the user is enrolled. Return success for enrollment.
       return { 
         ok: true, 
-        message: `Course enrolled successfully: ${courseDetails.title || 'the course'}. However, there was an issue finalizing the activation code. Please contact support if problems persist.`,
+        message: "Course enrolled, but there was an issue finalizing the activation code. Please contact support if problems persist.",
         activatedCourse: { id: courseDetails.id, title: courseDetails.title }
       };
     }
 
     revalidatePath('/lms/available-courses');
     revalidatePath(`/lms/courses/${codeToActivate.course_id}`);
-    if(userRole === 'student') revalidatePath('/student/study-material');
+    if (userRole === 'student') {
+      revalidatePath('/student/study-material');
+    }
 
 
     return { 
@@ -596,3 +589,4 @@ export async function activateCourseWithCodeAction(
     
 
     
+
