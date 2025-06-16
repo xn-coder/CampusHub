@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -44,25 +43,29 @@ export default function TeacherStudentScoresPage() {
           setCurrentTeacherId(teacherProfile.id);
           setCurrentSchoolId(teacherProfile.school_id);
 
-          Promise.all([
-            supabase.from('classes').select('*').eq('teacher_id', teacherProfile.id).eq('school_id', teacherProfile.school_id),
-            supabase.from('exams').select('*').eq('school_id', teacherProfile.school_id),
-            supabase.from('subjects').select('*').eq('school_id', teacherProfile.school_id),
-          ]).then(([classesRes, examsRes, subjectsRes]) => {
-            if (classesRes.error) toast({ title: "Error fetching classes", variant: "destructive" });
-            else setAssignedClasses(classesRes.data || []);
-            
-            if (examsRes.error) toast({ title: "Error fetching exams", variant: "destructive" });
-            else setAllExams(examsRes.data || []);
+          if (teacherProfile.id && teacherProfile.school_id) {
+            Promise.all([
+                supabase.from('classes').select('*').eq('teacher_id', teacherProfile.id).eq('school_id', teacherProfile.school_id),
+                supabase.from('exams').select('*').eq('school_id', teacherProfile.school_id),
+                supabase.from('subjects').select('*').eq('school_id', teacherProfile.school_id),
+            ]).then(([classesRes, examsRes, subjectsRes]) => {
+                if (classesRes.error) toast({ title: "Error fetching classes", variant: "destructive" });
+                else setAssignedClasses(classesRes.data || []);
+                
+                if (examsRes.error) toast({ title: "Error fetching exams", variant: "destructive" });
+                else setAllExams(examsRes.data || []);
 
-            if (subjectsRes.error) toast({ title: "Error fetching subjects", variant: "destructive" });
-            else setAllSubjects(subjectsRes.data || []);
-            
+                if (subjectsRes.error) toast({ title: "Error fetching subjects", variant: "destructive" });
+                else setAllSubjects(subjectsRes.data || []);
+                
+                setIsFetchingInitialData(false);
+            }).catch(err => {
+                toast({ title: "Error fetching initial data", description: err.message, variant: "destructive"});
+                setIsFetchingInitialData(false);
+            });
+          } else {
             setIsFetchingInitialData(false);
-          }).catch(err => {
-            toast({ title: "Error fetching initial data", description: err.message, variant: "destructive"});
-            setIsFetchingInitialData(false);
-          });
+          }
         });
     } else {
         toast({ title: "Error", description: "Teacher not identified.", variant: "destructive"});
@@ -108,9 +111,10 @@ export default function TeacherStudentScoresPage() {
           setIsLoading(false);
         });
     } else {
-        setScores({});
+        setScores({}); // Reset scores if exam or class is not selected
     }
-  }, [selectedExamId, selectedClassId, studentsInSelectedClass, currentSchoolId, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedExamId, selectedClassId, studentsInSelectedClass.length, currentSchoolId, toast]);
 
 
   const handleScoreChange = (studentId: string, value: string) => {
@@ -120,7 +124,7 @@ export default function TeacherStudentScoresPage() {
   const getSubjectName = (subjectId: string) => allSubjects.find(s => s.id === subjectId)?.name || 'N/A';
 
   const filteredExamsForSelectedClass = selectedClassId 
-    ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id)
+    ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id) // Show exams specific to class OR general exams
     : [];
   
   const selectedExamDetails = allExams.find(ex => ex.id === selectedExamId);
@@ -238,7 +242,7 @@ export default function TeacherStudentScoresPage() {
                       <TableCell className="font-medium">{student.name}</TableCell>
                       <TableCell>
                         <Input 
-                          type="text" 
+                          type="text" // Use text to allow grades like A+, or numbers
                           value={scores[student.id] || ''}
                           onChange={(e) => handleScoreChange(student.id, e.target.value)}
                           placeholder={selectedExamDetails?.max_marks ? `Score / ${selectedExamDetails.max_marks}` : "Enter score/grade"}
@@ -263,4 +267,3 @@ export default function TeacherStudentScoresPage() {
     </div>
   );
 }
-

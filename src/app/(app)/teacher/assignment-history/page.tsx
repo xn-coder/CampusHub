@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -9,101 +8,158 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import type { Assignment, ClassData } from '@/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { Assignment, ClassData, Subject, UserRole } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { ScrollText, CalendarDays, ClipboardList, Info, Edit2, Save } from 'lucide-react';
+import { ScrollText, CalendarDays, ClipboardList, Info, Edit2, Save, Trash2, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-
-const MOCK_ASSIGNMENTS_KEY = 'mockAssignmentsData';
-const MOCK_CLASSES_KEY = 'mockClassesData';
+import { supabase } from '@/lib/supabaseClient';
+import { getTeacherAssignmentsAction, updateAssignmentAction, deleteAssignmentAction } from '../post-assignments/actions';
 
 export default function TeacherAssignmentHistoryPage() {
   const { toast } = useToast();
   const [postedAssignments, setPostedAssignments] = useState<Assignment[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
+  const [editSubjectId, setEditSubjectId] = useState<string | undefined>('');
   // Target class remains non-editable for this iteration
 
   useEffect(() => {
-    setIsLoading(true);
-    if (typeof window !== 'undefined') {
-      const teacherId = localStorage.getItem('currentUserId');
-      setCurrentTeacherId(teacherId);
+    async function fetchData() {
+      setIsLoading(true);
+      const teacherUserId = localStorage.getItem('currentUserId');
+      if (!teacherUserId) {
+        toast({ title: "Error", description: "Teacher not identified.", variant: "destructive"});
+        setIsLoading(false); return;
+      }
 
-      const storedAssignments = localStorage.getItem(MOCK_ASSIGNMENTS_KEY);
-      const allAssignmentsData: Assignment[] = storedAssignments ? JSON.parse(storedAssignments) : [];
+      const {data: teacherProfile, error: profileError} = await supabase
+        .from('teachers').select('id, school_id').eq('user_id', teacherUserId).single();
       
-      const storedClassesData = localStorage.getItem(MOCK_CLASSES_KEY);
-      setAllClasses(storedClassesData ? JSON.parse(storedClassesData) : []);
+      if (profileError || !teacherProfile) {
+        toast({title: "Error", description: "Could not load teacher profile.", variant: "destructive"});
+        setIsLoading(false); return;
+      }
+      setCurrentTeacherId(teacherProfile.id);
+      setCurrentSchoolId(teacherProfile.school_id);
 
-      if (teacherId) {
-        const teacherSpecificAssignments = allAssignmentsData
-          .filter(asm => asm.teacherId === teacherId)
-          .sort((a, b) => parseISO(b.dueDate).getTime() - parseISO(a.dueDate).getTime()); 
-        setPostedAssignments(teacherSpecificAssignments);
+      if (teacherProfile.id && teacherProfile.school_id) {
+        const [assignmentsResult, classesResult, subjectsResult] = await Promise.all([
+          getTeacherAssignmentsAction(teacherProfile.id, teacherProfile.school_id),
+          supabase.from('classes').select('*').eq('school_id', teacherProfile.school_id),
+          supabase.from('subjects').select('*').eq('school_id', teacherProfile.school_id)
+        ]);
+
+        if (assignmentsResult.ok && assignmentsResult.assignments) {
+          setPostedAssignments(assignmentsResult.assignments.sort((a, b) => parseISO(b.due_date).getTime() - parseISO(a.due_date).getTime()));
+        } else {
+          toast({title: "Error", description: assignmentsResult.message || "Failed to load assignments", variant: "destructive"});
+        }
+
+        if (classesResult.error) toast({title: "Error", description: "Failed to load class data", variant: "destructive"});
+        else setAllClasses(classesResult.data || []);
+
+        if (subjectsResult.error) toast({title: "Error", description: "Failed to load subject data", variant: "destructive"});
+        else setAllSubjects(subjectsResult.data || []);
       }
       setIsLoading(false);
     }
-  }, []);
+    fetchData();
+  }, [toast]);
 
-  const getClassSectionName = (classSectionId: string): string => {
-    const cls = allClasses.find(c => c.id === classSectionId);
+  const getClassSectionName = (classId: string): string => {
+    const cls = allClasses.find(c => c.id === classId);
     return cls ? `${cls.name} - ${cls.division}` : 'N/A';
+  };
+  
+  const getSubjectName = (subjectId?: string | null): string => {
+    if (!subjectId) return 'N/A';
+    return allSubjects.find(s => s.id === subjectId)?.name || 'N/A';
   };
 
   const handleOpenEditDialog = (assignment: Assignment) => {
     setEditingAssignment(assignment);
     setEditTitle(assignment.title);
-    setEditDescription(assignment.description);
-    setEditDueDate(assignment.dueDate);
+    setEditDescription(assignment.description || '');
+    setEditDueDate(assignment.due_date);
+    setEditSubjectId(assignment.subject_id || '');
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateAssignment = (e: FormEvent) => {
+  const handleUpdateAssignment = async (e: FormEvent) => {
     e.preventDefault();
-    if (!editingAssignment || !editTitle.trim() || !editDescription.trim() || !editDueDate) {
-      toast({ title: "Error", description: "Title, Description, and Due Date are required.", variant: "destructive"});
+    if (!editingAssignment || !editTitle.trim() || !editDescription.trim() || !editDueDate || !currentTeacherId || !currentSchoolId) {
+      toast({ title: "Error", description: "Title, Description, Due Date and context are required.", variant: "destructive"});
       return;
     }
-
-    const updatedAssignment: Assignment = {
-      ...editingAssignment,
+    setIsLoading(true);
+    const result = await updateAssignmentAction({
+      id: editingAssignment.id,
       title: editTitle.trim(),
       description: editDescription.trim(),
-      dueDate: editDueDate,
-    };
+      due_date: editDueDate,
+      subject_id: editSubjectId || null,
+      teacher_id: currentTeacherId, // Include these for the action
+      school_id: currentSchoolId,   // Include these for the action
+      // class_id is not part of input for update action as it's not editable here
+    });
+    setIsLoading(false);
 
-    const updatedAssignmentsList = postedAssignments.map(asm => 
-      asm.id === editingAssignment.id ? updatedAssignment : asm
-    );
-    setPostedAssignments(updatedAssignmentsList); // Update local state for UI
-    
-    // Update localStorage with the full list of all assignments
-    const allAssignmentsData: Assignment[] = JSON.parse(localStorage.getItem(MOCK_ASSIGNMENTS_KEY) || '[]');
-    const globallyUpdatedAssignments = allAssignmentsData.map(asm =>
-      asm.id === editingAssignment.id ? updatedAssignment : asm
-    );
-    localStorage.setItem(MOCK_ASSIGNMENTS_KEY, JSON.stringify(globallyUpdatedAssignments));
-
-    toast({ title: "Assignment Updated", description: `"${updatedAssignment.title}" has been updated.`});
-    setIsEditDialogOpen(false);
-    setEditingAssignment(null);
+    if (result.ok) {
+      toast({ title: "Assignment Updated", description: `"${result.assignment?.title}" has been updated.`});
+      setPostedAssignments(prev => prev.map(asm => asm.id === editingAssignment.id ? result.assignment! : asm).sort((a, b) => parseISO(b.due_date).getTime() - parseISO(a.due_date).getTime()));
+      setIsEditDialogOpen(false);
+      setEditingAssignment(null);
+    } else {
+      toast({ title: "Error Updating Assignment", description: result.message, variant: "destructive"});
+    }
   };
+  
+  const handleDeleteAssignment = async (assignmentId: string) => {
+    if (!currentTeacherId || !currentSchoolId) return;
+    if (confirm("Are you sure you want to delete this assignment? This action cannot be undone.")) {
+        setIsLoading(true);
+        const result = await deleteAssignmentAction(assignmentId, currentTeacherId, currentSchoolId);
+        setIsLoading(false);
+        if (result.ok) {
+            toast({title: "Assignment Deleted", description: result.message, variant: "destructive"});
+            setPostedAssignments(prev => prev.filter(asm => asm.id !== assignmentId));
+        } else {
+            toast({title: "Error Deleting Assignment", description: result.message, variant: "destructive"});
+        }
+    }
+  };
+
+  if (isLoading && !currentTeacherId) {
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading data...</span></div>;
+  }
+  if (!currentTeacherId || !currentSchoolId) {
+       return (
+        <div className="flex flex-col gap-6">
+        <PageHeader title="My Posted Assignment History" />
+        <Card><CardContent className="pt-6 text-center text-destructive">
+            Could not load teacher profile or school association.
+        </CardContent></Card>
+        </div>
+    );
+  }
 
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="My Posted Assignment History" 
-        description="View and edit assignments you have posted." 
+        description="View and manage assignments you have posted." 
       />
       <Card>
         <CardHeader>
@@ -112,7 +168,7 @@ export default function TeacherAssignmentHistoryPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-muted-foreground text-center py-4">Loading assignment history...</p>
+            <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading assignment history...</div>
           ) : !currentTeacherId ? (
              <p className="text-destructive text-center py-4">Could not identify teacher. Please log in again.</p>
           ) : postedAssignments.length === 0 ? (
@@ -123,6 +179,7 @@ export default function TeacherAssignmentHistoryPage() {
                 <TableRow>
                   <TableHead><ClipboardList className="inline-block mr-1 h-4 w-4"/>Title</TableHead>
                   <TableHead>Target Class</TableHead>
+                  <TableHead>Subject</TableHead>
                   <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4"/>Due Date</TableHead>
                   <TableHead><Info className="inline-block mr-1 h-4 w-4"/>Description</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -132,12 +189,16 @@ export default function TeacherAssignmentHistoryPage() {
                 {postedAssignments.map((assignment) => (
                   <TableRow key={assignment.id}>
                     <TableCell className="font-medium">{assignment.title}</TableCell>
-                    <TableCell>{getClassSectionName(assignment.classSectionId)}</TableCell>
-                    <TableCell>{format(parseISO(assignment.dueDate), 'PP')}</TableCell>
+                    <TableCell>{getClassSectionName(assignment.class_id)}</TableCell>
+                    <TableCell>{getSubjectName(assignment.subject_id)}</TableCell>
+                    <TableCell>{format(parseISO(assignment.due_date), 'PP')}</TableCell>
                     <TableCell className="max-w-xs truncate">{assignment.description}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(assignment)}>
+                    <TableCell className="text-right space-x-1">
+                      <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(assignment)} disabled={isLoading}>
                         <Edit2 className="h-4 w-4" />
+                      </Button>
+                       <Button variant="destructive" size="icon" onClick={() => handleDeleteAssignment(assignment.id)} disabled={isLoading}>
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -162,24 +223,36 @@ export default function TeacherAssignmentHistoryPage() {
             <div className="grid gap-4 py-4">
               <div>
                 <Label htmlFor="editTitle">Title</Label>
-                <Input id="editTitle" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required />
+                <Input id="editTitle" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required disabled={isLoading}/>
               </div>
               <div>
                 <Label htmlFor="editDescription">Description</Label>
-                <Textarea id="editDescription" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={5} required />
+                <Textarea id="editDescription" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={5} required disabled={isLoading}/>
               </div>
               <div>
                 <Label htmlFor="editDueDate">Due Date</Label>
-                <Input id="editDueDate" type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} required />
+                <Input id="editDueDate" type="date" value={format(parseISO(editDueDate), 'yyyy-MM-dd')} onChange={(e) => setEditDueDate(e.target.value)} required disabled={isLoading}/>
+              </div>
+              <div>
+                 <Label htmlFor="editSubjectId">Subject (Optional)</Label>
+                 <Select value={editSubjectId} onValueChange={setEditSubjectId} disabled={isLoading}>
+                    <SelectTrigger id="editSubjectId"><SelectValue placeholder="Select subject (optional)"/></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="">None</SelectItem>
+                        {allSubjects.map(s => (<SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>))}
+                    </SelectContent>
+                 </Select>
               </div>
               <div>
                  <Label>Target Class (Read-only)</Label>
-                 <Input value={editingAssignment ? getClassSectionName(editingAssignment.classSectionId) : ''} readOnly disabled />
+                 <Input value={editingAssignment ? getClassSectionName(editingAssignment.class_id) : ''} readOnly disabled />
               </div>
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit"><Save className="mr-2 h-4 w-4" /> Save Changes</Button>
+              <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Changes
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

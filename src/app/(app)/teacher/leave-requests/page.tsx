@@ -62,6 +62,21 @@ export default function TeacherLeaveRequestsPage() {
     fetchTeacherAndLeaveData();
   }, [toast]);
 
+  if (isLoading && !currentTeacherId) {
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading data...</span></div>;
+  }
+   if (!currentTeacherId || !currentSchoolId) {
+       return (
+        <div className="flex flex-col gap-6">
+        <PageHeader title="Student Leave Requests" />
+        <Card><CardContent className="pt-6 text-center text-destructive">
+            Could not load teacher profile or school association.
+        </CardContent></Card>
+        </div>
+    );
+  }
+
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 

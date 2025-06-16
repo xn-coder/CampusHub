@@ -1,4 +1,3 @@
-
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -25,12 +24,19 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
   const errors: string[] = [];
 
   for (const scoreInput of scoresToSave) {
+    // Validate score input - ensure it's not empty or just whitespace if it's a string
+    if (typeof scoreInput.score === 'string' && scoreInput.score.trim() === '') {
+        // Skip this record or handle as an error, for now, skip
+        // errors.push(`Score for student ${scoreInput.student_id} cannot be empty.`);
+        continue; 
+    }
+    
     const { data: existingScore, error: fetchError } = await supabaseAdmin
       .from('student_scores')
       .select('id')
       .eq('student_id', scoreInput.student_id)
       .eq('exam_id', scoreInput.exam_id)
-      .eq('class_id', scoreInput.class_id) // Ensure class_id is part of the uniqueness check
+      .eq('class_id', scoreInput.class_id) 
       .eq('school_id', scoreInput.school_id)
       .single();
 
