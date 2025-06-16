@@ -15,9 +15,9 @@ import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord, Acade
 import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
 import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient'; 
-import { 
-  addClassNameAction, updateClassNameAction, deleteClassNameAction, 
+import { supabase } from '@/lib/supabaseClient';
+import {
+  addClassNameAction, updateClassNameAction, deleteClassNameAction,
   addSectionNameAction, updateSectionNameAction, deleteSectionNameAction,
   activateClassSectionAction, deleteActiveClassAction,
   assignStudentsToClassAction, assignTeacherToClassAction,
@@ -47,7 +47,7 @@ export default function ClassManagementPage() {
   const [classNamesList, setClassNamesList] = useState<ClassNameRecord[]>([]);
   const [sectionNamesList, setSectionNamesList] = useState<SectionRecord[]>([]);
   const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
-  const [allStudentsInSchool, setAllStudentsInSchool] = useState<Student[]>([]); 
+  const [allStudentsInSchool, setAllStudentsInSchool] = useState<Student[]>([]);
   const [allTeachersInSchool, setAllTeachersInSchool] = useState<Teacher[]>([]);
   const [allAcademicYears, setAllAcademicYears] = useState<AcademicYear[]>([]);
 
@@ -63,11 +63,11 @@ export default function ClassManagementPage() {
 
   const [editingClassNameRecord, setEditingClassNameRecord] = useState<ClassNameRecord | null>(null);
   const [editingSectionNameRecord, setEditingSectionNameRecord] = useState<SectionRecord | null>(null);
-  
+
   const [selectedClassNameIdForActivation, setSelectedClassNameIdForActivation] = useState<string>('');
   const [selectedSectionNameIdForActivation, setSelectedSectionNameIdForActivation] = useState<string>('');
   const [selectedAcademicYearIdForActivation, setSelectedAcademicYearIdForActivation] = useState<string | undefined>(undefined);
-  
+
   const [classToManageStudents, setClassToManageStudents] = useState<ClassData | null>(null);
   const [selectedStudentIdsForDialog, setSelectedStudentIdsForDialog] = useState<string[]>([]);
   const [classToAssignTeacher, setClassToAssignTeacher] = useState<ClassData | null>(null);
@@ -78,10 +78,10 @@ export default function ClassManagementPage() {
     setIsLoading(true);
     try {
         const [
-            classNamesResult, 
-            sectionNamesResult, 
+            classNamesResult,
+            sectionNamesResult,
             activeClassesResult,
-            studentsResult, 
+            studentsResult,
             teachersResult,
             academicYearsResult
         ] = await Promise.all([
@@ -98,7 +98,7 @@ export default function ClassManagementPage() {
 
         if (sectionNamesResult.ok && sectionNamesResult.sectionNames) setSectionNamesList(sectionNamesResult.sectionNames);
         else toast({ title: "Error fetching section names", description: sectionNamesResult.message || "Unknown error", variant: "destructive" });
-        
+
         if (activeClassesResult.ok && activeClassesResult.activeClasses) setActiveClasses(activeClassesResult.activeClasses);
         else toast({ title: "Error fetching active classes", description: activeClassesResult.message || "Unknown error", variant: "destructive" });
 
@@ -116,7 +116,7 @@ export default function ClassManagementPage() {
     } finally {
         setIsLoading(false);
     }
-  }, [toast]);
+  }, []); // Removed toast from dependency array
 
 
   useEffect(() => {
@@ -149,7 +149,7 @@ export default function ClassManagementPage() {
     return allTeachersInSchool.find(t => t.id === teacherId)?.name || 'N/A';
   };
   const getAcademicYearName = (yearId?: string | null): string => {
-    if (!yearId) return 'General'; 
+    if (!yearId) return 'General';
     return allAcademicYears.find(ay => ay.id === yearId)?.name || 'N/A';
   };
 
@@ -161,10 +161,10 @@ export default function ClassManagementPage() {
     setIsSubmitting(true);
     const result = await addClassNameAction(newClassNameInput, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    setNewClassNameInput(''); 
+    setNewClassNameInput('');
     if (result.classNames) {
       setClassNamesList(result.classNames);
-    } else if (currentSchoolId) { 
+    } else if (currentSchoolId) {
       fetchAllData(currentSchoolId);
     }
     setIsSubmitting(false);
@@ -216,14 +216,14 @@ export default function ClassManagementPage() {
     const result = await addSectionNameAction(newSectionNameInput, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     setNewSectionNameInput('');
-    if (result.sectionNames) { 
+    if (result.sectionNames) {
       setSectionNamesList(result.sectionNames);
     } else if (currentSchoolId) {
       fetchAllData(currentSchoolId);
     }
     setIsSubmitting(false);
   };
-  
+
   const handleOpenEditSectionNameDialog = (sectionRecord: SectionRecord) => {
     setEditingSectionNameRecord(sectionRecord);
     setEditNameInput(sectionRecord.name);
@@ -275,9 +275,9 @@ export default function ClassManagementPage() {
     }
     setIsSubmitting(true);
 
-    const result = await activateClassSectionAction({ 
-      classNameId: selectedClassNameIdForActivation, 
-      sectionNameId: selectedSectionNameIdForActivation, 
+    const result = await activateClassSectionAction({
+      classNameId: selectedClassNameIdForActivation,
+      sectionNameId: selectedSectionNameIdForActivation,
       schoolId: currentSchoolId,
       academicYearId: selectedAcademicYearIdForActivation
     });
@@ -310,7 +310,7 @@ export default function ClassManagementPage() {
   };
 
   const handleStudentSelectionChange = (studentId: string, checked: boolean) => {
-    setSelectedStudentIdsForDialog(prev => 
+    setSelectedStudentIdsForDialog(prev =>
       checked ? [...prev, studentId] : prev.filter(id => id !== studentId)
     );
   };
@@ -321,7 +321,7 @@ export default function ClassManagementPage() {
     const result = await assignStudentsToClassAction(classToManageStudents.id, selectedStudentIdsForDialog, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok && currentSchoolId) {
-      fetchAllData(currentSchoolId); 
+      fetchAllData(currentSchoolId);
       setIsManageStudentsDialogOpen(false);
     }
     setIsSubmitting(false);
@@ -329,7 +329,7 @@ export default function ClassManagementPage() {
 
   const handleOpenAssignTeacherDialog = (cls: ClassData) => {
     setClassToAssignTeacher(cls);
-    setSelectedTeacherIdForDialog(cls.teacher_id || 'unassign'); 
+    setSelectedTeacherIdForDialog(cls.teacher_id || 'unassign');
     setIsAssignTeacherDialogOpen(true);
   };
 
@@ -359,8 +359,8 @@ export default function ClassManagementPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader 
-        title="Class & Section Configuration" 
+      <PageHeader
+        title="Class & Section Configuration"
         description="Manage class names, section names, and activate class-sections for student/teacher assignment."
       />
 
@@ -379,10 +379,10 @@ export default function ClassManagementPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-2">
-                <Input 
-                  value={newClassNameInput} 
-                  onChange={(e) => setNewClassNameInput(e.target.value)} 
-                  placeholder="Enter new class name (e.g., Grade 10)" 
+                <Input
+                  value={newClassNameInput}
+                  onChange={(e) => setNewClassNameInput(e.target.value)}
+                  placeholder="Enter new class name (e.g., Grade 10)"
                   className="flex-grow"
                   disabled={isSubmitting}
                 />
@@ -418,9 +418,9 @@ export default function ClassManagementPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-2">
-                <Input 
-                  value={newSectionNameInput} 
-                  onChange={(e) => setNewSectionNameInput(e.target.value)} 
+                <Input
+                  value={newSectionNameInput}
+                  onChange={(e) => setNewSectionNameInput(e.target.value)}
                   placeholder="Enter new section name (e.g., Section A)"
                   className="flex-grow"
                   disabled={isSubmitting}
@@ -496,7 +496,7 @@ export default function ClassManagementPage() {
           </Card>
         </TabsContent>
       </Tabs>
-      
+
       {/* Dialog for Activating Class Section */}
       <Dialog open={isActivateClassSectionDialogOpen} onOpenChange={setIsActivateClassSectionDialogOpen}>
         <DialogContent>
@@ -554,11 +554,11 @@ export default function ClassManagementPage() {
             </DialogHeader>
             <div className="py-4">
                 <Label htmlFor="editClassNameInput">New Class Name</Label>
-                <Input 
-                    id="editClassNameInput" 
-                    value={editNameInput} 
-                    onChange={(e) => setEditNameInput(e.target.value)} 
-                    placeholder="Enter new class name" 
+                <Input
+                    id="editClassNameInput"
+                    value={editNameInput}
+                    onChange={(e) => setEditNameInput(e.target.value)}
+                    placeholder="Enter new class name"
                     disabled={isSubmitting}
                 />
             </div>
@@ -579,11 +579,11 @@ export default function ClassManagementPage() {
             </DialogHeader>
             <div className="py-4">
                 <Label htmlFor="editSectionNameInput">New Section Name</Label>
-                <Input 
-                    id="editSectionNameInput" 
-                    value={editNameInput} 
-                    onChange={(e) => setEditNameInput(e.target.value)} 
-                    placeholder="Enter new section name" 
+                <Input
+                    id="editSectionNameInput"
+                    value={editNameInput}
+                    onChange={(e) => setEditNameInput(e.target.value)}
+                    placeholder="Enter new section name"
                     disabled={isSubmitting}
                 />
             </div>
@@ -604,11 +604,11 @@ export default function ClassManagementPage() {
           </DialogHeader>
           <div className="space-y-2 py-2 overflow-y-auto flex-grow">
             <p className="text-sm text-muted-foreground">Select students to assign to this class-section. Only students not currently assigned to another active class-section (within the same school) are shown, plus those already in this one.</p>
-            {allStudentsInSchool.filter(s => !s.class_id || s.class_id === classToManageStudents?.id).length > 0 ? 
+            {allStudentsInSchool.filter(s => !s.class_id || s.class_id === classToManageStudents?.id).length > 0 ?
                 allStudentsInSchool.filter(s => !s.class_id || s.class_id === classToManageStudents?.id).map(student => (
               <div key={student.id} className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
-                <Checkbox 
-                  id={`student-${student.id}`} 
+                <Checkbox
+                  id={`student-${student.id}`}
                   checked={selectedStudentIdsForDialog.includes(student.id)}
                   onCheckedChange={(checked) => handleStudentSelectionChange(student.id, !!checked)}
                   disabled={isSubmitting}
@@ -660,5 +660,3 @@ export default function ClassManagementPage() {
     </div>
   );
 }
-
-    
