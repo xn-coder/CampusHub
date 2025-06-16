@@ -8,12 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
-import type { CalendarEventDB as CalendarEvent, UserRole, User, CalendarEventTargetAudience } from '@/types';
+import type { CalendarEventDB as CalendarEvent, UserRole, User } from '@/types'; // Removed CalendarEventTargetAudience
 import { useState, useEffect, type FormEvent } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, Loader2 } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Removed Select for target_audience
 import { format, parseISO, isValid } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { addCalendarEventAction, updateCalendarEventAction, deleteCalendarEventAction, getCalendarEventsAction } from './actions';
@@ -39,8 +39,7 @@ export default function CalendarEventsPage() {
   const [eventStartTime, setEventStartTime] = useState('');
   const [eventEndTime, setEventEndTime] = useState('');
   const [eventDescription, setEventDescription] = useState('');
-  const [eventTargetAudience, setEventTargetAudience] = useState<CalendarEventTargetAudience | null>('all_school');
-
+  // const [eventTargetAudience, setEventTargetAudience] = useState<CalendarEventTargetAudience | null>('all_school'); // Removed
 
   useEffect(() => {
     async function loadUserContextAndEvents() {
@@ -63,10 +62,9 @@ export default function CalendarEventsPage() {
             .single();
 
           if (userErr || !userRec ) {
-            if (role && role !== 'superadmin') { // Only show error if not superadmin and user context was expected
+            if (role && role !== 'superadmin') { 
                  toast({title: "Error", description: "Could not determine user's school context.", variant: "destructive"});
             }
-            // For superadmin, schoolId can remain null if they are not tied to a specific school
             schoolId = userRec?.school_id || null; 
           } else {
             schoolId = userRec.school_id;
@@ -81,7 +79,7 @@ export default function CalendarEventsPage() {
         }
       }
 
-      if (schoolId && userId && role) { // Ensure all necessary params are available
+      if (schoolId && userId && role) { 
         const result = await getCalendarEventsAction(schoolId, userId, role);
         if (result.ok && result.events) {
           setEvents(result.events);
@@ -91,13 +89,12 @@ export default function CalendarEventsPage() {
         }
       } else if (role === 'superadmin' && !schoolId) {
         setEvents([]); 
-      } else if (role !== null && !schoolId) { // Other roles need a schoolId
+      } else if (role !== null && !schoolId) { 
         setEvents([]);
       }
       setIsLoading(false);
     }
     loadUserContextAndEvents();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
@@ -121,12 +118,12 @@ export default function CalendarEventsPage() {
     setEventStartTime('');
     setEventEndTime('');
     setEventDescription('');
-    setEventTargetAudience('all_school');
+    // setEventTargetAudience('all_school'); // Removed
     setEditingEvent(null);
   };
 
   const handleOpenFormDialog = (eventToEdit?: CalendarEvent) => {
-    if (currentUserRole === 'student' || currentUserRole === 'superadmin' && !currentSchoolId) return; // Superadmin needs school context to post
+    if (currentUserRole === 'student' || (currentUserRole === 'superadmin' && !currentSchoolId)) return; 
     if (eventToEdit) {
       setEditingEvent(eventToEdit);
       setEventTitle(eventToEdit.title);
@@ -135,7 +132,7 @@ export default function CalendarEventsPage() {
       setEventStartTime(eventToEdit.start_time || '');
       setEventEndTime(eventToEdit.end_time || '');
       setEventDescription(eventToEdit.description || '');
-      setEventTargetAudience(eventToEdit.target_audience || 'all_school');
+      // setEventTargetAudience(eventToEdit.target_audience || 'all_school'); // Removed
     } else {
       resetForm();
       if (selectedDate) {
@@ -151,11 +148,10 @@ export default function CalendarEventsPage() {
       toast({ title: "Error", description: "Action not permitted or missing context.", variant: "destructive" });
       return;
     }
-    if (currentUserRole === 'superadmin' && !currentSchoolId){ // Superadmin must have school context to post
+    if (currentUserRole === 'superadmin' && !currentSchoolId){ 
         toast({ title: "Error", description: "Superadmin must have a school context to post events.", variant: "destructive" });
         return;
     }
-
 
     if (!eventTitle.trim() || !eventDate) {
       toast({ title: "Error", description: "Event Title and Date are required.", variant: "destructive" });
@@ -173,25 +169,20 @@ export default function CalendarEventsPage() {
       school_id: currentSchoolId,
       posted_by_user_id: currentUserId,
       posted_by_role: currentUserRole,
-      target_audience: eventTargetAudience,
+      // target_audience: eventTargetAudience, // Removed
     };
 
     if (editingEvent) {
-      result = await updateCalendarEventAction(editingEvent.id, eventData);
+      result = await updateCalendarEventAction(editingEvent.id, eventData as any); // Cast as any because target_audience removed from input type
     } else {
       result = await addCalendarEventAction(eventData);
     }
     setIsSubmitting(false);
 
     if (result.ok) {
-      let audienceText = 'the relevant audience';
-      if (eventTargetAudience === 'all_school') audienceText = 'everyone in the school';
-      else if (eventTargetAudience === 'teachers_only') audienceText = 'teachers';
-      else if (eventTargetAudience === 'students_only') audienceText = 'students';
-
       toast({
         title: editingEvent ? "Event Updated" : "Event Added",
-        description: `${result.message} Notifications would be sent to ${audienceText}. (This is a mock notification).`
+        description: `${result.message} Notifications would be sent. (This is a mock notification).`
       });
       fetchEventsForSchool();
       setIsFormDialogOpen(false);
@@ -294,9 +285,6 @@ export default function CalendarEventsPage() {
                           <CardDescription>
                             {event.is_all_day ? 'All Day' : `${event.start_time || ''}${event.start_time && event.end_time ? ' - ' : ''}${event.end_time || ''}`}
                           </CardDescription>
-                          <CardDescription className="text-xs">
-                            Target: {event.target_audience === 'all_school' ? 'All School' : event.target_audience === 'teachers_only' ? 'Teachers Only' : event.target_audience === 'students_only' ? 'Students Only' : 'N/A'}
-                          </CardDescription>
                            <CardDescription className="text-xs">
                             By: {event.posted_by_role}
                           </CardDescription>
@@ -321,7 +309,7 @@ export default function CalendarEventsPage() {
                   </Card>
                 )) : !isLoading && (
                   <p className="text-muted-foreground text-center py-4">
-                    {currentSchoolId ? 'No events scheduled for this day for your role.' : (currentUserRole === 'superadmin' ? 'Select a school context to view events.' : 'No school associated to view events.')}
+                    {currentSchoolId ? 'No events scheduled for this day.' : (currentUserRole === 'superadmin' ? 'Select a school context to view events.' : 'No school associated to view events.')}
                   </p>
                 )}
               </CardContent>
@@ -362,23 +350,7 @@ export default function CalendarEventsPage() {
                     </div>
                   </div>
                 )}
-                <div>
-                  <Label htmlFor="eventTargetAudience">Target Audience</Label>
-                  <Select 
-                    value={eventTargetAudience || 'all_school'} 
-                    onValueChange={(value) => setEventTargetAudience(value as CalendarEventTargetAudience)}
-                    disabled={isSubmitting}
-                  >
-                    <SelectTrigger id="eventTargetAudience">
-                      <SelectValue placeholder="Select target audience" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all_school">All School</SelectItem>
-                      <SelectItem value="teachers_only">Teachers Only</SelectItem>
-                      <SelectItem value="students_only">Students Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Target Audience Select removed */}
                 <div>
                   <Label htmlFor="eventDescription">Description (Optional)</Label>
                   <Textarea id="eventDescription" value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} placeholder="Event details..." disabled={isSubmitting}/>

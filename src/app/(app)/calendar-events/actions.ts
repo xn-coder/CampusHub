@@ -3,7 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { CalendarEventDB, UserRole, CalendarEventTargetAudience } from '@/types';
+import type { CalendarEventDB, UserRole } from '@/types';
 
 interface CalendarEventInput {
   title: string;
@@ -15,7 +15,7 @@ interface CalendarEventInput {
   school_id: string;
   posted_by_user_id: string;
   posted_by_role: UserRole;
-  target_audience: CalendarEventTargetAudience | null;
+  // target_audience: CalendarEventTargetAudience | null; // Removed
 }
 
 export async function addCalendarEventAction(
@@ -35,7 +35,7 @@ export async function addCalendarEventAction(
         school_id: input.school_id,
         posted_by_user_id: input.posted_by_user_id,
         posted_by_role: input.posted_by_role,
-        target_audience: input.target_audience,
+        // target_audience: input.target_audience, // Removed
       })
       .select()
       .single();
@@ -54,7 +54,7 @@ export async function addCalendarEventAction(
 
 export async function updateCalendarEventAction(
   id: string,
-  input: Partial<CalendarEventInput> & { school_id: string; posted_by_user_id: string; posted_by_role: UserRole; target_audience: CalendarEventTargetAudience | null }
+  input: Partial<CalendarEventInput> & { school_id: string; posted_by_user_id: string; posted_by_role: UserRole } // Removed target_audience
 ): Promise<{ ok: boolean; message: string; event?: CalendarEventDB }> {
   const supabase = createSupabaseServerClient();
   
@@ -63,11 +63,9 @@ export async function updateCalendarEventAction(
     date: input.date,
     is_all_day: input.is_all_day,
     description: input.description,
-    // posted_by_user_id and posted_by_role might not need to be updated if the original poster should remain owner
-    // For simplicity, allow update if provided, or keep them as they are if not part of input
     posted_by_user_id: input.posted_by_user_id,
     posted_by_role: input.posted_by_role,
-    target_audience: input.target_audience,
+    // target_audience: input.target_audience, // Removed
   };
 
   if (input.is_all_day) {
@@ -123,27 +121,27 @@ export async function deleteCalendarEventAction(id: string, school_id: string): 
 
 export async function getCalendarEventsAction(
   school_id: string,
-  requesting_user_id: string,
-  requesting_user_role: UserRole
+  requesting_user_id: string, // Keep for potential future use, or if poster_by_user_id needs checking
+  requesting_user_role: UserRole // Keep for potential future use
 ): Promise<{ ok: boolean; message?: string; events?: CalendarEventDB[] }> {
   const supabase = createSupabaseServerClient();
   try {
+    // Simplified query: All users in a school see all events for that school.
+    // Superadmin must have a school_id context to see events.
     let query = supabase
       .from('calendar_events')
       .select('*')
-      .eq('school_id', school_id);
-
-    if (requesting_user_role === 'student') {
-      query = query.in('target_audience', ['all_school', 'students_only']);
-    } else if (requesting_user_role === 'teacher') {
-      // Teachers see events targeted to 'all_school', 'teachers_only', 
-      // or events they posted themselves (regardless of target_audience for their own posts).
-      query = query.or(`target_audience.eq.all_school,target_audience.eq.teachers_only,posted_by_user_id.eq.${requesting_user_id}`);
-    }
-    // For 'admin' and 'superadmin' (with a school_id context), no additional target_audience filter is applied; they see all events for the school.
-    
-    query = query.order('date', { ascending: true })
+      .eq('school_id', school_id)
+      .order('date', { ascending: true })
       .order('start_time', { ascending: true, nullsFirst: true });
+      
+    // Removed target_audience filtering as the column does not exist.
+    // Example of previous filtering, now commented out:
+    // if (requesting_user_role === 'student') {
+    //   query = query.in('target_audience', ['all_school', 'students_only']);
+    // } else if (requesting_user_role === 'teacher') {
+    //   query = query.or(`target_audience.eq.all_school,target_audience.eq.teachers_only,posted_by_user_id.eq.${requesting_user_id}`);
+    // }
 
     const { data, error } = await query;
 

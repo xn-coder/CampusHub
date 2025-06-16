@@ -10,7 +10,7 @@ export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
 export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
-export type CalendarEventTargetAudience = 'all_school' | 'teachers_only' | 'students_only';
+// export type CalendarEventTargetAudience = 'all_school' | 'teachers_only' | 'students_only'; // Removed as column doesn't exist
 
 
 export interface User {
@@ -174,7 +174,7 @@ export interface CalendarEventDB {
   school_id: string;
   posted_by_user_id: string;
   posted_by_role: UserRole;
-  target_audience: CalendarEventTargetAudience | null;
+  // target_audience: CalendarEventTargetAudience | null; // Removed as column doesn't exist
   created_at?: string;
   updated_at?: string;
 }
