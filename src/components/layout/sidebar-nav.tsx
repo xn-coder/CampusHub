@@ -32,8 +32,8 @@ import {
   Tags,
   Receipt,
   Printer,
-  UsersRound, 
-  DollarSign, 
+  // UsersRound, // Icon for Employee Registration, removed
+  // DollarSign, // Icon for Payroll, removed
   Clock, 
   CalendarRange, 
   BookOpenText,
@@ -47,7 +47,7 @@ import {
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { Skeleton } from '@/components/ui/skeleton'; 
 
 const superAdminNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -61,7 +61,7 @@ const adminNavItems: NavItem[] = [
   { href: '/school-details', label: 'School Details', icon: School },
   { href: '/admin/manage-students', label: 'Manage Students', icon: Users },
   { href: '/admin/manage-teachers', label: 'Manage Teachers', icon: Briefcase }, 
-  { href: '/admin/employee-registration', label: 'Employee Registration', icon: UsersRound },
+  // { href: '/admin/employee-registration', label: 'Employee Registration', icon: UsersRound }, // Removed
   { href: '/class-management', label: 'Class Management', icon: Presentation },
   { href: '/admin/lms/courses', label: 'LMS Courses', icon: Library }, 
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
@@ -73,7 +73,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/student-scores', label: 'Student Scores', icon: Award },
   { href: '/admin/attendance', label: 'Attendance Records', icon: ClipboardCheck }, 
   { href: '/admin/id-card-printing', label: 'ID Card Printing', icon: Printer },
-  { href: '/admin/payroll', label: 'Payroll', icon: DollarSign },
+  // { href: '/admin/payroll', label: 'Payroll', icon: DollarSign }, // Removed
   { href: '/admin/class-schedule', label: 'Class Schedule', icon: Clock },
   { href: '/communication', label: 'Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'Calendar & Events', icon: CalendarDays },
@@ -117,13 +117,13 @@ const studentNavItems: NavItem[] = [
 export default function SidebarNav() {
   const pathname = usePathname();
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null); 
-  const [isMounted, setIsMounted] = useState(false); // To track client-side mount
+  const [isMounted, setIsMounted] = useState(false); 
 
   useEffect(() => {
-    setIsMounted(true); // Component has mounted on the client
+    setIsMounted(true); 
     if (typeof window !== 'undefined') {
       const storedRole = localStorage.getItem('currentUserRole') as UserRole | null;
-      const validRoles: UserRole[] = ['superadmin', 'admin', 'teacher', 'student'];
+      const validRoles: UserRole[] = ['superadmin', 'admin', 'teacher', 'student']; // Removed 'staff'
       if (storedRole && validRoles.includes(storedRole)) {
         setCurrentUserRole(storedRole);
       } else {
@@ -133,11 +133,9 @@ export default function SidebarNav() {
   }, []);
 
   if (!isMounted) {
-    // Render a skeleton or minimal loading state that matches server render
-    // This ensures the initial client render is consistent with SSR.
     return (
       <SidebarMenu>
-        {[...Array(5)].map((_, i) => ( // Render 5 skeleton items as an example
+        {[...Array(5)].map((_, i) => ( 
           <SidebarMenuItem key={i}>
             <SidebarMenuButton
               asChild
@@ -155,7 +153,6 @@ export default function SidebarNav() {
   }
   
   if (currentUserRole === null) {
-     // After mounting, if role is still null (e.g., no role in localStorage), render a specific "no role" state or minimal nav
     return (
         <SidebarMenu>
             <SidebarMenuItem>

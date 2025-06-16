@@ -13,9 +13,8 @@ import type { UserRole } from '@/types';
 import { LogIn, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { ensureSuperAdminExists, attemptLogin } from './actions';
-import bcrypt from 'bcryptjs';
 
-const SUPERADMIN_SETUP_FLAG = 'SUPERADMIN_DB_SETUP_COMPLETE_FLAG_V5_PRISMA_BCRYPT';
+const SUPERADMIN_SETUP_FLAG = 'CAMPUSHUB_SUPERADMIN_DB_SETUP_V1';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,10 +35,9 @@ export default function LoginPage() {
           console.log(result.message);
         } else {
           console.error("Superadmin setup failed:", result.message);
-          // Optionally, inform the user if critical, though this is a background task.
         }
       }
-      setIsSuperAdminSetupDone(true); // Mark setup attempt as done
+      setIsSuperAdminSetupDone(true); 
     };
     setupSuperAdmin();
   }, []);
@@ -54,7 +52,7 @@ export default function LoginPage() {
     if (result.ok && result.user) {
       localStorage.setItem('currentUserRole', result.user.role);
       localStorage.setItem('currentUserId', result.user.id);
-      localStorage.setItem('currentUserName', result.user.name); // Store name for convenience
+      localStorage.setItem('currentUserName', result.user.name); 
       
       toast({
         title: "Login Successful!",
@@ -123,7 +121,7 @@ export default function LoginPage() {
                   <SelectItem value="admin">Admin (College Owner)</SelectItem>
                   <SelectItem value="teacher">Teacher</SelectItem>
                   <SelectItem value="student">Student</SelectItem>
-                  <SelectItem value="staff">Staff</SelectItem>
+                  {/* Staff role removed */}
                 </SelectContent>
               </Select>
             </div>

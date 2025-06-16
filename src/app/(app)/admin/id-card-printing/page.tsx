@@ -7,16 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Printer, Users, User, Aperture } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import type { Student, ClassData, User as AppUser } from '@/types';
+import type { Student, ClassData, User as AppUser, UserRole } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { supabase } from '@/lib/supabaseClient';
 
-
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_CLASSES_KEY = 'mockClassesData';
-const MOCK_USER_DB_KEY = 'mockUserDatabase';
 
 interface DisplayStudent extends Student {
   className?: string;
@@ -27,27 +24,43 @@ export default function AdminIdCardPrintingPage() {
   const { toast } = useToast();
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
-  const [allUsers, setAllUsers] = useState<AppUser[]>([]); // For staff
+  const [currentSchoolId, setCurrentSchoolId] = useState<string|null>(null);
 
-  const [selectedUserType, setSelectedUserType] = useState<'student' | 'staff'>('student');
-  const [selectedClassId, setSelectedClassId] = useState<string>('all'); // For student filtering
-  const [selectedStudents, setSelectedStudents] = useState<Record<string, boolean>>({}); // studentId: isSelected
-  const [selectedStaff, setSelectedStaff] = useState<Record<string, boolean>>({}); // staffId: isSelected
-  const [previewCard, setPreviewCard] = useState<DisplayStudent | AppUser | null>(null);
+
+  const [selectedUserType, setSelectedUserType] = useState<'student'>('student'); // Staff removed
+  const [selectedClassId, setSelectedClassId] = useState<string>('all'); 
+  const [selectedStudents, setSelectedStudents] = useState<Record<string, boolean>>({}); 
+  const [previewCard, setPreviewCard] = useState<DisplayStudent | null>(null); // Only student preview
 
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      setAllStudents(storedStudents ? JSON.parse(storedStudents) : []);
-
-      const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      setAllClasses(storedClasses ? JSON.parse(storedClasses) : []);
-      
-      const storedUsers = localStorage.getItem(MOCK_USER_DB_KEY);
-      setAllUsers(storedUsers ? JSON.parse(storedUsers).filter((u: AppUser) => u.role === 'teacher' || u.role === 'admin') : []); // Example: filter for staff
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (adminUserId) {
+        supabase.from('schools').select('id').eq('admin_user_id', adminUserId).single()
+            .then(({data: schoolData, error: schoolError}) => {
+                if (schoolError || !schoolData) {
+                    toast({title: "Error", description: "Admin not linked to a school.", variant: "destructive"});
+                    return;
+                }
+                setCurrentSchoolId(schoolData.id);
+                fetchStudents(schoolData.id);
+                fetchClasses(schoolData.id);
+            });
     }
-  }, []);
+  }, [toast]);
+  
+  async function fetchStudents(schoolId: string) {
+    const { data, error } = await supabase.from('students').select('*').eq('school_id', schoolId);
+    if (error) toast({ title: "Error fetching students", description: error.message, variant: "destructive" });
+    else setAllStudents(data || []);
+  }
+
+  async function fetchClasses(schoolId: string) {
+    const { data, error } = await supabase.from('classes').select('*').eq('school_id', schoolId);
+    if (error) toast({ title: "Error fetching classes", description: error.message, variant: "destructive" });
+    else setAllClasses(data || []);
+  }
+
   
   const getClassDetails = (classId: string): Pick<ClassData, 'name' | 'division'> | null => {
     const cls = allClasses.find(c => c.id === classId);
@@ -56,9 +69,9 @@ export default function AdminIdCardPrintingPage() {
 
   const displayStudents: DisplayStudent[] = useMemo(() => {
     return allStudents
-      .filter(student => selectedClassId === 'all' || student.classId === selectedClassId)
+      .filter(student => selectedClassId === 'all' || student.class_id === selectedClassId)
       .map(student => {
-        const classInfo = getClassDetails(student.classId);
+        const classInfo = student.class_id ? getClassDetails(student.class_id) : null;
         return {
           ...student,
           className: classInfo?.name,
@@ -71,10 +84,6 @@ export default function AdminIdCardPrintingPage() {
     setSelectedStudents(prev => ({ ...prev, [studentId]: checked }));
   };
   
-  const handleStaffSelection = (staffId: string, checked: boolean) => {
-    setSelectedStaff(prev => ({ ...prev, [staffId]: checked }));
-  };
-
   const handleSelectAllStudents = (checked: boolean) => {
     const newSelection: Record<string, boolean> = {};
     if (checked) {
@@ -83,15 +92,7 @@ export default function AdminIdCardPrintingPage() {
     setSelectedStudents(newSelection);
   };
 
-  const handleSelectAllStaff = (checked: boolean) => {
-     const newSelection: Record<string, boolean> = {};
-    if (checked) {
-      allUsers.forEach(u => newSelection[u.id] = true);
-    }
-    setSelectedStaff(newSelection);
-  }
-
-  const handlePreviewCard = (user: DisplayStudent | AppUser) => {
+  const handlePreviewCard = (user: DisplayStudent) => {
     setPreviewCard(user);
   };
   
@@ -102,10 +103,8 @@ export default function AdminIdCardPrintingPage() {
     if (selectedUserType === 'student') {
       itemsToPrint = displayStudents.filter(s => selectedStudents[s.id]);
       itemType = 'student';
-    } else { // staff
-      itemsToPrint = allUsers.filter(u => selectedStaff[u.id]);
-      itemType = 'staff';
     }
+    // Staff logic removed
 
     if (itemsToPrint.length === 0) {
       toast({ title: "No Selection", description: `Please select ${itemType}(s) to print ID cards for.`, variant: "destructive" });
@@ -115,15 +114,15 @@ export default function AdminIdCardPrintingPage() {
     console.log(`Printing ID cards for ${itemType}s:`, itemsToPrint.map(item => item.name));
   };
   
-  const isStudent = (user: DisplayStudent | AppUser): user is DisplayStudent => {
-    return 'classId' in user;
+  const isStudent = (user: DisplayStudent | AppUser | null): user is DisplayStudent => {
+    return user !== null && 'class_id' in user; // Using class_id to differentiate
   }
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="ID Card Printing Administration" 
-        description="Generate and print student and staff ID cards." 
+        description="Generate and print student ID cards." 
       />
       <div className="grid md:grid-cols-3 gap-6">
         <div className="md:col-span-2">
@@ -131,15 +130,7 @@ export default function AdminIdCardPrintingPage() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Select Users for ID Card</CardTitle>
-                <Select value={selectedUserType} onValueChange={(val) => setSelectedUserType(val as 'student' | 'staff')}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Select User Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="student">Students</SelectItem>
-                    <SelectItem value="staff">Staff</SelectItem>
-                  </SelectContent>
-                </Select>
+                {/* User type selection removed as 'staff' is gone */}
               </div>
               {selectedUserType === 'student' && (
                 <div className="mt-4">
@@ -179,7 +170,7 @@ export default function AdminIdCardPrintingPage() {
                         onCheckedChange={(checked) => handleStudentSelection(student.id, !!checked)}
                       />
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={student.profilePictureUrl} alt={student.name} data-ai-hint="person student" />
+                        <AvatarImage src={student.profile_picture_url || undefined} alt={student.name} data-ai-hint="person student" />
                         <AvatarFallback>{student.name.substring(0,1)}</AvatarFallback>
                       </Avatar>
                       <Label htmlFor={`student-${student.id}`} className="flex-grow cursor-pointer" onClick={() => handlePreviewCard(student)}>
@@ -191,39 +182,7 @@ export default function AdminIdCardPrintingPage() {
                   {displayStudents.length === 0 && <p className="text-muted-foreground text-center py-4">No students match filters.</p>}
                 </>
               )}
-              {selectedUserType === 'staff' && (
-                 <>
-                  {allUsers.length > 0 && (
-                    <div className="mb-2 flex items-center space-x-2">
-                       <Checkbox 
-                        id="selectAllStaff" 
-                        onCheckedChange={(checked) => handleSelectAllStaff(!!checked)}
-                        checked={allUsers.length > 0 && allUsers.every(u => selectedStaff[u.id])}
-                        />
-                       <Label htmlFor="selectAllStaff">Select All Staff ({allUsers.filter(s => selectedStaff[s.id]).length} selected)</Label>
-                    </div>
-                  )}
-                  {allUsers.map(staff => (
-                    <div key={staff.id} className="flex items-center space-x-3 p-2 hover:bg-muted/50 rounded-md">
-                      <Checkbox 
-                        id={`staff-${staff.id}`} 
-                        checked={!!selectedStaff[staff.id]} 
-                        onCheckedChange={(checked) => handleStaffSelection(staff.id, !!checked)}
-                      />
-                       <Avatar className="h-8 w-8">
-                        {/* Assuming staff might not have profilePictureUrl structured same as students */}
-                        <AvatarImage src={(staff as any).profilePictureUrl} alt={staff.name} data-ai-hint="person staff" /> 
-                        <AvatarFallback>{staff.name.substring(0,1)}</AvatarFallback>
-                      </Avatar>
-                      <Label htmlFor={`staff-${staff.id}`} className="flex-grow cursor-pointer" onClick={() => handlePreviewCard(staff)}>
-                        {staff.name} <span className="text-xs text-muted-foreground">({staff.role})</span>
-                      </Label>
-                      <Button variant="ghost" size="sm" onClick={() => handlePreviewCard(staff)}>Preview</Button>
-                    </div>
-                  ))}
-                  {allUsers.length === 0 && <p className="text-muted-foreground text-center py-4">No staff members found.</p>}
-                </>
-              )}
+             {/* Staff selection UI removed */}
             </CardContent>
             <CardFooter>
               <Button onClick={handlePrintSelected}><Printer className="mr-2 h-4 w-4" /> Print Selected ID Cards</Button>
@@ -237,35 +196,31 @@ export default function AdminIdCardPrintingPage() {
               <CardDescription>This is a temporary mock-up.</CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center items-center min-h-[250px]">
-              {previewCard ? (
+              {previewCard && isStudent(previewCard) ? (
                 <div className="w-80 h-48 bg-card border-2 border-primary rounded-lg shadow-xl flex flex-col p-4 relative text-foreground">
                   <div className="flex items-center mb-3">
                      <Aperture className="h-10 w-10 text-primary mr-3" />
                      <div>
                         <p className="text-sm font-bold uppercase text-primary">CampusHub School</p>
-                        <p className="text-xs text-muted-foreground">Student/Staff Identification</p>
+                        <p className="text-xs text-muted-foreground">Student Identification</p>
                      </div>
                   </div>
                   <div className="flex items-center">
                     <Avatar className="w-16 h-16 mr-3 border-2 border-primary">
-                       <AvatarImage src={isStudent(previewCard) ? previewCard.profilePictureUrl : (previewCard as any).profilePictureUrl} alt={previewCard.name} data-ai-hint="person portrait" />
+                       <AvatarImage src={(previewCard as DisplayStudent).profile_picture_url || undefined} alt={previewCard.name} data-ai-hint="person portrait" />
                        <AvatarFallback>{previewCard.name.substring(0,1)}</AvatarFallback>
                     </Avatar>
                     <div>
                       <p className="font-bold text-lg">{previewCard.name}</p>
                       <p className="text-xs">ID: {previewCard.id}</p>
-                      {isStudent(previewCard) ? (
-                        <p className="text-xs">Class: {previewCard.className} - {previewCard.classDivision || 'N/A'}</p>
-                      ) : (
-                        <p className="text-xs">Role: {(previewCard as AppUser).role}</p>
-                      )}
+                      <p className="text-xs">Class: {(previewCard as DisplayStudent).className} - {(previewCard as DisplayStudent).classDivision || 'N/A'}</p>
                       <p className="text-xs">Email: {previewCard.email}</p>
                     </div>
                   </div>
                    <p className="text-[0.6rem] text-muted-foreground absolute bottom-2 right-3">Academic Year: 2024-2025 (Mock)</p>
                 </div>
               ) : (
-                <p className="text-muted-foreground">Select a user to preview their ID card.</p>
+                <p className="text-muted-foreground">Select a student to preview their ID card.</p>
               )}
             </CardContent>
           </Card>

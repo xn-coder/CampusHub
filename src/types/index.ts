@@ -1,14 +1,13 @@
 
-
 import type { LucideIcon } from 'lucide-react';
 
 // ENUMS from DB
-export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student' | 'staff';
+export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student'; // Removed 'staff'
 export type SchoolStatus = 'Active' | 'Inactive';
 export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending AI Review' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
-export type PayrollStatus = 'Pending' | 'Paid' | 'Processing';
+// export type PayrollStatus = 'Pending' | 'Paid' | 'Processing'; // Removed as PayrollEntry is removed
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
 export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
@@ -19,10 +18,10 @@ export interface User {
   email: string;
   name: string;
   role: UserRole;
-  password_hash?: string; // Only used server-side for creation/validation
-  school_id?: string | null; // UUID, Optional: if user is directly tied to one school
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  password_hash?: string; 
+  school_id?: string | null; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
 export type NavItem = {
@@ -34,391 +33,337 @@ export type NavItem = {
   children?: NavItem[];
 };
 
-// Represents the 'schools' table
 export interface SchoolEntry { 
-  id: string; // UUID
+  id: string; 
   name: string;
   address?: string | null;
   admin_email: string;
   admin_name: string;
-  admin_user_id?: string | null; // UUID, Foreign key to users table
+  admin_user_id?: string | null; 
   status: SchoolStatus; 
   contact_phone?: string | null;
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// For displaying school details, could be similar to SchoolEntry or a subset
 export interface SchoolDetails extends SchoolEntry {}
 
 
 export interface Holiday {
-  id: string; // UUID
+  id: string; 
   name: string;
-  date: string; // DATE (YYYY-MM-DD string)
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  date: string; 
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'leave_applications' table
 export interface StoredLeaveApplication {
-  id: string; // UUID
-  student_profile_id: string; // UUID, Foreign key to students (profiles) table
-  student_name: string; // Name of the student (can be from form if applicant is not student)
+  id: string; 
+  student_profile_id: string; 
+  student_name: string; 
   reason: string;
   medical_notes_data_uri?: string | null;
-  submission_date: string; // TIMESTAMPTZ 
+  submission_date: string; 
   status: LeaveRequestStatus;
   ai_reasoning?: string | null;
-  applicant_user_id: string; // UUID, Foreign key to users table (user who submitted)
+  applicant_user_id: string; 
   applicant_role: UserRole; 
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'students' (profiles) table
 export interface Student {
-  id: string; // UUID, Profile ID
-  user_id: string; // UUID, Foreign key to users table (for login)
+  id: string; 
+  user_id: string; 
   name: string;
-  email: string; // Denormalized from users for convenience, or unique here
-  class_id?: string | null; // UUID, Foreign key to classes table
+  email: string; 
+  class_id?: string | null; 
   profile_picture_url?: string | null;
-  date_of_birth?: string | null; // DATE (YYYY-MM-DD string)
+  date_of_birth?: string | null; 
   guardian_name?: string | null;
   contact_number?: string | null;
   address?: string | null;
-  admission_date?: string | null; // DATE (YYYY-MM-DD string)
-  school_id: string; // UUID, Foreign key to schools table
+  admission_date?: string | null; 
+  school_id: string; 
   
-  lastLogin?: string; // For reporting, populated dynamically
-  mockLoginDate?: Date; // For client-side mock data generation
-  assignmentsSubmitted?: number; // For reporting
-  attendancePercentage?: number; // For reporting
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  lastLogin?: string; 
+  mockLoginDate?: Date; 
+  assignmentsSubmitted?: number; 
+  attendancePercentage?: number; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'teachers' (profiles) table
 export interface Teacher {
-  id: string; // UUID, Profile ID
-  user_id: string; // UUID, Foreign key to users table (for login)
+  id: string; 
+  user_id: string; 
   name: string;
   email: string;
-  subject?: string | null; // Primary subject
+  subject?: string | null; 
   profile_picture_url?: string | null;
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
   
-  pastAssignmentsCount?: number; // For reporting
-  pastClassesTaught?: string[]; // For reporting
+  pastAssignmentsCount?: number; 
+  pastClassesTaught?: string[]; 
 }
 
-// Represents 'employees' (profiles) table
-export interface Employee {
-  id: string; // UUID, Profile ID
-  user_id: string; // UUID, Foreign key to users table (for login)
-  name: string;
-  email: string;
-  role_title: string; // e.g., Accountant, Librarian
-  department?: string | null;
-  joining_date?: string | null; // DATE (YYYY-MM-DD string)
-  profile_picture_url?: string | null;
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
-}
+// Employee and PayrollEntry types are removed
 
-// Represents 'class_names' table
 export interface ClassNameRecord { 
-  id: string; // UUID
+  id: string; 
   name: string;
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'section_names' table
 export interface SectionRecord { 
-  id: string; // UUID
+  id: string; 
   name: string;
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'classes' (activated class-sections) table
 export interface ClassData { 
-  id: string; // UUID
-  name: string; // Denormalized from ClassNameRecord.name
-  division: string; // Denormalized from SectionRecord.name
-  class_name_id: string; // UUID, Foreign key to class_names table
-  section_name_id: string; // UUID, Foreign key to section_names table
-  teacher_id?: string | null; // UUID, Foreign key to teachers table (class teacher)
-  academic_year_id?: string | null; // UUID, Foreign key to academic_years table
-  school_id: string; // UUID, Foreign key to schools table
-  studentIds: string[]; // Populated dynamically for UI, actual link is students.class_id
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  id: string; 
+  name: string; 
+  division: string; 
+  class_name_id: string; 
+  section_name_id: string; 
+  teacher_id?: string | null; 
+  academic_year_id?: string | null; 
+  school_id: string; 
+  studentIds: string[]; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'announcements' table
 export interface Announcement {
-  id:string; // UUID
+  id:string; 
   title: string;
   content: string;
-  date: string; // TIMESTAMPTZ
+  date: string; 
   author_name: string; 
-  posted_by_user_id: string; // UUID, Foreign key to users table
+  posted_by_user_id: string; 
   posted_by_role: UserRole; 
-  target_class_id?: string | null; // UUID, Foreign key to classes table
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  target_class_id?: string | null; 
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'calendar_events' table
 export interface CalendarEvent {
-  id: string; // UUID
+  id: string; 
   title: string;
   description?: string | null;
-  date: string; // DATE (YYYY-MM-DD string)
-  start_time?: string | null; // TIME
-  end_time?: string | null; // TIME
+  date: string; 
+  start_time?: string | null; 
+  end_time?: string | null; 
   is_all_day: boolean;
-  posted_by_user_id: string; // UUID, Foreign key to users table
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  posted_by_user_id: string; 
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'academic_years' table
 export interface AcademicYear {
-  id: string; // UUID
+  id: string; 
   name: string;
-  start_date: string; // DATE (YYYY-MM-DD string)
-  end_date: string;   // DATE (YYYY-MM-DD string)
-  school_id: string;  // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  start_date: string; 
+  end_date: string;   
+  school_id: string;  
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'subjects' table
 export interface Subject {
-  id: string; // UUID
+  id: string; 
   name: string;
   code: string;
-  academic_year_id?: string | null; // UUID, Foreign key to academic_years table
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  academic_year_id?: string | null; 
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'exams' table
 export interface Exam {
-  id: string; // UUID
+  id: string; 
   name: string;
-  subject_id: string; // UUID, Foreign key to subjects table
-  class_id?: string | null; // UUID, Foreign key to classes table
-  academic_year_id?: string | null; // UUID, Foreign key to academic_years table
-  date: string; // DATE (YYYY-MM-DD string)
-  start_time?: string | null; // TIME
-  end_time?: string | null;   // TIME
-  max_marks?: number | null; // NUMERIC
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  subject_id: string; 
+  class_id?: string | null; 
+  academic_year_id?: string | null; 
+  date: string; 
+  start_time?: string | null; 
+  end_time?: string | null;   
+  max_marks?: number | null; 
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'assignments' table
 export interface Assignment {
-  id: string; // UUID
+  id: string; 
   title: string;
   description?: string | null;
-  due_date: string; // DATE (YYYY-MM-DD string)
-  class_id: string; // UUID, Foreign key to classes table
-  teacher_id: string; // UUID, Foreign key to teachers table
-  subject_id?: string | null; // UUID, Foreign key to subjects table
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  due_date: string; 
+  class_id: string; 
+  teacher_id: string; 
+  subject_id?: string | null; 
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'student_scores' table
 export interface StudentScore {
-  id: string; // UUID
-  student_id: string; // UUID, Foreign key to students table
-  exam_id: string; // UUID, Foreign key to exams table
-  subject_id: string; // UUID, Foreign key to subjects table (denormalized)
-  class_id: string; // UUID, Foreign key to classes table (class at time of exam)
+  id: string; 
+  student_id: string; 
+  exam_id: string; 
+  subject_id: string; 
+  class_id: string; 
   score: string | number; 
-  max_marks?: number | null; // NUMERIC (denormalized from exam)
-  recorded_by_teacher_id: string; // UUID, Foreign key to teachers table
-  date_recorded: string; // DATE (YYYY-MM-DD string)
+  max_marks?: number | null; 
+  recorded_by_teacher_id: string; 
+  date_recorded: string; 
   comments?: string | null;
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'admission_records' table
 export interface AdmissionRecord {
-  id: string; // UUID
+  id: string; 
   name: string;
   email: string;
-  date_of_birth?: string | null; // DATE (YYYY-MM-DD string)
+  date_of_birth?: string | null; 
   guardian_name?: string | null;
   contact_number?: string | null;
   address?: string | null;
-  admission_date: string; // DATE (YYYY-MM-DD string)
+  admission_date: string; 
   status: AdmissionStatus; 
-  class_id?: string | null; // UUID, Foreign key to classes table (target class)
-  student_profile_id?: string | null; // UUID, Foreign key to students table (once profile created)
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  class_id?: string | null; 
+  student_profile_id?: string | null; 
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'class_schedules' table
 export interface ClassScheduleItem {
-  id: string; // UUID
-  class_id: string; // UUID, Foreign key to classes table
-  subject_id: string; // UUID, Foreign key to subjects table
-  teacher_id: string; // UUID, Foreign key to teachers table
+  id: string; 
+  class_id: string; 
+  subject_id: string; 
+  teacher_id: string; 
   day_of_week: DayOfWeek; 
-  start_time: string; // TIME
-  end_time: string;   // TIME
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  start_time: string; 
+  end_time: string;   
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'attendance_records' table
 export interface AttendanceRecord { 
-  id?: string; // UUID
-  student_id: string; // UUID, Foreign key to students table
-  class_id: string; // UUID, Foreign key to classes table
-  date: string; // DATE (YYYY-MM-DD string)
+  id?: string; 
+  student_id: string; 
+  class_id: string; 
+  date: string; 
   status: AttendanceStatus; 
   remarks?: string | null;
-  taken_by_teacher_id: string; // UUID, Foreign key to teachers table
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  taken_by_teacher_id: string; 
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-export interface ClassAttendance { // For client-side structure if needed
+export interface ClassAttendance { 
   classSectionId: string;
   records: AttendanceRecord[];
 }
 
-// Represents 'fee_categories' table
 export interface FeeCategory {
-  id: string; // UUID
+  id: string; 
   name: string;
   description?: string | null;
-  amount?: number | null; // NUMERIC
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  amount?: number | null; 
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'student_fee_payments' table
 export interface StudentFeePayment {
-  id: string; // UUID
-  student_id: string; // UUID, Foreign key to students table
-  fee_category_id: string; // UUID, Foreign key to fee_categories table
-  academic_year_id?: string | null; // UUID, Foreign key to academic_years table
-  assigned_amount: number; // NUMERIC
-  paid_amount: number; // NUMERIC
-  due_date?: string | null; // DATE (YYYY-MM-DD string)
-  payment_date?: string | null; // DATE (YYYY-MM-DD string)
+  id: string; 
+  student_id: string; 
+  fee_category_id: string; 
+  academic_year_id?: string | null; 
+  assigned_amount: number; 
+  paid_amount: number; 
+  due_date?: string | null; 
+  payment_date?: string | null; 
   status: PaymentStatus; 
   notes?: string | null;
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  school_id: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'payroll_entries' table
-export interface PayrollEntry {
-  id: string; // UUID
-  employee_id: string; // UUID, Foreign key to employees table
-  designation: string;
-  basic_salary: number; // NUMERIC
-  payment_date?: string | null; // DATE (YYYY-MM-DD string)
-  status: PayrollStatus; 
-  month?: number | null; // Integer
-  year?: number | null; // Integer
-  school_id: string; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
-}
+// PayrollEntry removed
 
-// LMS Types
-// Represents 'lms_course_resources' table
 export interface CourseResource {
-  id: string; // UUID
-  course_id: string; // UUID, Foreign key to lms_courses table
+  id: string; 
+  course_id: string; 
   title: string;
   type: CourseResourceType; 
   url_or_content: string; 
   file_name?: string | null;
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'lms_courses' table
 export interface Course {
-  id: string; // UUID
+  id: string; 
   title: string;
   description?: string | null;
   is_paid: boolean;
-  price?: number | null; // NUMERIC
-  school_id?: string | null; // UUID, Foreign key to schools table
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  price?: number | null; 
+  school_id?: string | null; 
+  created_at?: string; 
+  updated_at?: string; 
 
-  // For client-side convenience, data will be fetched from related tables
   resources?: {
     ebooks: CourseResource[];
     videos: CourseResource[];
     notes: CourseResource[];
     webinars: CourseResource[];
   };
-  enrolledStudentIds?: string[]; // Array of student UUIDs
-  enrolledTeacherIds?: string[]; // Array of teacher UUIDs
+  enrolledStudentIds?: string[]; 
+  enrolledTeacherIds?: string[]; 
 }
 
-// Represents 'lms_course_activation_codes' table
 export interface CourseActivationCode {
-  id: string; // UUID
-  course_id: string; // UUID, Foreign key to lms_courses table
+  id: string; 
+  course_id: string; 
   code: string; 
   is_used: boolean;
-  used_by_user_id?: string | null; // UUID, Foreign key to users table
-  generated_date: string; // TIMESTAMPTZ
-  expiry_date?: string | null; // TIMESTAMPTZ
-  created_at?: string; // TIMESTAMPTZ
-  updated_at?: string; // TIMESTAMPTZ
+  used_by_user_id?: string | null; 
+  generated_date: string; 
+  expiry_date?: string | null; 
+  created_at?: string; 
+  updated_at?: string; 
 }
 
-// Represents 'lms_student_course_enrollments' table
 export interface StudentCourseEnrollment {
-    id: string; // UUID
-    student_id: string; // UUID, FK to students table
-    course_id: string; // UUID, FK to lms_courses table
-    enrolled_at?: string; // TIMESTAMPTZ
+    id: string; 
+    student_id: string; 
+    course_id: string; 
+    enrolled_at?: string; 
 }
 
-// Represents 'lms_teacher_course_enrollments' table
 export interface TeacherCourseEnrollment {
-    id: string; // UUID
-    teacher_id: string; // UUID, FK to teachers table
-    course_id: string; // UUID, FK to lms_courses table
-    assigned_at?: string; // TIMESTAMPTZ
+    id: string; 
+    teacher_id: string; 
+    course_id: string; 
+    assigned_at?: string; 
 }
-
