@@ -88,8 +88,8 @@ export interface Student {
   admission_date?: string | null;
   school_id: string;
 
-  lastLogin?: string; 
-  mockLoginDate?: Date | string; 
+  lastLogin?: string;
+  mockLoginDate?: Date | string;
   assignmentsSubmitted?: number;
   attendancePercentage?: number;
   created_at?: string;
@@ -213,6 +213,19 @@ export interface Exam {
   updated_at?: string;
 }
 
+export interface AssignmentSubmission {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  school_id: string;
+  submission_date: string; // ISO string
+  file_path: string;
+  file_name: string;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Assignment {
   id: string;
   title: string;
@@ -224,7 +237,9 @@ export interface Assignment {
   school_id: string;
   created_at?: string;
   updated_at?: string;
+  submission?: AssignmentSubmission | null; // For student view
 }
+
 
 export interface StudentScore {
   id: string;
@@ -292,9 +307,9 @@ export interface AttendanceRecord {
 }
 
 export interface ClassAttendance {
-  class_id: string; 
-  date: string; 
-  records: { 
+  class_id: string;
+  date: string;
+  records: {
       studentId: string;
       status: AttendanceStatus;
   }[];
@@ -347,7 +362,7 @@ export interface Course {
 }
 
 export interface CourseWithEnrollmentStatus extends Course {
-  isEnrolled?: boolean; 
+  isEnrolled?: boolean;
 }
 
 
@@ -372,7 +387,6 @@ export interface CourseActivationCode {
   used_at?: string | null;
   generated_date: string;
   expiry_date?: string | null;
-  // school_id?: string | null; // Removed as column doesn't exist
   created_at?: string;
   updated_at?: string;
 }
@@ -381,7 +395,7 @@ export interface StudentCourseEnrollment {
     id: string;
     student_id: string; // This is students.id (student_profile_id)
     course_id: string;
-    enrolled_at?: string; 
+    enrolled_at?: string;
 }
 
 export interface TeacherCourseEnrollment {
@@ -390,6 +404,3 @@ export interface TeacherCourseEnrollment {
     course_id: string;
     assigned_at?: string;
 }
-    
-
-    
