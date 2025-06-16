@@ -55,25 +55,20 @@ export default function AvailableLmsCoursesPage() {
               setCurrentSchoolId(profile.school_id);
             }
           } else if (userRole === 'admin' || userRole === 'superadmin') {
-            // For admin/superadmin, they don't enroll this way, but we need schoolId for course filtering if admin
              const { data: userRec, error: userErr } = await supabase
               .from('users').select('school_id').eq('id', uId).single();
             if (userRec) userSchoolId = userRec.school_id;
-            setCurrentSchoolId(userSchoolId); // May be null for superadmin
+            setCurrentSchoolId(userSchoolId); 
           }
         }
       }
         
-      // Fetch courses:
-      // 1. Courses specific to the user's school_id (if they have one)
-      // 2. Global courses (school_id is NULL)
       let courseQuery = supabase.from('lms_courses').select('*');
       if (userSchoolId) {
         courseQuery = courseQuery.or(`school_id.eq.${userSchoolId},school_id.is.null`);
-      } else if (userRole !== 'superadmin') { // Non-superadmin without schoolId sees only global
+      } else if (userRole !== 'superadmin') { 
         courseQuery = courseQuery.is('school_id', null);
       }
-      // Superadmin without a specific school context selected (userSchoolId is null) sees all courses
 
       const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
 
@@ -82,8 +77,9 @@ export default function AvailableLmsCoursesPage() {
         setCourses([]);
       } else {
         setCourses(coursesData || []);
-        if (userProfileId && userRole && userSchoolId && (coursesData && coursesData.length > 0)) {
+        if (userProfileId && userRole && (coursesData && coursesData.length > 0)) {
            // Student or Teacher, fetch their specific enrollments
+           // For students, schoolId is on enrollment record. For teachers, it's not.
           await fetchEnrollmentStatuses(coursesData.map(c => c.id), userProfileId, userRole, userSchoolId);
         }
       }
@@ -93,16 +89,22 @@ export default function AvailableLmsCoursesPage() {
   }, [toast]);
 
 
-  async function fetchEnrollmentStatuses(courseIds: string[], userProfileId: string, role: UserRole, schoolId: string) {
+  async function fetchEnrollmentStatuses(courseIds: string[], userProfileId: string, role: UserRole, schoolId: string | null) {
     const enrollmentTable = role === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
     const userIdColumn = role === 'student' ? 'student_id' : 'teacher_id';
 
-    const { data: enrollments, error } = await supabase
+    let query = supabase
       .from(enrollmentTable)
       .select('course_id')
       .eq(userIdColumn, userProfileId)
-      .in('course_id', courseIds)
-      .eq('school_id', schoolId); // Enrollments are school-specific
+      .in('course_id', courseIds);
+
+    if (role === 'student' && schoolId) {
+        query = query.eq('school_id', schoolId); // Student enrollments are school-scoped
+    }
+    // Teacher enrollments are not directly filtered by school_id on the enrollment table itself.
+
+    const { data: enrollments, error } = await query;
 
     if (error) {
       toast({ title: "Error", description: "Failed to fetch enrollment status.", variant: "destructive" });
@@ -128,7 +130,7 @@ export default function AvailableLmsCoursesPage() {
       course_id: courseId,
       user_profile_id: currentUserProfileId,
       user_type: currentUserRole,
-      school_id: currentSchoolId,
+      school_id: currentSchoolId, // Pass the user's school_id
     });
     setIsEnrolling(prev => ({ ...prev, [courseId]: false }));
 
@@ -195,9 +197,9 @@ export default function AvailableLmsCoursesPage() {
                     {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>} 
                     {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
                   </Button>
-                ) : ( // Case for admin/superadmin or users who can't enroll via this page
+                ) : ( 
                    <Button asChild className="w-full" variant="outline">
-                     <Link href={`/admin/lms/courses/${course.id}/content`}> {/* Admin/Superadmin view content/manage */}
+                     <Link href={`/admin/lms/courses/${course.id}/content`}> 
                        <Eye className="mr-2 h-4 w-4"/> View Details
                      </Link>
                    </Button>
@@ -210,3 +212,4 @@ export default function AvailableLmsCoursesPage() {
     </div>
   );
 }
+

@@ -210,7 +210,7 @@ interface ManageEnrollmentInput {
   course_id: string;
   user_profile_id: string; 
   user_type: 'student' | 'teacher';
-  school_id: string; 
+  school_id: string; // This is the school_id of the user (student/teacher)
 }
 
 export async function enrollUserInCourseAction(
@@ -222,13 +222,20 @@ export async function enrollUserInCourseAction(
   const userIdColumn = user_type === 'student' ? 'student_id' : 'teacher_id';
   const enrolledAtColumn = user_type === 'student' ? 'enrolled_at' : 'assigned_at';
 
-  const { data: existingEnrollment, error: fetchError } = await supabaseAdmin
+  let existingEnrollmentCheckQuery = supabaseAdmin
     .from(enrollmentTable)
     .select('id')
     .eq(userIdColumn, user_profile_id)
-    .eq('course_id', course_id)
-    .eq('school_id', school_id) 
-    .single();
+    .eq('course_id', course_id);
+
+  if (user_type === 'student') {
+    existingEnrollmentCheckQuery = existingEnrollmentCheckQuery.eq('school_id', school_id);
+  }
+  // For teachers, school_id is not directly on lms_teacher_course_enrollments, so we don't filter by it here.
+  // Scoping for teacher enrollment is implicitly handled by the fact that teachers belong to a school,
+  // and courses can be global or school-specific.
+
+  const { data: existingEnrollment, error: fetchError } = await existingEnrollmentCheckQuery.single();
   
   if (fetchError && fetchError.code !== 'PGRST116') { 
     console.error(`Error checking existing enrollment for ${user_type}:`, fetchError);
@@ -241,12 +248,16 @@ export async function enrollUserInCourseAction(
   const enrollmentData: any = { 
       id: uuidv4(), 
       course_id, 
-      school_id,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
   };
   enrollmentData[userIdColumn] = user_profile_id;
   enrollmentData[enrolledAtColumn] = new Date().toISOString();
+
+  if (user_type === 'student') {
+    enrollmentData.school_id = school_id; // Student enrollments are school-scoped
+  }
+  // Teacher enrollments do not have school_id on the enrollment record itself
 
 
   const { error } = await supabaseAdmin.from(enrollmentTable).insert(enrollmentData);
@@ -269,12 +280,18 @@ export async function unenrollUserFromCourseAction(
   const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
   const userIdColumn = user_type === 'student' ? 'student_id' : 'teacher_id';
 
-  const { error } = await supabaseAdmin
+  let deleteQuery = supabaseAdmin
     .from(enrollmentTable)
     .delete()
     .eq(userIdColumn, user_profile_id)
-    .eq('course_id', course_id)
-    .eq('school_id', school_id); 
+    .eq('course_id', course_id);
+
+  if (user_type === 'student') {
+    deleteQuery = deleteQuery.eq('school_id', school_id);
+  }
+  // For teachers, school_id is not directly on lms_teacher_course_enrollments
+
+  const { error } = await deleteQuery;
 
   if (error) {
     console.error(`Error unenrolling ${user_type}:`, error);
@@ -285,3 +302,5 @@ export async function unenrollUserFromCourseAction(
   revalidatePath('/lms/available-courses');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} unenrolled successfully.` };
 }
+
+    
