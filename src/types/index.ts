@@ -376,11 +376,7 @@ export interface StudentCourseEnrollment {
     id: string;
     student_id: string; // This is students.id (student_profile_id)
     course_id: string;
-    enrolled_at?: string; // This should be auto-populated by DB or explicitly set if needed
-    school_id: string;
-    // created_at and updated_at are optional for this table if handled by DB defaults
-    created_at?: string;
-    updated_at?: string;
+    enrolled_at?: string; 
 }
 
 export interface TeacherCourseEnrollment {
@@ -388,9 +384,6 @@ export interface TeacherCourseEnrollment {
     teacher_id: string; // This is teachers.id (teacher_profile_id)
     course_id: string;
     assigned_at?: string;
-    school_id?: string | null; // Made optional as per previous fixes
-    // created_at and updated_at are likely not on this table as per previous fixes
+    // school_id?: string | null; // As per previous fixes, this might not be here
 }
-    
-
     

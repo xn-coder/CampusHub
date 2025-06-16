@@ -8,14 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BookOpen, Video, FileText, Users, ExternalLink, AlertTriangle, Loader2 } from 'lucide-react';
-import type { Course, CourseResource, UserRole, StudentCourseEnrollment, TeacherCourseEnrollment, CourseResourceType } from '@/types';
+import type { Course, CourseResource, UserRole, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 
 type ResourceTabKey = 'ebooks' | 'videos' | 'notes' | 'webinars';
 
-// Mapping from DB resource type to the key used in Course.resources
 const dbTypeToResourceKey: Record<CourseResourceType, ResourceTabKey> = {
   ebook: 'ebooks',
   video: 'videos',
@@ -33,9 +32,9 @@ export default function ViewCourseContentPage() {
   const [course, setCourse] = useState<Course | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEnrolled, setIsEnrolled] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null); // This is users.id
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null); 
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
-  const [currentUserProfileId, setCurrentUserProfileId] = useState<string | null>(null); // students.id or teachers.id
+  const [currentUserProfileId, setCurrentUserProfileId] = useState<string | null>(null); 
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -49,7 +48,7 @@ export default function ViewCourseContentPage() {
           supabase.from(profileTable).select('id').eq('user_id', cUserId).single()
             .then(({data: profile, error}) => {
               if (error || !profile) console.error(`Error fetching ${cUserRole} profile id for enrollment check.`);
-              else setCurrentUserProfileId(profile.id);
+              else setCurrentUserProfileId(profile.id); // This is students.id or teachers.id
             });
         }
     }
@@ -63,7 +62,6 @@ export default function ViewCourseContentPage() {
       return;
     }
     
-    // Wait for currentUserProfileId to be set for student/teacher before proceeding with enrollment check
     if ((currentUserRole === 'student' || currentUserRole === 'teacher') && !currentUserProfileId) {
         setIsLoading(true);
         return;
@@ -107,29 +105,30 @@ export default function ViewCourseContentPage() {
       const enrichedCourse: Course = { ...(courseData as Course), resources: groupedResources };
       setCourse(enrichedCourse);
 
-      // Check enrollment status
-      let enrollmentCheckProfileId = currentUserProfileId; 
       let enrollmentTable = '';
       let fkColumnNameInEnrollmentTable = '';
+      let profileIdForCheck = '';
 
       if (currentUserRole === 'student') {
         enrollmentTable = 'lms_student_course_enrollments';
-        fkColumnNameInEnrollmentTable = 'student_id'; // Using students.id
+        fkColumnNameInEnrollmentTable = 'student_id'; 
+        profileIdForCheck = currentUserProfileId!; // students.id
       } else if (currentUserRole === 'teacher') {
         enrollmentTable = 'lms_teacher_course_enrollments';
-        fkColumnNameInEnrollmentTable = 'teacher_id'; // Using teachers.id
-      } else {
-        setIsEnrolled(true); // Admin/Superadmin are considered enrolled
+        fkColumnNameInEnrollmentTable = 'teacher_id';
+        profileIdForCheck = currentUserProfileId!; // teachers.id
+      } else { // admin/superadmin
+        setIsEnrolled(true); 
         setIsLoading(false);
         return;
       }
       
-      if (enrollmentCheckProfileId && enrollmentTable) {
+      if (profileIdForCheck && enrollmentTable) {
         const { data: enrollment, error: enrollmentError } = await supabase
           .from(enrollmentTable)
           .select('id')
           .eq('course_id', courseId)
-          .eq(fkColumnNameInEnrollmentTable, enrollmentCheckProfileId)
+          .eq(fkColumnNameInEnrollmentTable, profileIdForCheck)
           .maybeSingle(); 
 
         if (enrollmentError) {
@@ -137,7 +136,7 @@ export default function ViewCourseContentPage() {
         }
         setIsEnrolled(!!enrollment);
       } else {
-        setIsEnrolled(false);
+        setIsEnrolled(false); // If profileIdForCheck is somehow still null
       }
       setIsLoading(false);
     }
@@ -238,5 +237,3 @@ export default function ViewCourseContentPage() {
     </div>
   );
 }
-
-    

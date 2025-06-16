@@ -27,24 +27,24 @@ export default function AvailableLmsCoursesPage() {
   useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
-      let userProfileId: string | null = null; // This will be students.id or teachers.id
+      let userProfileId: string | null = null; 
       let userSchoolId: string | null = null;
       let userRole: UserRole | null = null;
-      let uId: string | null = null; // This will be users.id
+      let uId: string | null = null; 
 
       if (typeof window !== 'undefined') {
         userRole = localStorage.getItem('currentUserRole') as UserRole | null;
         uId = localStorage.getItem('currentUserId');
         setCurrentUserRole(userRole);
-        setCurrentUserId(uId); // Set the users.id to state
+        setCurrentUserId(uId); 
 
         if (uId && userRole) {
           const profileTable = userRole === 'student' ? 'students' : userRole === 'teacher' ? 'teachers' : null;
           if (profileTable) {
             const { data: profile, error: profileError } = await supabase
               .from(profileTable)
-              .select('id, school_id') // 'id' here is students.id or teachers.id
-              .eq('user_id', uId) // Link profile via users.id
+              .select('id, school_id') 
+              .eq('user_id', uId) 
               .single();
 
             if (profileError || !profile) {
@@ -52,7 +52,7 @@ export default function AvailableLmsCoursesPage() {
             } else {
               userProfileId = profile.id;
               userSchoolId = profile.school_id;
-              setCurrentUserProfileId(profile.id); // Set students.id or teachers.id to state
+              setCurrentUserProfileId(profile.id); 
               setCurrentSchoolId(profile.school_id);
             }
           } else if (userRole === 'admin' || userRole === 'superadmin') {
@@ -78,8 +78,8 @@ export default function AvailableLmsCoursesPage() {
         setCourses([]);
       } else {
         setCourses(coursesData || []);
-        if (uId && userRole && userProfileId && (coursesData && coursesData.length > 0)) {
-           await fetchEnrollmentStatuses(coursesData.map(c => c.id), userProfileId, userRole, userSchoolId);
+        if (userProfileId && userRole && (coursesData && coursesData.length > 0)) { // Use userProfileId for student/teacher
+           await fetchEnrollmentStatuses(coursesData.map(c => c.id), userProfileId, userRole);
         }
       }
       setIsLoading(false);
@@ -88,22 +88,16 @@ export default function AvailableLmsCoursesPage() {
   }, [toast]);
 
 
-  async function fetchEnrollmentStatuses(courseIds: string[], profileId: string, role: UserRole, schoolId: string | null) {
+  async function fetchEnrollmentStatuses(courseIds: string[], profileId: string, role: UserRole) {
     const enrollmentTable = role === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
     const fkColumnNameInEnrollmentTable = role === 'student' ? 'student_id' : 'teacher_id';
 
-    let query = supabase
+    const { data: enrollments, error } = await supabase
       .from(enrollmentTable)
       .select('course_id')
-      .eq(fkColumnNameInEnrollmentTable, profileId) // Use students.id or teachers.id
+      .eq(fkColumnNameInEnrollmentTable, profileId) 
       .in('course_id', courseIds);
-
-    if (role === 'student' && schoolId) { 
-        query = query.eq('school_id', schoolId); 
-    }
     
-    const { data: enrollments, error } = await query;
-
     if (error) {
       toast({ title: "Error", description: "Failed to fetch enrollment status.", variant: "destructive" });
       return;
@@ -118,8 +112,8 @@ export default function AvailableLmsCoursesPage() {
   }
 
   const handleEnrollUnpaid = async (courseId: string) => {
-    if (!currentUserProfileId || !currentUserRole || !currentSchoolId) { 
-      toast({ title: "Error", description: "User profile or school not identified. Cannot enroll.", variant: "destructive"});
+    if (!currentUserProfileId || !currentUserRole) { 
+      toast({ title: "Error", description: "User profile not identified. Cannot enroll.", variant: "destructive"});
       return;
     }
     
@@ -128,7 +122,6 @@ export default function AvailableLmsCoursesPage() {
       course_id: courseId,
       user_profile_id: currentUserProfileId, 
       user_type: currentUserRole,
-      school_id: currentSchoolId,
     });
     setIsEnrolling(prev => ({ ...prev, [courseId]: false }));
 
@@ -191,7 +184,7 @@ export default function AvailableLmsCoursesPage() {
                     </Link>
                   </Button>
                 ) : canEnroll && !course.is_paid ? (
-                  <Button onClick={() => handleEnrollUnpaid(course.id)} className="w-full" disabled={isEnrolling[course.id] || !currentUserProfileId || !currentSchoolId}>
+                  <Button onClick={() => handleEnrollUnpaid(course.id)} className="w-full" disabled={isEnrolling[course.id] || !currentUserProfileId}>
                     {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>} 
                     {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
                   </Button>
@@ -210,5 +203,3 @@ export default function AvailableLmsCoursesPage() {
     </div>
   );
 }
-
-    
