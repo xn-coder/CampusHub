@@ -372,7 +372,7 @@ export interface CourseActivationCode {
   used_at?: string | null;
   generated_date: string;
   expiry_date?: string | null;
-  school_id?: string | null;
+  // school_id?: string | null; // Removed as column doesn't exist
   created_at?: string;
   updated_at?: string;
 }
@@ -390,4 +390,6 @@ export interface TeacherCourseEnrollment {
     course_id: string;
     assigned_at?: string;
 }
+    
+
     

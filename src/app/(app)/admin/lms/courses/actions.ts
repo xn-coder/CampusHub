@@ -158,14 +158,14 @@ interface GenerateCodesInput {
   course_id: string;
   num_codes: number;
   expires_in_days: number;
-  school_id?: string; 
+  school_id?: string; // school_id from the course itself, not for the activation_codes table
 }
 
 export async function generateActivationCodesAction(
   input: GenerateCodesInput
 ): Promise<{ ok: boolean; message: string; generatedCodes?: string[] }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { course_id, num_codes, expires_in_days, school_id } = input;
+  const { course_id, num_codes, expires_in_days } = input; // school_id is destructured but not used for newCodes
   const newCodes: Partial<CourseActivationCode>[] = [];
   const displayableCodes: string[] = [];
   const currentDate = new Date();
@@ -187,7 +187,7 @@ export async function generateActivationCodesAction(
       is_used: false,
       generated_date: currentDate.toISOString(),
       expiry_date: expiryDate,
-      school_id: school_id || null, 
+      // school_id: school_id || null, // Removed as column doesn't exist in lms_course_activation_codes
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
@@ -426,4 +426,6 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
 }
     
     
+    
+
     
