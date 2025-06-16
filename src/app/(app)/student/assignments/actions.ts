@@ -148,7 +148,7 @@ export async function submitAssignmentFileAction(formData: FormData): Promise<{
   }
 
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-  const filePath = `public/assignment_submissions/${schoolId}/${studentId}/${assignmentId}/${uuidv4()}-${sanitizedFileName}`;
+  const filePath = `public/assignment-submissions/${schoolId}/${studentId}/${assignmentId}/${uuidv4()}-${sanitizedFileName}`;
 
   try {
     const { data: uploadData, error: uploadError } = await supabase.storage
