@@ -210,8 +210,6 @@ interface ManageEnrollmentInput {
   course_id: string;
   user_profile_id: string; // This is students.id or teachers.id
   user_type: 'student' | 'teacher';
-  // school_id for student enrollments will be derived from the student's profile or context
-  // For teachers, course enrollments are typically not school-scoped at the enrollment record level
 }
 
 export async function enrollUserInCourseAction(
@@ -223,15 +221,14 @@ export async function enrollUserInCourseAction(
   const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
   const fkColumnNameInEnrollmentTable = user_type === 'student' ? 'student_id' : 'teacher_id';
   
-  // Check for existing enrollment
   const { data: existingEnrollment, error: fetchError } = await supabaseAdmin
     .from(enrollmentTable)
     .select('id')
     .eq(fkColumnNameInEnrollmentTable, user_profile_id)
     .eq('course_id', course_id)
-    .maybeSingle(); // Use maybeSingle to handle 0 or 1 record
+    .maybeSingle(); 
   
-  if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 means 0 rows, which is fine for this check
+  if (fetchError && fetchError.code !== 'PGRST116') { 
     console.error(`Error checking existing enrollment for ${user_type}:`, fetchError);
     return { ok: false, message: `Database error checking enrollment: ${fetchError.message}` };
   }
@@ -239,7 +236,6 @@ export async function enrollUserInCourseAction(
     return { ok: false, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} is already enrolled in this course.` };
   }
   
-  // Prepare enrollment data
   const enrollmentData: any = { 
       id: uuidv4(), 
       course_id, 
@@ -262,6 +258,7 @@ export async function enrollUserInCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
+  revalidatePath('/student/study-material');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} enrolled successfully.` };
 }
 
@@ -287,6 +284,7 @@ export async function unenrollUserFromCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
+  revalidatePath('/student/study-material');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} unenrolled successfully.` };
 }
 
@@ -310,7 +308,7 @@ export async function getEnrolledStudentsForCourseAction(
     return { ok: true, students: [] };
   }
 
-  const studentIdsFromEnrollments = enrollments.map(e => e.student_id).filter(id => id);
+  const studentIdsFromEnrollments = enrollments.map(e => e.student_id).filter(id => !!id);
   if (studentIdsFromEnrollments.length === 0) {
     return { ok: true, students: [] };
   }
@@ -347,7 +345,7 @@ export async function getEnrolledTeachersForCourseAction(
     return { ok: true, teachers: [] };
   }
 
-  const teacherIds = enrollments.map(e => e.teacher_id).filter(id => id);
+  const teacherIds = enrollments.map(e => e.teacher_id).filter(id => !!id);
   if (teacherIds.length === 0) {
     return { ok: true, teachers: [] };
   }

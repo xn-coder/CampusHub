@@ -112,7 +112,7 @@ export default function StudentStudyMaterialPage() {
       }
     }
     fetchStudyMaterial();
-  }, [toast]);
+  }, []); // Changed dependency array to []
 
   const getResourceTypeLabel = (type: CourseResourceType): string => {
     switch(type) {
