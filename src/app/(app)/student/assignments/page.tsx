@@ -21,8 +21,8 @@ export default function StudentAssignmentsPage() {
   const { toast } = useToast();
   const [myAssignments, setMyAssignments] = useState<EnrichedAssignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [studentSchoolId, setStudentSchoolId] = useState<string | null>(null);
-  const [studentClassId, setStudentClassId] = useState<string | null>(null);
+  // Removed studentSchoolId and studentClassId state as they are not strictly needed here
+  // if their values are directly used from the fetched studentData within the effect.
 
   useEffect(() => {
     async function fetchAssignments() {
@@ -42,14 +42,13 @@ export default function StudentAssignmentsPage() {
           .single();
 
         if (studentError || !studentData || !studentData.school_id || !studentData.class_id) {
-          toast({ title: "Error", description: "Could not fetch student class or school information. Assignments cannot be loaded.", variant: "destructive" });
+          toast({ title: "No Assignments", description: "No assignments found. This might be because you are not yet assigned to a class or school.", variant: "default" });
           setMyAssignments([]);
           setIsLoading(false);
           return;
         }
         
-        setStudentClassId(studentData.class_id);
-        setStudentSchoolId(studentData.school_id);
+        // studentData.class_id and studentData.school_id are used directly below
 
         const { data: assignmentsData, error: assignmentsError } = await supabase
           .from('assignments')
@@ -108,7 +107,7 @@ export default function StudentAssignmentsPage() {
       }
     }
     fetchAssignments();
-  }, [toast]);
+  }, []); // Changed dependency array to []
 
   const handleMockSubmit = (assignmentId: string) => {
     toast({
@@ -125,10 +124,8 @@ export default function StudentAssignmentsPage() {
       />
       {isLoading ? (
         <Card><CardContent className="pt-6 text-center text-muted-foreground flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading your assignments...</CardContent></Card>
-      ) : !studentClassId ? (
-         <Card><CardContent className="pt-6 text-center text-muted-foreground">You are not currently assigned to a class. Assignments will appear here once you are assigned.</CardContent></Card>
-      ) : myAssignments.length === 0 ? (
-        <Card><CardContent className="pt-6 text-center text-muted-foreground">No assignments posted for your class yet.</CardContent></Card>
+      ) : myAssignments.length === 0 ? ( // This check is fine, as it relies on the updated myAssignments state
+         <Card><CardContent className="pt-6 text-center text-muted-foreground">No assignments posted for your class yet, or you might not be assigned to a class/school.</CardContent></Card>
       ) : (
         <div className="grid md:grid-cols-2 gap-6">
           {myAssignments.map((assignment) => (
