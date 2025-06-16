@@ -1,8 +1,9 @@
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { AnnouncementDB, UserRole } from '@/types'; // Use AnnouncementDB for DB schema
+import type { AnnouncementDB, UserRole, ClassData } from '@/types'; // Use AnnouncementDB for DB schema
 
 interface PostAnnouncementInput {
   title: string;
@@ -23,8 +24,8 @@ export async function postAnnouncementAction(
       .from('announcements')
       .insert({
         ...input,
-        date: new Date().toISOString(), // Store as ISO string
-        target_class_id: input.target_class_id || null, // Ensure NULL if empty
+        date: new Date().toISOString(), 
+        target_class_id: input.target_class_id || null, 
       })
       .select()
       .single();
@@ -42,15 +43,16 @@ export async function postAnnouncementAction(
 }
 
 interface GetAnnouncementsParams {
-  school_id: string;
+  school_id?: string | null; // Optional for superadmin
   user_role: UserRole;
-  user_id?: string; // For teacher/student specific views
-  student_class_id?: string; // For student's class
+  user_id?: string; 
+  student_class_id?: string; 
+  teacher_class_ids?: string[];
 }
 
 export async function getAnnouncementsAction(params: GetAnnouncementsParams): Promise<{ ok: boolean; message?: string; announcements?: AnnouncementDB[] }> {
   const supabase = createSupabaseServerClient();
-  const { school_id, user_role, user_id, student_class_id } = params;
+  const { school_id, user_role, user_id, student_class_id, teacher_class_ids } = params;
 
   try {
     let query = supabase
@@ -60,24 +62,55 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
         posted_by:posted_by_user_id ( name, email ),
         target_class:target_class_id ( name, division )
       `)
-      .eq('school_id', school_id)
       .order('date', { ascending: false });
 
-    // Role-based filtering
-    if (user_role === 'student') {
-      // Students see:
-      // 1. Announcements targeted to their class_id
-      // 2. Announcements with NO target_class_id (general school/admin/superadmin announcements)
-      // 3. Announcements posted by 'admin' or 'superadmin' (implicitly general if not targeted)
-      query = query.or(`target_class_id.eq.${student_class_id},target_class_id.is.null,posted_by_role.in.("admin","superadmin")`);
-    } else if (user_role === 'teacher') {
-      // Teachers see announcements posted by admin/superadmin, other teachers, or targeted to classes they teach (more complex to filter here without class list)
-      // For simplicity, teachers see all non-student announcements for their school.
-      // A more refined query could filter by `target_class_id` if teacher's classes are passed.
-       query = query.neq('posted_by_role', 'student');
+    if (user_role === 'superadmin') {
+      // Superadmin sees all announcements if no specific school_id is passed.
+      // If school_id is passed (e.g., future school selector for superadmin), filter by it.
+      if (school_id) {
+        query = query.eq('school_id', school_id);
+      }
+      // Otherwise, no school_id filter, gets all.
+    } else if (school_id) { // All other roles are school-scoped
+      query = query.eq('school_id', school_id);
+
+      if (user_role === 'student' && student_class_id) {
+        // Students: own class specific OR school-wide general (no target_class_id)
+        query = query.or(`target_class_id.eq.${student_class_id},target_class_id.is.null`);
+      } else if (user_role === 'teacher' && user_id) {
+        let teacherOrConditions = [];
+        // Targeted to any of their classes
+        if (teacher_class_ids && teacher_class_ids.length > 0) {
+          teacherOrConditions.push(`target_class_id.in.(${teacher_class_ids.join(',')})`);
+        }
+        // Their own general posts
+        teacherOrConditions.push(`and(posted_by_user_id.eq.${user_id},target_class_id.is.null)`);
+        // School-wide general from admin/superadmin
+        teacherOrConditions.push(`and(target_class_id.is.null,posted_by_role.in.("admin","superadmin"))`);
+        
+        if(teacherOrConditions.length > 0) {
+            query = query.or(teacherOrConditions.join(','));
+        } else {
+            // If teacher has no classes and makes no general posts, they only see admin/superadmin general
+            query = query.and(`target_class_id.is.null,posted_by_role.in.("admin","superadmin")`)
+        }
+      } else if (user_role === 'admin') {
+        // Admins: all for their school_id (already applied)
+        // PLUS global superadmin posts (school_id IS NULL AND posted_by_role === 'superadmin')
+        // This requires a more complex query structure if we want to OR this condition.
+        // For now, the school_id filter above will limit them. To see global superadmin posts,
+        // the client would need to make a separate call or this logic would need to be broader.
+        // For simplicity here, admin sees their school's posts.
+        // A superadmin post with school_id=null won't be caught by school_id filter.
+        // If an admin should see global superadmin posts, we could add:
+        // .or(`school_id.eq.${school_id},and(school_id.is.null,posted_by_role.eq.superadmin)`)
+        // but let's keep it simpler for now.
+      }
+    } else if (user_role !== 'superadmin' && !school_id) {
+      // Non-superadmin without school_id should not see any announcements
+      return {ok: true, announcements: [] };
     }
-    // Admins see all for their school (already filtered by school_id)
-    // Superadmins might see all across all schools (handled by a different page or logic)
+
 
     const { data, error } = await query;
 
@@ -91,3 +124,4 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
 }
+
