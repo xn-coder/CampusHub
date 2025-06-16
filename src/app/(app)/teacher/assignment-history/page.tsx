@@ -14,7 +14,7 @@ import type { Assignment, ClassData, Subject, UserRole } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { ScrollText, CalendarDays, ClipboardList, Info, Edit2, Save, Trash2, Loader2 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { getTeacherAssignmentsAction, updateAssignmentAction, deleteAssignmentAction } from '../post-assignments/actions';
 
@@ -86,7 +86,7 @@ export default function TeacherAssignmentHistoryPage() {
   };
   
   const getSubjectName = (subjectId?: string | null): string => {
-    if (!subjectId) return 'N/A';
+    if (!subjectId || subjectId === NO_SUBJECT_VALUE) return 'N/A';
     return allSubjects.find(s => s.id === subjectId)?.name || 'N/A';
   };
 
@@ -94,7 +94,8 @@ export default function TeacherAssignmentHistoryPage() {
     setEditingAssignment(assignment);
     setEditTitle(assignment.title);
     setEditDescription(assignment.description || '');
-    setEditDueDate(assignment.due_date);
+    // Ensure due_date is formatted to YYYY-MM-DD for the input
+    setEditDueDate(assignment.due_date ? format(parseISO(assignment.due_date), 'yyyy-MM-dd') : '');
     setEditSubjectId(assignment.subject_id || NO_SUBJECT_VALUE);
     setIsEditDialogOpen(true);
   };
@@ -110,11 +111,11 @@ export default function TeacherAssignmentHistoryPage() {
       id: editingAssignment.id,
       title: editTitle.trim(),
       description: editDescription.trim(),
-      due_date: editDueDate,
+      due_date: editDueDate, // editDueDate is already YYYY-MM-DD
       subject_id: editSubjectId === NO_SUBJECT_VALUE ? null : editSubjectId,
-      teacher_id: currentTeacherId, // Include these for the action
-      school_id: currentSchoolId,   // Include these for the action
-      // class_id is not part of input for update action as it's not editable here
+      teacher_id: currentTeacherId, 
+      school_id: currentSchoolId,   
+      class_id: editingAssignment.class_id, // Pass class_id for context if action uses it
     });
     setIsLoading(false);
 
@@ -234,7 +235,7 @@ export default function TeacherAssignmentHistoryPage() {
               </div>
               <div>
                 <Label htmlFor="editDueDate">Due Date</Label>
-                <Input id="editDueDate" type="date" value={format(parseISO(editDueDate), 'yyyy-MM-dd')} onChange={(e) => setEditDueDate(e.target.value)} required disabled={isLoading}/>
+                <Input id="editDueDate" type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} required disabled={isLoading}/>
               </div>
               <div>
                  <Label htmlFor="editSubjectId">Subject (Optional)</Label>
@@ -263,3 +264,4 @@ export default function TeacherAssignmentHistoryPage() {
     </div>
   );
 }
+
