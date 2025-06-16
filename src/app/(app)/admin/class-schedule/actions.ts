@@ -1,8 +1,11 @@
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import type { ClassScheduleDB, ClassData, Subject, Teacher } from '@/types'; // Use DB types
+import { sendEmail, getStudentEmailsByClassId, getTeacherEmailByTeacherProfileId } from '@/services/emailService';
+
 
 interface ClassScheduleInput {
   school_id: string;
@@ -56,7 +59,6 @@ export async function addClassScheduleAction(
 ): Promise<{ ok: boolean; message: string; schedule?: ClassScheduleDB }> {
   const supabase = createSupabaseServerClient();
   try {
-    // Add validation for overlapping times for same class or teacher if needed
     const { data, error } = await supabase
       .from('class_schedules')
       .insert(input)
@@ -68,6 +70,47 @@ export async function addClassScheduleAction(
       return { ok: false, message: `Database error: ${error.message}` };
     }
     revalidatePath('/admin/class-schedule');
+
+    // Send email notification
+    if (data) {
+      const schedule = data as ClassScheduleDB & { 
+        class?: { name: string, division: string }, 
+        subject?: { name: string }, 
+        teacher?: { name: string } 
+      };
+      const className = schedule.class ? `${schedule.class.name} - ${schedule.class.division}` : 'N/A';
+      const subjectName = schedule.subject?.name || 'N/A';
+      const teacherName = schedule.teacher?.name || 'N/A';
+
+      const emailSubject = `New Class Scheduled: ${subjectName} on ${schedule.day_of_week}`;
+      const emailBody = `
+        <h1>New Class Added to Schedule</h1>
+        <p>A new class has been scheduled:</p>
+        <ul>
+          <li><strong>Class:</strong> ${className}</li>
+          <li><strong>Subject:</strong> ${subjectName}</li>
+          <li><strong>Teacher:</strong> ${teacherName}</li>
+          <li><strong>Day:</strong> ${schedule.day_of_week}</li>
+          <li><strong>Time:</strong> ${schedule.start_time} - ${schedule.end_time}</li>
+        </ul>
+        <p>Please check the school timetable for full details.</p>
+      `;
+
+      const studentEmails = await getStudentEmailsByClassId(schedule.class_id, schedule.school_id);
+      const teacherEmail = await getTeacherEmailByTeacherProfileId(schedule.teacher_id);
+      
+      const recipientEmails = [...studentEmails];
+      if (teacherEmail) recipientEmails.push(teacherEmail);
+
+      if (recipientEmails.length > 0) {
+        await sendEmail({
+          to: recipientEmails,
+          subject: emailSubject,
+          html: emailBody,
+        });
+      }
+    }
+
     return { ok: true, message: 'Class schedule added successfully.', schedule: data as ClassScheduleDB };
   } catch (e: any) {
     console.error("Unexpected error adding schedule:", e);
@@ -94,6 +137,7 @@ export async function updateClassScheduleAction(
       return { ok: false, message: `Database error: ${error.message}` };
     }
     revalidatePath('/admin/class-schedule');
+    // Optionally, send update notification emails here, similar to addClassScheduleAction
     return { ok: true, message: 'Class schedule updated successfully.', schedule: data as ClassScheduleDB };
   } catch (e: any) {
     console.error("Unexpected error updating schedule:", e);
@@ -115,6 +159,7 @@ export async function deleteClassScheduleAction(id: string, school_id: string): 
       return { ok: false, message: `Database error: ${error.message}` };
     }
     revalidatePath('/admin/class-schedule');
+    // Optionally, send cancellation notification emails here
     return { ok: true, message: 'Class schedule deleted successfully.' };
   } catch (e: any) {
     console.error("Unexpected error deleting schedule:", e);

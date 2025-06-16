@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { Exam, Subject, ClassData, AcademicYear } from '@/types';
+import { sendEmail, getStudentEmailsByClassId, getAllUserEmailsInSchool } from '@/services/emailService'; // Assuming teacher emails are included in getAllUserEmailsInSchool with 'teacher' role
 
 async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
   if (!adminUserId) {
@@ -41,7 +42,7 @@ export async function getExamsPageDataAction(adminUserId: string): Promise<{
   const supabaseAdmin = createSupabaseServerClient();
   try {
     const [examsRes, subjectsRes, classesRes, academicYearsRes] = await Promise.all([
-      supabaseAdmin.from('exams').select('*').eq('school_id', schoolId).order('date', { ascending: false }),
+      supabaseAdmin.from('exams').select('*, subject:subject_id(name), class:class_id(name,division)').eq('school_id', schoolId).order('date', { ascending: false }), // Eager load subject and class for notifications
       supabaseAdmin.from('subjects').select('*').eq('school_id', schoolId).order('name'),
       supabaseAdmin.from('classes').select('*').eq('school_id', schoolId).order('name'),
       supabaseAdmin.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
@@ -95,7 +96,7 @@ export async function addExamAction(
   const { error, data } = await supabaseAdmin
     .from('exams')
     .insert(examData)
-    .select()
+    .select('*, subject:subject_id(name), class:class_id(name,division)') // Eager load for notification
     .single();
 
   if (error) {
@@ -103,6 +104,46 @@ export async function addExamAction(
     return { ok: false, message: `Failed to add exam: ${error.message}` };
   }
   revalidatePath('/admin/exams');
+
+  // Send email notification
+  if (data) {
+    const exam = data as Exam & { subject?: { name: string }, class?: { name: string, division: string } };
+    const subjectName = exam.subject?.name || 'N/A';
+    const className = exam.class ? `${exam.class.name} - ${exam.class.division}` : 'All Classes';
+    
+    const emailSubject = `New Exam Scheduled: ${exam.name} for ${subjectName}`;
+    const emailBody = `
+      <h1>New Exam Scheduled</h1>
+      <p>An exam has been scheduled:</p>
+      <ul>
+        <li><strong>Exam Name:</strong> ${exam.name}</li>
+        <li><strong>Subject:</strong> ${subjectName}</li>
+        <li><strong>Class:</strong> ${className}</li>
+        <li><strong>Date:</strong> ${new Date(exam.date).toLocaleDateString()}</li>
+        ${exam.start_time ? `<li><strong>Time:</strong> ${exam.start_time}${exam.end_time ? ` - ${exam.end_time}` : ''}</li>` : ''}
+        ${exam.max_marks ? `<li><strong>Max Marks:</strong> ${exam.max_marks}</li>` : ''}
+      </ul>
+      <p>Please prepare accordingly.</p>
+    `;
+    
+    let recipientEmails: string[] = [];
+    if (exam.class_id && exam.school_id) {
+      recipientEmails = await getStudentEmailsByClassId(exam.class_id, exam.school_id);
+      // Potentially add teacher emails for this class/subject
+    } else if (exam.school_id) {
+      // If exam is not class-specific (e.g. general), notify all students and teachers
+      recipientEmails = await getAllUserEmailsInSchool(exam.school_id, ['student', 'teacher']);
+    }
+
+    if (recipientEmails.length > 0) {
+      await sendEmail({
+        to: recipientEmails,
+        subject: emailSubject,
+        html: emailBody,
+      });
+    }
+  }
+
   return { ok: true, message: 'Exam scheduled successfully.', exam: data as Exam };
 }
 
@@ -127,7 +168,7 @@ export async function updateExamAction(
     .update(updatePayload)
     .eq('id', id)
     .eq('school_id', input.school_id)
-    .select()
+    .select('*, subject:subject_id(name), class:class_id(name,division)')
     .single();
 
   if (error) {
@@ -135,6 +176,44 @@ export async function updateExamAction(
     return { ok: false, message: `Failed to update exam: ${error.message}` };
   }
   revalidatePath('/admin/exams');
+
+  // Optionally, send update notification emails here, similar to addExamAction
+  if (data) {
+    const exam = data as Exam & { subject?: { name: string }, class?: { name: string, division: string } };
+    const subjectName = exam.subject?.name || 'N/A';
+    const className = exam.class ? `${exam.class.name} - ${exam.class.division}` : 'All Classes';
+    
+    const emailSubject = `Exam Updated: ${exam.name} for ${subjectName}`;
+    const emailBody = `
+      <h1>Exam Schedule Updated</h1>
+      <p>Details for the following exam have been updated:</p>
+      <ul>
+        <li><strong>Exam Name:</strong> ${exam.name}</li>
+        <li><strong>Subject:</strong> ${subjectName}</li>
+        <li><strong>Class:</strong> ${className}</li>
+        <li><strong>Date:</strong> ${new Date(exam.date).toLocaleDateString()}</li>
+        ${exam.start_time ? `<li><strong>Time:</strong> ${exam.start_time}${exam.end_time ? ` - ${exam.end_time}` : ''}</li>` : ''}
+        ${exam.max_marks ? `<li><strong>Max Marks:</strong> ${exam.max_marks}</li>` : ''}
+      </ul>
+      <p>Please review the changes.</p>
+    `;
+    
+    let recipientEmails: string[] = [];
+    if (exam.class_id && exam.school_id) {
+      recipientEmails = await getStudentEmailsByClassId(exam.class_id, exam.school_id);
+    } else if (exam.school_id) {
+      recipientEmails = await getAllUserEmailsInSchool(exam.school_id, ['student', 'teacher']);
+    }
+
+    if (recipientEmails.length > 0) {
+      await sendEmail({
+        to: recipientEmails,
+        subject: emailSubject,
+        html: emailBody,
+      });
+    }
+  }
+
   return { ok: true, message: 'Exam updated successfully.', exam: data as Exam };
 }
 
@@ -166,6 +245,7 @@ export async function deleteExamAction(id: string, schoolId: string): Promise<{ 
     return { ok: false, message: `Failed to delete exam: ${error.message}` };
   }
   revalidatePath('/admin/exams');
+  // Optionally, send cancellation notification emails here
   return { ok: true, message: 'Exam deleted successfully.' };
 }
     

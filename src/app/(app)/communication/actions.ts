@@ -4,6 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import type { AnnouncementDB, UserRole, ClassData } from '@/types';
+import { sendEmail, getStudentEmailsByClassId, getAllUserEmailsInSchool, getTeacherEmailByTeacherProfileId } from '@/services/emailService';
 
 interface PostAnnouncementInput {
   title: string;
@@ -27,14 +28,51 @@ export async function postAnnouncementAction(
         date: new Date().toISOString(), 
         target_class_id: input.target_class_id || null, 
       })
-      .select()
+      .select('*, target_class:target_class_id(name, division, teacher_id)') // Eager load target_class for notification
       .single();
 
     if (error) {
       console.error("Error posting announcement:", error);
       return { ok: false, message: `Database error: ${error.message}` };
     }
+    
     revalidatePath('/communication');
+
+    // Send email notifications (mock)
+    if (data) {
+      const announcement = data as AnnouncementDB & { target_class?: { name: string, division: string, teacher_id?: string | null } };
+      const subject = `New Announcement: ${announcement.title}`;
+      const emailBody = `
+        <h1>New Announcement: ${announcement.title}</h1>
+        <p><strong>Posted by:</strong> ${announcement.author_name} (${announcement.posted_by_role})</p>
+        <p><strong>Date:</strong> ${new Date(announcement.date).toLocaleString()}</p>
+        ${announcement.target_class_id && announcement.target_class ? `<p><strong>For Class:</strong> ${announcement.target_class.name} - ${announcement.target_class.division}</p>` : '<p>This is a general announcement for the school.</p>'}
+        <hr>
+        <div>${announcement.content.replace(/\n/g, '<br>')}</div>
+        <br>
+        <p>Please check the communication portal for more details.</p>
+      `;
+      
+      let recipientEmails: string[] = [];
+      if (announcement.target_class_id && announcement.school_id) {
+        recipientEmails = await getStudentEmailsByClassId(announcement.target_class_id, announcement.school_id);
+        if (announcement.target_class?.teacher_id) {
+            const teacherEmail = await getTeacherEmailByTeacherProfileId(announcement.target_class.teacher_id);
+            if (teacherEmail) recipientEmails.push(teacherEmail);
+        }
+      } else if (announcement.school_id) {
+        recipientEmails = await getAllUserEmailsInSchool(announcement.school_id, ['student', 'teacher', 'admin']);
+      }
+
+      if (recipientEmails.length > 0) {
+        await sendEmail({
+          to: recipientEmails,
+          subject: subject,
+          html: emailBody,
+        });
+      }
+    }
+
     return { ok: true, message: 'Announcement posted successfully.', announcement: data as AnnouncementDB };
   } catch (e: any) {
     console.error("Unexpected error posting announcement:", e);
