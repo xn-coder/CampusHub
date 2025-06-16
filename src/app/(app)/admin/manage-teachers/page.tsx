@@ -18,13 +18,13 @@ import { supabase } from '@/lib/supabaseClient';
 import { createTeacherAction, updateTeacherAction, deleteTeacherAction } from './actions';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
+  const { data: school, error } = await supabase // This uses the client-side anon key
     .from('schools')
     .select('id')
     .eq('admin_user_id', adminUserId)
     .single();
   if (error || !school) {
-    console.error("Error fetching admin's school or admin not linked:", error);
+    console.error("Error fetching admin's school or admin not linked:", error?.message);
     return null;
   }
   return school.id;
@@ -35,7 +35,7 @@ export default function ManageTeachersPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-teachers");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // General loading state for the page
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
@@ -56,36 +56,42 @@ export default function ManageTeachersPage() {
 
 
   useEffect(() => {
-    const adminId = localStorage.getItem('currentUserId');
-    setCurrentAdminUserId(adminId);
-    if (adminId) {
-      fetchAdminSchoolId(adminId).then(schoolId => {
-        setCurrentSchoolId(schoolId);
-        if (schoolId) {
-          fetchTeachers(schoolId);
+    const adminIdFromStorage = localStorage.getItem('currentUserId');
+    console.log('[ManageTeachersPage useEffect] adminIdFromStorage:', adminIdFromStorage);
+    setCurrentAdminUserId(adminIdFromStorage);
+
+    if (adminIdFromStorage) {
+      fetchAdminSchoolId(adminIdFromStorage).then(fetchedSchoolId => {
+        console.log('[ManageTeachersPage useEffect] fetchedSchoolId:', fetchedSchoolId);
+        setCurrentSchoolId(fetchedSchoolId);
+        if (fetchedSchoolId) {
+          fetchTeachers(fetchedSchoolId); // This will set isLoading appropriately for teacher fetching
         } else {
-          setIsLoading(false);
-          toast({ title: "Error", description: "Admin not linked to a school. Cannot manage teachers.", variant: "destructive"});
+          setIsLoading(false); // Done loading, but no school ID found
+          toast({ title: "School Not Found", description: "Admin not linked to a school or school ID could not be determined. Cannot manage teachers.", variant: "destructive"});
         }
       });
     } else {
-       setIsLoading(false);
-       toast({ title: "Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
+       setIsLoading(false); // Done loading, no admin ID
+       toast({ title: "Authentication Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
     }
-  }, [toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]); // fetchAdminSchoolId and fetchTeachers are stable as defined outside or would be useCallback wrapped
 
   async function fetchTeachers(schoolId: string) {
-    setIsLoading(true);
-    const { data, error } = await supabase
+    setIsLoading(true); // Specifically for fetching teachers
+    console.log('[ManageTeachersPage fetchTeachers] Fetching teachers for schoolId:', schoolId);
+    const { data, error } = await supabase // This uses the client-side (anon key) supabase instance
       .from('teachers')
       .select('id, name, email, subject, profile_picture_url, user_id')
       .eq('school_id', schoolId);
 
     if (error) {
-      console.error("Error fetching teachers:", error);
-      toast({ title: "Error", description: "Failed to fetch teacher data.", variant: "destructive" });
+      console.error("[ManageTeachersPage fetchTeachers] Error fetching teachers:", error);
+      toast({ title: "Error", description: `Failed to fetch teacher data: ${error.message}`, variant: "destructive" });
       setTeachers([]);
     } else {
+      console.log('[ManageTeachersPage fetchTeachers] Raw data received:', data);
       const formattedTeachers = data?.map(t => ({
         id: t.id, // Teacher Profile ID
         user_id: t.user_id, // User Login ID
@@ -95,9 +101,10 @@ export default function ManageTeachersPage() {
         profilePictureUrl: t.profile_picture_url,
         school_id: schoolId, // Already known
       })) || [];
+      console.log('[ManageTeachersPage fetchTeachers] Formatted teachers:', formattedTeachers);
       setTeachers(formattedTeachers);
     }
-    setIsLoading(false);
+    setIsLoading(false); // Done fetching teachers
   }
 
   const filteredTeachers = teachers.filter(teacher =>
@@ -161,8 +168,12 @@ export default function ManageTeachersPage() {
 
   const handleCreateTeacherSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTeacherName.trim() || !newTeacherEmail.trim() || !newTeacherSubject.trim() || !currentSchoolId) {
-      toast({ title: "Error", description: "Name, Email, Subject, and School context are required.", variant: "destructive" });
+    if (!newTeacherName.trim() || !newTeacherEmail.trim() || !newTeacherSubject.trim()) {
+      toast({ title: "Error", description: "Name, Email, and Subject are required.", variant: "destructive" });
+      return;
+    }
+    if (!currentSchoolId) { // Ensure schoolId is available before creating
+      toast({ title: "Error", description: "School context not found. Cannot create teacher.", variant: "destructive" });
       return;
     }
     setIsLoading(true);
@@ -189,11 +200,12 @@ export default function ManageTeachersPage() {
     setIsLoading(false);
   };
 
-  if (!currentSchoolId && !isLoading) {
+  // This condition handles the case where admin is not linked to a school *after* initial loading attempt.
+  if (!currentSchoolId && !isLoading) { 
     return (
         <div className="flex flex-col gap-6">
         <PageHeader title="Manage Teachers" />
-        <Card><CardContent className="pt-6 text-center text-destructive">Admin not associated with a school. Cannot manage teachers.</CardContent></Card>
+        <Card><CardContent className="pt-6 text-center text-destructive">Admin not associated with a school or school ID could not be determined. Cannot manage teachers.</CardContent></Card>
         </div>
     );
   }
@@ -205,7 +217,7 @@ export default function ManageTeachersPage() {
         title="Manage Teachers" 
         description="Administer teacher profiles, assignments, and records." 
         actions={
-          <Button onClick={() => setActiveTab("create-teacher")} disabled={isLoading}>
+          <Button onClick={() => setActiveTab("create-teacher")} disabled={isLoading || !currentSchoolId}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Teacher
           </Button>
         }
@@ -232,14 +244,16 @@ export default function ManageTeachersPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="max-w-sm"
-                  disabled={isLoading}
+                  disabled={isLoading || !currentSchoolId}
                 />
               </div>
-              {isLoading && !currentSchoolId ? (
-                  <p className="text-center text-muted-foreground py-4">Identifying admin school...</p>
-              ) : isLoading ? (
-                <p className="text-center text-muted-foreground py-4">Loading teachers...</p>
-              ) : (
+              {isLoading && <p className="text-center text-muted-foreground py-4">Loading teachers...</p>}
+              {!isLoading && currentSchoolId && filteredTeachers.length === 0 && (
+                <p className="text-center text-muted-foreground py-4">
+                  {searchTerm ? "No teachers match your search for this school." : "No teachers found for this school. Add a new teacher to get started."}
+                </p>
+              )}
+              {!isLoading && currentSchoolId && filteredTeachers.length > 0 && (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -275,11 +289,6 @@ export default function ManageTeachersPage() {
                   </TableBody>
                 </Table>
               )}
-              {!isLoading && filteredTeachers.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">
-                  {searchTerm ? "No teachers match your search." : "No teachers found. Add a new teacher to get started."}
-                </p>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -294,19 +303,19 @@ export default function ManageTeachersPage() {
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="teacherName">Teacher Name</Label>
-                  <Input id="teacherName" value={newTeacherName} onChange={(e) => setNewTeacherName(e.target.value)} placeholder="Full Name" required disabled={isLoading}/>
+                  <Input id="teacherName" value={newTeacherName} onChange={(e) => setNewTeacherName(e.target.value)} placeholder="Full Name" required disabled={isLoading || !currentSchoolId}/>
                 </div>
                 <div>
                   <Label htmlFor="teacherEmail">Email (Login ID)</Label>
-                  <Input id="teacherEmail" type="email" value={newTeacherEmail} onChange={(e) => setNewTeacherEmail(e.target.value)} placeholder="teacher@example.com" required disabled={isLoading}/>
+                  <Input id="teacherEmail" type="email" value={newTeacherEmail} onChange={(e) => setNewTeacherEmail(e.target.value)} placeholder="teacher@example.com" required disabled={isLoading || !currentSchoolId}/>
                 </div>
                 <div>
                   <Label htmlFor="teacherSubject">Subject</Label>
-                  <Input id="teacherSubject" value={newTeacherSubject} onChange={(e) => setNewTeacherSubject(e.target.value)} placeholder="e.g., Mathematics, English" required disabled={isLoading}/>
+                  <Input id="teacherSubject" value={newTeacherSubject} onChange={(e) => setNewTeacherSubject(e.target.value)} placeholder="e.g., Mathematics, English" required disabled={isLoading || !currentSchoolId}/>
                 </div>
                 <div>
                   <Label htmlFor="teacherProfilePicUrl">Profile Picture URL (Optional)</Label>
-                  <Input id="teacherProfilePicUrl" value={newTeacherProfilePicUrl} onChange={(e) => setNewTeacherProfilePicUrl(e.target.value)} placeholder="https://placehold.co/100x100.png" disabled={isLoading}/>
+                  <Input id="teacherProfilePicUrl" value={newTeacherProfilePicUrl} onChange={(e) => setNewTeacherProfilePicUrl(e.target.value)} placeholder="https://placehold.co/100x100.png" disabled={isLoading || !currentSchoolId}/>
                 </div>
               </CardContent>
               <CardFooter>
@@ -370,3 +379,5 @@ export default function ManageTeachersPage() {
   );
 }
 
+
+    
