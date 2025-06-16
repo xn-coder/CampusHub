@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher } from '@/types';
 
 // --- Course Management ---
 interface CourseInput {
@@ -251,11 +251,8 @@ export async function enrollUserInCourseAction(
 
   if (user_type === 'student') {
     enrollmentData.school_id = school_id; // Student enrollments are school-scoped
-    enrollmentData.created_at = new Date().toISOString();
-    enrollmentData.updated_at = new Date().toISOString();
+    // created_at and updated_at are handled by DB defaults for students if columns exist
   }
-  // For TeacherCourseEnrollment, created_at and updated_at are not included if they don't exist in the DB table.
-  // school_id is also not directly on lms_teacher_course_enrollments.
 
 
   const { error } = await supabaseAdmin.from(enrollmentTable).insert(enrollmentData);
@@ -298,6 +295,75 @@ export async function unenrollUserFromCourseAction(
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} unenrolled successfully.` };
+}
+
+// --- Fetching Enrolled Users ---
+export async function getEnrolledStudentsForCourseAction(
+  courseId: string
+): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  
+  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
+    .from('lms_student_course_enrollments')
+    .select('student_id')
+    .eq('course_id', courseId);
+
+  if (enrollmentError) {
+    console.error("Error fetching student enrollments:", enrollmentError);
+    return { ok: false, message: `Failed to fetch student enrollments: ${enrollmentError.message}` };
+  }
+
+  if (!enrollments || enrollments.length === 0) {
+    return { ok: true, students: [] };
+  }
+
+  const studentIds = enrollments.map(e => e.student_id);
+  
+  const { data: studentsData, error: studentsError } = await supabaseAdmin
+    .from('students')
+    .select('*') // Select all student fields
+    .in('id', studentIds);
+
+  if (studentsError) {
+    console.error("Error fetching student details:", studentsError);
+    return { ok: false, message: `Failed to fetch student details: ${studentsError.message}` };
+  }
+
+  return { ok: true, students: (studentsData as Student[]) || [] };
+}
+
+export async function getEnrolledTeachersForCourseAction(
+  courseId: string
+): Promise<{ ok: boolean; teachers?: Teacher[]; message?: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+
+  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
+    .from('lms_teacher_course_enrollments')
+    .select('teacher_id')
+    .eq('course_id', courseId);
+
+  if (enrollmentError) {
+    console.error("Error fetching teacher enrollments:", enrollmentError);
+    return { ok: false, message: `Failed to fetch teacher enrollments: ${enrollmentError.message}` };
+  }
+
+  if (!enrollments || enrollments.length === 0) {
+    return { ok: true, teachers: [] };
+  }
+
+  const teacherIds = enrollments.map(e => e.teacher_id);
+
+  const { data: teachersData, error: teachersError } = await supabaseAdmin
+    .from('teachers')
+    .select('*') // Select all teacher fields
+    .in('id', teacherIds);
+
+  if (teachersError) {
+    console.error("Error fetching teacher details:", teachersError);
+    return { ok: false, message: `Failed to fetch teacher details: ${teachersError.message}` };
+  }
+
+  return { ok: true, teachers: (teachersData as Teacher[]) || [] };
 }
 
     
