@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { ClassData, Student, Exam, Subject } from '@/types'; // Removed StudentScore as direct input is gone
+import type { ClassData, Student, Exam, Subject } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Award, Save, Users, FileText, Loader2, Edit2 } from 'lucide-react';
@@ -27,8 +27,11 @@ export default function TeacherStudentScoresPage() {
   const [selectedExamId, setSelectedExamId] = useState<string>('');
   const [scores, setScores] = useState<Record<string, string | number>>({}); 
   
-  const [isLoading, setIsLoading] = useState(false);
-  const [isFetchingInitialData, setIsFetchingInitialData] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // General loading for operations like saving
+  const [isFetchingInitialData, setIsFetchingInitialData] = useState(true); // For initial setup
+  const [isFetchingStudents, setIsFetchingStudents] = useState(false); // For fetching students of a class
+  const [isFetchingScores, setIsFetchingScores] = useState(false); // For fetching scores for an exam
+
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
@@ -80,14 +83,15 @@ export default function TeacherStudentScoresPage() {
 
   useEffect(() => { 
     if (selectedClassId && currentSchoolId) {
-      setIsLoading(true);
+      setIsFetchingStudents(true);
+      setStudentsInSelectedClass([]); // Reset students when class changes
+      setScores({});                 // Reset scores
+      setSelectedExamId('');         // Reset selected exam
       supabase.from('students').select('*').eq('class_id', selectedClassId).eq('school_id', currentSchoolId)
         .then(({ data, error }) => {
           if (error) toast({ title: "Error fetching students for class", variant: "destructive" });
           else setStudentsInSelectedClass(data || []);
-          setScores({}); 
-          setSelectedExamId(''); 
-          setIsLoading(false);
+          setIsFetchingStudents(false);
         });
     } else {
       setStudentsInSelectedClass([]);
@@ -96,36 +100,44 @@ export default function TeacherStudentScoresPage() {
     }
   }, [selectedClassId, currentSchoolId, toast]);
 
-  useEffect(() => { 
+  useEffect(() => {
     if (selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && currentSchoolId) {
-      setIsLoading(true);
+      setIsFetchingScores(true);
       supabase.from('student_scores')
         .select('student_id, score')
         .eq('exam_id', selectedExamId)
         .eq('class_id', selectedClassId)
         .eq('school_id', currentSchoolId)
         .in('student_id', studentsInSelectedClass.map(s => s.id))
-        .then(({ data, error }) => {
+        .then(({ data: fetchedScoresData, error }) => {
+          const newScoresState: Record<string, string | number> = {};
+          // Initialize all students in the current class view with an empty score string
+          studentsInSelectedClass.forEach(student => {
+            newScoresState[student.id] = '';
+          });
+
           if (error) {
-            toast({ title: "Error fetching existing scores", variant: "destructive" });
+            toast({ title: "Error fetching existing scores", description: error.message, variant: "destructive" });
+            // newScoresState remains initialized with empty strings
           } else {
-            const newScores: Record<string, string | number> = {};
-            (data || []).forEach(ss => { newScores[ss.student_id] = ss.score; });
-            studentsInSelectedClass.forEach(student => {
-                if (!newScores.hasOwnProperty(student.id)) {
-                    newScores[student.id] = '';
-                }
+            // Populate with fetched scores for those who have them
+            (fetchedScoresData || []).forEach(fetchedScore => {
+              if (newScoresState.hasOwnProperty(fetchedScore.student_id)) {
+                newScoresState[fetchedScore.student_id] = fetchedScore.score;
+              }
             });
-            setScores(newScores);
           }
-          setIsLoading(false);
+          setScores(newScoresState);
+          setIsFetchingScores(false);
         });
-    } else if (studentsInSelectedClass.length > 0) {
-        const initialScores: Record<string, string | number> = {};
-        studentsInSelectedClass.forEach(student => { initialScores[student.id] = ''; });
-        setScores(initialScores);
     } else {
-        setScores({});
+      // If no exam selected or no students, reset scores to empty for current students
+      const initialScores: Record<string, string | number> = {};
+      studentsInSelectedClass.forEach(student => {
+        initialScores[student.id] = '';
+      });
+      setScores(initialScores);
+      setIsFetchingScores(false);
     }
   }, [selectedExamId, selectedClassId, studentsInSelectedClass, currentSchoolId, toast]);
 
@@ -146,7 +158,7 @@ export default function TeacherStudentScoresPage() {
         toast({ title: "Input Required", description: "Please enter a score or grade.", variant: "default"});
         return;
     }
-    setIsLoading(true);
+    setIsLoading(true); // Use general loading for save operations
 
     const scoreToSave = {
       student_id: editingStudent.id,
@@ -162,7 +174,11 @@ export default function TeacherStudentScoresPage() {
     const result = await saveStudentScoresAction([scoreToSave]);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
+      // Optimistically update local state
       setScores(prev => ({ ...prev, [editingStudent.id]: currentScoreInput }));
+      // Optionally, could re-fetch scores for this exam to ensure consistency, but optimistic update is usually enough for single edits.
+      // To re-fetch: trigger the score fetching useEffect again, e.g., by slightly changing a dependency or calling a refetch function.
+      // For now, relying on the optimistic update.
       setIsScoreDialogOpen(false);
       setEditingStudent(null);
     }
@@ -172,7 +188,7 @@ export default function TeacherStudentScoresPage() {
   const getSubjectName = (subjectId: string) => allSubjects.find(s => s.id === subjectId)?.name || 'N/A';
 
   const filteredExamsForSelectedClass = selectedClassId 
-    ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id) // Show class-specific and general exams
+    ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id)
     : [];
   
   const selectedExamDetails = allExams.find(ex => ex.id === selectedExamId);
@@ -206,7 +222,7 @@ export default function TeacherStudentScoresPage() {
           <div className="grid md:grid-cols-2 gap-4 items-end">
             <div>
               <Label htmlFor="classSelect">Select Class</Label>
-              <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading}>
+              <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading || isFetchingStudents || isFetchingScores}>
                 <SelectTrigger id="classSelect">
                   <SelectValue placeholder="Choose your class" />
                 </SelectTrigger>
@@ -219,7 +235,7 @@ export default function TeacherStudentScoresPage() {
             </div>
             <div>
               <Label htmlFor="examSelect">Select Exam</Label>
-              <Select value={selectedExamId} onValueChange={setSelectedExamId} disabled={isLoading || !selectedClassId || filteredExamsForSelectedClass.length === 0}>
+              <Select value={selectedExamId} onValueChange={setSelectedExamId} disabled={isLoading || isFetchingStudents || isFetchingScores || !selectedClassId || filteredExamsForSelectedClass.length === 0}>
                 <SelectTrigger id="examSelect">
                   <SelectValue placeholder="Choose an exam" />
                 </SelectTrigger>
@@ -232,13 +248,14 @@ export default function TeacherStudentScoresPage() {
             </div>
           </div>
 
-          {isLoading && selectedClassId && selectedExamId && <div className="text-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>}
+          {isFetchingStudents && selectedClassId && <div className="text-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Fetching students...</div>}
+          {isFetchingScores && selectedExamId && <div className="text-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Fetching scores...</div>}
 
-          {!isLoading && selectedClassId && selectedExamId && studentsInSelectedClass.length === 0 && (
+          {!isFetchingStudents && !isFetchingScores && selectedClassId && selectedExamId && studentsInSelectedClass.length === 0 && (
              <p className="text-muted-foreground text-center py-4">No students found in the selected class.</p>
           )}
 
-          {!isLoading && selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && (
+          {!isFetchingStudents && !isFetchingScores && selectedClassId && selectedExamId && studentsInSelectedClass.length > 0 && (
             <div>
               <h3 className="text-lg font-medium mb-4">
                 Students in {assignedClasses.find(c => c.id === selectedClassId)?.name} - {assignedClasses.find(c => c.id === selectedClassId)?.division}
@@ -257,7 +274,7 @@ export default function TeacherStudentScoresPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardFooter>
-                      <Button variant="outline" size="sm" onClick={() => handleOpenScoreDialog(student)} disabled={isLoading}>
+                      <Button variant="outline" size="sm" onClick={() => handleOpenScoreDialog(student)} disabled={isLoading || isFetchingScores}>
                         <Edit2 className="mr-1 h-3 w-3"/> Edit Score
                       </Button>
                     </CardFooter>
