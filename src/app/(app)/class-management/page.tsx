@@ -17,8 +17,8 @@ import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Lay
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
 import { 
-  addClassNameAction, deleteClassNameAction, 
-  addSectionNameAction, deleteSectionNameAction,
+  addClassNameAction, updateClassNameAction, deleteClassNameAction, 
+  addSectionNameAction, updateSectionNameAction, deleteSectionNameAction,
   activateClassSectionAction, deleteActiveClassAction,
   assignStudentsToClassAction, assignTeacherToClassAction,
   getClassNamesAction, getSectionNamesAction, getActiveClassesAction
@@ -54,10 +54,16 @@ export default function ClassManagementPage() {
   const [isActivateClassSectionDialogOpen, setIsActivateClassSectionDialogOpen] = useState(false);
   const [isManageStudentsDialogOpen, setIsManageStudentsDialogOpen] = useState(false);
   const [isAssignTeacherDialogOpen, setIsAssignTeacherDialogOpen] = useState(false);
+  const [isEditClassNameDialogOpen, setIsEditClassNameDialogOpen] = useState(false);
+  const [isEditSectionNameDialogOpen, setIsEditSectionNameDialogOpen] = useState(false);
 
   const [newClassNameInput, setNewClassNameInput] = useState('');
   const [newSectionNameInput, setNewSectionNameInput] = useState('');
+  const [editNameInput, setEditNameInput] = useState(''); // For edit dialogs
 
+  const [editingClassNameRecord, setEditingClassNameRecord] = useState<ClassNameRecord | null>(null);
+  const [editingSectionNameRecord, setEditingSectionNameRecord] = useState<SectionRecord | null>(null);
+  
   const [selectedClassNameIdForActivation, setSelectedClassNameIdForActivation] = useState<string>('');
   const [selectedSectionNameIdForActivation, setSelectedSectionNameIdForActivation] = useState<string>('');
   const [selectedAcademicYearIdForActivation, setSelectedAcademicYearIdForActivation] = useState<string | undefined>(undefined);
@@ -145,11 +151,35 @@ export default function ClassManagementPage() {
     const result = await addClassNameAction(newClassNameInput, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     setNewClassNameInput(''); 
-    if (result.classNames) { // Use the returned list from the action
+    if (result.classNames) {
       setClassNamesList(result.classNames);
-    } else if (currentSchoolId) { // Fallback if list isn't returned, less ideal
+    } else if (currentSchoolId && !result.ok) { // If error but list might be out of sync
       fetchAllData(currentSchoolId);
     }
+    setIsSubmitting(false);
+  };
+
+  const handleOpenEditClassNameDialog = (classNameRecord: ClassNameRecord) => {
+    setEditingClassNameRecord(classNameRecord);
+    setEditNameInput(classNameRecord.name);
+    setIsEditClassNameDialogOpen(true);
+  };
+
+  const handleEditClassNameSubmit = async () => {
+    if (!editingClassNameRecord || !editNameInput.trim() || !currentSchoolId) {
+      toast({ title: "Error", description: "New name cannot be empty.", variant: "destructive" });
+      return;
+    }
+    setIsSubmitting(true);
+    const result = await updateClassNameAction(editingClassNameRecord.id, editNameInput, currentSchoolId);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.classNames) {
+      setClassNamesList(result.classNames);
+    } else if (currentSchoolId && !result.ok) {
+      fetchAllData(currentSchoolId);
+    }
+    setIsEditClassNameDialogOpen(false);
+    setEditingClassNameRecord(null);
     setIsSubmitting(false);
   };
 
@@ -158,7 +188,11 @@ export default function ClassManagementPage() {
     setIsSubmitting(true);
     const result = await deleteClassNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    if (currentSchoolId) fetchAllData(currentSchoolId); 
+    if (result.classNames) {
+      setClassNamesList(result.classNames);
+    } else if (currentSchoolId) {
+      fetchAllData(currentSchoolId);
+    }
     setIsSubmitting(false);
   };
 
@@ -171,11 +205,35 @@ export default function ClassManagementPage() {
     const result = await addSectionNameAction(newSectionNameInput, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     setNewSectionNameInput('');
-    if (result.sectionNames) { // Use the returned list from the action
+    if (result.sectionNames) { 
       setSectionNamesList(result.sectionNames);
-    } else if (currentSchoolId) { // Fallback
+    } else if (currentSchoolId && !result.ok) {
       fetchAllData(currentSchoolId);
     }
+    setIsSubmitting(false);
+  };
+  
+  const handleOpenEditSectionNameDialog = (sectionRecord: SectionRecord) => {
+    setEditingSectionNameRecord(sectionRecord);
+    setEditNameInput(sectionRecord.name);
+    setIsEditSectionNameDialogOpen(true);
+  };
+
+  const handleEditSectionNameSubmit = async () => {
+    if (!editingSectionNameRecord || !editNameInput.trim() || !currentSchoolId) {
+      toast({ title: "Error", description: "New name cannot be empty.", variant: "destructive" });
+      return;
+    }
+    setIsSubmitting(true);
+    const result = await updateSectionNameAction(editingSectionNameRecord.id, editNameInput, currentSchoolId);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.sectionNames) {
+      setSectionNamesList(result.sectionNames);
+    } else if (currentSchoolId && !result.ok) {
+      fetchAllData(currentSchoolId);
+    }
+    setIsEditSectionNameDialogOpen(false);
+    setEditingSectionNameRecord(null);
     setIsSubmitting(false);
   };
 
@@ -184,7 +242,11 @@ export default function ClassManagementPage() {
     setIsSubmitting(true);
     const result = await deleteSectionNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    if (currentSchoolId) fetchAllData(currentSchoolId);
+    if (result.sectionNames) {
+        setSectionNamesList(result.sectionNames);
+    } else if (currentSchoolId) {
+        fetchAllData(currentSchoolId);
+    }
     setIsSubmitting(false);
   };
 
@@ -206,7 +268,7 @@ export default function ClassManagementPage() {
       classNameId: selectedClassNameIdForActivation, 
       sectionNameId: selectedSectionNameIdForActivation, 
       schoolId: currentSchoolId,
-      academicYearId: selectedAcademicYearIdForActivation === 'none' ? undefined : selectedAcademicYearIdForActivation
+      academicYearId: selectedAcademicYearIdForActivation
     });
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok && currentSchoolId) {
@@ -248,7 +310,7 @@ export default function ClassManagementPage() {
     const result = await assignStudentsToClassAction(classToManageStudents.id, selectedStudentIdsForDialog, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok && currentSchoolId) {
-      fetchAllData(currentSchoolId);
+      fetchAllData(currentSchoolId); // Re-fetch all data to update student counts etc.
       setIsManageStudentsDialogOpen(false);
     }
     setIsSubmitting(false);
@@ -256,7 +318,7 @@ export default function ClassManagementPage() {
 
   const handleOpenAssignTeacherDialog = (cls: ClassData) => {
     setClassToAssignTeacher(cls);
-    setSelectedTeacherIdForDialog(cls.teacher_id || undefined);
+    setSelectedTeacherIdForDialog(cls.teacher_id || 'unassign'); // Use 'unassign' value for Select
     setIsAssignTeacherDialogOpen(true);
   };
 
@@ -319,12 +381,13 @@ export default function ClassManagementPage() {
               </div>
               {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : classNamesList.length > 0 ? (
                 <Table>
-                  <TableHeader><TableRow><TableHead>Class Name</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Class Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {classNamesList.map(cn => (
                       <TableRow key={cn.id}>
                         <TableCell>{cn.name}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right space-x-1">
+                          <Button variant="outline" size="icon" onClick={() => handleOpenEditClassNameDialog(cn)} disabled={isSubmitting}><Edit2 className="h-4 w-4" /></Button>
                           <Button variant="destructive" size="icon" onClick={() => handleDeleteClassName(cn.id)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
@@ -357,12 +420,13 @@ export default function ClassManagementPage() {
               </div>
               {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : sectionNamesList.length > 0 ? (
                 <Table>
-                  <TableHeader><TableRow><TableHead>Section Name</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Section Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {sectionNamesList.map(sn => (
                       <TableRow key={sn.id}>
                         <TableCell>{sn.name}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right space-x-1">
+                          <Button variant="outline" size="icon" onClick={() => handleOpenEditSectionNameDialog(sn)} disabled={isSubmitting}><Edit2 className="h-4 w-4" /></Button>
                           <Button variant="destructive" size="icon" onClick={() => handleDeleteSectionName(sn.id)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
@@ -422,6 +486,7 @@ export default function ClassManagementPage() {
         </TabsContent>
       </Tabs>
       
+      {/* Dialog for Activating Class Section */}
       <Dialog open={isActivateClassSectionDialogOpen} onOpenChange={setIsActivateClassSectionDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -467,6 +532,57 @@ export default function ClassManagementPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Dialog for Editing Class Name */}
+      <Dialog open={isEditClassNameDialogOpen} onOpenChange={setIsEditClassNameDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Edit Class Name: {editingClassNameRecord?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+                <Label htmlFor="editClassNameInput">New Class Name</Label>
+                <Input 
+                    id="editClassNameInput" 
+                    value={editNameInput} 
+                    onChange={(e) => setEditNameInput(e.target.value)} 
+                    placeholder="Enter new class name" 
+                    disabled={isSubmitting}
+                />
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                <Button onClick={handleEditClassNameSubmit} disabled={isSubmitting || !editNameInput.trim()}>
+                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Changes
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog for Editing Section Name */}
+      <Dialog open={isEditSectionNameDialogOpen} onOpenChange={setIsEditSectionNameDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Edit Section Name: {editingSectionNameRecord?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+                <Label htmlFor="editSectionNameInput">New Section Name</Label>
+                <Input 
+                    id="editSectionNameInput" 
+                    value={editNameInput} 
+                    onChange={(e) => setEditNameInput(e.target.value)} 
+                    placeholder="Enter new section name" 
+                    disabled={isSubmitting}
+                />
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                <Button onClick={handleEditSectionNameSubmit} disabled={isSubmitting || !editNameInput.trim()}>
+                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Changes
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog for Managing Students in a Class */}
       <Dialog open={isManageStudentsDialogOpen} onOpenChange={(isOpen) => { setIsManageStudentsDialogOpen(isOpen); if (!isOpen) setClassToManageStudents(null); }}>
         <DialogContent className="max-h-[80vh] flex flex-col">
           <DialogHeader>
@@ -499,6 +615,7 @@ export default function ClassManagementPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Dialog for Assigning Teacher to a Class */}
       <Dialog open={isAssignTeacherDialogOpen} onOpenChange={(isOpen) => { setIsAssignTeacherDialogOpen(isOpen); if (!isOpen) setClassToAssignTeacher(null); }}>
         <DialogContent>
           <DialogHeader>
@@ -507,7 +624,7 @@ export default function ClassManagementPage() {
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="teacherSelect">Select Teacher</Label>
-              <Select value={selectedTeacherIdForDialog || undefined} onValueChange={(val) => setSelectedTeacherIdForDialog(val === 'unassign' ? null : val)} disabled={isSubmitting}>
+              <Select value={selectedTeacherIdForDialog || 'unassign'} onValueChange={(val) => setSelectedTeacherIdForDialog(val === 'unassign' ? null : val)} disabled={isSubmitting}>
                 <SelectTrigger id="teacherSelect"><SelectValue placeholder="Select a teacher" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassign">Unassign Teacher</SelectItem>
