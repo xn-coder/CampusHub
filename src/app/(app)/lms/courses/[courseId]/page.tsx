@@ -35,6 +35,7 @@ export default function ViewCourseContentPage() {
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null); // This is users.id
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  const [currentUserProfileId, setCurrentUserProfileId] = useState<string | null>(null); // students.id or teachers.id
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -42,6 +43,15 @@ export default function ViewCourseContentPage() {
         const cUserRole = localStorage.getItem('currentUserRole') as UserRole | null;
         setCurrentUserId(cUserId);
         setCurrentUserRole(cUserRole);
+
+        if (cUserId && cUserRole && (cUserRole === 'student' || cUserRole === 'teacher')) {
+          const profileTable = cUserRole === 'student' ? 'students' : 'teachers';
+          supabase.from(profileTable).select('id').eq('user_id', cUserId).single()
+            .then(({data: profile, error}) => {
+              if (error || !profile) console.error(`Error fetching ${cUserRole} profile id for enrollment check.`);
+              else setCurrentUserProfileId(profile.id);
+            });
+        }
     }
   }, []);
 
@@ -52,6 +62,13 @@ export default function ViewCourseContentPage() {
       else setIsLoading(false); 
       return;
     }
+    
+    // Wait for currentUserProfileId to be set for student/teacher before proceeding with enrollment check
+    if ((currentUserRole === 'student' || currentUserRole === 'teacher') && !currentUserProfileId) {
+        setIsLoading(true);
+        return;
+    }
+
 
     async function fetchCourseData() {
       setIsLoading(true);
@@ -91,42 +108,28 @@ export default function ViewCourseContentPage() {
       setCourse(enrichedCourse);
 
       // Check enrollment status
-      let enrollmentCheckUserId = currentUserId; // For students, this is users.id
+      let enrollmentCheckProfileId = currentUserProfileId; 
       let enrollmentTable = '';
       let fkColumnNameInEnrollmentTable = '';
 
       if (currentUserRole === 'student') {
         enrollmentTable = 'lms_student_course_enrollments';
-        fkColumnNameInEnrollmentTable = 'user_id'; // Referencing users.id
+        fkColumnNameInEnrollmentTable = 'student_id'; // Using students.id
       } else if (currentUserRole === 'teacher') {
         enrollmentTable = 'lms_teacher_course_enrollments';
-        fkColumnNameInEnrollmentTable = 'teacher_id'; // Referencing teachers.id (profile id)
-        // For teacher, we need their teacher profile ID for the check
-        const { data: teacherProfile, error: teacherProfileError } = await supabase
-          .from('teachers')
-          .select('id')
-          .eq('user_id', currentUserId)
-          .single();
-        if (teacherProfileError || !teacherProfile) {
-          console.warn("Teacher profile not found for current user, cannot check enrollment.");
-          setIsEnrolled(false);
-          setIsLoading(false);
-          return;
-        }
-        enrollmentCheckUserId = teacherProfile.id; // Use teachers.id for the check
+        fkColumnNameInEnrollmentTable = 'teacher_id'; // Using teachers.id
       } else {
-        // Admin/Superadmin are considered enrolled for viewing purposes if they can access this page
-        setIsEnrolled(true);
+        setIsEnrolled(true); // Admin/Superadmin are considered enrolled
         setIsLoading(false);
         return;
       }
       
-      if (enrollmentCheckUserId && enrollmentTable) {
+      if (enrollmentCheckProfileId && enrollmentTable) {
         const { data: enrollment, error: enrollmentError } = await supabase
           .from(enrollmentTable)
           .select('id')
           .eq('course_id', courseId)
-          .eq(fkColumnNameInEnrollmentTable, enrollmentCheckUserId)
+          .eq(fkColumnNameInEnrollmentTable, enrollmentCheckProfileId)
           .maybeSingle(); 
 
         if (enrollmentError) {
@@ -140,7 +143,7 @@ export default function ViewCourseContentPage() {
     }
 
     fetchCourseData();
-  }, [courseId, currentUserId, currentUserRole, router, toast]);
+  }, [courseId, currentUserId, currentUserRole, currentUserProfileId, router, toast]);
 
   if (isLoading) {
     return <div className="text-center py-10 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading course content...</div>;
@@ -236,3 +239,4 @@ export default function ViewCourseContentPage() {
   );
 }
 
+    
