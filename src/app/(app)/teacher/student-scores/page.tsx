@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ClassData, Student, Exam, Subject, StudentScore } from '@/types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Award, Save, Users, FileText, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -106,15 +106,28 @@ export default function TeacherStudentScoresPage() {
           } else {
             const newScores: Record<string, string | number> = {};
             (data || []).forEach(ss => { newScores[ss.student_id] = ss.score; });
+            // Initialize scores for students who don't have one yet, to ensure inputs appear for all
+            studentsInSelectedClass.forEach(student => {
+                if (!newScores.hasOwnProperty(student.id)) {
+                    newScores[student.id] = ''; // Or some other default like undefined if preferred
+                }
+            });
             setScores(newScores);
           }
           setIsLoading(false);
         });
+    } else if (studentsInSelectedClass.length > 0) {
+        // If exam is deselected or class changes but students are present, clear scores for those students or init to empty
+        const initialScores: Record<string, string | number> = {};
+        studentsInSelectedClass.forEach(student => {
+            initialScores[student.id] = '';
+        });
+        setScores(initialScores);
     } else {
-        setScores({}); // Reset scores if exam or class is not selected
+        setScores({}); // Reset scores if exam or class is not selected, or no students
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedExamId, selectedClassId, studentsInSelectedClass.length, currentSchoolId, toast]);
+  }, [selectedExamId, selectedClassId, studentsInSelectedClass, currentSchoolId, toast]); // Changed studentsInSelectedClass.length to studentsInSelectedClass
 
 
   const handleScoreChange = (studentId: string, value: string) => {
@@ -124,7 +137,7 @@ export default function TeacherStudentScoresPage() {
   const getSubjectName = (subjectId: string) => allSubjects.find(s => s.id === subjectId)?.name || 'N/A';
 
   const filteredExamsForSelectedClass = selectedClassId 
-    ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id) // Show exams specific to class OR general exams
+    ? allExams.filter(exam => exam.class_id === selectedClassId || !exam.class_id)
     : [];
   
   const selectedExamDetails = allExams.find(ex => ex.id === selectedExamId);
@@ -160,6 +173,23 @@ export default function TeacherStudentScoresPage() {
     setIsLoading(false);
   };
 
+  const [studentsWithScores, studentsWithoutScores] = useMemo(() => {
+    if (!selectedExamId || studentsInSelectedClass.length === 0) {
+        return [[], []];
+    }
+    const withScores: Student[] = [];
+    const withoutScores: Student[] = [];
+    studentsInSelectedClass.forEach(student => {
+        // Check if score exists AND is not an empty string
+        if (scores[student.id] !== undefined && String(scores[student.id]).trim() !== '') {
+            withScores.push(student);
+        } else {
+            withoutScores.push(student);
+        }
+    });
+    return [withScores, withoutScores];
+  }, [studentsInSelectedClass, scores, selectedExamId]);
+
 
   if (isFetchingInitialData) {
       return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading initial data...</span></div>;
@@ -174,6 +204,23 @@ export default function TeacherStudentScoresPage() {
         </div>
     );
   }
+
+  const renderStudentScoreRows = (studentList: Student[]) => {
+    return studentList.map(student => (
+      <TableRow key={student.id}>
+        <TableCell className="font-medium">{student.name}</TableCell>
+        <TableCell>
+          <Input 
+            type="text"
+            value={scores[student.id] || ''}
+            onChange={(e) => handleScoreChange(student.id, e.target.value)}
+            placeholder={selectedExamDetails?.max_marks ? `Score / ${selectedExamDetails.max_marks}` : "Enter score/grade"}
+            disabled={isLoading}
+          />
+        </TableCell>
+      </TableRow>
+    ));
+  };
 
 
   return (
@@ -237,20 +284,26 @@ export default function TeacherStudentScoresPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {studentsInSelectedClass.map(student => (
-                    <TableRow key={student.id}>
-                      <TableCell className="font-medium">{student.name}</TableCell>
-                      <TableCell>
-                        <Input 
-                          type="text" // Use text to allow grades like A+, or numbers
-                          value={scores[student.id] || ''}
-                          onChange={(e) => handleScoreChange(student.id, e.target.value)}
-                          placeholder={selectedExamDetails?.max_marks ? `Score / ${selectedExamDetails.max_marks}` : "Enter score/grade"}
-                          disabled={isLoading}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {studentsWithScores.length > 0 && (
+                    <>
+                      <TableRow className="bg-muted/30 hover:bg-muted/30">
+                        <TableCell colSpan={2} className="py-2 px-4 text-sm font-semibold text-muted-foreground">
+                          Students with Existing Scores ({studentsWithScores.length})
+                        </TableCell>
+                      </TableRow>
+                      {renderStudentScoreRows(studentsWithScores)}
+                    </>
+                  )}
+                  {studentsWithoutScores.length > 0 && (
+                    <>
+                       <TableRow className="bg-muted/30 hover:bg-muted/30">
+                        <TableCell colSpan={2} className="py-2 px-4 text-sm font-semibold text-muted-foreground">
+                          Students Needing Scores ({studentsWithoutScores.length})
+                        </TableCell>
+                      </TableRow>
+                      {renderStudentScoreRows(studentsWithoutScores)}
+                    </>
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -267,3 +320,4 @@ export default function TeacherStudentScoresPage() {
     </div>
   );
 }
+
