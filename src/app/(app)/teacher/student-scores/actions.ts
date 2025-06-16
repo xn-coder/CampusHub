@@ -140,9 +140,7 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
 
   let savedCount = 0;
   const errors: string[] = [];
-  const notifiedStudents: Record<string, { examName: string, subjectName: string, score: string | number, maxMarks?: number | null }> = {};
-
-
+  
   for (const scoreInput of scoresToSave) {
     if (typeof scoreInput.score === 'string' && scoreInput.score.trim() === '') {
         continue; 
@@ -192,39 +190,34 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
       errors.push(`Error saving score for student ${scoreInput.student_id}: ${operationError.message}`);
     } else {
       savedCount++;
-      // Prepare for notification
-      const { data: examDetails } = await supabaseAdmin.from('exams').select('name, subject_id').eq('id', scoreInput.exam_id).single();
-      const { data: subjectDetails } = examDetails?.subject_id ? await supabaseAdmin.from('subjects').select('name').eq('id', examDetails.subject_id).single() : { data: null };
-      
-      notifiedStudents[scoreInput.student_id] = {
-          examName: examDetails?.name || 'Unknown Exam',
-          subjectName: subjectDetails?.name || 'Unknown Subject',
-          score: scoreInput.score,
-          maxMarks: scoreInput.max_marks
-      };
+      // Send notification after successful save/update
+      try {
+        const { data: studentEmailData } = await supabaseAdmin.from('students').select('email').eq('id', scoreInput.student_id).single();
+        const { data: examDetails } = await supabaseAdmin.from('exams').select('name, subject_id').eq('id', scoreInput.exam_id).single();
+        const { data: subjectDetails } = examDetails?.subject_id ? await supabaseAdmin.from('subjects').select('name').eq('id', examDetails.subject_id).single() : { data: null };
+        
+        if (studentEmailData?.email) {
+          const examName = examDetails?.name || 'Unknown Exam';
+          const subjectNameText = subjectDetails?.name ? ` (Subject: ${subjectDetails.name})` : '';
+          const emailSubject = `Exam Score Declared: ${examName}`;
+          const emailBody = `
+            <h1>Exam Score Update</h1>
+            <p>Your score for the exam "<strong>${examName}</strong>"${subjectNameText} has been declared/updated.</p>
+            <p><strong>Score:</strong> ${scoreInput.score}${scoreInput.max_marks ? ` / ${scoreInput.max_marks}` : ''}</p>
+            <p>Please log in to CampusHub to view your detailed results.</p>
+          `;
+          await sendEmail({
+            to: studentEmailData.email,
+            subject: emailSubject,
+            html: emailBody,
+          });
+        }
+      } catch (emailError: any) {
+        console.error(`Failed to send score notification to student ${scoreInput.student_id}:`, emailError.message);
+        // Log error but don't let it fail the whole score saving process
+      }
     }
   }
-
-  // Send notifications
-  for (const studentId in notifiedStudents) {
-    const studentInfo = notifiedStudents[studentId];
-    const { data: studentEmailData } = await supabaseAdmin.from('students').select('email').eq('id', studentId).single();
-    if (studentEmailData?.email) {
-      const emailSubject = `Exam Score Declared: ${studentInfo.examName}`;
-      const emailBody = `
-        <h1>Exam Score Update</h1>
-        <p>Your score for the exam "<strong>${studentInfo.examName}</strong>" (Subject: ${studentInfo.subjectName}) has been declared/updated.</p>
-        <p><strong>Score:</strong> ${studentInfo.score}${studentInfo.maxMarks ? ` / ${studentInfo.maxMarks}` : ''}</p>
-        <p>Please log in to CampusHub to view your detailed results.</p>
-      `;
-      await sendEmail({
-        to: studentEmailData.email,
-        subject: emailSubject,
-        html: emailBody,
-      });
-    }
-  }
-
 
   if (errors.length > 0) {
     return { 
@@ -234,9 +227,12 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
     };
   }
 
-  revalidatePath('/teacher/student-scores');
-  revalidatePath('/admin/student-scores'); 
-  revalidatePath('/student/my-scores'); 
+  if (savedCount > 0) {
+    revalidatePath('/teacher/student-scores');
+    revalidatePath('/admin/student-scores'); 
+    revalidatePath('/student/my-scores'); 
+  }
   
   return { ok: true, message: `Successfully saved/updated ${savedCount} student scores.`, savedCount };
 }
+
