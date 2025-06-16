@@ -21,49 +21,62 @@ export default function StudentProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const currentUserId = localStorage.getItem('currentUserId'); // This is User ID
-    if (currentUserId) {
-      // Fetch User details (for email, basic name)
-      supabase.from('users').select('*').eq('id', currentUserId).single()
-        .then(({ data: userData, error: userError }) => {
-          if (userError || !userData) {
-            toast({ title: "Error", description: "Could not fetch user data.", variant: "destructive"});
-            setIsLoading(false);
-            return;
+    async function fetchProfileData() {
+      setIsLoading(true);
+      const currentUserId = localStorage.getItem('currentUserId'); 
+      if (!currentUserId) {
+        toast({ title: "Error", description: "User not identified. Please log in.", variant: "destructive"});
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', currentUserId)
+          .single();
+
+        if (userError || !userData) {
+          toast({ title: "Error", description: "Could not fetch user data.", variant: "destructive"});
+          setIsLoading(false);
+          return;
+        }
+        setUserDetails(userData as User);
+
+        const { data: studentData, error: studentError } = await supabase
+          .from('students')
+          .select('*')
+          .eq('user_id', currentUserId) 
+          .single();
+
+        if (studentError || !studentData) {
+          toast({ title: "Error", description: "Could not fetch student profile.", variant: "destructive"});
+          setIsLoading(false);
+          return;
+        }
+        setStudentDetails(studentData as Student);
+
+        if (studentData.class_id) {
+          const { data: classData, error: classError } = await supabase
+            .from('classes')
+            .select('*')
+            .eq('id', studentData.class_id)
+            .single();
+
+          if (classError) {
+            console.warn("Could not fetch class details for student:", classError?.message);
+          } else {
+            setClassDetails(classData as ClassData);
           }
-          setUserDetails(userData as User);
-
-          // Fetch Student Profile details (for additional info like DOB, class_id, etc.)
-          supabase.from('students').select('*').eq('user_id', currentUserId).single()
-            .then(({ data: studentData, error: studentError }) => {
-              if (studentError || !studentData) {
-                toast({ title: "Error", description: "Could not fetch student profile.", variant: "destructive"});
-                setIsLoading(false);
-                return;
-              }
-              setStudentDetails(studentData as Student);
-
-              // If student has a class_id, fetch class details
-              if (studentData.class_id) {
-                supabase.from('classes').select('*').eq('id', studentData.class_id).single()
-                  .then(({ data: classData, error: classError }) => {
-                    if (classError || !classData) {
-                      console.warn("Could not fetch class details for student:", classError?.message);
-                      // Not critical enough to show toast, class can be N/A
-                    } else {
-                      setClassDetails(classData as ClassData);
-                    }
-                    setIsLoading(false);
-                  });
-              } else {
-                setIsLoading(false);
-              }
-            });
-        });
-    } else {
-      toast({ title: "Error", description: "User not identified. Please log in.", variant: "destructive"});
-      setIsLoading(false);
+        }
+      } catch (error: any) {
+        toast({ title: "Error", description: `An unexpected error occurred: ${error.message}`, variant: "destructive"});
+      } finally {
+        setIsLoading(false);
+      }
     }
+    fetchProfileData();
   }, [toast]);
 
   const handleMockPasswordReset = () => {
@@ -158,4 +171,3 @@ export default function StudentProfilePage() {
     </div>
   );
 }
-

@@ -4,63 +4,71 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { StudentScore, Exam, Subject } from '@/types';
+import type { StudentScore, Exam, Subject, Student } from '@/types';
 import { useState, useEffect } from 'react';
 import { Award, BookOpen, CalendarCheck, FileText, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
+import { useToast } from '@/hooks/use-toast';
 
 export default function StudentMyScoresPage() {
+  const { toast } = useToast();
   const [myScores, setMyScores] = useState<StudentScore[]>([]);
   const [allExams, setAllExams] = useState<Exam[]>([]);
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentStudentId, setCurrentStudentId] = useState<string | null>(null); // This will be Student Profile ID
+  const [currentStudentProfileId, setCurrentStudentProfileId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
 
   useEffect(() => {
-    const studentUserId = localStorage.getItem('currentUserId');
-    if (studentUserId) {
-      // First, get student's profile ID and school ID from their user ID
-      supabase.from('students').select('id, school_id').eq('user_id', studentUserId).single()
-        .then(({data: studentProfile, error: profileError}) => {
-          if (profileError || !studentProfile) {
-            console.error("Error fetching student profile:", profileError);
-            setIsLoading(false); return;
-          }
-          setCurrentStudentId(studentProfile.id);
-          setCurrentSchoolId(studentProfile.school_id);
+    async function fetchScoresData() {
+      setIsLoading(true);
+      const studentUserId = localStorage.getItem('currentUserId');
+      if (!studentUserId) {
+        toast({ title: "Error", description: "User not identified.", variant: "destructive"});
+        setIsLoading(false);
+        return;
+      }
 
-          // Now fetch scores and related data for this student and school
-          if (studentProfile.id && studentProfile.school_id) {
-            Promise.all([
-              supabase.from('student_scores').select('*').eq('student_id', studentProfile.id).eq('school_id', studentProfile.school_id).order('date_recorded', { ascending: false }),
-              supabase.from('exams').select('*').eq('school_id', studentProfile.school_id),
-              supabase.from('subjects').select('*').eq('school_id', studentProfile.school_id)
-            ]).then(([scoresRes, examsRes, subjectsRes]) => {
-              if (scoresRes.error) console.error("Error fetching scores", scoresRes.error);
-              else setMyScores((scoresRes.data as StudentScore[]) || []);
+      try {
+        const { data: studentProfile, error: profileError } = await supabase
+          .from('students')
+          .select('id, school_id') // students.id is the student_profile_id
+          .eq('user_id', studentUserId)
+          .single();
 
-              if (examsRes.error) console.error("Error fetching exams", examsRes.error);
-              else setAllExams((examsRes.data as Exam[]) || []);
-              
-              if (subjectsRes.error) console.error("Error fetching subjects", subjectsRes.error);
-              else setAllSubjects((subjectsRes.data as Subject[]) || []);
-              
-              setIsLoading(false);
-            }).catch(err => {
-                console.error("Error fetching student score data:", err);
-                setIsLoading(false);
-            });
-          } else {
-              setIsLoading(false); // No school ID or student profile ID
-          }
-        });
-    } else {
-      setIsLoading(false);
+        if (profileError || !studentProfile || !studentProfile.id || !studentProfile.school_id) {
+          toast({ title: "Error", description: "Could not fetch student profile or school information.", variant: "destructive"});
+          setIsLoading(false);
+          return;
+        }
+        setCurrentStudentProfileId(studentProfile.id);
+        setCurrentSchoolId(studentProfile.school_id);
+
+        const [scoresRes, examsRes, subjectsRes] = await Promise.all([
+          supabase.from('student_scores').select('*').eq('student_id', studentProfile.id).eq('school_id', studentProfile.school_id).order('date_recorded', { ascending: false }),
+          supabase.from('exams').select('*').eq('school_id', studentProfile.school_id),
+          supabase.from('subjects').select('*').eq('school_id', studentProfile.school_id)
+        ]);
+
+        if (scoresRes.error) throw scoresRes.error;
+        setMyScores((scoresRes.data as StudentScore[]) || []);
+
+        if (examsRes.error) throw examsRes.error;
+        setAllExams((examsRes.data as Exam[]) || []);
+        
+        if (subjectsRes.error) throw subjectsRes.error;
+        setAllSubjects((subjectsRes.data as Subject[]) || []);
+        
+      } catch (error: any) {
+        toast({ title: "Error", description: `Failed to load score data: ${error.message}`, variant: "destructive"});
+      } finally {
+        setIsLoading(false);
+      }
     }
-  }, []);
+    fetchScoresData();
+  }, [toast]);
 
   const getExamName = (examId: string) => allExams.find(e => e.id === examId)?.name || 'N/A';
   const getSubjectName = (subjectId: string) => allSubjects.find(s => s.id === subjectId)?.name || 'N/A';
@@ -79,8 +87,8 @@ export default function StudentMyScoresPage() {
         <CardContent>
           {isLoading ? (
              <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading your scores...</div>
-          ) : !currentStudentId ? (
-            <p className="text-destructive text-center py-4">Could not identify student. Please log in again.</p>
+          ) : !currentStudentProfileId ? (
+            <p className="text-destructive text-center py-4">Could not identify student profile. Please log in again.</p>
           ) : myScores.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">No scores have been recorded for you yet.</p>
           ) : (
@@ -112,4 +120,3 @@ export default function StudentMyScoresPage() {
     </div>
   );
 }
-
