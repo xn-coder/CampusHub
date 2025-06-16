@@ -14,7 +14,7 @@ import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2 } from 'l
 import type { Course, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { addCourseResourceAction, deleteCourseResourceAction } from '../actions';
+import { addCourseResourceAction, deleteCourseResourceAction } from '../../actions';
 
 type ResourceTabKey = 'ebooks' | 'videos' | 'notes' | 'webinars';
 const resourceTypeMapping: Record<ResourceTabKey, CourseResourceType> = {
@@ -247,5 +247,3 @@ export default function ManageCourseContentPage() {
     </div>
   );
 }
-
-    
