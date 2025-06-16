@@ -24,7 +24,7 @@ async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
     .eq('admin_user_id', adminUserId)
     .single();
   if (error || !school) {
-    console.error("Error fetching admin's school or admin not linked:", error);
+    console.error("Error fetching admin's school or admin not linked:", error?.message || "No school record found for this admin_user_id.");
     return null;
   }
   return school.id;
@@ -84,7 +84,7 @@ export default function ManageStudentsPage() {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('students')
-      .select('id, name, email, class_id, profile_picture_url, user_id')
+      .select('id, name, email, class_id, profile_picture_url, user_id, school_id') // Ensure school_id is selected from students table
       .eq('school_id', schoolId);
 
     if (error) {
@@ -96,9 +96,10 @@ export default function ManageStudentsPage() {
         id: s.id,
         name: s.name,
         email: s.email || 'N/A',
-        classId: s.class_id || '',
+        classId: s.class_id || '', // classId from student record
         profilePictureUrl: s.profile_picture_url,
         userId: s.user_id, 
+        school_id: s.school_id // school_id from student record
       })) || [];
       setStudents(formattedStudents);
     }
@@ -132,12 +133,13 @@ export default function ManageStudentsPage() {
     }
     setIsLoading(true);
     
-    // Check if email is being changed and if the new email already exists for another user
+    // Check if email is being changed and if the new email already exists for another user in the same school
     if (editStudentEmail.trim() !== editingStudent.email) {
       const { data: existingUser, error: fetchError } = await supabase
         .from('users')
         .select('id')
         .eq('email', editStudentEmail.trim())
+        .eq('school_id', currentSchoolId) // Ensure uniqueness within the school
         .neq('id', editingStudent.userId) 
         .single();
 
@@ -147,7 +149,7 @@ export default function ManageStudentsPage() {
         return;
       }
       if (existingUser) {
-        toast({ title: "Error", description: "Another user with this email already exists.", variant: "destructive" });
+        toast({ title: "Error", description: "Another user with this email already exists in this school.", variant: "destructive" });
         setIsLoading(false);
         return;
       }
@@ -350,6 +352,7 @@ export default function ManageStudentsPage() {
                         {allClassesInSchool.map(cls => (
                             <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
                         ))}
+                        {allClassesInSchool.length === 0 && <SelectItem value="no-classes" disabled>No classes available in this school</SelectItem>}
                     </SelectContent>
                  </Select>
               </div>
