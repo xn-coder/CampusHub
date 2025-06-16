@@ -7,15 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { Assignment, AssignmentSubmission } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
-import { ClipboardList, CalendarClock, Upload, Loader2, CheckCircle, Paperclip, ExternalLink } from 'lucide-react';
+import { ClipboardList, CalendarClock, Upload, Loader2, CheckCircle, Paperclip, ExternalLink, Award, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { format, parseISO, isPast } from 'date-fns';
+import { format, parseISO, isPast, differenceInDays, isToday } from 'date-fns';
 import { getStudentAssignmentsAction, submitAssignmentFileAction } from './actions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/lib/supabaseClient'; // For direct storage URL if needed
+import { supabase } from '@/lib/supabaseClient';
 
 interface EnrichedAssignmentClient extends Assignment {
   teacherName?: string;
@@ -116,7 +116,7 @@ export default function StudentAssignmentsPage() {
     if (result.ok) {
       toast({ title: "Submission Successful", description: result.message });
       setIsSubmitDialogOpen(false);
-      fetchAssignmentsData(); // Refresh the list to show new submission status
+      fetchAssignmentsData(); 
     } else {
       toast({ title: "Submission Failed", description: result.message, variant: "destructive" });
     }
@@ -125,6 +125,24 @@ export default function StudentAssignmentsPage() {
   const getPublicUrl = (filePath: string) => {
     const { data } = supabase.storage.from('assignment_submissions').getPublicUrl(filePath);
     return data.publicUrl;
+  };
+
+  const getStatusBadge = (assignment: EnrichedAssignmentClient) => {
+    const dueDate = parseISO(assignment.due_date);
+    if (assignment.submission) {
+      return <Badge variant="default" className="bg-green-600 hover:bg-green-700">Submitted</Badge>;
+    }
+    if (isPast(dueDate) && !isToday(dueDate)) {
+      return <Badge variant="destructive">Past Due</Badge>;
+    }
+    if (isToday(dueDate)) {
+      return <Badge className="bg-orange-500 hover:bg-orange-600 text-white">Due Today</Badge>;
+    }
+    const daysLeft = differenceInDays(dueDate, new Date());
+    if (daysLeft >= 0) {
+      return <Badge variant="secondary">{daysLeft} day{daysLeft !== 1 ? 's' : ''} remaining</Badge>;
+    }
+    return <Badge variant="outline">Upcoming</Badge>; // Fallback, though should be covered
   };
 
 
@@ -145,32 +163,40 @@ export default function StudentAssignmentsPage() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <CardTitle>{assignment.title}</CardTitle>
-                  {isPast(parseISO(assignment.due_date)) && !assignment.submission ? (
-                    <Badge variant="destructive">Past Due</Badge>
-                  ) : assignment.submission ? (
-                    <Badge variant="default" className="bg-green-600 hover:bg-green-700">Submitted</Badge>
-                  ) : (
-                    <Badge variant="secondary">Upcoming</Badge>
-                  )}
+                  {getStatusBadge(assignment)}
                 </div>
                 <CardDescription>
                   Posted by: {assignment.teacherName}
                   {assignment.subjectName && <span className="block text-xs">Subject: {assignment.subjectName}</span>}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex-grow space-y-2">
+              <CardContent className="flex-grow space-y-3">
                 <p className="text-sm whitespace-pre-wrap">{assignment.description}</p>
                 <div className="flex items-center text-sm text-muted-foreground">
                   <CalendarClock className="mr-2 h-4 w-4" />
                   Due: {format(parseISO(assignment.due_date), 'PPpp')}
                 </div>
+                
+                {assignment.submission && assignment.submission.grade && (
+                  <div className="mt-2 p-3 bg-muted/50 rounded-md border border-dashed">
+                    <h4 className="text-sm font-semibold flex items-center"><Award className="mr-2 h-4 w-4 text-primary"/>Grade:</h4>
+                    <p className="text-lg font-bold text-primary ml-1">{assignment.submission.grade}</p>
+                  </div>
+                )}
+                 {assignment.submission && assignment.submission.feedback && (
+                  <div className="mt-2 p-3 bg-muted/50 rounded-md border border-dashed">
+                    <h4 className="text-sm font-semibold flex items-center"><MessageSquare className="mr-2 h-4 w-4 text-secondary-foreground"/>Teacher Feedback:</h4>
+                    <p className="text-sm text-secondary-foreground whitespace-pre-wrap ml-1">{assignment.submission.feedback}</p>
+                  </div>
+                )}
+
                 {assignment.submission && (
                   <div className="text-sm text-green-600 dark:text-green-400 pt-2">
                     <p className="font-semibold flex items-center">
                         <CheckCircle className="mr-2 h-4 w-4"/> Submitted: {assignment.submission.file_name}
                     </p>
                     <p className="text-xs text-muted-foreground">On: {format(parseISO(assignment.submission.submission_date), 'PPpp')}</p>
-                    {assignment.submission.notes && <p className="text-xs text-muted-foreground mt-1">Notes: {assignment.submission.notes}</p>}
+                    {assignment.submission.notes && <p className="text-xs text-muted-foreground mt-1">Your Notes: {assignment.submission.notes}</p>}
                      <a 
                         href={getPublicUrl(assignment.submission.file_path)} 
                         target="_blank" 
@@ -188,7 +214,7 @@ export default function StudentAssignmentsPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleOpenSubmitDialog(assignment)}
-                    disabled={isPast(parseISO(assignment.due_date))}
+                    disabled={isPast(parseISO(assignment.due_date)) && !isToday(parseISO(assignment.due_date))}
                   >
                     <Upload className="mr-2 h-4 w-4" /> Submit Assignment
                   </Button>
@@ -219,7 +245,7 @@ export default function StudentAssignmentsPage() {
                   onChange={handleFileChange}
                   required
                   disabled={isSubmitting}
-                  accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.zip" // Example file types
+                  accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.zip" 
                 />
                 {submissionFile && <p className="text-xs text-muted-foreground mt-1">{submissionFile.name} ({(submissionFile.size / 1024 / 1024).toFixed(2)} MB)</p>}
               </div>
