@@ -7,14 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import type { Teacher, User, Assignment } from '@/types'; // Added Assignment
+import type { Teacher, User, Assignment } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { KeyRound, History, BookCheck, ClipboardList } from 'lucide-react';
-
-const MOCK_TEACHERS_KEY = 'mockTeachersData';
-const MOCK_USER_DB_KEY = 'mockUserDatabase';
-const MOCK_ASSIGNMENTS_KEY = 'mockAssignmentsData'; // To count assignments
+import { KeyRound, History, BookCheck, ClipboardList, Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function TeacherProfilePage() {
   const { toast } = useToast();
@@ -24,27 +21,64 @@ export default function TeacherProfilePage() {
   const [assignmentCount, setAssignmentCount] = useState(0);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const currentUserId = localStorage.getItem('currentUserId');
-      if (currentUserId) {
-        const storedTeachers = localStorage.getItem(MOCK_TEACHERS_KEY);
-        const teachers: Teacher[] = storedTeachers ? JSON.parse(storedTeachers) : [];
-        const foundTeacher = teachers.find(t => t.id === currentUserId);
-        setTeacherDetails(foundTeacher || null);
+    async function fetchProfileData() {
+      setIsLoading(true);
+      const currentUserId = localStorage.getItem('currentUserId'); // This is User.id
 
-        const storedUsers = localStorage.getItem(MOCK_USER_DB_KEY);
-        const users: User[] = storedUsers ? JSON.parse(storedUsers) : [];
-        const foundUser = users.find(u => u.id === currentUserId);
-        setUserDetails(foundUser || null);
+      if (!currentUserId) {
+        toast({ title: "Error", description: "User not identified. Please log in.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
 
-        const storedAssignments = localStorage.getItem(MOCK_ASSIGNMENTS_KEY);
-        const allAssignments: Assignment[] = storedAssignments ? JSON.parse(storedAssignments) : [];
-        const count = allAssignments.filter(asm => asm.teacherId === currentUserId).length;
-        setAssignmentCount(count);
+      // Fetch User details (for email, basic name, role)
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', currentUserId)
+        .single();
+
+      if (userError || !userData) {
+        toast({ title: "Error", description: "Could not fetch user data.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
+      setUserDetails(userData as User);
+
+      // Fetch Teacher Profile details (for subject, profile pic url, etc.)
+      // The teacher's profile ID (teachers.id) is distinct from users.id
+      const { data: teacherData, error: teacherError } = await supabase
+        .from('teachers')
+        .select('*')
+        .eq('user_id', currentUserId) // Teacher profile linked by User.id
+        .single();
+
+      if (teacherError || !teacherData) {
+        toast({ title: "Error", description: "Could not fetch teacher profile.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
+      setTeacherDetails(teacherData as Teacher);
+
+      // Fetch assignment count
+      // Ensure 'teacher_id' in 'assignments' table refers to the teacher's profile ID (teachers.id)
+      if (teacherData.id) {
+        const { count, error: assignmentError } = await supabase
+          .from('assignments')
+          .select('id', { count: 'exact', head: true })
+          .eq('teacher_id', teacherData.id); // Use teacher's profile ID
+
+        if (assignmentError) {
+          console.error("Error fetching assignment count:", assignmentError);
+          // Non-critical, so don't block page load
+        } else {
+          setAssignmentCount(count || 0);
+        }
       }
       setIsLoading(false);
     }
-  }, []);
+    fetchProfileData();
+  }, [toast]);
 
   const handleMockPasswordReset = () => {
     toast({
@@ -54,16 +88,21 @@ export default function TeacherProfilePage() {
   };
   
   if (isLoading) {
-    return <div className="flex justify-center items-center h-64"><p>Loading profile...</p></div>;
+    return (
+        <div className="flex flex-col gap-6">
+            <PageHeader title="My Profile" />
+            <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin mr-2" /> Loading profile...</div>
+        </div>
+    );
   }
 
   if (!teacherDetails || !userDetails) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="My Profile" description="Your personal and professional information." />
+        <PageHeader title="My Profile" description="View and update your personal and professional information." />
         <Card>
           <CardContent className="pt-6">
-            <p className="text-destructive text-center">Could not load your profile data. Please ensure you are logged in correctly.</p>
+            <p className="text-destructive text-center">Could not load your profile data. Please ensure you are logged in correctly or contact support.</p>
           </CardContent>
         </Card>
       </div>
@@ -80,7 +119,7 @@ export default function TeacherProfilePage() {
         <Card className="md:col-span-1">
           <CardHeader className="items-center text-center">
             <Avatar className="w-24 h-24 mb-4">
-              <AvatarImage src={teacherDetails.profilePictureUrl} alt={teacherDetails.name} data-ai-hint="person teacher" />
+              <AvatarImage src={teacherDetails.profile_picture_url || undefined} alt={teacherDetails.name} data-ai-hint="person teacher" />
               <AvatarFallback className="text-3xl">{teacherDetails.name.substring(0,2).toUpperCase()}</AvatarFallback>
             </Avatar>
             <CardTitle>{teacherDetails.name}</CardTitle>
@@ -110,7 +149,7 @@ export default function TeacherProfilePage() {
             </div>
             <div>
               <Label htmlFor="teacherSubject">Primary Subject</Label>
-              <Input id="teacherSubject" value={teacherDetails.subject} readOnly />
+              <Input id="teacherSubject" value={teacherDetails.subject || 'N/A'} readOnly />
             </div>
             <p className="text-sm text-muted-foreground pt-4">To update your details, please contact the school administration.</p>
           </CardContent>

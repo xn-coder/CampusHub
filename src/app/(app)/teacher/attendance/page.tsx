@@ -8,111 +8,180 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import type { ClassData, Student, AttendanceRecord, ClassAttendance } from '@/types';
+import type { ClassData, Student, AttendanceRecord, AttendanceStatus, UserRole } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { CheckSquare, XSquare, Edit, Save, ListChecks, Users } from 'lucide-react';
+import { Save, ListChecks, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
-
-const MOCK_CLASSES_KEY = 'mockClassesData';
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_ATTENDANCE_KEY_PREFIX = 'mockAttendanceData_'; // Prefix + classSectionId + date
+import { supabase } from '@/lib/supabaseClient';
+import { saveAttendanceAction } from './actions';
 
 export default function TeacherAttendancePage() {
   const { toast } = useToast();
   const [assignedClasses, setAssignedClasses] = useState<ClassData[]>([]);
-  const [selectedClassSectionId, setSelectedClassSectionId] = useState<string>('');
+  const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [studentsInSelectedClass, setStudentsInSelectedClass] = useState<Student[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceRecord['status']>>({}); // studentId: status
+  const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceStatus>>({}); // studentId: status
   const [currentDate, setCurrentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingInitialData, setIsFetchingInitialData] = useState(true);
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID (teachers.id)
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const userId = localStorage.getItem('currentUserId');
-      const storedActiveClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      
-      if (userId && storedActiveClasses) {
-        const allClasses: ClassData[] = JSON.parse(storedActiveClasses);
-        const teacherClasses = allClasses.filter(cls => cls.teacherId === userId);
-        setAssignedClasses(teacherClasses);
-        if (teacherClasses.length > 0) {
-          // setSelectedClassSectionId(teacherClasses[0].id); // Auto-select first class initially
+    async function loadInitialTeacherData() {
+      setIsFetchingInitialData(true);
+      const teacherUserId = localStorage.getItem('currentUserId'); // This is User.id
+      const role = localStorage.getItem('currentUserRole') as UserRole | null;
+
+      if (!teacherUserId || role !== 'teacher') {
+        toast({ title: "Error", description: "Access denied. You must be logged in as a teacher.", variant: "destructive" });
+        setIsFetchingInitialData(false);
+        return;
+      }
+
+      // Get teacher's profile ID and school_id
+      const { data: teacherProfile, error: teacherProfileError } = await supabase
+        .from('teachers')
+        .select('id, school_id') // teachers.id is the profile ID
+        .eq('user_id', teacherUserId)
+        .single();
+
+      if (teacherProfileError || !teacherProfile) {
+        toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
+        setIsFetchingInitialData(false);
+        return;
+      }
+      setCurrentTeacherId(teacherProfile.id);
+      setCurrentSchoolId(teacherProfile.school_id);
+
+      // Fetch classes assigned to this teacher
+      if (teacherProfile.id && teacherProfile.school_id) {
+        const { data: classesData, error: classesError } = await supabase
+          .from('classes')
+          .select('id, name, division')
+          .eq('teacher_id', teacherProfile.id)
+          .eq('school_id', teacherProfile.school_id);
+
+        if (classesError) {
+          toast({ title: "Error", description: "Failed to fetch assigned classes.", variant: "destructive" });
+        } else {
+          setAssignedClasses(classesData || []);
         }
       }
+      setIsFetchingInitialData(false);
     }
-  }, []);
+    loadInitialTeacherData();
+  }, [toast]);
 
   useEffect(() => {
-    if (selectedClassSectionId && typeof window !== 'undefined') {
-      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      if (storedStudents) {
-        const allStudents: Student[] = JSON.parse(storedStudents);
-        const classStudents = allStudents.filter(s => s.classId === selectedClassSectionId);
-        setStudentsInSelectedClass(classStudents);
-        loadAttendanceForClassAndDate(selectedClassSectionId, currentDate, classStudents);
-      } else {
+    async function loadStudentsAndAttendance() {
+      if (!selectedClassId || !currentSchoolId || !currentDate) {
         setStudentsInSelectedClass([]);
         setAttendanceRecords({});
+        return;
       }
-    } else {
-      setStudentsInSelectedClass([]);
-      setAttendanceRecords({});
-    }
-  }, [selectedClassSectionId, currentDate]);
+      setIsLoading(true);
 
-  const loadAttendanceForClassAndDate = (classId: string, date: string, students: Student[]) => {
-    setIsLoading(true);
-    const attendanceKey = `${MOCK_ATTENDANCE_KEY_PREFIX}${classId}_${date}`;
-    const storedAttendance = localStorage.getItem(attendanceKey);
-    const initialRecords: Record<string, AttendanceRecord['status']> = {};
-    
-    if (storedAttendance) {
-      const savedRecords: ClassAttendance = JSON.parse(storedAttendance);
-      savedRecords.records.forEach(rec => {
-        initialRecords[rec.studentId] = rec.status;
-      });
-    } else {
-      // Default to 'Present' if no record exists for the day
-      students.forEach(student => {
-        initialRecords[student.id] = 'Present';
-      });
-    }
-    setAttendanceRecords(initialRecords);
-    setIsLoading(false);
-  };
+      // Fetch students in the selected class
+      const { data: classStudents, error: studentsError } = await supabase
+        .from('students')
+        .select('*')
+        .eq('class_id', selectedClassId)
+        .eq('school_id', currentSchoolId);
 
-  const handleAttendanceChange = (studentId: string, status: AttendanceRecord['status']) => {
+      if (studentsError) {
+        toast({ title: "Error", description: "Failed to fetch students for the class.", variant: "destructive" });
+        setStudentsInSelectedClass([]);
+        setAttendanceRecords({});
+        setIsLoading(false);
+        return;
+      }
+      setStudentsInSelectedClass(classStudents || []);
+
+      // Fetch existing attendance records for these students on the selected date
+      const studentIds = (classStudents || []).map(s => s.id);
+      if (studentIds.length > 0) {
+        const { data: existingDbRecords, error: attendanceError } = await supabase
+          .from('attendance_records')
+          .select('student_id, status')
+          .eq('class_id', selectedClassId)
+          .eq('date', currentDate)
+          .eq('school_id', currentSchoolId)
+          .in('student_id', studentIds);
+        
+        const initialRecords: Record<string, AttendanceStatus> = {};
+        (classStudents || []).forEach(student => {
+          const foundRecord = existingDbRecords?.find(r => r.student_id === student.id);
+          initialRecords[student.id] = foundRecord ? foundRecord.status as AttendanceStatus : 'Present'; // Default to Present
+        });
+        setAttendanceRecords(initialRecords);
+        
+        if (attendanceError) {
+          toast({ title: "Warning", description: "Could not fetch existing attendance records, defaulting to 'Present'.", variant: "default" });
+        }
+      } else {
+        setAttendanceRecords({}); // No students, no records
+      }
+      setIsLoading(false);
+    }
+    loadStudentsAndAttendance();
+  }, [selectedClassId, currentDate, currentSchoolId, toast]);
+
+  const handleAttendanceChange = (studentId: string, status: AttendanceStatus) => {
     setAttendanceRecords(prev => ({ ...prev, [studentId]: status }));
   };
 
-  const handleSaveAttendance = () => {
-    if (!selectedClassSectionId) {
-      toast({ title: "Error", description: "Please select a class.", variant: "destructive" });
+  const handleSaveAttendance = async () => {
+    if (!selectedClassId || !currentTeacherId || !currentSchoolId) {
+      toast({ title: "Error", description: "Class, teacher, or school context is missing.", variant: "destructive" });
       return;
     }
     if (studentsInSelectedClass.length === 0) {
-        toast({ title: "No Students", description: "No students in the selected class to mark attendance for.", variant: "destructive"});
-        return;
+      toast({ title: "No Students", description: "No students in the selected class to mark attendance for.", variant: "destructive"});
+      return;
     }
+    setIsLoading(true);
 
-    const recordsToSave: AttendanceRecord[] = studentsInSelectedClass.map(student => ({
-      studentId: student.id,
-      date: currentDate,
+    const recordsToSubmit: { student_id: string; status: AttendanceStatus }[] = studentsInSelectedClass.map(student => ({
+      student_id: student.id,
       status: attendanceRecords[student.id] || 'Present', // Default to present if somehow missing
     }));
 
-    const classAttendanceData: ClassAttendance = {
-      classSectionId: selectedClassSectionId,
-      records: recordsToSave,
-    };
+    const result = await saveAttendanceAction({
+      class_id: selectedClassId,
+      date: currentDate,
+      records: recordsToSubmit,
+      teacher_id: currentTeacherId,
+      school_id: currentSchoolId,
+    });
 
-    const attendanceKey = `${MOCK_ATTENDANCE_KEY_PREFIX}${selectedClassSectionId}_${currentDate}`;
-    localStorage.setItem(attendanceKey, JSON.stringify(classAttendanceData));
-    toast({ title: "Attendance Saved", description: `Attendance for ${currentDate} has been saved.` });
+    if (result.ok) {
+      toast({ title: "Attendance Saved", description: `${result.message}` });
+    } else {
+      toast({ title: "Error Saving Attendance", description: result.message, variant: "destructive" });
+    }
+    setIsLoading(false);
   };
   
-  const selectedClassDetails = assignedClasses.find(c => c.id === selectedClassSectionId);
+  const selectedClassDetails = assignedClasses.find(c => c.id === selectedClassId);
+  
+  if (isFetchingInitialData) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Class Attendance" />
+        <Card><CardContent className="pt-6 text-center flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading teacher data...</CardContent></Card>
+      </div>
+    );
+  }
+  if (!currentTeacherId || !currentSchoolId) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Class Attendance" />
+        <Card><CardContent className="pt-6 text-center text-destructive">Could not load teacher profile or school association. Cannot manage attendance.</CardContent></Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -129,7 +198,7 @@ export default function TeacherAttendancePage() {
           <div className="grid md:grid-cols-2 gap-4 items-end">
             <div>
               <Label htmlFor="classSelect">Select Class</Label>
-              <Select value={selectedClassSectionId} onValueChange={setSelectedClassSectionId}>
+              <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading || isFetchingInitialData}>
                 <SelectTrigger id="classSelect">
                   <SelectValue placeholder="Choose your class" />
                 </SelectTrigger>
@@ -148,13 +217,14 @@ export default function TeacherAttendancePage() {
                 value={currentDate} 
                 onChange={(e) => setCurrentDate(e.target.value)}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isLoading || isFetchingInitialData}
               />
             </div>
           </div>
 
-          {isLoading && <p className="text-muted-foreground text-center py-4">Loading attendance...</p>}
+          {isLoading && selectedClassId && <p className="text-muted-foreground text-center py-4">Loading students and attendance...</p>}
           
-          {!isLoading && selectedClassSectionId && studentsInSelectedClass.length === 0 && (
+          {!isLoading && selectedClassId && studentsInSelectedClass.length === 0 && (
             <p className="text-muted-foreground text-center py-4">No students found in {selectedClassDetails?.name} - {selectedClassDetails?.division}.</p>
           )}
 
@@ -174,12 +244,13 @@ export default function TeacherAttendancePage() {
                       <TableCell>
                         <RadioGroup 
                           value={attendanceRecords[student.id] || 'Present'} 
-                          onValueChange={(value) => handleAttendanceChange(student.id, value as AttendanceRecord['status'])}
+                          onValueChange={(value) => handleAttendanceChange(student.id, value as AttendanceStatus)}
                           className="flex space-x-2 sm:space-x-4 justify-center"
+                          disabled={isLoading}
                         >
-                          {(['Present', 'Absent', 'Late', 'Excused'] as AttendanceRecord['status'][]).map(status => (
+                          {(['Present', 'Absent', 'Late', 'Excused'] as AttendanceStatus[]).map(status => (
                             <div key={status} className="flex items-center space-x-1">
-                              <RadioGroupItem value={status} id={`${student.id}-${status}`} />
+                              <RadioGroupItem value={status} id={`${student.id}-${status}`} disabled={isLoading} />
                               <Label htmlFor={`${student.id}-${status}`} className="text-xs sm:text-sm">{status}</Label>
                             </div>
                           ))}
@@ -192,9 +263,11 @@ export default function TeacherAttendancePage() {
             </div>
           )}
         </CardContent>
-        {studentsInSelectedClass.length > 0 && (
+        {!isLoading && studentsInSelectedClass.length > 0 && selectedClassId && (
           <CardFooter>
-            <Button onClick={handleSaveAttendance} disabled={isLoading}><Save className="mr-2 h-4 w-4" /> Save Attendance</Button>
+            <Button onClick={handleSaveAttendance} disabled={isLoading}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Attendance
+            </Button>
           </CardFooter>
         )}
       </Card>

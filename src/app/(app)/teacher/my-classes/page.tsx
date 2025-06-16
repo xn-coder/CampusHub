@@ -8,58 +8,67 @@ import type { ClassData, Student, UserRole } from '@/types';
 import { useState, useEffect } from 'react';
 import { School, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { useToast } from '@/hooks/use-toast';
 
 interface EnrichedClassData extends ClassData {
   students: Student[];
 }
 
 export default function MyClassesPage() {
+  const { toast } = useToast();
   const [assignedClassesWithStudents, setAssignedClassesWithStudents] = useState<EnrichedClassData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
-  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
-
+  // Removed currentTeacherId and currentSchoolId from state as they are derived inside useEffect
 
   useEffect(() => {
-    const teacherId = localStorage.getItem('currentUserId');
-    const role = localStorage.getItem('currentUserRole') as UserRole | null;
-
-    if (!teacherId || role !== 'teacher') {
-      setError("Access denied. You must be logged in as a teacher.");
-      setIsLoading(false);
-      return;
-    }
-    setCurrentTeacherId(teacherId);
-
     async function fetchData() {
       setIsLoading(true);
       setError(null);
 
-      // Get teacher's school_id from their profile
+      const teacherUserId = localStorage.getItem('currentUserId'); // This is User.id
+      const role = localStorage.getItem('currentUserRole') as UserRole | null;
+
+      if (!teacherUserId || role !== 'teacher') {
+        setError("Access denied. You must be logged in as a teacher.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Get teacher's profile ID and school_id from their profile
       const { data: teacherProfile, error: teacherError } = await supabase
         .from('teachers')
-        .select('school_id')
-        .eq('user_id', teacherId) // Assuming teacher profiles use user_id from users table
+        .select('id, school_id') // 'id' here is the teacher's profile ID (teachers.id)
+        .eq('user_id', teacherUserId)
         .single();
 
       if (teacherError || !teacherProfile) {
         setError("Could not fetch teacher profile or school information.");
+        toast({title: "Error", description: "Could not fetch teacher profile.", variant: "destructive"});
         setIsLoading(false);
         return;
       }
-      setCurrentSchoolId(teacherProfile.school_id);
+      
+      const teacherProfileId = teacherProfile.id;
       const schoolId = teacherProfile.school_id;
+
+      if (!schoolId) {
+        setError("Teacher is not associated with a school.");
+        toast({title: "Error", description: "Teacher not associated with a school.", variant: "destructive"});
+        setIsLoading(false);
+        return;
+      }
 
       // Fetch classes assigned to this teacher in this school
       const { data: teacherClassesData, error: classesError } = await supabase
         .from('classes')
-        .select('id, name, division, class_name_id, section_name_id, teacher_id, academic_year_id, school_id') // Specify needed fields
-        .eq('teacher_id', teacherId) // Query by teacher's profile ID if classes.teacher_id stores that
+        .select('id, name, division, class_name_id, section_name_id, teacher_id, academic_year_id, school_id')
+        .eq('teacher_id', teacherProfileId) // Query by teacher's profile ID
         .eq('school_id', schoolId);
       
       if (classesError) {
         setError(`Failed to load classes: ${classesError.message}`);
+        toast({title: "Error", description: `Failed to load classes: ${classesError.message}`, variant: "destructive"});
         setIsLoading(false);
         return;
       }
@@ -70,7 +79,7 @@ export default function MyClassesPage() {
         return;
       }
       
-      // Fetch all students for the school to filter locally (can be optimized for larger schools)
+      // Fetch all students for the school to filter locally
       const { data: allStudentsData, error: studentsError } = await supabase
         .from('students')
         .select('id, name, email, class_id, profile_picture_url, user_id, school_id')
@@ -78,13 +87,13 @@ export default function MyClassesPage() {
 
       if (studentsError) {
         setError(`Failed to load students: ${studentsError.message}`);
+        toast({title: "Error", description: `Failed to load students: ${studentsError.message}`, variant: "destructive"});
         setIsLoading(false);
         return;
       }
 
       const enrichedClasses = teacherClassesData.map(cls => {
         const studentsInClass = (allStudentsData || []).filter(student => student.class_id === cls.id);
-        // Map to ClassData type, studentIds is for UI convenience, not directly from DB 'classes' table like this
         const classDataTyped: ClassData = {
             id: cls.id,
             name: cls.name,
@@ -94,7 +103,7 @@ export default function MyClassesPage() {
             teacher_id: cls.teacher_id,
             academic_year_id: cls.academic_year_id,
             school_id: cls.school_id,
-            studentIds: studentsInClass.map(s => s.id), // Populate studentIds array
+            studentIds: studentsInClass.map(s => s.id),
         };
         return { ...classDataTyped, students: studentsInClass };
       });
@@ -104,7 +113,7 @@ export default function MyClassesPage() {
     }
 
     fetchData();
-  }, []);
+  }, [toast]);
 
   if (isLoading) {
     return (
@@ -157,7 +166,7 @@ export default function MyClassesPage() {
                     {cls.students.map(student => (
                       <li key={student.id} className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={student.profilePictureUrl || undefined} alt={student.name} data-ai-hint="person student" />
+                          <AvatarImage src={student.profile_picture_url || undefined} alt={student.name} data-ai-hint="person student" />
                           <AvatarFallback>{student.name.substring(0,1).toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <span className="text-sm">{student.name}</span>
@@ -175,4 +184,3 @@ export default function MyClassesPage() {
     </div>
   );
 }
-
