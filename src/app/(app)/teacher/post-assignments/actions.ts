@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { Assignment } from '@/types';
+import { sendEmail, getStudentEmailsByClassId } from '@/services/emailService';
 
 const NO_SUBJECT_VALUE_INTERNAL = "__NO_SUBJECT__";
 
@@ -24,14 +25,14 @@ export async function postAssignmentAction(
   const supabase = createSupabaseServerClient();
   const assignmentId = uuidv4();
   
-  const { error, data } = await supabase
+  const { data, error } = await supabase
     .from('assignments')
     .insert({ 
         id: assignmentId, 
         ...input,
         subject_id: (input.subject_id === NO_SUBJECT_VALUE_INTERNAL || !input.subject_id) ? null : input.subject_id,
     })
-    .select()
+    .select('*, class:class_id(name,division), subject:subject_id(name)') // Eager load for notification
     .single();
 
   if (error) {
@@ -41,6 +42,37 @@ export async function postAssignmentAction(
   revalidatePath('/teacher/post-assignments');
   revalidatePath('/teacher/assignment-history');
   revalidatePath('/student/assignments'); // Students should see new assignments
+
+  // Send email notification to students in the class
+  if (data && data.class_id && data.school_id) {
+    const assignment = data as Assignment & { class?: { name: string, division: string }, subject?: { name: string | null } };
+    const studentEmails = await getStudentEmailsByClassId(assignment.class_id, assignment.school_id);
+    
+    if (studentEmails.length > 0) {
+      const className = assignment.class ? `${assignment.class.name} - ${assignment.class.division}` : 'your class';
+      const subjectName = assignment.subject?.name ? ` (${assignment.subject.name})` : '';
+      const emailSubject = `New Assignment Posted: ${assignment.title}`;
+      const emailBody = `
+        <h1>New Assignment Posted</h1>
+        <p>A new assignment has been posted by your teacher:</p>
+        <ul>
+          <li><strong>Title:</strong> ${assignment.title}</li>
+          <li><strong>For Class:</strong> ${className}</li>
+          ${assignment.subject?.name ? `<li><strong>Subject:</strong> ${assignment.subject.name}</li>` : ''}
+          <li><strong>Due Date:</strong> ${new Date(assignment.due_date).toLocaleDateString()}</li>
+        </ul>
+        <p>Please log in to CampusHub to view the details and submit your work.</p>
+        <p>Description: ${assignment.description || 'No description provided.'}</p>
+      `;
+      
+      await sendEmail({
+        to: studentEmails,
+        subject: emailSubject,
+        html: emailBody,
+      });
+    }
+  }
+
   return { ok: true, message: 'Assignment posted successfully.', assignment: data as Assignment };
 }
 
@@ -49,7 +81,7 @@ export async function getTeacherAssignmentsAction(teacherId: string, schoolId: s
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
         .from('assignments')
-        .select('*')
+        .select('*, class:class_id(name,division), subject:subject_id(name)')
         .eq('teacher_id', teacherId)
         .eq('school_id', schoolId)
         .order('due_date', { ascending: false });
@@ -99,13 +131,25 @@ export async function updateAssignmentAction(
 export async function deleteAssignmentAction(assignmentId: string, teacherId: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
   
-  // Add dependency checks here if needed (e.g., student submissions for this assignment)
-  // For now, direct delete:
+  const { count: submissionCount, error: submissionCheckError } = await supabase
+    .from('lms_assignment_submissions')
+    .select('id', { count: 'exact', head: true })
+    .eq('assignment_id', assignmentId)
+    .eq('school_id', schoolId);
+
+  if (submissionCheckError) {
+    console.error("Error checking assignment submissions:", submissionCheckError);
+    return { ok: false, message: `Error checking dependencies: ${submissionCheckError.message}` };
+  }
+  if (submissionCount && submissionCount > 0) {
+    return { ok: false, message: `Cannot delete assignment: It has ${submissionCount} student submission(s) associated with it.` };
+  }
+  
   const { error } = await supabase
     .from('assignments')
     .delete()
     .eq('id', assignmentId)
-    .eq('teacher_id', teacherId) // Ensure teacher can only delete their own
+    .eq('teacher_id', teacherId) 
     .eq('school_id', schoolId);
 
   if (error) {

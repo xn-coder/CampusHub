@@ -1,7 +1,9 @@
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
+import { sendEmail } from '@/services/emailService';
 
 interface SaveScoreInput {
   student_id: string;
@@ -22,12 +24,11 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
 
   let savedCount = 0;
   const errors: string[] = [];
+  const notifiedStudents: Record<string, { examName: string, subjectName: string, score: string | number, maxMarks?: number | null }> = {};
+
 
   for (const scoreInput of scoresToSave) {
-    // Validate score input - ensure it's not empty or just whitespace if it's a string
     if (typeof scoreInput.score === 'string' && scoreInput.score.trim() === '') {
-        // Skip this record or handle as an error, for now, skip
-        // errors.push(`Score for student ${scoreInput.student_id} cannot be empty.`);
         continue; 
     }
     
@@ -57,27 +58,57 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
       school_id: scoreInput.school_id,
     };
 
+    let operationError = null;
     if (existingScore) { 
-      const { error: updateError } = await supabaseAdmin
+      const { error } = await supabaseAdmin
         .from('student_scores')
         .update(recordData)
         .eq('id', existingScore.id);
-      if (updateError) {
-        errors.push(`Error updating score for student ${scoreInput.student_id}: ${updateError.message}`);
-      } else {
-        savedCount++;
-      }
+      operationError = error;
     } else { 
-      const { error: insertError } = await supabaseAdmin
+      const { error } = await supabaseAdmin
         .from('student_scores')
         .insert(recordData);
-      if (insertError) {
-        errors.push(`Error inserting score for student ${scoreInput.student_id}: ${insertError.message}`);
-      } else {
-        savedCount++;
-      }
+      operationError = error;
+    }
+
+    if (operationError) {
+      errors.push(`Error saving score for student ${scoreInput.student_id}: ${operationError.message}`);
+    } else {
+      savedCount++;
+      // Prepare for notification
+      const { data: examDetails } = await supabaseAdmin.from('exams').select('name, subject_id').eq('id', scoreInput.exam_id).single();
+      const { data: subjectDetails } = examDetails?.subject_id ? await supabaseAdmin.from('subjects').select('name').eq('id', examDetails.subject_id).single() : { data: null };
+      
+      notifiedStudents[scoreInput.student_id] = {
+          examName: examDetails?.name || 'Unknown Exam',
+          subjectName: subjectDetails?.name || 'Unknown Subject',
+          score: scoreInput.score,
+          maxMarks: scoreInput.max_marks
+      };
     }
   }
+
+  // Send notifications
+  for (const studentId in notifiedStudents) {
+    const studentInfo = notifiedStudents[studentId];
+    const { data: studentEmailData } = await supabaseAdmin.from('students').select('email').eq('id', studentId).single();
+    if (studentEmailData?.email) {
+      const emailSubject = `Exam Score Declared: ${studentInfo.examName}`;
+      const emailBody = `
+        <h1>Exam Score Update</h1>
+        <p>Your score for the exam "<strong>${studentInfo.examName}</strong>" (Subject: ${studentInfo.subjectName}) has been declared/updated.</p>
+        <p><strong>Score:</strong> ${studentInfo.score}${studentInfo.maxMarks ? ` / ${studentInfo.maxMarks}` : ''}</p>
+        <p>Please log in to CampusHub to view your detailed results.</p>
+      `;
+      await sendEmail({
+        to: studentEmailData.email,
+        subject: emailSubject,
+        html: emailBody,
+      });
+    }
+  }
+
 
   if (errors.length > 0) {
     return { 

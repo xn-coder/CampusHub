@@ -4,6 +4,8 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { Assignment, AssignmentSubmission, Student } from '@/types';
 import { revalidatePath } from 'next/cache';
+import { sendEmail } from '@/services/emailService';
+
 
 interface EnrichedSubmission extends AssignmentSubmission {
   student_name: string;
@@ -48,7 +50,6 @@ export async function getSubmissionsForAssignmentAction(assignmentId: string, sc
   }
   const supabase = createSupabaseServerClient();
   try {
-    // Fetch submissions
     const { data: submissionsData, error: submissionsError } = await supabase
       .from('lms_assignment_submissions')
       .select('*')
@@ -63,7 +64,6 @@ export async function getSubmissionsForAssignmentAction(assignmentId: string, sc
       return { ok: true, submissions: [] };
     }
 
-    // Fetch student details for these submissions
     const studentIds = submissionsData.map(s => s.student_id);
     const { data: studentsData, error: studentsError } = await supabase
       .from('students')
@@ -73,7 +73,6 @@ export async function getSubmissionsForAssignmentAction(assignmentId: string, sc
     
     if (studentsError) {
       console.error("Error fetching student details for submissions:", studentsError);
-      // Return submissions without student names if student fetch fails, or handle error differently
       return { ok: false, message: `Database error fetching student details: ${studentsError.message}` };
     }
 
@@ -98,7 +97,7 @@ interface SaveGradeInput {
     submission_id: string;
     grade: string;
     feedback?: string | null;
-    school_id: string; // For RLS or scoping, if needed
+    school_id: string; 
 }
 
 export async function saveSingleGradeAndFeedbackAction(input: SaveGradeInput): Promise<{
@@ -121,8 +120,8 @@ export async function saveSingleGradeAndFeedbackAction(input: SaveGradeInput): P
         feedback: feedback?.trim() || null,
       })
       .eq('id', submission_id)
-      .eq('school_id', school_id) // Ensure teacher can only grade within their school
-      .select()
+      .eq('school_id', school_id)
+      .select('*, student:student_id(email), assignment:assignment_id(title)') // Eager load for notification
       .single();
 
     if (error) {
@@ -130,9 +129,28 @@ export async function saveSingleGradeAndFeedbackAction(input: SaveGradeInput): P
       return { ok: false, message: `Database error: ${error.message}` };
     }
     
-    revalidatePath('/teacher/grade-assignments'); // Revalidate the grading page
-    // Optionally revalidate student's view if they can see grades immediately
-    // revalidatePath(`/student/assignments`); 
+    revalidatePath('/teacher/grade-assignments');
+    revalidatePath(`/student/assignments`); 
+
+    // Send email notification to the student
+    if (data) {
+      const submission = data as AssignmentSubmission & { student?: { email: string | null } | null, assignment?: { title: string | null } | null };
+      if (submission.student?.email && submission.assignment?.title) {
+        const emailSubject = `Assignment Graded: ${submission.assignment.title}`;
+        const emailBody = `
+          <h1>Assignment Graded</h1>
+          <p>Your submission for the assignment "<strong>${submission.assignment.title}</strong>" has been graded.</p>
+          <p><strong>Grade:</strong> ${submission.grade}</p>
+          ${submission.feedback ? `<p><strong>Feedback:</strong> ${submission.feedback}</p>` : ''}
+          <p>Please log in to CampusHub to view details.</p>
+        `;
+        await sendEmail({
+          to: submission.student.email,
+          subject: emailSubject,
+          html: emailBody,
+        });
+      }
+    }
 
     return { ok: true, message: 'Grade and feedback saved successfully.', updatedSubmission: data as AssignmentSubmission };
   } catch (e: any) {
