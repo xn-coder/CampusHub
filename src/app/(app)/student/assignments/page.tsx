@@ -40,7 +40,11 @@ export default function StudentAssignmentsPage() {
           .single();
 
         if (studentError || !studentData || !studentData.school_id || !studentData.class_id) {
-          toast({ title: "No Assignments Found", description: "You may not be assigned to a class or school, or there are no assignments for your class yet.", variant: "default" });
+          toast({
+            title: "Cannot Load Assignments",
+            description: "Your student profile is missing essential class or school information. Please contact administration.",
+            variant: "destructive"
+          });
           setMyAssignments([]);
           setIsLoading(false);
           return;
@@ -54,7 +58,7 @@ export default function StudentAssignmentsPage() {
           .order('due_date', { ascending: true });
 
         if (assignmentsError) {
-          toast({ title: "Error", description: "Failed to fetch assignments.", variant: "destructive" });
+          toast({ title: "Error", description: "Failed to fetch assignments. This might be due to access permissions.", variant: "destructive" });
           setIsLoading(false);
           return;
         }
@@ -121,7 +125,7 @@ export default function StudentAssignmentsPage() {
       {isLoading ? (
         <Card><CardContent className="pt-6 text-center text-muted-foreground flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading your assignments...</CardContent></Card>
       ) : myAssignments.length === 0 ? (
-         <Card><CardContent className="pt-6 text-center text-muted-foreground">No assignments posted for your class yet, or you might not be assigned to a class/school.</CardContent></Card>
+         <Card><CardContent className="pt-6 text-center text-muted-foreground">No assignments posted for your class yet, or you might not be assigned to a class/school. If you believe this is an error, please ensure your class enrollment is correct and check your RLS policies on the 'assignments' table.</CardContent></Card>
       ) : (
         <div className="grid md:grid-cols-2 gap-6">
           {myAssignments.map((assignment) => (
