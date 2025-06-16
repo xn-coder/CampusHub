@@ -8,11 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
-import type { CalendarEventDB as CalendarEvent, UserRole, User } from '@/types'; // Use CalendarEventDB
+import type { CalendarEventDB as CalendarEvent, UserRole, User, CalendarEventTargetAudience } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, Loader2 } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, parseISO, isValid } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { addCalendarEventAction, updateCalendarEventAction, deleteCalendarEventAction, getCalendarEventsAction } from './actions';
@@ -22,25 +23,27 @@ export default function CalendarEventsPage() {
   const { toast } = useToast();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  
+
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Overall loading state
+  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
-  
+
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [eventIsAllDay, setEventIsAllDay] = useState(false);
   const [eventStartTime, setEventStartTime] = useState('');
   const [eventEndTime, setEventEndTime] = useState('');
   const [eventDescription, setEventDescription] = useState('');
+  const [eventTargetAudience, setEventTargetAudience] = useState<CalendarEventTargetAudience | null>('all_school');
+
 
   useEffect(() => {
-    async function loadUserContextAndEvents() { 
+    async function loadUserContextAndEvents() {
       setIsLoading(true);
       let role: UserRole | null = null;
       let userId: string | null = null;
@@ -58,23 +61,25 @@ export default function CalendarEventsPage() {
             .select('school_id')
             .eq('id', userId)
             .single();
-          
+
           if (userErr || !userRec ) {
             if (role !== 'superadmin') {
                  toast({title: "Error", description: "Could not determine user's school context.", variant: "destructive"});
             }
-            schoolId = null; 
+            schoolId = null;
           } else {
             schoolId = userRec.school_id;
           }
           setCurrentSchoolId(schoolId);
         } else {
-           toast({ title: "Context Missing", description: "Cannot load calendar without user context.", variant: "destructive"});
+           if (role !== null) { // Only show toast if role was expected but userId is missing
+             toast({ title: "Context Missing", description: "Cannot load calendar without user context.", variant: "destructive"});
+           }
            schoolId = null;
            setCurrentSchoolId(null);
         }
       }
-      
+
       if (schoolId) {
         const result = await getCalendarEventsAction(schoolId);
         if (result.ok && result.events) {
@@ -83,15 +88,15 @@ export default function CalendarEventsPage() {
           toast({ title: "Error", description: result.message || "Failed to fetch calendar events.", variant: "destructive" });
           setEvents([]);
         }
-      } else if (role === 'superadmin') {
-        setEvents([]);
-      } else {
+      } else if (currentUserRole === 'superadmin' && !schoolId) {
+        setEvents([]); // Superadmin without school context sees no specific events
+      } else if (role !== null) { // User with role but no school_id (and not superadmin)
         setEvents([]);
       }
-      setIsLoading(false); 
+      setIsLoading(false);
     }
-    loadUserContextAndEvents(); 
-  }, []); 
+    loadUserContextAndEvents();
+  }, []);
 
 
   const fetchEventsForSchool = async () => {
@@ -114,19 +119,21 @@ export default function CalendarEventsPage() {
     setEventStartTime('');
     setEventEndTime('');
     setEventDescription('');
+    setEventTargetAudience('all_school');
     setEditingEvent(null);
   };
 
   const handleOpenFormDialog = (eventToEdit?: CalendarEvent) => {
-    if (currentUserRole === 'student') return; 
+    if (currentUserRole === 'student') return;
     if (eventToEdit) {
       setEditingEvent(eventToEdit);
       setEventTitle(eventToEdit.title);
-      setEventDate(eventToEdit.date); 
+      setEventDate(eventToEdit.date);
       setEventIsAllDay(eventToEdit.is_all_day);
       setEventStartTime(eventToEdit.start_time || '');
       setEventEndTime(eventToEdit.end_time || '');
       setEventDescription(eventToEdit.description || '');
+      setEventTargetAudience(eventToEdit.target_audience || 'all_school');
     } else {
       resetForm();
       if (selectedDate) {
@@ -138,7 +145,7 @@ export default function CalendarEventsPage() {
 
   const handleSubmitEvent = async (e: FormEvent) => {
     e.preventDefault();
-    if (currentUserRole === 'student' || !currentSchoolId || !currentUserId) {
+    if (currentUserRole === 'student' || !currentSchoolId || !currentUserId || !currentUserRole) {
       toast({ title: "Error", description: "Action not permitted or missing context.", variant: "destructive" });
       return;
     }
@@ -157,7 +164,9 @@ export default function CalendarEventsPage() {
       end_time: eventIsAllDay ? null : eventEndTime || null,
       description: eventDescription.trim() || null,
       school_id: currentSchoolId,
-      // posted_by_user_id: currentUserId, // If tracking creator
+      posted_by_user_id: currentUserId,
+      posted_by_role: currentUserRole,
+      target_audience: eventTargetAudience,
     };
 
     if (editingEvent) {
@@ -168,8 +177,16 @@ export default function CalendarEventsPage() {
     setIsSubmitting(false);
 
     if (result.ok) {
-      toast({ title: editingEvent ? "Event Updated" : "Event Added", description: result.message });
-      fetchEventsForSchool(); 
+      let audienceText = 'the relevant audience';
+      if (eventTargetAudience === 'all_school') audienceText = 'everyone in the school';
+      else if (eventTargetAudience === 'teachers_only') audienceText = 'teachers';
+      else if (eventTargetAudience === 'students_only') audienceText = 'students';
+
+      toast({
+        title: editingEvent ? "Event Updated" : "Event Added",
+        description: `${result.message} Notifications would be sent to ${audienceText}. (This is a mock notification).`
+      });
+      fetchEventsForSchool();
       setIsFormDialogOpen(false);
       resetForm();
     } else {
@@ -188,26 +205,26 @@ export default function CalendarEventsPage() {
       setIsSubmitting(false);
       if (result.ok) {
         toast({ title: "Event Deleted", variant: "destructive" });
-        fetchEventsForSchool(); 
+        fetchEventsForSchool();
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     }
   };
 
-  const eventsOnSelectedDate = selectedDate 
+  const eventsOnSelectedDate = selectedDate
     ? events.filter(event => {
-        const eventDateObj = parseISO(event.date); 
+        const eventDateObj = parseISO(event.date);
         return isValid(eventDateObj) && format(eventDateObj, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
       })
     : [];
 
-  const canManageEvents = currentUserRole !== 'student' && !!currentSchoolId;
+  const canManageEvents = (currentUserRole === 'admin' || currentUserRole === 'teacher') && !!currentSchoolId;
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader 
-        title="Calendar & Events" 
+      <PageHeader
+        title="Calendar & Events"
         description="Organize and view school events and activities."
         actions={
           canManageEvents ? (
@@ -217,17 +234,18 @@ export default function CalendarEventsPage() {
           ) : null
         }
       />
-      
-      {isLoading && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading calendar data...</div>}
+
+      {isLoading && currentUserRole === null && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading user context...</div>}
+      {isLoading && currentUserRole !== null && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading calendar data...</div>}
 
       {!isLoading && !currentSchoolId && currentUserRole === 'superadmin' && (
-         <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Calendar events are school-specific. (Future enhancement: school selector for superadmin)</CardContent></Card>
+         <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Calendar events are school-specific. Please select a school to manage its events.</CardContent></Card>
       )}
-      {!isLoading && !currentSchoolId && currentUserRole !== 'superadmin' && currentUserRole !== null && ( 
+      {!isLoading && !currentSchoolId && currentUserRole !== 'superadmin' && currentUserRole !== null && (
         <Card><CardContent className="pt-6 text-center text-destructive">Cannot load calendar. User is not associated with a school or school context is missing.</CardContent></Card>
       )}
 
-      {!isLoading && (currentSchoolId || (currentUserRole === 'superadmin' && !currentSchoolId)) && ( 
+      {!isLoading && (currentSchoolId || (currentUserRole === 'superadmin' && !currentSchoolId)) && (
         <div className="grid md:grid-cols-3 gap-6">
           <div className="md:col-span-1">
               <Card>
@@ -242,9 +260,12 @@ export default function CalendarEventsPage() {
                           }}
                           className="rounded-md border"
                           initialFocus
-                          disabled={isSubmitting}
+                          disabled={isSubmitting || !currentSchoolId && currentUserRole !== 'superadmin'}
                       />
                   </CardContent>
+                   {!currentSchoolId && currentUserRole === 'superadmin' && (
+                    <CardFooter><p className="text-xs text-muted-foreground">Superadmin: Select a school context to manage or view events.</p></CardFooter>
+                  )}
               </Card>
           </div>
 
@@ -265,6 +286,12 @@ export default function CalendarEventsPage() {
                           <CardTitle className="text-lg">{event.title}</CardTitle>
                           <CardDescription>
                             {event.is_all_day ? 'All Day' : `${event.start_time || ''}${event.start_time && event.end_time ? ' - ' : ''}${event.end_time || ''}`}
+                          </CardDescription>
+                          <CardDescription className="text-xs">
+                            Target: {event.target_audience === 'all_school' ? 'All School' : event.target_audience === 'teachers_only' ? 'Teachers Only' : event.target_audience === 'students_only' ? 'Students Only' : 'N/A'}
+                          </CardDescription>
+                           <CardDescription className="text-xs">
+                            By: {event.posted_by_role}
                           </CardDescription>
                         </div>
                         {canManageEvents && (
@@ -287,7 +314,7 @@ export default function CalendarEventsPage() {
                   </Card>
                 )) : !isLoading && (
                   <p className="text-muted-foreground text-center py-4">
-                    {currentSchoolId ? 'No events scheduled for this day.' : (currentUserRole === 'superadmin' ? 'Select a school context to view events.' : '')}
+                    {currentSchoolId ? 'No events scheduled for this day.' : (currentUserRole === 'superadmin' ? 'Select a school context to view events.' : 'No school associated.')}
                   </p>
                 )}
               </CardContent>
@@ -329,6 +356,23 @@ export default function CalendarEventsPage() {
                   </div>
                 )}
                 <div>
+                  <Label htmlFor="eventTargetAudience">Target Audience</Label>
+                  <Select 
+                    value={eventTargetAudience || 'all_school'} 
+                    onValueChange={(value) => setEventTargetAudience(value as CalendarEventTargetAudience)}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger id="eventTargetAudience">
+                      <SelectValue placeholder="Select target audience" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all_school">All School</SelectItem>
+                      <SelectItem value="teachers_only">Teachers Only</SelectItem>
+                      <SelectItem value="students_only">Students Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
                   <Label htmlFor="eventDescription">Description (Optional)</Label>
                   <Textarea id="eventDescription" value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} placeholder="Event details..." disabled={isSubmitting}/>
                 </div>
@@ -336,7 +380,7 @@ export default function CalendarEventsPage() {
               <DialogFooter>
                 <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
                 <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   {editingEvent ? 'Save Changes' : 'Add Event'}
                 </Button>
               </DialogFooter>
@@ -347,3 +391,5 @@ export default function CalendarEventsPage() {
     </div>
   );
 }
+
+    

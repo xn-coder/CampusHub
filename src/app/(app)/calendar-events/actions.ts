@@ -3,7 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { CalendarEventDB } from '@/types';
+import type { CalendarEventDB, UserRole, CalendarEventTargetAudience } from '@/types';
 
 interface CalendarEventInput {
   title: string;
@@ -13,7 +13,9 @@ interface CalendarEventInput {
   end_time?: string | null;   // HH:MM
   description?: string | null;
   school_id: string;
-  // posted_by_user_id: string; // If tracking creator
+  posted_by_user_id: string;
+  posted_by_role: UserRole;
+  target_audience: CalendarEventTargetAudience | null;
 }
 
 export async function addCalendarEventAction(
@@ -24,9 +26,16 @@ export async function addCalendarEventAction(
     const { data, error } = await supabase
       .from('calendar_events')
       .insert({
-        ...input,
+        title: input.title,
+        date: input.date,
+        is_all_day: input.is_all_day,
         start_time: input.is_all_day ? null : input.start_time,
         end_time: input.is_all_day ? null : input.end_time,
+        description: input.description,
+        school_id: input.school_id,
+        posted_by_user_id: input.posted_by_user_id,
+        posted_by_role: input.posted_by_role,
+        target_audience: input.target_audience,
       })
       .select()
       .single();
@@ -45,14 +54,29 @@ export async function addCalendarEventAction(
 
 export async function updateCalendarEventAction(
   id: string,
-  input: Partial<CalendarEventInput> & { school_id: string } // Ensure school_id is present for scoping
+  input: Partial<CalendarEventInput> & { school_id: string; posted_by_user_id: string; posted_by_role: UserRole; target_audience: CalendarEventTargetAudience | null }
 ): Promise<{ ok: boolean; message: string; event?: CalendarEventDB }> {
   const supabase = createSupabaseServerClient();
-  const updateData = { ...input };
+  
+  const updateData: Partial<CalendarEventDB> = { // Ensure we only pass fields relevant to the table
+    title: input.title,
+    date: input.date,
+    is_all_day: input.is_all_day,
+    description: input.description,
+    posted_by_user_id: input.posted_by_user_id,
+    posted_by_role: input.posted_by_role,
+    target_audience: input.target_audience,
+    // school_id is used for .eq() and not updated itself
+  };
+
   if (input.is_all_day) {
     updateData.start_time = null;
     updateData.end_time = null;
+  } else {
+    updateData.start_time = input.start_time;
+    updateData.end_time = input.end_time;
   }
+
 
   try {
     const { data, error } = await supabase
@@ -116,3 +140,5 @@ export async function getCalendarEventsAction(school_id: string): Promise<{ ok: 
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
 }
+
+    
