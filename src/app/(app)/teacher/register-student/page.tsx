@@ -34,9 +34,9 @@ export default function TeacherRegisterStudentPage() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
 
   useEffect(() => {
-    const teacherUserId = localStorage.getItem('currentUserId'); // This is User ID
+    const teacherUserId = localStorage.getItem('currentUserId'); 
     if (teacherUserId) {
-      // Fetch teacher's profile to get their actual teacher_profile_id and school_id
+      
       supabase.from('teachers').select('id, school_id').eq('user_id', teacherUserId).single()
         .then(({ data: teacherProfile, error: profileError }) => {
           if (profileError || !teacherProfile) {
@@ -44,13 +44,13 @@ export default function TeacherRegisterStudentPage() {
             setIsLoading(false);
             return;
           }
-          setCurrentTeacherId(teacherProfile.id); // This is the teacher's *profile* ID
+          setCurrentTeacherId(teacherProfile.id); 
           setCurrentSchoolId(teacherProfile.school_id);
 
-          // Fetch classes assigned to this teacher
+          
           supabase.from('classes')
             .select('id, name, division')
-            .eq('teacher_id', teacherProfile.id) // Query by teacher_profile_id
+            .eq('teacher_id', teacherProfile.id) 
             .eq('school_id', teacherProfile.school_id)
             .then(({ data: classesData, error: classesError }) => {
               if (classesError) {
@@ -77,7 +77,7 @@ export default function TeacherRegisterStudentPage() {
     setIsLoading(true);
 
     const result = await registerStudentAction({
-      name, email, dateOfBirth, guardianName, contactNumber, address,
+      name, email, date_of_birth: dateOfBirth, guardian_name: guardianName, contact_number: contactNumber, address,
       classId: selectedClassId,
       schoolId: currentSchoolId,
       profilePictureUrl
@@ -87,6 +87,9 @@ export default function TeacherRegisterStudentPage() {
       toast({ title: "Student Registered", description: result.message });
       setName(''); setEmail(''); setDateOfBirth(''); setGuardianName(''); 
       setContactNumber(''); setAddress(''); setSelectedClassId(''); setProfilePictureUrl('');
+      // Note: This page doesn't display a list of students itself,
+      // so re-fetching students here isn't directly needed for this page's UI.
+      // `revalidatePath` in the action should handle other pages.
     } else {
       toast({ title: "Registration Failed", description: result.message, variant: "destructive" });
     }
@@ -178,4 +181,5 @@ export default function TeacherRegisterStudentPage() {
     </div>
   );
 }
+
 

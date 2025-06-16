@@ -15,7 +15,7 @@ import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord, Acade
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient'; // client-side supabase
+import { supabase } from '@/lib/supabaseClient'; 
 import { 
   addClassNameAction, deleteClassNameAction, 
   addSectionNameAction, deleteSectionNameAction,
@@ -135,7 +135,7 @@ export default function ClassManagementPage() {
     return allTeachersInSchool.find(t => t.id === teacherId)?.name || 'N/A';
   };
   const getAcademicYearName = (yearId?: string | null): string => {
-    if (!yearId) return 'General'; // Default to General if no academic year
+    if (!yearId) return 'General'; 
     return allAcademicYears.find(ay => ay.id === yearId)?.name || 'N/A';
   };
 
@@ -220,7 +220,7 @@ export default function ClassManagementPage() {
       toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
       if (result.ok) {
         fetchActiveClasses(currentSchoolId);
-        fetchStudents(currentSchoolId); // Refresh student list as their class_id might change
+        fetchStudents(currentSchoolId); 
       }
       setIsSubmitting(false);
     }

@@ -84,7 +84,7 @@ export default function ManageStudentsPage() {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('students')
-      .select('id, name, email, class_id, profile_picture_url, user_id, school_id') // Ensure school_id is selected from students table
+      .select('id, name, email, class_id, profile_picture_url, user_id, school_id') 
       .eq('school_id', schoolId);
 
     if (error) {
@@ -96,10 +96,10 @@ export default function ManageStudentsPage() {
         id: s.id,
         name: s.name,
         email: s.email || 'N/A',
-        classId: s.class_id || '', // classId from student record
+        classId: s.class_id || '', 
         profilePictureUrl: s.profile_picture_url,
         userId: s.user_id, 
-        school_id: s.school_id // school_id from student record
+        school_id: s.school_id 
       })) || [];
       setStudents(formattedStudents);
     }
@@ -121,7 +121,7 @@ export default function ManageStudentsPage() {
     setEditingStudent(student);
     setEditStudentName(student.name);
     setEditStudentEmail(student.email);
-    setEditStudentClassId(student.classId || undefined);
+    setEditStudentClassId(student.class_id || undefined);
     setIsEditDialogOpen(true);
   };
 
@@ -133,14 +133,14 @@ export default function ManageStudentsPage() {
     }
     setIsLoading(true);
     
-    // Check if email is being changed and if the new email already exists for another user in the same school
+    
     if (editStudentEmail.trim() !== editingStudent.email) {
       const { data: existingUser, error: fetchError } = await supabase
         .from('users')
         .select('id')
         .eq('email', editStudentEmail.trim())
-        .eq('school_id', currentSchoolId) // Ensure uniqueness within the school
-        .neq('id', editingStudent.userId) 
+        .eq('school_id', currentSchoolId) 
+        .neq('id', editingStudent.user_id) 
         .single();
 
       if (fetchError && fetchError.code !== 'PGRST116') { 
@@ -171,11 +171,11 @@ export default function ManageStudentsPage() {
       return;
     }
 
-    if (editingStudent.userId) {
+    if (editingStudent.user_id) {
       const { error: userUpdateError } = await supabase
         .from('users')
         .update({ name: editStudentName.trim(), email: editStudentEmail.trim() })
-        .eq('id', editingStudent.userId); 
+        .eq('id', editingStudent.user_id); 
       
       if (userUpdateError) {
         toast({ title: "Warning", description: `Student profile updated, but failed to update user login details: ${userUpdateError.message}`, variant: "default" });
@@ -205,11 +205,11 @@ export default function ManageStudentsPage() {
         return;
       }
 
-      if (student.userId) {
+      if (student.user_id) {
         const { error: userDeleteError } = await supabase
           .from('users')
           .delete()
-          .eq('id', student.userId);
+          .eq('id', student.user_id);
         if (userDeleteError) {
           toast({ title: "Warning", description: `Student profile deleted, but failed to delete user login: ${userDeleteError.message}`, variant: "default" });
         }
@@ -284,13 +284,13 @@ export default function ManageStudentsPage() {
                       <TableRow key={student.id}>
                         <TableCell>
                           <Avatar>
-                            <AvatarImage src={student.profilePictureUrl || `https://placehold.co/40x40.png?text=${student.name.substring(0,2).toUpperCase()}`} alt={student.name} data-ai-hint="person portrait" />
+                            <AvatarImage src={student.profile_picture_url || `https://placehold.co/40x40.png?text=${student.name.substring(0,2).toUpperCase()}`} alt={student.name} data-ai-hint="person portrait" />
                             <AvatarFallback>{student.name.substring(0,2).toUpperCase()}</AvatarFallback>
                           </Avatar>
                         </TableCell>
                         <TableCell className="font-medium">{student.name}</TableCell>
                         <TableCell>{student.email}</TableCell>
-                        <TableCell>{getClassDisplayName(student.classId)}</TableCell>
+                        <TableCell>{getClassDisplayName(student.class_id)}</TableCell>
                         <TableCell className="space-x-1 text-right">
                           <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isLoading}>
                             <Edit2 className="h-4 w-4" />
@@ -370,4 +370,5 @@ export default function ManageStudentsPage() {
     </div>
   );
 }
+
 

@@ -18,13 +18,13 @@ import { supabase } from '@/lib/supabaseClient';
 import { createTeacherAction, updateTeacherAction, deleteTeacherAction } from './actions';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase // This uses the client-side anon key
+  const { data: school, error } = await supabase 
     .from('schools')
     .select('id')
     .eq('admin_user_id', adminUserId)
     .single();
   if (error || !school) {
-    console.error("Error fetching admin's school or admin not linked:", error?.message);
+    console.error("Error fetching admin's school or admin not linked:", error?.message || "No school record found for this admin_user_id.");
     return null;
   }
   return school.id;
@@ -35,7 +35,7 @@ export default function ManageTeachersPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-teachers");
-  const [isLoading, setIsLoading] = useState(true); // General loading state for the page
+  const [isLoading, setIsLoading] = useState(true); 
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
@@ -65,23 +65,23 @@ export default function ManageTeachersPage() {
         console.log('[ManageTeachersPage useEffect] fetchedSchoolId:', fetchedSchoolId);
         setCurrentSchoolId(fetchedSchoolId);
         if (fetchedSchoolId) {
-          fetchTeachers(fetchedSchoolId); // This will set isLoading appropriately for teacher fetching
+          fetchTeachers(fetchedSchoolId); 
         } else {
-          setIsLoading(false); // Done loading, but no school ID found
+          setIsLoading(false); 
           toast({ title: "School Not Found", description: "Admin not linked to a school or school ID could not be determined. Cannot manage teachers.", variant: "destructive"});
         }
       });
     } else {
-       setIsLoading(false); // Done loading, no admin ID
+       setIsLoading(false); 
        toast({ title: "Authentication Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast]); // fetchAdminSchoolId and fetchTeachers are stable as defined outside or would be useCallback wrapped
+  }, [toast]); 
 
   async function fetchTeachers(schoolId: string) {
-    setIsLoading(true); // Specifically for fetching teachers
+    setIsLoading(true); 
     console.log('[ManageTeachersPage fetchTeachers] Fetching teachers for schoolId:', schoolId);
-    const { data, error } = await supabase // This uses the client-side (anon key) supabase instance
+    const { data, error } = await supabase 
       .from('teachers')
       .select('id, name, email, subject, profile_picture_url, user_id')
       .eq('school_id', schoolId);
@@ -93,18 +93,18 @@ export default function ManageTeachersPage() {
     } else {
       console.log('[ManageTeachersPage fetchTeachers] Raw data received:', data);
       const formattedTeachers = data?.map(t => ({
-        id: t.id, // Teacher Profile ID
-        user_id: t.user_id, // User Login ID
+        id: t.id, 
+        user_id: t.user_id, 
         name: t.name,
         email: t.email, 
         subject: t.subject,
-        profilePictureUrl: t.profile_picture_url,
-        school_id: schoolId, // Already known
+        profile_picture_url: t.profile_picture_url,
+        school_id: schoolId, 
       })) || [];
       console.log('[ManageTeachersPage fetchTeachers] Formatted teachers:', formattedTeachers);
       setTeachers(formattedTeachers);
     }
-    setIsLoading(false); // Done fetching teachers
+    setIsLoading(false); 
   }
 
   const filteredTeachers = teachers.filter(teacher =>
@@ -118,7 +118,7 @@ export default function ManageTeachersPage() {
     setEditTeacherName(teacher.name);
     setEditTeacherEmail(teacher.email);
     setEditTeacherSubject(teacher.subject || '');
-    setEditTeacherProfilePicUrl(teacher.profilePictureUrl || '');
+    setEditTeacherProfilePicUrl(teacher.profile_picture_url || '');
     setIsEditDialogOpen(true);
   };
 
@@ -172,7 +172,7 @@ export default function ManageTeachersPage() {
       toast({ title: "Error", description: "Name, Email, and Subject are required.", variant: "destructive" });
       return;
     }
-    if (!currentSchoolId) { // Ensure schoolId is available before creating
+    if (!currentSchoolId) { 
       toast({ title: "Error", description: "School context not found. Cannot create teacher.", variant: "destructive" });
       return;
     }
@@ -200,7 +200,7 @@ export default function ManageTeachersPage() {
     setIsLoading(false);
   };
 
-  // This condition handles the case where admin is not linked to a school *after* initial loading attempt.
+  
   if (!currentSchoolId && !isLoading) { 
     return (
         <div className="flex flex-col gap-6">
@@ -269,7 +269,7 @@ export default function ManageTeachersPage() {
                       <TableRow key={teacher.id}>
                         <TableCell>
                           <Avatar>
-                            <AvatarImage src={teacher.profilePictureUrl || `https://placehold.co/40x40.png?text=${teacher.name.substring(0,2).toUpperCase()}`} alt={teacher.name} data-ai-hint="person portrait" />
+                            <AvatarImage src={teacher.profile_picture_url || `https://placehold.co/40x40.png?text=${teacher.name.substring(0,2).toUpperCase()}`} alt={teacher.name} data-ai-hint="person portrait" />
                             <AvatarFallback>{teacher.name.substring(0,2).toUpperCase()}</AvatarFallback>
                           </Avatar>
                         </TableCell>
