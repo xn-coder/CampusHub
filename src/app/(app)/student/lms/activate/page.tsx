@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { KeyRound, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { enrollUserInCourseAction } from '../../../../admin/lms/courses/actions'; // Re-use action
+import { enrollUserInCourseAction } from '@/app/(app)/admin/lms/courses/actions'; // Re-use action
 
 export default function ActivateLmsCoursePage() {
   const { toast } = useToast();
@@ -114,9 +114,8 @@ export default function ActivateLmsCoursePage() {
     // Enroll user
     const enrollmentResult = await enrollUserInCourseAction({
       course_id: codeToActivate.course_id,
-      user_profile_id: currentUserProfileId,
+      user_profile_id: currentUserProfileId, // This is students.id or teachers.id
       user_type: currentUserRole,
-      school_id: currentSchoolId, 
     });
 
     if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) { // Allow if already enrolled by another means
