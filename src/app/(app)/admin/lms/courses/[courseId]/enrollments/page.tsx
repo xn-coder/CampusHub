@@ -13,7 +13,7 @@ import type { Course, Student, Teacher, StudentCourseEnrollment, TeacherCourseEn
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus, UserMinus, Users, Briefcase, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { enrollUserInCourseAction, unenrollUserFromCourseAction } from '../actions';
+import { enrollUserInCourseAction, unenrollUserFromCourseAction } from '../../actions';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
