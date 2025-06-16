@@ -5,16 +5,16 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import type { Assignment, AssignmentSubmission, Student } from '@/types';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import type { Assignment, AssignmentSubmission } from '@/types';
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Edit, Save, BookOpenCheck, Loader2, ExternalLink, Download, MessageSquare } from 'lucide-react';
+import { Edit, Save, BookOpenCheck, Loader2, Download, FileText, User } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { supabase } from '@/lib/supabaseClient'; // For student file URL
+import { supabase } from '@/lib/supabaseClient'; 
 import { 
     getTeacherAssignmentsForGradingAction, 
     getSubmissionsForAssignmentAction, 
@@ -26,26 +26,23 @@ interface EnrichedSubmissionClient extends AssignmentSubmission {
   student_email: string;
 }
 
-interface GradeInputState {
-  [submissionId: string]: {
-    grade: string;
-    feedback: string;
-  };
-}
-
 export default function TeacherGradeAssignmentsPage() {
   const { toast } = useToast();
   const [teacherAssignments, setTeacherAssignments] = useState<Assignment[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>('');
   const [submissions, setSubmissions] = useState<EnrichedSubmissionClient[]>([]);
-  const [gradesAndFeedback, setGradesAndFeedback] = useState<GradeInputState>({});
   
   const [isLoadingAssignments, setIsLoadingAssignments] = useState(true);
   const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
-  const [isSavingGrade, setIsSavingGrade] = useState<Record<string, boolean>>({}); // For individual save buttons
+  const [isSavingGrade, setIsSavingGrade] = useState(false);
 
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+
+  const [isGradeDialogValid, setIsGradeDialogValid] = useState(false);
+  const [selectedSubmissionForGrading, setSelectedSubmissionForGrading] = useState<EnrichedSubmissionClient | null>(null);
+  const [gradeInput, setGradeInput] = useState('');
+  const [feedbackInput, setFeedbackInput] = useState('');
 
   const fetchInitialData = useCallback(async () => {
     setIsLoadingAssignments(true);
@@ -85,21 +82,11 @@ export default function TeacherGradeAssignmentsPage() {
   useEffect(() => {
     if (selectedAssignmentId && currentSchoolId) {
       setIsLoadingSubmissions(true);
-      setSubmissions([]); // Clear previous submissions
-      setGradesAndFeedback({}); // Clear previous grades
+      setSubmissions([]);
       getSubmissionsForAssignmentAction(selectedAssignmentId, currentSchoolId)
         .then(result => {
           if (result.ok && result.submissions) {
             setSubmissions(result.submissions);
-            // Initialize gradesAndFeedback state from fetched submissions
-            const initialGrades: GradeInputState = {};
-            result.submissions.forEach(sub => {
-              initialGrades[sub.id] = {
-                grade: sub.grade || '',
-                feedback: sub.feedback || '',
-              };
-            });
-            setGradesAndFeedback(initialGrades);
           } else {
             toast({ title: "Error fetching submissions", description: result.message, variant: "destructive" });
           }
@@ -107,57 +94,45 @@ export default function TeacherGradeAssignmentsPage() {
         .finally(() => setIsLoadingSubmissions(false));
     } else {
       setSubmissions([]);
-      setGradesAndFeedback({});
     }
   }, [selectedAssignmentId, currentSchoolId, toast]);
   
-  const handleGradeChange = (submissionId: string, value: string) => {
-    setGradesAndFeedback(prev => ({
-      ...prev,
-      [submissionId]: { ...prev[submissionId], grade: value },
-    }));
+  const handleOpenGradeDialog = (submission: EnrichedSubmissionClient) => {
+    setSelectedSubmissionForGrading(submission);
+    setGradeInput(submission.grade || '');
+    setFeedbackInput(submission.feedback || '');
+    setIsGradeDialogValid(true);
   };
 
-  const handleFeedbackChange = (submissionId: string, value: string) => {
-     setGradesAndFeedback(prev => ({
-      ...prev,
-      [submissionId]: { ...prev[submissionId], feedback: value },
-    }));
-  };
-  
-  const handleSaveSingleGrade = async (submissionId: string) => {
-    if (!currentSchoolId) {
-        toast({ title: "Error", description: "School context missing.", variant: "destructive"});
+  const handleSaveGradeAndFeedback = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selectedSubmissionForGrading || !currentSchoolId || !gradeInput.trim()) {
+        toast({ title: "Error", description: "Submission, school context, and grade are required.", variant: "destructive"});
         return;
     }
-    const currentGradeData = gradesAndFeedback[submissionId];
-    if (!currentGradeData || !currentGradeData.grade.trim()) {
-        toast({ title: "Error", description: "Grade cannot be empty.", variant: "destructive"});
-        return;
-    }
-
-    setIsSavingGrade(prev => ({ ...prev, [submissionId]: true }));
+    setIsSavingGrade(true);
     const result = await saveSingleGradeAndFeedbackAction({
-        submission_id: submissionId,
-        grade: currentGradeData.grade,
-        feedback: currentGradeData.feedback,
+        submission_id: selectedSubmissionForGrading.id,
+        grade: gradeInput,
+        feedback: feedbackInput,
         school_id: currentSchoolId,
     });
-    setIsSavingGrade(prev => ({ ...prev, [submissionId]: false }));
+    setIsSavingGrade(false);
 
     if (result.ok && result.updatedSubmission) {
-        toast({ title: "Grade Saved", description: "Grade and feedback have been saved for this submission."});
-        // Update local state for the specific submission to reflect saved data
+        toast({ title: "Grade Saved", description: "Grade and feedback have been saved."});
         setSubmissions(prevSubs => prevSubs.map(sub => 
-            sub.id === submissionId ? { ...sub, grade: result.updatedSubmission?.grade, feedback: result.updatedSubmission?.feedback } : sub
+            sub.id === selectedSubmissionForGrading.id ? { ...sub, grade: result.updatedSubmission?.grade, feedback: result.updatedSubmission?.feedback } : sub
         ));
+        setIsGradeDialogValid(false);
+        setSelectedSubmissionForGrading(null);
     } else {
         toast({ title: "Error Saving Grade", description: result.message, variant: "destructive"});
     }
   };
 
   const getPublicFileUrl = (filePath: string) => {
-    const { data } = supabase.storage.from('assignment-submissions').getPublicUrl(filePath);
+    const { data } = supabase.storage.from('assignment_submissions').getPublicUrl(filePath);
     return data.publicUrl;
   };
 
@@ -205,68 +180,85 @@ export default function TeacherGradeAssignmentsPage() {
             ) : (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Submissions for: {selectedAssignmentDetails?.title}</h3>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Student</TableHead>
-                      <TableHead>Submitted File</TableHead>
-                      <TableHead>Grade</TableHead>
-                      <TableHead>Feedback</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {submissions.map(sub => (
-                      <TableRow key={sub.id}>
-                        <TableCell>
-                          <div className="font-medium">{sub.student_name}</div>
-                          <div className="text-xs text-muted-foreground">{sub.student_email}</div>
-                          <div className="text-xs text-muted-foreground">Submitted: {format(parseISO(sub.submission_date), 'PPpp')}</div>
-                        </TableCell>
-                        <TableCell>
-                          <a href={getPublicFileUrl(sub.file_path)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center text-sm">
-                            <Download className="mr-1 h-3 w-3"/>{sub.file_name}
-                          </a>
-                           {sub.notes && <p className="text-xs text-muted-foreground mt-1">Notes: {sub.notes}</p>}
-                        </TableCell>
-                        <TableCell className="min-w-[120px]">
-                          <Input
-                            value={gradesAndFeedback[sub.id]?.grade || ''}
-                            onChange={(e) => handleGradeChange(sub.id, e.target.value)}
-                            placeholder="e.g., A, 90%"
-                            disabled={isSavingGrade[sub.id]}
-                            className="text-sm h-9"
-                          />
-                        </TableCell>
-                        <TableCell className="min-w-[200px]">
-                          <Textarea
-                            value={gradesAndFeedback[sub.id]?.feedback || ''}
-                            onChange={(e) => handleFeedbackChange(sub.id, e.target.value)}
-                            placeholder="Provide feedback..."
-                            rows={2}
-                            disabled={isSavingGrade[sub.id]}
-                            className="text-sm"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button 
-                            size="sm" 
-                            onClick={() => handleSaveSingleGrade(sub.id)} 
-                            disabled={isSavingGrade[sub.id] || !gradesAndFeedback[sub.id]?.grade.trim()}
-                          >
-                            {isSavingGrade[sub.id] ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <Save className="mr-1 h-3 w-3"/>}
-                            Save
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {submissions.map(sub => (
+                    <Card key={sub.id}>
+                      <CardHeader>
+                        <CardTitle className="text-base flex items-center"><User className="mr-2 h-4 w-4"/>{sub.student_name}</CardTitle>
+                        <CardDescription>{sub.student_email}</CardDescription>
+                        <CardDescription className="text-xs">Submitted: {format(parseISO(sub.submission_date), 'PPpp')}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <a href={getPublicFileUrl(sub.file_path)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center text-sm">
+                          <Download className="mr-1 h-3 w-3"/>{sub.file_name}
+                        </a>
+                        {sub.notes && <p className="text-xs text-muted-foreground mt-1">Notes: {sub.notes}</p>}
+                        
+                        <div className="mt-2 pt-2 border-t">
+                          <p className="text-sm font-medium">Grade: <span className="font-normal text-primary">{sub.grade || 'Not Graded'}</span></p>
+                          {sub.feedback && <p className="text-xs text-muted-foreground mt-1">Feedback: {sub.feedback}</p>}
+                        </div>
+                      </CardContent>
+                      <CardFooter>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleOpenGradeDialog(sub)}
+                        >
+                          <Edit className="mr-1 h-3 w-3"/> Edit Grade
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
               </div>
             )}
           </CardContent>
         )}
       </Card>
+
+      <Dialog open={isGradeDialogValid} onOpenChange={setIsGradeDialogValid}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Grade Submission: {selectedSubmissionForGrading?.student_name}</DialogTitle>
+            <CardDescription>For assignment: {selectedAssignmentDetails?.title}</CardDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveGradeAndFeedback}>
+            <div className="grid gap-4 py-4">
+              <div>
+                <Label htmlFor="gradeInput">Grade</Label>
+                <Input 
+                  id="gradeInput" 
+                  value={gradeInput} 
+                  onChange={(e) => setGradeInput(e.target.value)} 
+                  placeholder="e.g., A+, 95/100, Pass" 
+                  required 
+                  disabled={isSavingGrade}
+                />
+              </div>
+              <div>
+                <Label htmlFor="feedbackInput">Feedback (Optional)</Label>
+                <Textarea 
+                  id="feedbackInput" 
+                  value={feedbackInput} 
+                  onChange={(e) => setFeedbackInput(e.target.value)} 
+                  placeholder="Provide constructive feedback..." 
+                  rows={4}
+                  disabled={isSavingGrade}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline" disabled={isSavingGrade}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSavingGrade || !gradeInput.trim()}>
+                {isSavingGrade ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                {isSavingGrade ? 'Saving...' : 'Save Grade'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

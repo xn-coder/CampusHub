@@ -213,6 +213,13 @@ export interface Exam {
   updated_at?: string;
 }
 
+// Type for displaying exams with student's score information
+export interface ExamWithStudentScore extends Exam {
+  studentScore?: Pick<StudentScore, 'score' | 'max_marks' | 'date_recorded'> | null;
+  subjectName?: string;
+}
+
+
 export interface AssignmentSubmission {
   id: string;
   assignment_id: string;
@@ -222,8 +229,8 @@ export interface AssignmentSubmission {
   file_path: string;
   file_name: string;
   notes?: string | null;
-  grade?: string | null; // Added for grading
-  feedback?: string | null; // Added for grading
+  grade?: string | null;
+  feedback?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -389,7 +396,6 @@ export interface CourseActivationCode {
   used_at?: string | null;
   generated_date: string;
   expiry_date?: string | null;
-  // school_id column does not exist in lms_course_activation_codes table
   created_at?: string;
   updated_at?: string;
 }
