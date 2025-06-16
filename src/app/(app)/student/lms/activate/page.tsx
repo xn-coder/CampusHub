@@ -48,16 +48,18 @@ export default function ActivateLmsCoursePage() {
         setCurrentUserId(userId);
 
         if (userId && role) {
-            const profileTable = role === 'student' ? 'students' : 'teachers';
-            supabase.from(profileTable).select('id, school_id').eq('user_id', userId).single()
-            .then(({ data: userProfile, error: profileError }) => {
-                if (profileError || !userProfile) {
-                    toast({ title: "Error", description: "Could not load user profile for activation.", variant: "destructive"});
-                } else {
-                    setCurrentUserProfileId(userProfile.id);
-                    setCurrentSchoolId(userProfile.school_id);
-                }
-            });
+            const profileTable = role === 'student' ? 'students' : role === 'teacher' ? 'teachers' : null;
+            if (profileTable) {
+              supabase.from(profileTable).select('id, school_id').eq('user_id', userId).single()
+              .then(({ data: userProfile, error: profileError }) => {
+                  if (profileError || !userProfile) {
+                      toast({ title: "Error", description: "Could not load user profile for activation.", variant: "destructive"});
+                  } else {
+                      setCurrentUserProfileId(userProfile.id);
+                      setCurrentSchoolId(userProfile.school_id);
+                  }
+              });
+            }
         }
     }
   }, [searchParams, toast]);
@@ -78,11 +80,13 @@ export default function ActivateLmsCoursePage() {
       return;
     }
 
+    const finalActivationCode = activationCode.trim().toUpperCase(); // Convert to uppercase
+
     // Check code validity
     const {data: codeToActivate, error: codeError} = await supabase
         .from('lms_course_activation_codes')
         .select('*')
-        .eq('code', activationCode.trim())
+        .eq('code', finalActivationCode) // Use the uppercased version
         .single();
     
     if (codeError || !codeToActivate) {
@@ -103,22 +107,17 @@ export default function ActivateLmsCoursePage() {
       setIsLoading(false);
       return;
     }
-    // If code is school-specific, ensure it matches current user's school
-    if (codeToActivate.school_id && codeToActivate.school_id !== currentSchoolId) {
-      setMessage({type: 'error', text: "This activation code is not valid for your institution."});
-      toast({ title: "Activation Failed", description: "Code not valid for your institution.", variant: "destructive"});
-      setIsLoading(false);
-      return;
-    }
+    // Note: school_id check on codeToActivate was removed as the column doesn't exist on the table.
+    // If course itself (codeToActivate.course_id) needs school validation, that logic would be separate.
 
     // Enroll user
     const enrollmentResult = await enrollUserInCourseAction({
       course_id: codeToActivate.course_id,
-      user_profile_id: currentUserProfileId, // This is students.id or teachers.id
-      user_type: currentUserRole,
+      user_profile_id: currentUserProfileId, 
+      user_type: currentUserRole, // UserRole is 'student' | 'teacher' | 'admin' | 'superadmin'
     });
 
-    if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) { // Allow if already enrolled by another means
+    if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) { 
       setMessage({type: 'error', text: `Enrollment failed: ${enrollmentResult.message}`});
       toast({ title: "Activation Failed", description: `Enrollment failed: ${enrollmentResult.message}`, variant: "destructive"});
       setIsLoading(false);
@@ -132,7 +131,6 @@ export default function ActivateLmsCoursePage() {
       .eq('id', codeToActivate.id);
 
     if (updateCodeError) {
-      // This is problematic, user is enrolled but code not marked. Needs monitoring/manual fix.
       console.error("Critical: Failed to mark activation code as used after enrollment:", updateCodeError);
       toast({ title: "Warning", description: "Course enrolled, but there was an issue finalizing code. Contact support if problems persist.", variant: "default"});
     }
@@ -169,7 +167,7 @@ export default function ActivateLmsCoursePage() {
               <Input 
                 id="activationCode" 
                 value={activationCode} 
-                onChange={(e) => setActivationCode(e.target.value.toUpperCase())} 
+                onChange={(e) => setActivationCode(e.target.value.toUpperCase())} // Automatically convert to uppercase on input
                 placeholder="XXXX-XXXX-XXXX-XXXX" 
                 required 
                 disabled={isLoading}
