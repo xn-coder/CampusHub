@@ -4,9 +4,28 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { ClassNameRecord, SectionRecord } from '@/types';
+import type { ClassNameRecord, SectionRecord, ClassData } from '@/types';
 
 // --- Class Name (Standard) Management ---
+
+export async function getClassNamesAction(schoolId: string): Promise<{ ok: boolean; message?: string; classNames?: ClassNameRecord[] }> {
+  if (!schoolId) {
+    return { ok: false, message: "School ID is required to fetch class names." };
+  }
+  const supabaseAdmin = createSupabaseServerClient();
+  const { data, error } = await supabaseAdmin
+    .from('class_names')
+    .select('*')
+    .eq('school_id', schoolId)
+    .order('name');
+
+  if (error) {
+    console.error("Error fetching class names:", error);
+    return { ok: false, message: `Database error: ${error.message}` };
+  }
+  return { ok: true, classNames: data || [] };
+}
+
 export async function addClassNameAction(name: string, schoolId: string): Promise<{ ok: boolean; message: string; classNames?: ClassNameRecord[] }> {
   const supabaseAdmin = createSupabaseServerClient();
   let message = '';
@@ -40,7 +59,6 @@ export async function addClassNameAction(name: string, schoolId: string): Promis
     }
   }
 
-  // Always fetch and return the current list of class names for the school
   const { data: currentClassNames, error: listFetchError } = await supabaseAdmin
     .from('class_names')
     .select('*')
@@ -49,7 +67,6 @@ export async function addClassNameAction(name: string, schoolId: string): Promis
 
   if (listFetchError) {
     console.error("Error fetching current class names list:", listFetchError);
-    // If list fetching fails, return an error message, but might still have the original ok/message
     return { ok: false, message: message || "Error fetching updated class names list.", classNames: [] };
   }
 
@@ -81,6 +98,25 @@ export async function deleteClassNameAction(id: string, schoolId: string) {
 }
 
 // --- Section/Division Name Management ---
+
+export async function getSectionNamesAction(schoolId: string): Promise<{ ok: boolean; message?: string; sectionNames?: SectionRecord[] }> {
+  if (!schoolId) {
+    return { ok: false, message: "School ID is required to fetch section names." };
+  }
+  const supabaseAdmin = createSupabaseServerClient();
+  const { data, error } = await supabaseAdmin
+    .from('section_names')
+    .select('*')
+    .eq('school_id', schoolId)
+    .order('name');
+
+  if (error) {
+    console.error("Error fetching section names:", error);
+    return { ok: false, message: `Database error: ${error.message}` };
+  }
+  return { ok: true, sectionNames: data || [] };
+}
+
 export async function addSectionNameAction(name: string, schoolId: string): Promise<{ ok: boolean; message: string; sectionNames?: SectionRecord[] }> {
   const supabaseAdmin = createSupabaseServerClient();
   let message = '';
@@ -114,7 +150,6 @@ export async function addSectionNameAction(name: string, schoolId: string): Prom
     }
   }
 
-  // Always fetch and return the current list of section names for the school
   const { data: currentSectionNames, error: listFetchError } = await supabaseAdmin
     .from('section_names')
     .select('*')
@@ -152,6 +187,28 @@ export async function deleteSectionNameAction(id: string, schoolId: string) {
   revalidatePath('/class-management');
   return { ok: true, message: 'Section Name deleted.' };
 }
+
+// --- Activated Class-Section Management ---
+
+export async function getActiveClassesAction(schoolId: string): Promise<{ ok: boolean; message?: string; activeClasses?: ClassData[] }> {
+  if (!schoolId) {
+    return { ok: false, message: "School ID is required to fetch active classes." };
+  }
+  const supabaseAdmin = createSupabaseServerClient();
+  const { data, error } = await supabaseAdmin
+    .from('classes')
+    .select('*')
+    .eq('school_id', schoolId)
+    .order('name')
+    .order('division');
+
+  if (error) {
+    console.error("Error fetching active classes:", error);
+    return { ok: false, message: `Database error: ${error.message}` };
+  }
+  return { ok: true, activeClasses: (data || []).map(ac => ({...ac, studentIds: []} as ClassData)) };
+}
+
 
 interface ActivateClassSectionInput {
   classNameId: string;
