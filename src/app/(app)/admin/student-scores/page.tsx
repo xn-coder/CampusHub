@@ -9,26 +9,22 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { StudentScore, Student, Exam, ClassData, Subject, Teacher } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
-import { Award, Filter, Search, User, BookOpen, CalendarCheck, UserCogIcon, FileText } from 'lucide-react';
+import { Award, Filter, Search, User, BookOpen, CalendarCheck, UserCogIcon, FileText, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-
-const MOCK_STUDENT_SCORES_KEY = 'mockStudentScoresData';
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_EXAMS_KEY = 'mockExamsData';
-const MOCK_CLASSES_KEY = 'mockClassesData';
-const MOCK_SUBJECTS_KEY = 'mockSubjectsData';
-const MOCK_TEACHERS_KEY = 'mockTeachersData';
-
+import { useToast } from "@/hooks/use-toast";
+import { getStudentScoresPageDataAction } from './actions';
 
 export default function AdminStudentScoresPage() {
+  const { toast } = useToast();
   const [allScores, setAllScores] = useState<StudentScore[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allExams, setAllExams] = useState<Exam[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
-  const [allTeachers, setAllTeachers] = useState<Teacher[]>([]);
+  const [allTeachers, setAllTeachers] = useState<Pick<Teacher, 'id' | 'name'>[]>([]); // Store only id and name
   
   const [isLoading, setIsLoading] = useState(true);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState(''); // For student name
@@ -36,31 +32,33 @@ export default function AdminStudentScoresPage() {
   const [selectedExamFilter, setSelectedExamFilter] = useState<string>('all');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
 
-
   useEffect(() => {
-    setIsLoading(true);
-    if (typeof window !== 'undefined') {
-      const storedScores = localStorage.getItem(MOCK_STUDENT_SCORES_KEY);
-      setAllScores(storedScores ? JSON.parse(storedScores) : []);
-
-      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      setAllStudents(storedStudents ? JSON.parse(storedStudents) : []);
-      
-      const storedExams = localStorage.getItem(MOCK_EXAMS_KEY);
-      setAllExams(storedExams ? JSON.parse(storedExams) : []);
-      
-      const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      setAllClasses(storedClasses ? JSON.parse(storedClasses) : []);
-
-      const storedSubjects = localStorage.getItem(MOCK_SUBJECTS_KEY);
-      setAllSubjects(storedSubjects ? JSON.parse(storedSubjects) : []);
-      
-      const storedTeachers = localStorage.getItem(MOCK_TEACHERS_KEY);
-      setAllTeachers(storedTeachers ? JSON.parse(storedTeachers) : []);
-      
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (adminUserId) {
+      loadInitialData(adminUserId);
+    } else {
+      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
       setIsLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function loadInitialData(adminUserId: string) {
+    setIsLoading(true);
+    const result = await getStudentScoresPageDataAction(adminUserId);
+    if (result.ok) {
+      setCurrentSchoolId(result.schoolId || null);
+      setAllScores(result.scores || []);
+      setAllStudents(result.students || []);
+      setAllExams(result.exams || []);
+      setAllClasses(result.classes || []);
+      setAllSubjects(result.subjects || []);
+      setAllTeachers(result.teachers || []);
+    } else {
+      toast({ title: "Error loading data", description: result.message, variant: "destructive" });
+    }
+    setIsLoading(false);
+  }
 
   const getStudentName = (studentId: string) => allStudents.find(s => s.id === studentId)?.name || 'N/A';
   const getExamName = (examId: string) => allExams.find(e => e.id === examId)?.name || 'N/A';
@@ -71,21 +69,18 @@ export default function AdminStudentScoresPage() {
   const getSubjectName = (subjectId: string) => allSubjects.find(s => s.id === subjectId)?.name || 'N/A';
   const getTeacherName = (teacherId: string) => allTeachers.find(t => t.id === teacherId)?.name || 'N/A';
 
-
   const filteredScores = useMemo(() => {
     return allScores.filter(score => {
-      const studentName = getStudentName(score.studentId).toLowerCase();
-      const examDetails = allExams.find(e => e.id === score.examId);
-
+      const studentName = getStudentName(score.student_id).toLowerCase();
+      
       const matchesSearchTerm = !searchTerm || studentName.includes(searchTerm.toLowerCase());
-      const matchesClass = selectedClassFilter === 'all' || score.classSectionId === selectedClassFilter;
-      const matchesExam = selectedExamFilter === 'all' || score.examId === selectedExamFilter;
-      const matchesSubject = selectedSubjectFilter === 'all' || (examDetails && examDetails.subjectId === selectedSubjectFilter);
+      const matchesClass = selectedClassFilter === 'all' || score.class_id === selectedClassFilter;
+      const matchesExam = selectedExamFilter === 'all' || score.exam_id === selectedExamFilter;
+      const matchesSubject = selectedSubjectFilter === 'all' || score.subject_id === selectedSubjectFilter;
       
       return matchesSearchTerm && matchesClass && matchesExam && matchesSubject;
-    }).sort((a,b) => parseISO(b.dateRecorded).getTime() - parseISO(a.dateRecorded).getTime()); // Sort by most recent recorded
-  }, [allScores, searchTerm, selectedClassFilter, selectedExamFilter, selectedSubjectFilter, allStudents, allExams]);
-
+    });
+  }, [allScores, searchTerm, selectedClassFilter, selectedExamFilter, selectedSubjectFilter, allStudents, allExams, allClasses, allSubjects]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -107,11 +102,12 @@ export default function AdminStudentScoresPage() {
                 placeholder="Student name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                disabled={isLoading || !currentSchoolId}
               />
             </div>
             <div>
               <Label htmlFor="classFilter" className="block mb-1"><Filter className="inline-block mr-1 h-4 w-4" />Filter by Class</Label>
-              <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter}>
+              <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter} disabled={isLoading || !currentSchoolId}>
                 <SelectTrigger id="classFilter"><SelectValue placeholder="All Classes" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Classes</SelectItem>
@@ -121,7 +117,7 @@ export default function AdminStudentScoresPage() {
             </div>
              <div>
               <Label htmlFor="subjectFilter" className="block mb-1"><BookOpen className="inline-block mr-1 h-4 w-4" />Filter by Subject</Label>
-              <Select value={selectedSubjectFilter} onValueChange={setSelectedSubjectFilter}>
+              <Select value={selectedSubjectFilter} onValueChange={setSelectedSubjectFilter} disabled={isLoading || !currentSchoolId}>
                 <SelectTrigger id="subjectFilter"><SelectValue placeholder="All Subjects" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Subjects</SelectItem>
@@ -131,20 +127,22 @@ export default function AdminStudentScoresPage() {
             </div>
             <div>
               <Label htmlFor="examFilter" className="block mb-1"><FileText className="inline-block mr-1 h-4 w-4" />Filter by Exam</Label>
-              <Select value={selectedExamFilter} onValueChange={setSelectedExamFilter}>
+              <Select value={selectedExamFilter} onValueChange={setSelectedExamFilter} disabled={isLoading || !currentSchoolId}>
                 <SelectTrigger id="examFilter"><SelectValue placeholder="All Exams" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Exams</SelectItem>
-                  {allExams.map(exam => <SelectItem key={exam.id} value={exam.id}>{exam.name} ({getSubjectName(exam.subjectId)})</SelectItem>)}
+                  {allExams.map(exam => <SelectItem key={exam.id} value={exam.id}>{exam.name} ({getSubjectName(exam.subject_id)})</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           {isLoading ? (
-            <p className="text-muted-foreground text-center py-4">Loading scores...</p>
+            <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
+          ) : !currentSchoolId ? (
+             <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot view scores.</p>
           ) : filteredScores.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No scores found matching your criteria. Teachers can enter scores via their Gradebook.</p>
+            <p className="text-muted-foreground text-center py-4">No scores found matching your criteria for this school.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -162,14 +160,14 @@ export default function AdminStudentScoresPage() {
               <TableBody>
                 {filteredScores.map((score) => (
                   <TableRow key={score.id}>
-                    <TableCell className="font-medium">{getStudentName(score.studentId)}</TableCell>
-                    <TableCell>{getClassName(score.classSectionId)}</TableCell>
-                    <TableCell>{getExamName(score.examId)}</TableCell>
-                    <TableCell>{getSubjectName(score.subjectId)}</TableCell>
+                    <TableCell className="font-medium">{getStudentName(score.student_id)}</TableCell>
+                    <TableCell>{getClassName(score.class_id)}</TableCell>
+                    <TableCell>{getExamName(score.exam_id)}</TableCell>
+                    <TableCell>{getSubjectName(score.subject_id)}</TableCell>
                     <TableCell className="font-semibold">{String(score.score)}</TableCell>
-                    <TableCell>{score.maxMarks ?? 'N/A'}</TableCell>
-                    <TableCell>{getTeacherName(score.recordedByTeacherId)}</TableCell>
-                    <TableCell>{format(parseISO(score.dateRecorded), 'PP')}</TableCell>
+                    <TableCell>{score.max_marks ?? 'N/A'}</TableCell>
+                    <TableCell>{getTeacherName(score.recorded_by_teacher_id)}</TableCell>
+                    <TableCell>{format(parseISO(score.date_recorded), 'PP')}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -180,4 +178,4 @@ export default function AdminStudentScoresPage() {
     </div>
   );
 }
-
+    

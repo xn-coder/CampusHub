@@ -7,71 +7,92 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
-import type { ClassData, Student, AttendanceRecord, ClassAttendance } from '@/types';
+import type { ClassData, Student, AttendanceRecord } from '@/types';
 import { useState, useEffect } from 'react';
-import { ListChecks, Users, CalendarDays, Search } from 'lucide-react';
-import { format, parseISO, isValid } from 'date-fns';
-
-const MOCK_CLASSES_KEY = 'mockClassesData';
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
-const MOCK_ATTENDANCE_KEY_PREFIX = 'mockAttendanceData_'; 
+import { ListChecks, Users, CalendarDays, Search, Loader2 } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { useToast } from "@/hooks/use-toast";
+import { getAdminAttendancePageDataAction, fetchAttendanceRecordsAction } from './actions';
 
 export default function AdminAttendancePage() {
+  const { toast } = useToast();
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
-  const [allStudents, setAllStudents] = useState<Student[]>([]);
-  const [selectedClassSectionId, setSelectedClassSectionId] = useState<string>('');
+  const [allStudents, setAllStudents] = useState<Student[]>([]); // All students for the school
+  const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [displayedAttendance, setDisplayedAttendance] = useState<Array<AttendanceRecord & { studentName: string }>>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  
+  const [isLoadingPage, setIsLoadingPage] = useState(true);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [searchAttempted, setSearchAttempted] = useState(false);
-
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedActiveClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      setAllClasses(storedActiveClasses ? JSON.parse(storedActiveClasses) : []);
-      
-      const storedStudents = localStorage.getItem(MOCK_STUDENTS_KEY);
-      setAllStudents(storedStudents ? JSON.parse(storedStudents) : []);
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (adminUserId) {
+      loadInitialData(adminUserId);
+    } else {
+      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      setIsLoadingPage(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSearchAttendance = () => {
-    if (!selectedClassSectionId || !selectedDate) {
-      alert("Please select both a class and a date.");
+  async function loadInitialData(adminUserId: string) {
+    setIsLoadingPage(true);
+    const result = await getAdminAttendancePageDataAction(adminUserId);
+    if (result.ok) {
+      setCurrentSchoolId(result.schoolId || null);
+      setAllClasses(result.classes || []);
+      setAllStudents(result.students || []);
+    } else {
+      toast({ title: "Error loading initial data", description: result.message, variant: "destructive" });
+    }
+    setIsLoadingPage(false);
+  }
+
+  const handleSearchAttendance = async () => {
+    if (!selectedClassId || !selectedDate || !currentSchoolId) {
+      toast({title: "Error", description: "Please select a class and date, and ensure school context is available.", variant: "destructive"});
       return;
     }
-    setIsLoading(true);
+    setIsLoadingRecords(true);
     setSearchAttempted(true);
-    const attendanceKey = `${MOCK_ATTENDANCE_KEY_PREFIX}${selectedClassSectionId}_${selectedDate}`;
-    const storedAttendance = localStorage.getItem(attendanceKey);
     
+    const result = await fetchAttendanceRecordsAction(currentSchoolId, selectedClassId, selectedDate);
     let recordsToShow: Array<AttendanceRecord & { studentName: string }> = [];
 
-    if (storedAttendance) {
-      const classAttendanceData: ClassAttendance = JSON.parse(storedAttendance);
-      recordsToShow = classAttendanceData.records.map(rec => {
-        const student = allStudents.find(s => s.id === rec.studentId);
+    if (result.ok && result.records) {
+      recordsToShow = result.records.map(rec => {
+        const student = allStudents.find(s => s.id === rec.student_id);
         return {
           ...rec,
           studentName: student ? student.name : 'Unknown Student'
         };
       });
-    } else {
-      // If no specific record, show all students from that class as 'Not Recorded' or similar
-      const studentsInClass = allStudents.filter(s => s.classId === selectedClassSectionId);
-      recordsToShow = studentsInClass.map(student => ({
-          studentId: student.id,
-          studentName: student.name,
-          date: selectedDate,
-          status: 'Not Recorded' as any, // Using 'any' to allow custom status for display
-      }));
+    } else if (!result.ok) {
+        toast({title: "Error Fetching Records", description: result.message, variant: "destructive"});
     }
+    
+    // If no specific records found for the day, show all students from that class as 'Not Recorded'
+    if (recordsToShow.length === 0) {
+        const studentsInClass = allStudents.filter(s => s.class_id === selectedClassId);
+        recordsToShow = studentsInClass.map(student => ({
+            student_id: student.id,
+            studentName: student.name,
+            date: selectedDate,
+            status: 'Not Recorded' as any, // Using 'any' to allow custom status for display
+            class_id: selectedClassId,
+            school_id: currentSchoolId,
+            taken_by_teacher_id: '', // Placeholder
+        }));
+    }
+
     setDisplayedAttendance(recordsToShow);
-    setIsLoading(false);
+    setIsLoadingRecords(false);
   };
   
-  const selectedClassDetails = allClasses.find(c => c.id === selectedClassSectionId);
+  const selectedClassDetails = allClasses.find(c => c.id === selectedClassId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -88,7 +109,7 @@ export default function AdminAttendancePage() {
           <div className="grid md:grid-cols-3 gap-4 items-end">
             <div>
               <Label htmlFor="classSelect">Select Class</Label>
-              <Select value={selectedClassSectionId} onValueChange={setSelectedClassSectionId}>
+              <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingPage || !currentSchoolId}>
                 <SelectTrigger id="classSelect">
                   <SelectValue placeholder="Choose a class" />
                 </SelectTrigger>
@@ -107,24 +128,29 @@ export default function AdminAttendancePage() {
                 value={selectedDate} 
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isLoadingPage || !currentSchoolId}
               />
             </div>
-            <Button onClick={handleSearchAttendance} disabled={isLoading || !selectedClassSectionId || !selectedDate}>
-                <Search className="mr-2 h-4 w-4" /> Search Attendance
+            <Button onClick={handleSearchAttendance} disabled={isLoadingPage || isLoadingRecords || !selectedClassId || !selectedDate || !currentSchoolId}>
+                {isLoadingRecords ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Search className="mr-2 h-4 w-4" />} Search
             </Button>
           </div>
 
-          {isLoading && <p className="text-muted-foreground text-center py-4">Loading attendance...</p>}
+          {isLoadingPage && <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading page data...</div>}
+          {isLoadingRecords && <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading attendance records...</div>}
           
-          {!isLoading && searchAttempted && displayedAttendance.length === 0 && selectedClassDetails && (
+          {!isLoadingPage && !currentSchoolId && (
+             <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot view attendance.</p>
+          )}
+
+          {!isLoadingPage && !isLoadingRecords && searchAttempted && displayedAttendance.length === 0 && selectedClassDetails && (
             <p className="text-muted-foreground text-center py-4">No attendance records found for {selectedClassDetails.name} - {selectedClassDetails.division} on {format(parseISO(selectedDate), 'PP')}. It might not have been taken yet.</p>
           )}
-          {!isLoading && searchAttempted && displayedAttendance.length === 0 && !selectedClassDetails && (
+          {!isLoadingPage && !isLoadingRecords && searchAttempted && displayedAttendance.length === 0 && !selectedClassDetails && selectedClassId && (
             <p className="text-muted-foreground text-center py-4">Please select a valid class.</p>
           )}
 
-
-          {!isLoading && displayedAttendance.length > 0 && (
+          {!isLoadingPage && !isLoadingRecords && displayedAttendance.length > 0 && (
             <div className="overflow-x-auto">
                 <h3 className="text-lg font-medium my-2">Attendance for {selectedClassDetails?.name} - {selectedClassDetails?.division} on {format(parseISO(selectedDate), 'PP')}</h3>
               <Table>
@@ -136,7 +162,7 @@ export default function AdminAttendancePage() {
                 </TableHeader>
                 <TableBody>
                   {displayedAttendance.map(record => (
-                    <TableRow key={record.studentId}>
+                    <TableRow key={record.student_id}>
                       <TableCell className="font-medium">{record.studentName}</TableCell>
                       <TableCell className="text-center">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
@@ -163,3 +189,4 @@ export default function AdminAttendancePage() {
     </div>
   );
 }
+    

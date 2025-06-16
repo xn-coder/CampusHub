@@ -2,24 +2,19 @@
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Exam, Subject, ClassData, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, FileTextIcon, BellRing } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, FileTextIcon, BellRing, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid } from 'date-fns';
-
-const MOCK_EXAMS_KEY = 'mockExamsData';
-const MOCK_SUBJECTS_KEY = 'mockSubjectsData';
-const MOCK_CLASSES_KEY = 'mockClassesData'; // Active class-sections
-const MOCK_ACADEMIC_YEARS_KEY = 'mockAcademicYearsData';
-
+import { getExamsPageDataAction, addExamAction, updateExamAction, deleteExamAction } from './actions';
 
 export default function ExamsPage() {
   const { toast } = useToast();
@@ -27,6 +22,9 @@ export default function ExamsPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
@@ -34,110 +32,112 @@ export default function ExamsPage() {
   // Form state
   const [examName, setExamName] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
-  const [selectedClassSectionId, setSelectedClassSectionId] = useState<string | undefined>(undefined);
+  const [selectedClassId, setSelectedClassId] = useState<string | undefined>(undefined); // class_id in DB
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string | undefined>(undefined);
   const [examDate, setExamDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [maxMarks, setMaxMarks] = useState<string>('');
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedExams = localStorage.getItem(MOCK_EXAMS_KEY);
-      if (storedExams) setExams(JSON.parse(storedExams));
-      else localStorage.setItem(MOCK_EXAMS_KEY, JSON.stringify([]));
-
-      const storedSubjects = localStorage.getItem(MOCK_SUBJECTS_KEY);
-      if (storedSubjects) setSubjects(JSON.parse(storedSubjects));
-      else localStorage.setItem(MOCK_SUBJECTS_KEY, JSON.stringify([]));
-      
-      const storedClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      if (storedClasses) setActiveClasses(JSON.parse(storedClasses));
-      else localStorage.setItem(MOCK_CLASSES_KEY, JSON.stringify([]));
-      
-      const storedYears = localStorage.getItem(MOCK_ACADEMIC_YEARS_KEY);
-      if (storedYears) setAcademicYears(JSON.parse(storedYears));
-      else localStorage.setItem(MOCK_ACADEMIC_YEARS_KEY, JSON.stringify([]));
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (adminUserId) {
+      loadInitialData(adminUserId);
+    } else {
+      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      setIsLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const updateLocalStorage = (key: string, data: any[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(data));
+  async function loadInitialData(adminUserId: string) {
+    setIsLoading(true);
+    const result = await getExamsPageDataAction(adminUserId);
+    if (result.ok) {
+      setCurrentSchoolId(result.schoolId || null);
+      setExams(result.exams || []);
+      setSubjects(result.subjects || []);
+      setActiveClasses(result.activeClasses || []);
+      setAcademicYears(result.academicYears || []);
+    } else {
+      toast({ title: "Error loading data", description: result.message, variant: "destructive" });
     }
-  };
+    setIsLoading(false);
+  }
 
   const resetForm = () => {
-    setExamName('');
-    setSelectedSubjectId('');
-    setSelectedClassSectionId(undefined);
-    setSelectedAcademicYearId(undefined);
-    setExamDate('');
-    setStartTime('');
-    setEndTime('');
-    setEditingExam(null);
+    setExamName(''); setSelectedSubjectId(''); setSelectedClassId(undefined);
+    setSelectedAcademicYearId(undefined); setExamDate(''); setStartTime('');
+    setEndTime(''); setMaxMarks(''); setEditingExam(null);
   };
 
   const handleOpenDialog = (exam?: Exam) => {
     if (exam) {
       setEditingExam(exam);
       setExamName(exam.name);
-      setSelectedSubjectId(exam.subjectId);
-      setSelectedClassSectionId(exam.classSectionId);
-      setSelectedAcademicYearId(exam.academicYearId);
-      setExamDate(exam.date);
-      setStartTime(exam.startTime);
-      setEndTime(exam.endTime);
+      setSelectedSubjectId(exam.subject_id);
+      setSelectedClassId(exam.class_id || undefined);
+      setSelectedAcademicYearId(exam.academic_year_id || undefined);
+      setExamDate(exam.date ? format(parseISO(exam.date), 'yyyy-MM-dd') : '');
+      setStartTime(exam.start_time || '');
+      setEndTime(exam.end_time || '');
+      setMaxMarks(exam.max_marks?.toString() || '');
     } else {
       resetForm();
     }
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!examName.trim() || !selectedSubjectId || !examDate || !startTime || !endTime) {
-      toast({ title: "Error", description: "Exam Name, Subject, Date, Start Time, and End Time are required.", variant: "destructive" });
+    if (!examName.trim() || !selectedSubjectId || !examDate || !currentSchoolId) {
+      toast({ title: "Error", description: "Exam Name, Subject, Date, and School context are required.", variant: "destructive" });
       return;
     }
+    setIsSubmitting(true);
 
-    let updatedExams;
     const examData = {
       name: examName.trim(),
-      subjectId: selectedSubjectId,
-      classSectionId: selectedClassSectionId === 'none_cs_selection' ? undefined : selectedClassSectionId,
-      academicYearId: selectedAcademicYearId === 'none_ay_selection' ? undefined : selectedAcademicYearId,
+      subject_id: selectedSubjectId,
+      class_id: selectedClassId === 'none_cs_selection' ? undefined : selectedClassId,
+      academic_year_id: selectedAcademicYearId === 'none_ay_selection' ? undefined : selectedAcademicYearId,
       date: examDate,
-      startTime,
-      endTime,
+      start_time: startTime || null,
+      end_time: endTime || null,
+      max_marks: maxMarks !== '' ? Number(maxMarks) : null,
+      school_id: currentSchoolId,
     };
 
+    let result;
     if (editingExam) {
-      updatedExams = exams.map(ex =>
-        ex.id === editingExam.id ? { ...ex, ...examData } : ex
-      );
-      toast({ title: "Exam Updated", description: `${examName.trim()} has been updated.` });
+      result = await updateExamAction(editingExam.id, examData);
     } else {
-      const newExam: Exam = {
-        id: `exam-${Date.now()}`,
-        ...examData,
-      };
-      updatedExams = [newExam, ...exams];
-      toast({ title: "Exam Added", description: `${examName.trim()} has been scheduled.` });
+      result = await addExamAction(examData);
     }
-    
-    updatedExams.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    setExams(updatedExams);
-    updateLocalStorage(MOCK_EXAMS_KEY, updatedExams);
-    resetForm();
-    setIsDialogOpen(false);
+
+    if (result.ok) {
+      toast({ title: editingExam ? "Exam Updated" : "Exam Added", description: result.message });
+      resetForm();
+      setIsDialogOpen(false);
+      const adminUserId = localStorage.getItem('currentUserId');
+      if (adminUserId) loadInitialData(adminUserId);
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsSubmitting(false);
   };
   
-  const handleDeleteExam = (examId: string) => {
+  const handleDeleteExam = async (examId: string) => {
+    if (!currentSchoolId) return;
     if (confirm("Are you sure you want to delete this exam?")) {
-      const updatedExams = exams.filter(ex => ex.id !== examId);
-      setExams(updatedExams);
-      updateLocalStorage(MOCK_EXAMS_KEY, updatedExams);
-      toast({ title: "Exam Deleted", variant: "destructive" });
+      setIsSubmitting(true);
+      const result = await deleteExamAction(examId, currentSchoolId);
+      toast({ title: result.ok ? "Exam Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
+      if (result.ok) {
+        const adminUserId = localStorage.getItem('currentUserId');
+        if (adminUserId) loadInitialData(adminUserId);
+      }
+      setIsSubmitting(false);
     }
   };
   
@@ -149,16 +149,16 @@ export default function ExamsPage() {
   };
 
   const getSubjectName = (subjectId: string) => subjects.find(s => s.id === subjectId)?.name || 'N/A';
-  const getClassSectionName = (csId?: string) => {
+  const getClassSectionName = (csId?: string | null) => {
     if (!csId) return 'All Classes';
     const cs = activeClasses.find(c => c.id === csId);
     return cs ? `${cs.name} - ${cs.division}` : 'N/A';
   };
-  const getAcademicYearName = (ayId?: string) => {
-    if (!ayId) return 'N/A';
+  const getAcademicYearName = (ayId?: string | null) => {
+    if (!ayId) return 'General';
     return academicYears.find(ay => ay.id === ayId)?.name || 'N/A';
   };
-  const formatDateString = (dateString: string) => {
+  const formatDateString = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
     const dateObj = parseISO(dateString);
     return isValid(dateObj) ? format(dateObj, 'MMM d, yyyy') : 'Invalid Date';
@@ -168,9 +168,9 @@ export default function ExamsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Exams Management" 
-        description="Schedule and manage school examinations. Link exams to subjects, classes, and academic years."
+        description="Schedule and manage school examinations."
         actions={
-          <Button onClick={() => handleOpenDialog()}>
+          <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isLoading || isSubmitting}>
             <PlusCircle className="mr-2 h-4 w-4" /> Schedule Exam
           </Button>
         }
@@ -181,8 +181,12 @@ export default function ExamsPage() {
           <CardDescription>Oversee all examination-related activities.</CardDescription>
         </CardHeader>
         <CardContent>
-          {exams.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No exams scheduled yet.</p>
+          {isLoading ? (
+            <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
+          ) : !currentSchoolId ? (
+             <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage exams.</p>
+          ) : exams.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">No exams scheduled yet for this school.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -193,6 +197,7 @@ export default function ExamsPage() {
                   <TableHead>Academic Year</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Time</TableHead>
+                  <TableHead>Max Marks</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -200,19 +205,20 @@ export default function ExamsPage() {
                 {exams.map((exam) => (
                   <TableRow key={exam.id}>
                     <TableCell className="font-medium">{exam.name}</TableCell>
-                    <TableCell>{getSubjectName(exam.subjectId)}</TableCell>
-                    <TableCell>{getClassSectionName(exam.classSectionId)}</TableCell>
-                    <TableCell>{getAcademicYearName(exam.academicYearId)}</TableCell>
+                    <TableCell>{getSubjectName(exam.subject_id)}</TableCell>
+                    <TableCell>{getClassSectionName(exam.class_id)}</TableCell>
+                    <TableCell>{getAcademicYearName(exam.academic_year_id)}</TableCell>
                     <TableCell>{formatDateString(exam.date)}</TableCell>
-                    <TableCell>{exam.startTime} - {exam.endTime}</TableCell>
+                    <TableCell>{exam.start_time && exam.end_time ? `${exam.start_time} - ${exam.end_time}` : 'N/A'}</TableCell>
+                    <TableCell>{exam.max_marks ?? 'N/A'}</TableCell>
                     <TableCell className="space-x-1 text-right">
-                       <Button variant="outline" size="sm" onClick={() => handleMockNotify(exam)} title="Simulate Notification">
+                       <Button variant="outline" size="sm" onClick={() => handleMockNotify(exam)} title="Simulate Notification" disabled={isSubmitting}>
                         <BellRing className="h-4 w-4" />
                       </Button>
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(exam)}>
+                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(exam)} disabled={isSubmitting}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteExam(exam.id)}>
+                      <Button variant="destructive" size="icon" onClick={() => handleDeleteExam(exam.id)} disabled={isSubmitting}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -231,55 +237,64 @@ export default function ExamsPage() {
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="examName" className="text-right">Exam Name</Label>
-                <Input id="examName" value={examName} onChange={(e) => setExamName(e.target.value)} className="col-span-3" placeholder="e.g., Midterm, Final" required />
+              <div>
+                <Label htmlFor="examName">Exam Name</Label>
+                <Input id="examName" value={examName} onChange={(e) => setExamName(e.target.value)} placeholder="e.g., Midterm, Final" required disabled={isSubmitting} />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="subjectId" className="text-right">Subject</Label>
-                <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} required>
-                  <SelectTrigger className="col-span-3"><SelectValue placeholder="Select subject" /></SelectTrigger>
+              <div>
+                <Label htmlFor="subjectId">Subject</Label>
+                <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} required disabled={isSubmitting}>
+                  <SelectTrigger id="subjectId"><SelectValue placeholder="Select subject" /></SelectTrigger>
                   <SelectContent>
                     {subjects.length > 0 ? subjects.map(s => (<SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>)) : <SelectItem value="-" disabled>No subjects defined</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="classSectionId" className="text-right">Class/Section</Label>
-                <Select value={selectedClassSectionId} onValueChange={setSelectedClassSectionId}>
-                  <SelectTrigger className="col-span-3"><SelectValue placeholder="Optional: Specific Class/Section" /></SelectTrigger>
+              <div>
+                <Label htmlFor="classId">Target Class/Section (Optional)</Label>
+                <Select value={selectedClassId || 'none_cs_selection'} onValueChange={setSelectedClassId} disabled={isSubmitting}>
+                  <SelectTrigger id="classId"><SelectValue placeholder="All (General Exam)" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none_cs_selection">All (General Exam)</SelectItem>
                     {activeClasses.length > 0 ? activeClasses.map(cs => (<SelectItem key={cs.id} value={cs.id}>{cs.name} - {cs.division}</SelectItem>)) : <SelectItem value="-" disabled>No active classes</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="academicYearId" className="text-right">Academic Year</Label>
-                <Select value={selectedAcademicYearId} onValueChange={setSelectedAcademicYearId}>
-                  <SelectTrigger className="col-span-3"><SelectValue placeholder="Optional: Academic Year" /></SelectTrigger>
+              <div>
+                <Label htmlFor="academicYearId">Academic Year (Optional)</Label>
+                <Select value={selectedAcademicYearId || 'none_ay_selection'} onValueChange={setSelectedAcademicYearId} disabled={isSubmitting}>
+                  <SelectTrigger id="academicYearId"><SelectValue placeholder="General / Not linked" /></SelectTrigger>
                   <SelectContent>
-                     <SelectItem value="none_ay_selection">None</SelectItem>
+                     <SelectItem value="none_ay_selection">General / Not Linked</SelectItem>
                     {academicYears.length > 0 ? academicYears.map(ay => (<SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)) : <SelectItem value="-" disabled>No academic years</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="examDate" className="text-right">Date</Label>
-                <Input id="examDate" type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} className="col-span-3" required />
+              <div>
+                <Label htmlFor="examDate">Date</Label>
+                <Input id="examDate" type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} required disabled={isSubmitting} />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="startTime" className="text-right">Start Time</Label>
-                <Input id="startTime" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="col-span-3" required />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="startTime">Start Time (Optional)</Label>
+                  <Input id="startTime" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} disabled={isSubmitting} />
+                </div>
+                <div>
+                  <Label htmlFor="endTime">End Time (Optional)</Label>
+                  <Input id="endTime" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} disabled={isSubmitting} />
+                </div>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="endTime" className="text-right">End Time</Label>
-                <Input id="endTime" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="col-span-3" required />
+               <div>
+                <Label htmlFor="maxMarks">Max Marks (Optional)</Label>
+                <Input id="maxMarks" type="number" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} placeholder="e.g., 100" min="0" disabled={isSubmitting} />
               </div>
             </div>
             <DialogFooter className="mt-4">
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit"><Save className="mr-2 h-4 w-4" /> {editingExam ? 'Save Changes' : 'Schedule Exam'}</Button>
+              <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {editingExam ? 'Save Changes' : 'Schedule Exam'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -287,3 +302,4 @@ export default function ExamsPage() {
     </div>
   );
 }
+    
