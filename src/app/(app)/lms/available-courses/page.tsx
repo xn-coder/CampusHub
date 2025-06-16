@@ -79,7 +79,6 @@ export default function AvailableLmsCoursesPage() {
         setCourses(coursesData || []);
         if (userProfileId && userRole && (coursesData && coursesData.length > 0)) {
            // Student or Teacher, fetch their specific enrollments
-           // For students, schoolId is on enrollment record. For teachers, it's not.
           await fetchEnrollmentStatuses(coursesData.map(c => c.id), userProfileId, userRole, userSchoolId);
         }
       }
@@ -95,7 +94,7 @@ export default function AvailableLmsCoursesPage() {
 
     let query = supabase
       .from(enrollmentTable)
-      .select('course_id')
+      .select('course_id, student_id') // Select only what's needed
       .eq(userIdColumn, userProfileId)
       .in('course_id', courseIds);
 

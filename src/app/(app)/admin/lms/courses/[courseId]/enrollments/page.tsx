@@ -81,7 +81,7 @@ export default function ManageCourseEnrollmentsPage() {
   async function fetchEnrollments(cId: string, schoolId: string | null) {
     let studentQuery = supabase
         .from('lms_student_course_enrollments')
-        .select('id, student_id, course_id, enrolled_at, school_id, created_at, updated_at')
+        .select('id, student_id, course_id, enrolled_at, school_id') // Explicitly select columns
         .eq('course_id', cId);
 
     let teacherQuery = supabase
