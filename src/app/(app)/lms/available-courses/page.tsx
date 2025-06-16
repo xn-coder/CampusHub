@@ -78,17 +78,19 @@ export default function AvailableLmsCoursesPage() {
         setCourses([]);
       } else {
         setCourses(coursesData || []);
-        if (userProfileId && userRole && (coursesData && coursesData.length > 0)) { // Use userProfileId for student/teacher
+        if (userProfileId && userRole && (userRole === 'student' || userRole === 'teacher') && (coursesData && coursesData.length > 0)) { 
            await fetchEnrollmentStatuses(coursesData.map(c => c.id), userProfileId, userRole);
         }
       }
       setIsLoading(false);
     }
     fetchData();
-  }, [toast]);
+  }, []); // Changed dependency array from [toast] to []
 
 
   async function fetchEnrollmentStatuses(courseIds: string[], profileId: string, role: UserRole) {
+    if (role !== 'student' && role !== 'teacher') return; // Only fetch for students/teachers
+
     const enrollmentTable = role === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
     const fkColumnNameInEnrollmentTable = role === 'student' ? 'student_id' : 'teacher_id';
 
@@ -106,14 +108,16 @@ export default function AvailableLmsCoursesPage() {
     const statusMap: Record<string, boolean> = {};
     courseIds.forEach(id => statusMap[id] = false);
     (enrollments || []).forEach(en => {
-      statusMap[en.course_id] = true;
+      if (en.course_id) { // Ensure course_id is not null
+        statusMap[en.course_id] = true;
+      }
     });
     setEnrollmentStatus(statusMap);
   }
 
   const handleEnrollUnpaid = async (courseId: string) => {
-    if (!currentUserProfileId || !currentUserRole) { 
-      toast({ title: "Error", description: "User profile not identified. Cannot enroll.", variant: "destructive"});
+    if (!currentUserProfileId || !currentUserRole || (currentUserRole !== 'student' && currentUserRole !== 'teacher')) { 
+      toast({ title: "Error", description: "User profile not identified or role invalid for enrollment.", variant: "destructive"});
       return;
     }
     
@@ -188,10 +192,10 @@ export default function AvailableLmsCoursesPage() {
                     {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>} 
                     {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
                   </Button>
-                ) : ( 
+                ) : ( // Admin/Superadmin view or not logged in with student/teacher profile
                    <Button asChild className="w-full" variant="outline">
                      <Link href={`/admin/lms/courses/${course.id}/content`}> 
-                       <Eye className="mr-2 h-4 w-4"/> View Details
+                       <Eye className="mr-2 h-4 w-4"/> View Details (Admin)
                      </Link>
                    </Button>
                 )}
