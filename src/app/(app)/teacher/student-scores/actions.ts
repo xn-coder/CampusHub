@@ -1,9 +1,8 @@
 
 'use server';
 
-import { supabase } from '@/lib/supabaseClient';
+import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { StudentScore } from '@/types';
 
 interface SaveScoreInput {
   student_id: string;
@@ -17,6 +16,7 @@ interface SaveScoreInput {
 }
 
 export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): Promise<{ ok: boolean; message: string; savedCount: number }> {
+  const supabaseAdmin = createSupabaseServerClient();
   if (!scoresToSave || scoresToSave.length === 0) {
     return { ok: true, message: 'No scores provided to save.', savedCount: 0 };
   }
@@ -25,17 +25,16 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
   const errors: string[] = [];
 
   for (const scoreInput of scoresToSave) {
-    // Check if a score record already exists for this student, exam, class combination
-    const { data: existingScore, error: fetchError } = await supabase
+    const { data: existingScore, error: fetchError } = await supabaseAdmin
       .from('student_scores')
       .select('id')
       .eq('student_id', scoreInput.student_id)
       .eq('exam_id', scoreInput.exam_id)
-      .eq('class_id', scoreInput.class_id)
+      .eq('class_id', scoreInput.class_id) // Ensure class_id is part of the uniqueness check
       .eq('school_id', scoreInput.school_id)
       .single();
 
-    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116: no rows, which is fine for new insert
+    if (fetchError && fetchError.code !== 'PGRST116') { 
       errors.push(`Error checking existing score for student ${scoreInput.student_id}: ${fetchError.message}`);
       continue;
     }
@@ -45,15 +44,15 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
       exam_id: scoreInput.exam_id,
       subject_id: scoreInput.subject_id,
       class_id: scoreInput.class_id,
-      score: String(scoreInput.score), // Ensure score is string for DB if type is TEXT
+      score: String(scoreInput.score), 
       max_marks: scoreInput.max_marks,
       recorded_by_teacher_id: scoreInput.recorded_by_teacher_id,
-      date_recorded: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+      date_recorded: new Date().toISOString().split('T')[0],
       school_id: scoreInput.school_id,
     };
 
-    if (existingScore) { // Update existing score
-      const { error: updateError } = await supabase
+    if (existingScore) { 
+      const { error: updateError } = await supabaseAdmin
         .from('student_scores')
         .update(recordData)
         .eq('id', existingScore.id);
@@ -62,8 +61,8 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
       } else {
         savedCount++;
       }
-    } else { // Insert new score
-      const { error: insertError } = await supabase
+    } else { 
+      const { error: insertError } = await supabaseAdmin
         .from('student_scores')
         .insert(recordData);
       if (insertError) {
@@ -83,8 +82,8 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
   }
 
   revalidatePath('/teacher/student-scores');
-  revalidatePath('/admin/student-scores'); // Admin might view these
-  revalidatePath('/student/my-scores'); // Student might view these
+  revalidatePath('/admin/student-scores'); 
+  revalidatePath('/student/my-scores'); 
   
   return { ok: true, message: `Successfully saved/updated ${savedCount} student scores.`, savedCount };
 }

@@ -1,7 +1,7 @@
 
 'use server';
 
-import { supabase } from '@/lib/supabaseClient';
+import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { revalidatePath } from 'next/cache';
@@ -16,7 +16,7 @@ interface RegisterStudentInput {
   guardianName?: string;
   contactNumber?: string;
   address?: string;
-  classId: string; // ID of the 'classes' table record
+  classId: string; 
   schoolId: string;
   profilePictureUrl?: string;
 }
@@ -24,14 +24,14 @@ interface RegisterStudentInput {
 export async function registerStudentAction(
   input: RegisterStudentInput
 ): Promise<{ ok: boolean; message: string; studentId?: string; userId?: string; admissionRecordId?: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
   const { 
     name, email, dateOfBirth, guardianName, contactNumber, address, classId, schoolId, profilePictureUrl 
   } = input;
   const defaultPassword = "password";
 
   try {
-    // 1. Check if email already exists in users table
-    const { data: existingUser, error: userFetchError } = await supabase
+    const { data: existingUser, error: userFetchError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('email', email.trim())
@@ -45,10 +45,9 @@ export async function registerStudentAction(
       return { ok: false, message: `A user with email ${email.trim()} already exists.` };
     }
 
-    // 2. Create User record for login
     const newUserId = uuidv4();
     const hashedPassword = await bcrypt.hash(defaultPassword, SALT_ROUNDS);
-    const { data: newUser, error: userInsertError } = await supabase
+    const { data: newUser, error: userInsertError } = await supabaseAdmin
       .from('users')
       .insert({
         id: newUserId,
@@ -56,7 +55,7 @@ export async function registerStudentAction(
         name: name.trim(),
         role: 'student',
         password_hash: hashedPassword,
-        // school_id: schoolId, // If users table has school_id
+        school_id: schoolId,
       })
       .select('id')
       .single();
@@ -66,35 +65,32 @@ export async function registerStudentAction(
       return { ok: false, message: `Failed to create student login: ${userInsertError?.message || 'No user data returned'}` };
     }
 
-    // 3. Create Student profile record
     const newStudentProfileId = uuidv4();
-    const { error: studentInsertError } = await supabase
+    const { error: studentInsertError } = await supabaseAdmin
       .from('students')
       .insert({
         id: newStudentProfileId,
         user_id: newUser.id,
         name: name.trim(),
-        email: email.trim(), // Denormalized email
+        email: email.trim(),
         class_id: classId,
         date_of_birth: dateOfBirth || null,
         guardian_name: guardianName || null,
         contact_number: contactNumber || null,
         address: address || null,
-        admission_date: new Date().toISOString().split('T')[0], // Current date as YYYY-MM-DD
+        admission_date: new Date().toISOString().split('T')[0],
         profile_picture_url: profilePictureUrl?.trim() || `https://placehold.co/100x100.png?text=${name.substring(0,1)}`,
         school_id: schoolId,
       });
 
     if (studentInsertError) {
       console.error('Error creating student profile:', studentInsertError);
-      // Rollback user creation
-      await supabase.from('users').delete().eq('id', newUser.id);
+      await supabaseAdmin.from('users').delete().eq('id', newUser.id);
       return { ok: false, message: `Failed to create student profile: ${studentInsertError.message}` };
     }
     
-    // 4. Create Admission Record
     const newAdmissionId = uuidv4();
-    const { error: admissionInsertError } = await supabase
+    const { error: admissionInsertError } = await supabaseAdmin
         .from('admission_records')
         .insert({
             id: newAdmissionId,
@@ -105,22 +101,19 @@ export async function registerStudentAction(
             contact_number: contactNumber || null,
             address: address || null,
             admission_date: new Date().toISOString().split('T')[0],
-            status: 'Enrolled' as AdmissionStatus, // Directly enrolling
+            status: 'Enrolled' as AdmissionStatus, 
             class_id: classId,
             student_profile_id: newStudentProfileId,
             school_id: schoolId,
         });
     
     if (admissionInsertError) {
-        console.error('Error creating admission record:', admissionInsertError);
-        // Non-critical for student creation itself, but log it.
-        // Might want to notify admin or attempt cleanup.
+        console.warn('Error creating admission record:', admissionInsertError);
     }
 
-
     revalidatePath('/teacher/register-student');
-    revalidatePath('/admin/manage-students'); // Admin might see the new student
-    revalidatePath('/admin/admissions'); // Admin might see admission record
+    revalidatePath('/admin/manage-students'); 
+    revalidatePath('/admin/admissions'); 
 
     return { 
       ok: true, 

@@ -1,15 +1,16 @@
 
 'use server';
-import { supabase } from '@/lib/supabaseClient';
+import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { User, UserRole } from '@/types';
 import bcrypt from 'bcryptjs';
 
 const SALT_ROUNDS = 10;
 
 export async function ensureSuperAdminExists(): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
   const superAdminEmail = process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL;
   const superAdminName = process.env.NEXT_PUBLIC_SUPERADMIN_NAME || 'Super Administrator';
-  const superAdminPassword = "password"; // Hardcoded default password  
+  const superAdminPassword = "password";
 
   if (!superAdminEmail) {
     console.error('Superadmin email not configured in .env');
@@ -17,27 +18,26 @@ export async function ensureSuperAdminExists(): Promise<{ ok: boolean; message: 
   }
 
   try {
-    // Check if superadmin exists
-    const { data: existingUser, error: fetchError } = await supabase
+    const { data: existingUser, error: userFetchError } = await supabaseAdmin
       .from('users')
       .select('id, email, role')
       .eq('email', superAdminEmail)
       .single();
 
-    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116: 0 rows
-      console.error('Error fetching superadmin:', fetchError);
+    if (userFetchError && userFetchError.code !== 'PGRST116') {
+      console.error('Error checking for superadmin existence:', userFetchError);
       return { ok: false, message: 'Error checking for superadmin existence.' };
     }
 
     if (!existingUser) {
       const hashedPassword = await bcrypt.hash(superAdminPassword, SALT_ROUNDS);
       
-      const { error: insertError } = await supabase
+      const { error: insertError } = await supabaseAdmin
         .from('users')
         .insert({
           email: superAdminEmail,
           name: superAdminName,
-          password_hash: hashedPassword, // Assuming column is named password_hash
+          password_hash: hashedPassword,
           role: 'superadmin',
         });
 
@@ -62,11 +62,12 @@ export async function attemptLogin(
   email: string,
   pass: string,
   role: UserRole
-): Promise<{ ok: boolean; message: string; user?: Omit<User, 'password'> }> {
+): Promise<{ ok: boolean; message: string; user?: Omit<User, 'password_hash'> }> {
+  const supabaseAdmin = createSupabaseServerClient(); // Use admin client to read users table
   try {
-    const { data: userRecord, error: fetchError } = await supabase
+    const { data: userRecord, error: fetchError } = await supabaseAdmin
       .from('users')
-      .select('id, email, name, role, password_hash') // Fetch password_hash
+      .select('id, email, name, role, password_hash')
       .eq('email', email)
       .single();
 
@@ -77,6 +78,10 @@ export async function attemptLogin(
 
     if (!userRecord) {
       return { ok: false, message: 'User not found.' };
+    }
+
+    if (!userRecord.password_hash) {
+        return { ok: false, message: 'User account not properly configured (missing password).' };
     }
 
     const passwordMatch = await bcrypt.compare(pass, userRecord.password_hash);
@@ -91,7 +96,7 @@ export async function attemptLogin(
     
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password_hash, ...userWithoutPasswordHash } = userRecord;
-    return { ok: true, message: 'Login successful!', user: userWithoutPasswordHash as Omit<User, 'password'> };
+    return { ok: true, message: 'Login successful!', user: userWithoutPasswordHash as Omit<User, 'password_hash'> };
 
   } catch (error) {
     console.error('Login error:', error);

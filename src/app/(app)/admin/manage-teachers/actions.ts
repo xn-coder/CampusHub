@@ -1,7 +1,7 @@
 
 'use server';
 
-import { supabase } from '@/lib/supabaseClient';
+import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { revalidatePath } from 'next/cache';
@@ -19,12 +19,12 @@ interface CreateTeacherInput {
 export async function createTeacherAction(
   data: CreateTeacherInput
 ): Promise<{ ok: boolean; message: string; teacherId?: string; userId?: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
   const { name, email, subject, profilePictureUrl, school_id } = data;
   const defaultPassword = "password"; 
 
   try {
-    // Check if email already exists in users table
-    const { data: existingUser, error: userFetchError } = await supabase
+    const { data: existingUser, error: userFetchError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('email', email)
@@ -38,11 +38,10 @@ export async function createTeacherAction(
       return { ok: false, message: `A user with email ${email} already exists.` };
     }
     
-    // 1. Create User record for login
     const newUserId = uuidv4();
     const hashedPassword = await bcrypt.hash(defaultPassword, SALT_ROUNDS);
 
-    const { data: newUser, error: userInsertError } = await supabase
+    const { data: newUser, error: userInsertError } = await supabaseAdmin
       .from('users')
       .insert({
         id: newUserId,
@@ -50,6 +49,7 @@ export async function createTeacherAction(
         name: name.trim(),
         role: 'teacher',
         password_hash: hashedPassword,
+        school_id: school_id, 
       })
       .select('id')
       .single();
@@ -59,15 +59,14 @@ export async function createTeacherAction(
       return { ok: false, message: `Failed to create teacher login: ${userInsertError?.message || 'No user data returned'}` };
     }
 
-    // 2. Create Teacher profile record
     const newTeacherProfileId = uuidv4();
-    const { error: teacherInsertError } = await supabase
+    const { error: teacherInsertError } = await supabaseAdmin
       .from('teachers')
       .insert({
         id: newTeacherProfileId,
         user_id: newUser.id,
         name: name.trim(),
-        email: email.trim(), // Denormalized email for easier profile access
+        email: email.trim(),
         subject: subject.trim(),
         profile_picture_url: profilePictureUrl?.trim() || `https://placehold.co/100x100.png?text=${name.substring(0,1)}`,
         school_id: school_id,
@@ -75,8 +74,7 @@ export async function createTeacherAction(
 
     if (teacherInsertError) {
       console.error('Error creating teacher profile:', teacherInsertError);
-      // Rollback user creation
-      await supabase.from('users').delete().eq('id', newUser.id);
+      await supabaseAdmin.from('users').delete().eq('id', newUser.id);
       return { ok: false, message: `Failed to create teacher profile: ${teacherInsertError.message}` };
     }
     
@@ -94,8 +92,8 @@ export async function createTeacherAction(
 }
 
 interface UpdateTeacherInput {
-  id: string; // Teacher profile ID
-  userId?: string; // User ID for login details
+  id: string; 
+  userId?: string; 
   name: string;
   email: string;
   subject: string;
@@ -106,23 +104,18 @@ interface UpdateTeacherInput {
 export async function updateTeacherAction(
   data: UpdateTeacherInput
 ): Promise<{ ok: boolean; message: string }> {
-   const { id, userId, name, email, subject, profilePictureUrl, school_id } = data;
+  const supabaseAdmin = createSupabaseServerClient();
+  const { id, userId, name, email, subject, profilePictureUrl, school_id } = data;
   try {
-    // Check if email is being changed and if new email already exists for another user
     if (userId) {
-        const { data: currentUserData, error: currentUserFetchError } = await supabase
+        const { data: currentUserData, error: currentUserFetchError } = await supabaseAdmin
             .from('users')
             .select('email')
             .eq('id', userId)
             .single();
-
-        if (currentUserFetchError) {
-            console.error('Error fetching current user data for email check:', currentUserFetchError);
-            // Decide if this is critical. For now, proceed with caution.
-        }
         
         if (currentUserData && email.trim() !== currentUserData.email) {
-            const { data: existingUserWithNewEmail, error: fetchError } = await supabase
+            const { data: existingUserWithNewEmail, error: fetchError } = await supabaseAdmin
                 .from('users')
                 .select('id')
                 .eq('email', email.trim())
@@ -137,12 +130,11 @@ export async function updateTeacherAction(
         }
     }
 
-
-    const { error: teacherUpdateError } = await supabase
+    const { error: teacherUpdateError } = await supabaseAdmin
       .from('teachers')
       .update({
         name: name.trim(),
-        email: email.trim(), // Update denormalized email on profile
+        email: email.trim(), 
         subject: subject.trim(),
         profile_picture_url: profilePictureUrl?.trim() || `https://placehold.co/100x100.png?text=${name.substring(0,1)}`,
       })
@@ -155,14 +147,13 @@ export async function updateTeacherAction(
     }
 
     if (userId) {
-      const { error: userUpdateError } = await supabase
+      const { error: userUpdateError } = await supabaseAdmin
         .from('users')
         .update({ name: name.trim(), email: email.trim() })
         .eq('id', userId);
       
       if (userUpdateError) {
          console.warn(`Teacher profile updated, but failed to update user login details: ${userUpdateError.message}`);
-         // Non-critical for this operation, but should be logged.
       }
     }
     revalidatePath('/admin/manage-teachers');
@@ -179,9 +170,9 @@ export async function deleteTeacherAction(
   userId: string | undefined,
   schoolId: string
 ): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
   try {
-    // Check for dependencies, e.g., if teacher is assigned to active classes or has recorded scores
-    const { count: classCount, error: classError } = await supabase
+    const { count: classCount, error: classError } = await supabaseAdmin
         .from('classes')
         .select('id', { count: 'exact', head: true })
         .eq('teacher_id', teacherProfileId)
@@ -190,19 +181,15 @@ export async function deleteTeacherAction(
     if (classError) return { ok: false, message: `Error checking class assignments: ${classError.message}`};
     if (classCount && classCount > 0) return { ok: false, message: `Cannot delete: Teacher is assigned to ${classCount} class(es). Unassign first.`};
     
-    // Similar checks for 'student_scores', 'assignments' etc. if teacher_id on those tables is the profile ID.
-    // Example for assignments:
-    const { count: assignmentCount, error: assignmentError } = await supabase
+    const { count: assignmentCount, error: assignmentError } = await supabaseAdmin
         .from('assignments')
         .select('id', {count: 'exact', head: true})
         .eq('teacher_id', teacherProfileId)
-        .eq('school_id', schoolId);
+        .eq('school_id', schoolId); // Assuming assignments are school-scoped
     if (assignmentError) return {ok: false, message: `Error checking assignments: ${assignmentError.message}`};
     if (assignmentCount && assignmentCount > 0) return {ok: false, message: `Cannot delete: Teacher has posted ${assignmentCount} assignment(s).`};
 
-
-    // Delete from 'teachers' (profile) table
-    const { error: teacherDeleteError } = await supabase
+    const { error: teacherDeleteError } = await supabaseAdmin
       .from('teachers')
       .delete()
       .eq('id', teacherProfileId)
@@ -213,14 +200,12 @@ export async function deleteTeacherAction(
       return { ok: false, message: `Failed to delete teacher profile: ${teacherDeleteError.message}` };
     }
 
-    // Delete from 'users' (login) table if userId exists
     if (userId) {
-      const { error: userDeleteError } = await supabase
+      const { error: userDeleteError } = await supabaseAdmin
         .from('users')
         .delete()
         .eq('id', userId);
       if (userDeleteError) {
-        // This is less critical if the profile is gone, but should be logged.
         console.warn(`Teacher profile deleted, but failed to delete user login for ID ${userId}: ${userDeleteError.message}`);
       }
     }
