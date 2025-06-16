@@ -424,6 +424,173 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
     return { ok: false, message: error.message || "An unexpected error occurred." };
   }
 }
+
+
+// --- Actions for Course Activation Page ---
+interface CourseActivationPageData {
+    targetCourse?: Course | null;
+    userProfileId?: string | null;
+    userSchoolId?: string | null;
+    userRole?: UserRole | null;
+}
+export async function getCourseActivationPageInitialDataAction(
+  courseIdFromQuery: string | null,
+  userId: string // This is users.id
+): Promise<{ ok: boolean; data?: CourseActivationPageData; message?: string }> {
+  const supabase = createSupabaseServerClient();
+  const resultData: CourseActivationPageData = {};
+
+  try {
+    // Fetch user details including role and school_id
+    const { data: userRec, error: userError } = await supabase
+      .from('users')
+      .select('id, role, school_id')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !userRec) {
+      return { ok: false, message: userError?.message || "User record not found." };
+    }
+    resultData.userRole = userRec.role as UserRole;
+    resultData.userSchoolId = userRec.school_id;
+
+    // Fetch specific user profile (student or teacher)
+    if (resultData.userRole === 'student') {
+      const { data: studentProfile, error: studentError } = await supabase
+        .from('students')
+        .select('id') // students.id
+        .eq('user_id', userId)
+        .single();
+      if (studentError || !studentProfile) {
+        return { ok: false, message: studentError?.message || "Student profile not found." };
+      }
+      resultData.userProfileId = studentProfile.id;
+    } else if (resultData.userRole === 'teacher') {
+      const { data: teacherProfile, error: teacherError } = await supabase
+        .from('teachers')
+        .select('id') // teachers.id
+        .eq('user_id', userId)
+        .single();
+      if (teacherError || !teacherProfile) {
+        return { ok: false, message: teacherError?.message || "Teacher profile not found." };
+      }
+      resultData.userProfileId = teacherProfile.id;
+    }
+
+    // Fetch target course details if courseIdFromQuery is provided
+    if (courseIdFromQuery) {
+      const { data: courseData, error: courseError } = await supabase
+        .from('lms_courses')
+        .select('*')
+        .eq('id', courseIdFromQuery)
+        .single();
+      if (courseError || !courseData) {
+        console.warn(`Could not fetch target course ${courseIdFromQuery}: ${courseError?.message}`);
+      } else {
+        resultData.targetCourse = courseData as Course;
+      }
+    }
+
+    return { ok: true, data: resultData };
+
+  } catch (error: any) {
+    console.error("Error in getCourseActivationPageInitialDataAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred." };
+  }
+}
+
+
+interface ActivateCourseWithCodeInput {
+  activationCode: string;
+  userProfileId: string; // students.id or teachers.id
+  userId: string; // users.id (for marking code as used)
+  userRole: UserRole;
+  schoolId: string | null; // User's school_id, can be null for global courses/users
+}
+export async function activateCourseWithCodeAction(
+  input: ActivateCourseWithCodeInput
+): Promise<{ ok: boolean; message: string; activatedCourse?: { id: string; title: string | null } }> {
+  const supabase = createSupabaseServerClient();
+  const { activationCode, userProfileId, userId, userRole, schoolId } = input;
+
+  try {
+    const { data: codeToActivate, error: codeError } = await supabase
+      .from('lms_course_activation_codes')
+      .select('*')
+      .eq('code', activationCode.toUpperCase()) // Ensure code is checked in uppercase
+      .single();
+
+    if (codeError || !codeToActivate) {
+      return { ok: false, message: "Invalid activation code." };
+    }
+    if (codeToActivate.is_used) {
+      return { ok: false, message: "This activation code has already been used." };
+    }
+    if (codeToActivate.expiry_date && new Date() > new Date(codeToActivate.expiry_date)) {
+      return { ok: false, message: "This activation code has expired." };
+    }
+    
+    const { data: courseDetails, error: courseDetailsError } = await supabase
+        .from('lms_courses')
+        .select('id, title, school_id')
+        .eq('id', codeToActivate.course_id)
+        .single();
+
+    if (courseDetailsError || !courseDetails) {
+        return { ok: false, message: "Course associated with this code not found."};
+    }
+
+    // Check if the course is school-specific and if the user belongs to that school
+    if (courseDetails.school_id && courseDetails.school_id !== schoolId) {
+        // Only restrict if the user is not a superadmin. Superadmins might activate codes for any school.
+        // However, the activation process itself might be tied to the user's current school context.
+        // For now, if user's schoolId doesn't match course's school_id (and course has one), it's an error.
+        return { ok: false, message: "This activation code is for a course not available to your school or context."};
+    }
+
+
+    const enrollmentResult = await enrollUserInCourseAction({
+      course_id: codeToActivate.course_id,
+      user_profile_id: userProfileId,
+      user_type: userRole,
+    });
+
+    // If enrollmentResult.ok is false but the message indicates already enrolled, proceed to mark code as used.
+    if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
+      return { ok: false, message: `Enrollment failed: ${enrollmentResult.message}` };
+    }
+
+    const { error: updateCodeError } = await supabase
+      .from('lms_course_activation_codes')
+      .update({ is_used: true, used_by_user_id: userId, used_at: new Date().toISOString() })
+      .eq('id', codeToActivate.id);
+
+    if (updateCodeError) {
+      console.error("Critical: Failed to mark activation code as used after enrollment:", updateCodeError);
+      // Even if marking the code fails, the user is enrolled. Return success for enrollment.
+      return { 
+        ok: true, 
+        message: `Course enrolled successfully: ${courseDetails.title || 'the course'}. However, there was an issue finalizing the activation code. Please contact support if problems persist.`,
+        activatedCourse: { id: courseDetails.id, title: courseDetails.title }
+      };
+    }
+
+    revalidatePath('/lms/available-courses');
+    revalidatePath(`/lms/courses/${codeToActivate.course_id}`);
+    if(userRole === 'student') revalidatePath('/student/study-material');
+
+
+    return { 
+      ok: true, 
+      message: `Successfully activated and enrolled in: ${courseDetails.title || 'the course'}.`, 
+      activatedCourse: { id: courseDetails.id, title: courseDetails.title }
+    };
+
+  } catch (error: any) {
+    console.error("Error in activateCourseWithCodeAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred during course activation." };
+  }
+}
     
     
     

@@ -527,7 +527,6 @@ export async function activateCourseWithCodeAction(
       return { ok: false, message: "This activation code has expired." };
     }
     
-    // Fetch the course to check its school_id
     const { data: courseDetails, error: courseDetailsError } = await supabase
         .from('lms_courses')
         .select('id, title, school_id')
@@ -538,9 +537,6 @@ export async function activateCourseWithCodeAction(
         return { ok: false, message: "Course associated with this code not found."};
     }
 
-    // School scope check:
-    // If the course is school-specific, the user's school must match.
-    // If the course is global (course.school_id is null), any user (even without a school_id) can activate.
     if (courseDetails.school_id && courseDetails.school_id !== schoolId) {
         return { ok: false, message: "This activation code is for a course not available to your school."};
     }
@@ -590,3 +586,4 @@ export async function activateCourseWithCodeAction(
     
 
     
+
