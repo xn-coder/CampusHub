@@ -144,11 +144,13 @@ export default function ClassManagementPage() {
     setIsSubmitting(true);
     const result = await addClassNameAction(newClassNameInput, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    if (result.ok) {
-      setNewClassNameInput('');
+    setNewClassNameInput(''); 
+    if (result.classNames) {
+      setClassNamesList(result.classNames);
+    } else {
+      // Fallback to full fetch if list wasn't returned or on error
+      fetchAllData(currentSchoolId);
     }
-    // Always re-fetch data to ensure UI consistency, especially if "already exists" error occurs
-    fetchAllData(currentSchoolId);
     setIsSubmitting(false);
   };
 
@@ -157,7 +159,7 @@ export default function ClassManagementPage() {
     setIsSubmitting(true);
     const result = await deleteClassNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    if (result.ok) fetchAllData(currentSchoolId);
+    if (result.ok) fetchAllData(currentSchoolId); // Re-fetch all as dependencies might change
     setIsSubmitting(false);
   };
 
@@ -166,11 +168,12 @@ export default function ClassManagementPage() {
     setIsSubmitting(true);
     const result = await addSectionNameAction(newSectionNameInput, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    if (result.ok) {
-      setNewSectionNameInput('');
+    setNewSectionNameInput('');
+    if (result.sectionNames) {
+      setSectionNamesList(result.sectionNames);
+    } else {
+      fetchAllData(currentSchoolId);
     }
-    // Always re-fetch data
-    fetchAllData(currentSchoolId);
     setIsSubmitting(false);
   };
 

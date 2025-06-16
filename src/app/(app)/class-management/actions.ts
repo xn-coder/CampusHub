@@ -4,33 +4,56 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
+import type { ClassNameRecord, SectionRecord } from '@/types';
 
 // --- Class Name (Standard) Management ---
-export async function addClassNameAction(name: string, schoolId: string) {
+export async function addClassNameAction(name: string, schoolId: string): Promise<{ ok: boolean; message: string; classNames?: ClassNameRecord[] }> {
   const supabaseAdmin = createSupabaseServerClient();
-  if (!name.trim()) return { ok: false, message: 'Class Name cannot be empty.' };
-  
-  const { data: existing, error: fetchError } = await supabaseAdmin
+  let message = '';
+  let ok = false;
+
+  if (!name.trim()) {
+    message = 'Class Name cannot be empty.';
+  } else {
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from('class_names')
+      .select('id')
+      .eq('name', name.trim())
+      .eq('school_id', schoolId)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error("Error checking class name:", fetchError);
+      message = 'Database error checking name.';
+    } else if (existing) {
+      message = `Class Name '${name.trim()}' already exists.`;
+    } else {
+      const { error: insertError } = await supabaseAdmin.from('class_names').insert({ name: name.trim(), school_id: schoolId, id: uuidv4() });
+      if (insertError) {
+        console.error("Error adding class name:", insertError);
+        message = `Failed to add class name: ${insertError.message}`;
+      } else {
+        ok = true;
+        message = `Class Name '${name.trim()}' added.`;
+        revalidatePath('/class-management');
+      }
+    }
+  }
+
+  // Always fetch and return the current list of class names for the school
+  const { data: currentClassNames, error: listFetchError } = await supabaseAdmin
     .from('class_names')
-    .select('id')
-    .eq('name', name.trim())
+    .select('*')
     .eq('school_id', schoolId)
-    .single();
+    .order('name');
 
-  if (fetchError && fetchError.code !== 'PGRST116') {
-    console.error("Error checking class name:", fetchError);
-    return { ok: false, message: 'Database error checking name.' };
+  if (listFetchError) {
+    console.error("Error fetching current class names list:", listFetchError);
+    // If list fetching fails, return an error message, but might still have the original ok/message
+    return { ok: false, message: message || "Error fetching updated class names list.", classNames: [] };
   }
-  if (existing) return { ok: false, message: `Class Name '${name.trim()}' already exists.` };
 
-  const { error } = await supabaseAdmin.from('class_names').insert({ name: name.trim(), school_id: schoolId, id: uuidv4() });
-  if (error) {
-    console.error("Error adding class name:", error);
-    return { ok: false, message: `Failed to add class name: ${error.message}` };
-  }
-  
-  revalidatePath('/class-management');
-  return { ok: true, message: `Class Name '${name.trim()}' added.` };
+  return { ok, message, classNames: currentClassNames || [] };
 }
 
 export async function deleteClassNameAction(id: string, schoolId: string) {
@@ -58,31 +81,52 @@ export async function deleteClassNameAction(id: string, schoolId: string) {
 }
 
 // --- Section/Division Name Management ---
-export async function addSectionNameAction(name: string, schoolId: string) {
+export async function addSectionNameAction(name: string, schoolId: string): Promise<{ ok: boolean; message: string; sectionNames?: SectionRecord[] }> {
   const supabaseAdmin = createSupabaseServerClient();
-  if (!name.trim()) return { ok: false, message: 'Section Name cannot be empty.' };
+  let message = '';
+  let ok = false;
 
-  const { data: existing, error: fetchError } = await supabaseAdmin
+  if (!name.trim()) {
+    message = 'Section Name cannot be empty.';
+  } else {
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from('section_names')
+      .select('id')
+      .eq('name', name.trim())
+      .eq('school_id', schoolId)
+      .single();
+    
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error("Error checking section name:", fetchError);
+      message = 'Database error checking name.';
+    } else if (existing) {
+      message = `Section Name '${name.trim()}' already exists.`;
+    } else {
+      const { error: insertError } = await supabaseAdmin.from('section_names').insert({ name: name.trim(), school_id: schoolId, id: uuidv4() });
+      if (insertError) {
+        console.error("Error adding section name:", insertError);
+        message = `Failed to add section name: ${insertError.message}`;
+      } else {
+        ok = true;
+        message = `Section Name '${name.trim()}' added.`;
+        revalidatePath('/class-management');
+      }
+    }
+  }
+
+  // Always fetch and return the current list of section names for the school
+  const { data: currentSectionNames, error: listFetchError } = await supabaseAdmin
     .from('section_names')
-    .select('id')
-    .eq('name', name.trim())
+    .select('*')
     .eq('school_id', schoolId)
-    .single();
+    .order('name');
+
+  if (listFetchError) {
+    console.error("Error fetching current section names list:", listFetchError);
+    return { ok: false, message: message || "Error fetching updated section names list.", sectionNames: [] };
+  }
   
-  if (fetchError && fetchError.code !== 'PGRST116') {
-    console.error("Error checking section name:", fetchError);
-    return { ok: false, message: 'Database error checking name.' };
-  }
-  if (existing) return { ok: false, message: `Section Name '${name.trim()}' already exists.` };
-
-  const { error } = await supabaseAdmin.from('section_names').insert({ name: name.trim(), school_id: schoolId, id: uuidv4() });
-  if (error) {
-    console.error("Error adding section name:", error);
-    return { ok: false, message: `Failed to add section name: ${error.message}` };
-  }
-
-  revalidatePath('/class-management');
-  return { ok: true, message: `Section Name '${name.trim()}' added.` };
+  return { ok, message, sectionNames: currentSectionNames || [] };
 }
 
 export async function deleteSectionNameAction(id: string, schoolId: string) {
@@ -127,7 +171,7 @@ export async function activateClassSectionAction(input: ActivateClassSectionInpu
     .eq('class_name_id', classNameId)
     .eq('section_name_id', sectionNameId)
     .eq('school_id', schoolId)
-    .eq(academicYearId ? 'academic_year_id' : 'academic_year_id', academicYearId || null) // This handles matching NULL for academic_year_id if not provided
+    .eq(academicYearId ? 'academic_year_id' : 'academic_year_id', academicYearId || null) 
     .single();
 
   if (fetchError && fetchError.code !== 'PGRST116') {
@@ -143,8 +187,8 @@ export async function activateClassSectionAction(input: ActivateClassSectionInpu
       class_name_id: classNameId, 
       section_name_id: sectionNameId, 
       school_id: schoolId, 
-      name: className, // Denormalized name for easier display
-      division: sectionName, // Denormalized division/section name
+      name: className, 
+      division: sectionName, 
       academic_year_id: academicYearId || null 
     });
 
@@ -160,7 +204,6 @@ export async function activateClassSectionAction(input: ActivateClassSectionInpu
 export async function deleteActiveClassAction(activeClassId: string, schoolId: string) {
   const supabaseAdmin = createSupabaseServerClient();
   
-  // 1. Unassign students from this class
   const { error: studentUpdateError } = await supabaseAdmin
     .from('students')
     .update({ class_id: null })
@@ -171,7 +214,6 @@ export async function deleteActiveClassAction(activeClassId: string, schoolId: s
     return { ok: false, message: `Failed to unassign students: ${studentUpdateError.message}`};
   }
 
-  // 2. Delete the class record
   const { error } = await supabaseAdmin.from('classes').delete().eq('id', activeClassId).eq('school_id', schoolId);
   if (error) {
     console.error("Error deleting active class-section:", error);
@@ -187,8 +229,6 @@ export async function assignStudentsToClassAction(classId: string, studentIds: s
   const supabaseAdmin = createSupabaseServerClient();
   
   try {
-    // 1. Unassign ALL students currently in this class FOR THIS SCHOOL to make this operation idempotent for the selected students.
-    // Alternatively, only unassign those *not* in the new studentIds list. For simplicity, clear and re-assign.
     const { error: unassignError } = await supabaseAdmin
       .from('students')
       .update({ class_id: null })
@@ -196,7 +236,6 @@ export async function assignStudentsToClassAction(classId: string, studentIds: s
       .eq('school_id', schoolId);
     if (unassignError) throw new Error(`Error unassigning existing students: ${unassignError.message}`);
 
-    // 2. Assign selected students to this class
     if (studentIds.length > 0) {
       const { error: assignError } = await supabaseAdmin
         .from('students')
@@ -220,7 +259,7 @@ export async function assignTeacherToClassAction(classId: string, teacherId: str
   const supabaseAdmin = createSupabaseServerClient();
   const { error } = await supabaseAdmin
     .from('classes')
-    .update({ teacher_id: teacherId }) // teacherId can be null to unassign
+    .update({ teacher_id: teacherId }) 
     .eq('id', classId)
     .eq('school_id', schoolId);
   
@@ -232,5 +271,4 @@ export async function assignTeacherToClassAction(classId: string, teacherId: str
   revalidatePath('/class-management');
   return { ok: true, message: 'Teacher assignment updated.' };
 }
-
     
