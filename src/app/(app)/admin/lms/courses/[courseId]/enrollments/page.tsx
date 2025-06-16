@@ -79,14 +79,22 @@ export default function ManageCourseEnrollmentsPage() {
   }
 
   async function fetchEnrollments(cId: string, schoolId: string | null) {
-    // If schoolId is null (e.g. superadmin viewing a global course), fetch all enrollments for that course.
-    // If schoolId is present, fetch only enrollments for that school.
-    let studentQuery = supabase.from('lms_student_course_enrollments').select('*').eq('course_id', cId);
-    let teacherQuery = supabase.from('lms_teacher_course_enrollments').select('*').eq('course_id', cId);
+    let studentQuery = supabase
+        .from('lms_student_course_enrollments')
+        .select('id, student_id, course_id, enrolled_at, school_id, created_at, updated_at')
+        .eq('course_id', cId);
+
+    let teacherQuery = supabase
+        .from('lms_teacher_course_enrollments')
+        .select('id, teacher_id, course_id, assigned_at') // Explicitly select columns
+        .eq('course_id', cId);
+
     if (schoolId) {
         studentQuery = studentQuery.eq('school_id', schoolId);
-        teacherQuery = teacherQuery.eq('school_id', schoolId);
+        // Teacher enrollments are not directly filtered by school_id on the enrollment table itself
+        // We filter teachers by school when fetching potential enrollees
     }
+    
     const { data: sEnroll, error: sError } = await studentQuery;
     const { data: tEnroll, error: tError } = await teacherQuery;
 
@@ -95,14 +103,14 @@ export default function ManageCourseEnrollmentsPage() {
   }
 
   async function fetchPotentialEnrollees(schoolId: string | null) {
-    setIsLoadingPage(true); // Also covers loading these lists
-    if (schoolId) { // Only fetch school-specific students/teachers if admin is school-bound
+    setIsLoadingPage(true); 
+    if (schoolId) { 
         const { data: studentsData, error: studentsError } = await supabase.from('students').select('*').eq('school_id', schoolId);
         if (studentsError) toast({ title: "Error fetching students", variant: "destructive"}); else setAllStudents(studentsData || []);
         
         const { data: teachersData, error: teachersError } = await supabase.from('teachers').select('*').eq('school_id', schoolId);
         if (teachersError) toast({ title: "Error fetching teachers", variant: "destructive"}); else setAllTeachers(teachersData || []);
-    } else { // Superadmin might be enrolling any student/teacher to a global course (complex scenario, simplified here)
+    } else { 
         const { data: studentsData, error: studentsError } = await supabase.from('students').select('*');
         if (studentsError) toast({ title: "Error fetching students", variant: "destructive"}); else setAllStudents(studentsData || []);
         
@@ -114,7 +122,7 @@ export default function ManageCourseEnrollmentsPage() {
 
 
   const handleEnrollUser = async (userType: 'student' | 'teacher') => {
-    if (!course || !currentSchoolId) { // Requires school context for enrollment for now
+    if (!course || !currentSchoolId) { 
         toast({title: "Error", description: "Course or school context missing.", variant: "destructive"});
         return;
     }
@@ -129,12 +137,12 @@ export default function ManageCourseEnrollmentsPage() {
       course_id: course.id,
       user_profile_id: userProfileId,
       user_type: userType,
-      school_id: currentSchoolId, // Assuming enrollments are school-specific for now
+      school_id: currentSchoolId, 
     });
 
     if (result.ok) {
       toast({ title: `${userType.charAt(0).toUpperCase() + userType.slice(1)} Enrolled`, description: result.message });
-      fetchEnrollments(course.id, currentSchoolId); // Re-fetch enrollments
+      fetchEnrollments(course.id, currentSchoolId); 
       if(userType === 'student') setSelectedStudentIdToEnroll(''); else setSelectedTeacherIdToEnroll('');
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -170,7 +178,7 @@ export default function ManageCourseEnrollmentsPage() {
 
   if (isLoadingPage) return <div className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Loading enrollment data...</div>;
   if (!course) return <div className="text-center py-10 text-destructive">Course not found.</div>;
-  if (!currentSchoolId && course.school_id) { // If it's a school-specific course but admin isn't linked to a school
+  if (!currentSchoolId && course.school_id) { 
     return <div className="text-center py-10 text-destructive">Admin not associated with a school to manage enrollments for this school-specific course.</div>;
   }
 
@@ -274,5 +282,3 @@ export default function ManageCourseEnrollmentsPage() {
     </div>
   );
 }
-
-    
