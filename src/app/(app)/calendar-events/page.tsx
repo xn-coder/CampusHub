@@ -40,7 +40,7 @@ export default function CalendarEventsPage() {
   const [eventDescription, setEventDescription] = useState('');
 
   useEffect(() => {
-    async function loadUserContextAndEvents() { // Renamed function
+    async function loadUserContextAndEvents() { 
       setIsLoading(true);
       let role: UserRole | null = null;
       let userId: string | null = null;
@@ -63,7 +63,7 @@ export default function CalendarEventsPage() {
             if (role !== 'superadmin') {
                  toast({title: "Error", description: "Could not determine user's school context.", variant: "destructive"});
             }
-            schoolId = null; // Explicitly set to null
+            schoolId = null; 
           } else {
             schoolId = userRec.school_id;
           }
@@ -75,7 +75,6 @@ export default function CalendarEventsPage() {
         }
       }
       
-      // Fetch events only if school context is available, or if superadmin (who might not have a school_id by default)
       if (schoolId) {
         const result = await getCalendarEventsAction(schoolId);
         if (result.ok && result.events) {
@@ -85,17 +84,14 @@ export default function CalendarEventsPage() {
           setEvents([]);
         }
       } else if (role === 'superadmin') {
-        // Superadmin without specific school context, don't fetch events yet
         setEvents([]);
       } else {
-        // Other roles without school context
         setEvents([]);
       }
-      setIsLoading(false); // Context and initial event loading done
+      setIsLoading(false); 
     }
-    loadUserContextAndEvents(); // Call the defined function
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast]); // Dependency array, toast is stable
+    loadUserContextAndEvents(); 
+  }, []); 
 
 
   const fetchEventsForSchool = async () => {
@@ -227,7 +223,7 @@ export default function CalendarEventsPage() {
       {!isLoading && !currentSchoolId && currentUserRole === 'superadmin' && (
          <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Calendar events are school-specific. (Future enhancement: school selector for superadmin)</CardContent></Card>
       )}
-      {!isLoading && !currentSchoolId && currentUserRole !== 'superadmin' && currentUserRole !== null && ( // Added currentUserRole !== null to avoid flash of this message during initial load
+      {!isLoading && !currentSchoolId && currentUserRole !== 'superadmin' && currentUserRole !== null && ( 
         <Card><CardContent className="pt-6 text-center text-destructive">Cannot load calendar. User is not associated with a school or school context is missing.</CardContent></Card>
       )}
 
@@ -351,4 +347,3 @@ export default function CalendarEventsPage() {
     </div>
   );
 }
-
