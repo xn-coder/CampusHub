@@ -8,12 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
-import type { CalendarEventDB as CalendarEvent, UserRole, User } from '@/types'; // Removed CalendarEventTargetAudience
+import type { CalendarEventDB as CalendarEvent, UserRole, User } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, Loader2 } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Removed Select for target_audience
 import { format, parseISO, isValid } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { addCalendarEventAction, updateCalendarEventAction, deleteCalendarEventAction, getCalendarEventsAction } from './actions';
@@ -28,6 +27,7 @@ export default function CalendarEventsPage() {
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isContextLoading, setIsContextLoading] = useState(true);
 
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -39,11 +39,10 @@ export default function CalendarEventsPage() {
   const [eventStartTime, setEventStartTime] = useState('');
   const [eventEndTime, setEventEndTime] = useState('');
   const [eventDescription, setEventDescription] = useState('');
-  // const [eventTargetAudience, setEventTargetAudience] = useState<CalendarEventTargetAudience | null>('all_school'); // Removed
 
   useEffect(() => {
     async function loadUserContextAndEvents() {
-      setIsLoading(true);
+      setIsContextLoading(true);
       let role: UserRole | null = null;
       let userId: string | null = null;
       let schoolId: string | null = null;
@@ -78,37 +77,49 @@ export default function CalendarEventsPage() {
            setCurrentSchoolId(null);
         }
       }
+      setIsContextLoading(false); // Context loading done, now events can be fetched if possible
+    }
+    loadUserContextAndEvents();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      if (schoolId && userId && role) { 
-        const result = await getCalendarEventsAction(schoolId, userId, role);
-        if (result.ok && result.events) {
-          setEvents(result.events);
-        } else {
-          toast({ title: "Error", description: result.message || "Failed to fetch calendar events.", variant: "destructive" });
-          setEvents([]);
-        }
-      } else if (role === 'superadmin' && !schoolId) {
-        setEvents([]); 
-      } else if (role !== null && !schoolId) { 
+  useEffect(() => {
+    async function fetchEventsForSchool() {
+      if (isContextLoading || !currentUserRole) return; // Wait for context and role
+
+      if (!currentSchoolId && currentUserRole !== 'superadmin') {
+        setIsLoading(false); // No school, nothing to load for non-superadmin
+        setEvents([]);
+        return;
+      }
+      if (currentUserRole === 'superadmin' && !currentSchoolId) {
+         setIsLoading(false); // Superadmin without school context, show no school-specific events
+         setEvents([]);
+         return;
+      }
+      // Only proceed if schoolId is available (or superadmin, though they need school context for school-specific events)
+      if (!currentSchoolId) {
+        setIsLoading(false);
+        setEvents([]);
+        return;
+      }
+
+
+      setIsLoading(true);
+      // We have schoolId, userId, and role (asserted as non-null due to checks)
+      const result = await getCalendarEventsAction(currentSchoolId, currentUserId!, currentUserRole);
+      if (result.ok && result.events) {
+        setEvents(result.events);
+      } else {
+        toast({ title: "Error", description: result.message || "Failed to fetch calendar events.", variant: "destructive" });
         setEvents([]);
       }
       setIsLoading(false);
     }
-    loadUserContextAndEvents();
-  }, []);
 
-
-  const fetchEventsForSchool = async () => {
-    if (!currentSchoolId || !currentUserId || !currentUserRole) return;
-    setIsLoading(true);
-    const result = await getCalendarEventsAction(currentSchoolId, currentUserId, currentUserRole);
-    if (result.ok && result.events) {
-      setEvents(result.events);
-    } else {
-      toast({ title: "Error", description: result.message || "Failed to refresh events.", variant: "destructive" });
-    }
-    setIsLoading(false);
-  };
+    fetchEventsForSchool();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSchoolId, currentUserId, currentUserRole, isContextLoading]);
 
 
   const resetForm = () => {
@@ -118,12 +129,14 @@ export default function CalendarEventsPage() {
     setEventStartTime('');
     setEventEndTime('');
     setEventDescription('');
-    // setEventTargetAudience('all_school'); // Removed
     setEditingEvent(null);
   };
 
   const handleOpenFormDialog = (eventToEdit?: CalendarEvent) => {
-    if (currentUserRole === 'student' || (currentUserRole === 'superadmin' && !currentSchoolId)) return; 
+    if (currentUserRole === 'student' || (currentUserRole === 'superadmin' && !currentSchoolId)) {
+        toast({ title: "Permission Denied", description: "You do not have permission to add or edit events.", variant: "destructive"});
+        return;
+    }
     if (eventToEdit) {
       setEditingEvent(eventToEdit);
       setEventTitle(eventToEdit.title);
@@ -132,7 +145,6 @@ export default function CalendarEventsPage() {
       setEventStartTime(eventToEdit.start_time || '');
       setEventEndTime(eventToEdit.end_time || '');
       setEventDescription(eventToEdit.description || '');
-      // setEventTargetAudience(eventToEdit.target_audience || 'all_school'); // Removed
     } else {
       resetForm();
       if (selectedDate) {
@@ -169,11 +181,10 @@ export default function CalendarEventsPage() {
       school_id: currentSchoolId,
       posted_by_user_id: currentUserId,
       posted_by_role: currentUserRole,
-      // target_audience: eventTargetAudience, // Removed
     };
 
     if (editingEvent) {
-      result = await updateCalendarEventAction(editingEvent.id, eventData as any); // Cast as any because target_audience removed from input type
+      result = await updateCalendarEventAction(editingEvent.id, eventData as any);
     } else {
       result = await addCalendarEventAction(eventData);
     }
@@ -184,7 +195,11 @@ export default function CalendarEventsPage() {
         title: editingEvent ? "Event Updated" : "Event Added",
         description: `${result.message} Notifications would be sent. (This is a mock notification).`
       });
-      fetchEventsForSchool();
+      // Re-fetch events directly after successful submission
+      if (currentSchoolId && currentUserId && currentUserRole) {
+         const fetchResult = await getCalendarEventsAction(currentSchoolId, currentUserId, currentUserRole);
+         if (fetchResult.ok && fetchResult.events) setEvents(fetchResult.events);
+      }
       setIsFormDialogOpen(false);
       resetForm();
     } else {
@@ -203,7 +218,10 @@ export default function CalendarEventsPage() {
       setIsSubmitting(false);
       if (result.ok) {
         toast({ title: "Event Deleted", variant: "destructive" });
-        fetchEventsForSchool();
+         if (currentSchoolId && currentUserId && currentUserRole) {
+            const fetchResult = await getCalendarEventsAction(currentSchoolId, currentUserId, currentUserRole);
+            if (fetchResult.ok && fetchResult.events) setEvents(fetchResult.events);
+        }
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
       }
@@ -217,7 +235,7 @@ export default function CalendarEventsPage() {
       })
     : [];
 
-  const canManageEvents = (currentUserRole === 'admin' || currentUserRole === 'teacher');
+  const canManageEvents = (currentUserRole === 'admin' || currentUserRole === 'teacher') && !!currentSchoolId;
 
   return (
     <div className="flex flex-col gap-6">
@@ -226,96 +244,96 @@ export default function CalendarEventsPage() {
         description="Organize and view school events and activities."
         actions={
           canManageEvents ? (
-            <Button onClick={() => handleOpenFormDialog()} disabled={isSubmitting}>
+            <Button onClick={() => handleOpenFormDialog()} disabled={isSubmitting || isContextLoading}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add Event
             </Button>
           ) : null
         }
       />
 
-      {isLoading && currentUserRole === null && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading user context...</div>}
-      {isLoading && currentUserRole !== null && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading calendar data...</div>}
-
-      {!isLoading && !currentSchoolId && currentUserRole === 'superadmin' && (
-         <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Calendar events are school-specific. A school context is required to view or manage events.</CardContent></Card>
-      )}
-      {!isLoading && !currentSchoolId && currentUserRole !== 'superadmin' && currentUserRole !== null && (
+      {isContextLoading && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading user context...</div>}
+      
+      {!isContextLoading && !currentSchoolId && currentUserRole !== 'superadmin' && (
         <Card><CardContent className="pt-6 text-center text-destructive">Cannot load calendar. User is not associated with a school or school context is missing.</CardContent></Card>
       )}
+      {!isContextLoading && currentUserRole === 'superadmin' && !currentSchoolId && (
+         <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Calendar events are school-specific. Select a school context or create events via school admin panel.</CardContent></Card>
+      )}
 
-      {!isLoading && (currentSchoolId || (currentUserRole === 'superadmin' && !currentSchoolId)) && (
-        <div className="grid md:grid-cols-3 gap-6">
-          <div className="md:col-span-1">
-              <Card>
-                  <CardHeader><CardTitle>Calendar</CardTitle></CardHeader>
-                  <CardContent className="flex justify-center">
-                      <Calendar
-                          mode="single"
-                          selected={selectedDate}
-                          onSelect={(date) => {
-                              setSelectedDate(date);
-                              if(date && canManageEvents) setEventDate(format(date, 'yyyy-MM-dd'));
-                          }}
-                          className="rounded-md border"
-                          initialFocus
-                          disabled={isSubmitting || (!currentSchoolId && currentUserRole !== 'superadmin')}
-                      />
-                  </CardContent>
-                   {!currentSchoolId && currentUserRole === 'superadmin' && (
-                    <CardFooter><p className="text-xs text-muted-foreground">Superadmin: A school context is needed to view or post events.</p></CardFooter>
-                  )}
-              </Card>
-          </div>
-
-          <div className="md:col-span-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  Events for {selectedDate ? format(selectedDate, "MMMM d, yyyy") : 'Today'}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 max-h-[calc(theme(space.96)_*_2)] overflow-y-auto">
-                {isLoading && currentSchoolId && <div className="text-center py-4"><Loader2 className="h-5 w-5 animate-spin inline-block"/> Loading events...</div>}
-                {!isLoading && eventsOnSelectedDate.length > 0 ? eventsOnSelectedDate.map(event => (
-                  <Card key={event.id} className="overflow-hidden">
-                    <CardHeader className="p-4">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <CardTitle className="text-lg">{event.title}</CardTitle>
-                          <CardDescription>
-                            {event.is_all_day ? 'All Day' : `${event.start_time || ''}${event.start_time && event.end_time ? ' - ' : ''}${event.end_time || ''}`}
-                          </CardDescription>
-                           <CardDescription className="text-xs">
-                            By: {event.posted_by_role}
-                          </CardDescription>
-                        </div>
-                        {canManageEvents && (
-                          <div className="flex gap-1 shrink-0">
-                            <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(event)} disabled={isSubmitting}>
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button variant="destructive" size="icon" onClick={() => handleDeleteEvent(event.id)} disabled={isSubmitting}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </CardHeader>
-                    {event.description && (
-                      <CardContent className="p-4 pt-0">
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p>
+      {!isContextLoading && currentSchoolId && (
+        <>
+          {isLoading && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading calendar data...</div>}
+          {!isLoading && (
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="md:col-span-1">
+                  <Card>
+                      <CardHeader><CardTitle>Calendar</CardTitle></CardHeader>
+                      <CardContent className="flex justify-center">
+                          <Calendar
+                              mode="single"
+                              selected={selectedDate}
+                              onSelect={(date) => {
+                                  setSelectedDate(date);
+                                  if(date && canManageEvents) setEventDate(format(date, 'yyyy-MM-dd'));
+                              }}
+                              className="rounded-md border"
+                              initialFocus
+                              disabled={isSubmitting || !currentSchoolId}
+                          />
                       </CardContent>
-                    )}
                   </Card>
-                )) : !isLoading && (
-                  <p className="text-muted-foreground text-center py-4">
-                    {currentSchoolId ? 'No events scheduled for this day.' : (currentUserRole === 'superadmin' ? 'Select a school context to view events.' : 'No school associated to view events.')}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      Events for {selectedDate ? format(selectedDate, "MMMM d, yyyy") : 'Today'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 max-h-[calc(theme(space.96)_*_2)] overflow-y-auto">
+                    {eventsOnSelectedDate.length > 0 ? eventsOnSelectedDate.map(event => (
+                      <Card key={event.id} className="overflow-hidden">
+                        <CardHeader className="p-4">
+                          <div className="flex justify-between items-start gap-2">
+                            <div>
+                              <CardTitle className="text-lg">{event.title}</CardTitle>
+                              <CardDescription>
+                                {event.is_all_day ? 'All Day' : `${event.start_time || ''}${event.start_time && event.end_time ? ' - ' : ''}${event.end_time || ''}`}
+                              </CardDescription>
+                              <CardDescription className="text-xs">
+                                By: {event.posted_by_role}
+                              </CardDescription>
+                            </div>
+                            {canManageEvents && (
+                              <div className="flex gap-1 shrink-0">
+                                <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(event)} disabled={isSubmitting}>
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                                <Button variant="destructive" size="icon" onClick={() => handleDeleteEvent(event.id)} disabled={isSubmitting}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </CardHeader>
+                        {event.description && (
+                          <CardContent className="p-4 pt-0">
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p>
+                          </CardContent>
+                        )}
+                      </Card>
+                    )) : (
+                      <p className="text-muted-foreground text-center py-4">
+                        No events scheduled for this day.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {canManageEvents && (
@@ -350,7 +368,6 @@ export default function CalendarEventsPage() {
                     </div>
                   </div>
                 )}
-                {/* Target Audience Select removed */}
                 <div>
                   <Label htmlFor="eventDescription">Description (Optional)</Label>
                   <Textarea id="eventDescription" value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} placeholder="Event details..." disabled={isSubmitting}/>
@@ -370,5 +387,4 @@ export default function CalendarEventsPage() {
     </div>
   );
 }
-
     

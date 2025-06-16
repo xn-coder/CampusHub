@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-// import { Checkbox } from '@/components/ui/checkbox'; // Not used currently
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { AnnouncementDB as Announcement, UserRole, ClassData, Student, User } from '@/types';
 import { useState, useEffect } from 'react';
@@ -17,13 +16,11 @@ import { postAnnouncementAction, getAnnouncementsAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
 import { format, parseISO } from 'date-fns';
 
-// Defining GetAnnouncementsParams locally to match the expected structure for actions.ts
-// This is sometimes needed if types aren't easily shared or to ensure page-specific needs are met.
 interface GetAnnouncementsParams {
   school_id?: string | null;
   user_role: UserRole;
   user_id?: string;
-  student_class_id?: string;
+  student_class_id?: string | null; // Can be null if student not in class
   teacher_class_ids?: string[];
 }
 
@@ -33,13 +30,12 @@ export default function CommunicationPage() {
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>([]);
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '' });
   const [showForm, setShowForm] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // General loading for announcements list
-  const [isSubmitting, setIsSubmitting] = useState(false); // For form submission
-  const [isContextLoading, setIsContextLoading] = useState(true); // For initial user context loading
+  const [isLoading, setIsLoading] = useState(true); 
+  const [isSubmitting, setIsSubmitting] = useState(false); 
+  const [isContextLoading, setIsContextLoading] = useState(true); 
   
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  // const [currentUserInfo, setCurrentUserInfo] = useState<User | null>(null); // Not directly used for display, but for context
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [studentProfile, setStudentProfile] = useState<Student | null>(null);
 
@@ -52,7 +48,7 @@ export default function CommunicationPage() {
       let fetchedRole: UserRole | null = null;
       let fetchedUserId: string | null = null;
       let fetchedSchoolId: string | null = null;
-      let fetchedUserName: string | null = null;
+      // let fetchedUserName: string | null = null; // Not used directly, set via userRec.name
 
       if (typeof window !== 'undefined') {
         fetchedRole = localStorage.getItem('currentUserRole') as UserRole | null;
@@ -72,11 +68,9 @@ export default function CommunicationPage() {
             setIsContextLoading(false);
             return;
           }
-          // setCurrentUserInfo(userRec as User); // Store full user info if needed elsewhere
           fetchedSchoolId = userRec.school_id;
           setCurrentSchoolId(fetchedSchoolId);
-          fetchedUserName = userRec.name;
-          setNewAnnouncement(prev => ({ ...prev, authorName: userRec.name }));
+          setNewAnnouncement(prev => ({ ...prev, authorName: userRec.name })); // Set author name from user context
 
 
           if (fetchedSchoolId) {
@@ -102,7 +96,7 @@ export default function CommunicationPage() {
             } else if (fetchedRole === 'student') {
               const { data: studentData, error: studentError } = await supabase
                 .from('students')
-                .select('*')
+                .select('*') // Fetch all student fields including class_id
                 .eq('user_id', fetchedUserId) 
                 .single();
               if (studentError || !studentData) toast({title: "Error", description: "Could not load student profile.", variant: "destructive"});
@@ -118,24 +112,19 @@ export default function CommunicationPage() {
 
   useEffect(() => {
     async function fetchAnnouncements() {
-      if (isContextLoading) return; // Don't fetch if context is still loading
+      if (isContextLoading || !currentUserRole) return; 
 
-      setIsLoading(true); // For announcement list loading
+      setIsLoading(true); 
       
-      // Prepare params for getAnnouncementsAction
       const params: GetAnnouncementsParams = {
         school_id: currentSchoolId,
-        user_role: currentUserRole!, // Assert non-null as this effect depends on it
+        user_role: currentUserRole,
         user_id: currentUserId || undefined,
-        student_class_id: studentProfile?.class_id || undefined,
+        student_class_id: studentProfile?.class_id || null, // Pass null if not applicable or student not in class
         teacher_class_ids: teacherAssignedClasses.map(c => c.id),
       };
       
-      // Determine if fetching is possible
-      // Superadmin can always try. Others need school_id unless student (who might see global if no school_id set, though less likely).
-      // For simplicity, we will generally require school_id for non-superadmin roles for now.
       const canFetch = currentUserRole === 'superadmin' || (currentUserRole && currentSchoolId);
-
 
       if (canFetch) {
         const result = await getAnnouncementsAction(params);
@@ -152,12 +141,7 @@ export default function CommunicationPage() {
       setIsLoading(false);
     }
     
-    if (currentUserRole) { // Only proceed if role is determined
-        fetchAnnouncements();
-    } else if (!isContextLoading && !currentUserRole) { // Context loaded, but no role
-        setIsLoading(false); // Nothing to load
-        setAllAnnouncements([]);
-    }
+    fetchAnnouncements();
 
   }, [currentSchoolId, currentUserRole, currentUserId, studentProfile, teacherAssignedClasses, toast, isContextLoading]);
 
@@ -197,13 +181,12 @@ export default function CommunicationPage() {
     if (result.ok) {
       toast({ title: "Announcement Posted", description: `${newAnnouncement.title} has been posted.` });
       
-      // Re-fetch announcements
       if (currentUserRole && (currentSchoolId || currentUserRole === 'superadmin')) {
           const params: GetAnnouncementsParams = {
             school_id: currentSchoolId,
             user_role: currentUserRole,
             user_id: currentUserId || undefined,
-            student_class_id: studentProfile?.class_id || undefined,
+            student_class_id: studentProfile?.class_id || null,
             teacher_class_ids: teacherAssignedClasses.map(c => c.id),
         };
         const fetchResult = await getAnnouncementsAction(params);
@@ -254,7 +237,7 @@ export default function CommunicationPage() {
               {(currentUserRole === 'teacher' || currentUserRole === 'admin') && availableClassesForTargeting.length > 0 && (
                 <div>
                   <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
-                  <Select value={newAnnouncement.targetClassId} onValueChange={handleTargetClassChange} disabled={isSubmitting}>
+                  <Select value={newAnnouncement.targetClassId || "general"} onValueChange={handleTargetClassChange} disabled={isSubmitting}>
                     <SelectTrigger id="targetClassId">
                       <SelectValue placeholder={`General Announcement for ${currentUserRole === 'teacher' ? 'Your Students' : 'the School'}`} />
                     </SelectTrigger>
@@ -293,7 +276,6 @@ export default function CommunicationPage() {
          <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Announcements are school-specific. Global announcements may appear if not school-bound.</CardContent></Card>
       )}
 
-
       {!isLoading && !isContextLoading && ((currentSchoolId && currentUserRole) || currentUserRole === 'superadmin') && (
         <div className="space-y-6">
           {allAnnouncements.length > 0 ? allAnnouncements.map(announcement => (
@@ -305,7 +287,7 @@ export default function CommunicationPage() {
                   {announcement.target_class_id && announcement.target_class && (
                       <span className="text-xs block text-blue-500"> (Targeted to class: {announcement.target_class?.name} - {announcement.target_class?.division})</span>
                   )}
-                  {!announcement.target_class_id && <span className="text-xs block text-gray-500"> (General Announcement{announcement.school_id ? ` for school ${announcement.school_id}` : ' - Global'})</span>}
+                  {!announcement.target_class_id && <span className="text-xs block text-gray-500"> (General Announcement)</span>}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -324,3 +306,4 @@ export default function CommunicationPage() {
     </div>
   );
 }
+    
