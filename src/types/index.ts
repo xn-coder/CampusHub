@@ -222,6 +222,8 @@ export interface AssignmentSubmission {
   file_path: string;
   file_name: string;
   notes?: string | null;
+  grade?: string | null; // Added for grading
+  feedback?: string | null; // Added for grading
   created_at?: string;
   updated_at?: string;
 }
@@ -387,6 +389,7 @@ export interface CourseActivationCode {
   used_at?: string | null;
   generated_date: string;
   expiry_date?: string | null;
+  // school_id column does not exist in lms_course_activation_codes table
   created_at?: string;
   updated_at?: string;
 }
@@ -404,3 +407,4 @@ export interface TeacherCourseEnrollment {
     course_id: string;
     assigned_at?: string;
 }
+

@@ -152,7 +152,7 @@ export async function submitAssignmentFileAction(formData: FormData): Promise<{
 
   try {
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('assignment_submissions') 
+      .from('assignment-submissions') 
       .upload(filePath, file);
 
     if (uploadError) {
