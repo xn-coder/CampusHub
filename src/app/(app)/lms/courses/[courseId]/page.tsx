@@ -31,65 +31,83 @@ export default function ViewCourseContentPage() {
 
   const [course, setCourse] = useState<Course | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isEnrolled, setIsEnrolled] = useState(false); // Default to false
+  const [isEnrolled, setIsEnrolled] = useState(false); 
+  
   const [currentUserId, setCurrentUserId] = useState<string | null>(null); 
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserProfileId, setCurrentUserProfileId] = useState<string | null>(null); // This is students.id or teachers.id
 
+  // Effect 1: Fetch basic user context (userId, role) and then specific profile ID
   useEffect(() => {
-    // Fetch basic user context: userId and role from localStorage
-    if (typeof window !== 'undefined') {
-        const cUserId = localStorage.getItem('currentUserId');
-        const cUserRole = localStorage.getItem('currentUserRole') as UserRole | null;
-        setCurrentUserId(cUserId);
-        setCurrentUserRole(cUserRole);
+    console.log("[Course Detail Page] Effect 1: Initializing user context fetch.");
+    setIsLoading(true); // Start loading early
+    let profileIdFetched = false;
 
-        // If user is student or teacher, fetch their specific profile ID (students.id or teachers.id)
-        if (cUserId && cUserRole && (cUserRole === 'student' || cUserRole === 'teacher')) {
-          const profileTable = cUserRole === 'student' ? 'students' : 'teachers';
-          supabase.from(profileTable).select('id').eq('user_id', cUserId).single()
-            .then(({data: profile, error}) => {
+    async function fetchUserAndProfile() {
+      if (typeof window !== 'undefined') {
+          const cUserId = localStorage.getItem('currentUserId');
+          const cUserRole = localStorage.getItem('currentUserRole') as UserRole | null;
+          setCurrentUserId(cUserId);
+          setCurrentUserRole(cUserRole);
+          console.log(`[Course Detail Page] Effect 1: Basic context fetched - UserID: ${cUserId}, Role: ${cUserRole}`);
+
+          if (cUserId && cUserRole && (cUserRole === 'student' || cUserRole === 'teacher')) {
+            const profileTable = cUserRole === 'student' ? 'students' : 'teachers';
+            console.log(`[Course Detail Page] Effect 1: Fetching ${cUserRole} profile from table '${profileTable}' for UserID: ${cUserId}`);
+            try {
+              const {data: profile, error} = await supabase.from(profileTable).select('id').eq('user_id', cUserId).single();
               if (error || !profile) {
-                console.error(`Error fetching ${cUserRole} profile id for enrollment check:`, error?.message);
+                console.error(`[Course Detail Page] Effect 1: Error fetching ${cUserRole} profile id for UserID ${cUserId}:`, error?.message);
                 toast({ title: "Context Error", description: `Could not fetch your ${cUserRole} profile. Enrollment status may be incorrect.`, variant: "destructive" });
-                // setCurrentUserProfileId will remain null, the next effect will handle this
+                setCurrentUserProfileId(null); // Explicitly set to null on error
               } else {
                 setCurrentUserProfileId(profile.id);
+                profileIdFetched = true;
+                console.log(`[Course Detail Page] Effect 1: Successfully fetched ProfileID: ${profile.id} for UserID: ${cUserId}`);
               }
-            });
-        }
+            } catch (e) {
+                console.error(`[Course Detail Page] Effect 1: Exception fetching profile for UserID ${cUserId}:`, e);
+                setCurrentUserProfileId(null);
+            }
+          } else if (cUserRole === 'admin' || cUserRole === 'superadmin') {
+            profileIdFetched = true; // Admins don't need a separate profile ID for this enrollment check logic
+            console.log("[Course Detail Page] Effect 1: Admin/Superadmin role, no separate profile ID needed for enrollment logic.");
+          } else {
+            // No valid role or user ID, so no profile ID can be fetched
+             console.log("[Course Detail Page] Effect 1: No valid role or user ID for profile fetch.");
+          }
+      }
     }
+    fetchUserAndProfile();
   }, [toast]);
 
 
+  // Effect 2: Fetch course data and check enrollment (depends on IDs from Effect 1)
   useEffect(() => {
-    // This effect fetches course data and then checks enrollment.
-    // It depends on currentUserProfileId being set if the role requires it.
+    console.log(`[Course Detail Page] Effect 2: Triggered. CourseID: ${courseId}, UserID: ${currentUserId}, Role: ${currentUserRole}, ProfileID: ${currentUserProfileId}`);
 
     if (!courseId) {
-      setIsLoading(false); // No courseId, nothing to load
+      console.log("[Course Detail Page] Effect 2: No courseId, skipping fetch.");
+      setIsLoading(false);
       return;
     }
 
-    // Wait for essential user context
+    // Guard: Ensure all necessary IDs are available before proceeding
     if (!currentUserId || !currentUserRole) {
-      // Still waiting for basic user context from the first useEffect
-      // setIsLoading(true) is already the default state.
+      console.log("[Course Detail Page] Effect 2: Waiting for basic user context (UserID/Role).");
+      // setIsLoading(true) should already be set or handled by Effect 1
+      return; 
+    }
+    if ((currentUserRole === 'student' || currentUserRole === 'teacher') && !currentUserProfileId) {
+      console.log(`[Course Detail Page] Effect 2: Role is ${currentUserRole}, but waiting for ProfileID.`);
+      // setIsLoading(true) should already be set or handled by Effect 1
       return;
     }
-    
-    // If student/teacher, wait for their specific profile ID
-    if ((currentUserRole === 'student' || currentUserRole === 'teacher') && !currentUserProfileId) {
-        // Still waiting for student/teacher profile ID from the first useEffect
-        // setIsLoading(true) is already the default state.
-        console.log("[Course Detail Page] Waiting for student/teacher profile ID...");
-        return; 
-    }
+    console.log(`[Course Detail Page] Effect 2: All IDs present. Proceeding with course data fetch and enrollment check for CourseID: ${courseId}.`);
+
 
     async function fetchCourseDataAndCheckEnrollment() {
-      setIsLoading(true); // Set loading true at the start of this specific fetch operation
-      console.log(`[Course Detail Page] Starting fetch for course ${courseId}. Role: ${currentUserRole}, UserID: ${currentUserId}, ProfileID: ${currentUserProfileId}`);
-
+      setIsLoading(true); // Ensure loading is true for this async operation
       try {
         const { data: courseData, error: courseError } = await supabase
           .from('lms_courses')
@@ -112,7 +130,6 @@ export default function ViewCourseContentPage() {
 
         if (resourcesError) {
           toast({ title: "Error", description: `Failed to load course resources: ${resourcesError.message}`, variant: "destructive" });
-          // Continue to show course details even if resources fail
         }
         
         const groupedResources: Required<Course>['resources'] = { ebooks: [], videos: [], notes: [], webinars: [] };
@@ -129,46 +146,49 @@ export default function ViewCourseContentPage() {
         setCourse(enrichedCourse);
 
         // Enrollment Check
+        console.log(`[Course Detail Page] Effect 2: Performing enrollment check. Role: ${currentUserRole}, UserID: ${currentUserId}, ProfileID: ${currentUserProfileId}`);
         if (currentUserRole === 'admin' || currentUserRole === 'superadmin') {
-          setIsEnrolled(true); // Admins/Superadmins are considered "enrolled" for viewing purposes
-          console.log("[Course Detail Page] Admin/Superadmin detected, setting isEnrolled to true.");
+          setIsEnrolled(true);
+          console.log("[Course Detail Page] Effect 2: Admin/Superadmin detected, setting isEnrolled to true.");
         } else if ((currentUserRole === 'student' || currentUserRole === 'teacher') && currentUserProfileId) {
           const enrollmentTable = currentUserRole === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
           const fkColumnNameInEnrollmentTable = currentUserRole === 'student' ? 'student_id' : 'teacher_id';
           
-          console.log(`[Course Detail Page] Checking enrollment for ${currentUserRole}: courseId=${courseId}, profileIdForCheck=${currentUserProfileId}, table=${enrollmentTable}`);
+          console.log(`[Course Detail Page] Effect 2: Checking enrollment for ${currentUserRole}: courseId=${courseId}, profileIdForCheck=${currentUserProfileId}, table=${enrollmentTable}`);
           const { data: enrollment, error: enrollmentError } = await supabase
             .from(enrollmentTable)
             .select('id')
             .eq('course_id', courseId)
-            .eq(fkColumnNameInEnrollmentTable, currentUserProfileId) // Use the fetched students.id or teachers.id
+            .eq(fkColumnNameInEnrollmentTable, currentUserProfileId)
             .maybeSingle(); 
 
           if (enrollmentError) {
             toast({ title: "Error", description: `Failed to check enrollment status: ${enrollmentError.message}`, variant: "destructive" });
-            console.error(`[Course Detail Page] Enrollment check error for ${currentUserProfileId} in ${courseId}:`, enrollmentError);
+            console.error(`[Course Detail Page] Effect 2: Enrollment check error for ${currentUserProfileId} in ${courseId}:`, enrollmentError);
             setIsEnrolled(false);
           } else {
             setIsEnrolled(!!enrollment);
-            console.log(`[Course Detail Page] Enrollment status for ${currentUserProfileId} in ${courseId}: ${!!enrollment}`);
+            console.log(`[Course Detail Page] Effect 2: Enrollment status for ProfileID ${currentUserProfileId} in CourseID ${courseId}: ${!!enrollment}`);
           }
         } else {
-            // Should not happen if guards above are correct, but as a fallback:
             setIsEnrolled(false);
-            console.log("[Course Detail Page] Enrollment check skipped: Role not student/teacher or profile ID missing.");
+            console.log("[Course Detail Page] Effect 2: Enrollment check skipped or failed: Role not student/teacher or ProfileID missing.");
         }
 
       } catch (error: any) {
           toast({ title: "Error", description: `Failed to load course: ${error.message}`, variant: "destructive" });
+          console.error("[Course Detail Page] Effect 2: Exception during course data/enrollment fetch:", error);
           setCourse(null);
           setIsEnrolled(false);
       } finally {
         setIsLoading(false);
+        console.log("[Course Detail Page] Effect 2: Fetch and enrollment check finished.");
       }
     }
 
     fetchCourseDataAndCheckEnrollment();
-  }, [courseId, currentUserId, currentUserRole, currentUserProfileId, router, toast]); // router, toast are stable
+  }, [courseId, currentUserId, currentUserRole, currentUserProfileId, router, toast]);
+
 
   if (isLoading) {
     return <div className="text-center py-10 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading course content...</div>;
@@ -178,7 +198,6 @@ export default function ViewCourseContentPage() {
     return <div className="text-center py-10 text-destructive">Course not found or an error occurred while loading.</div>;
   }
 
-  // This condition is checked *after* isLoading is false
   if (!isEnrolled && (currentUserRole === 'student' || currentUserRole === 'teacher')) {
     return (
       <div className="flex flex-col gap-6 items-center justify-center min-h-[60vh]">
