@@ -346,6 +346,11 @@ export interface Course {
   };
 }
 
+export interface CourseWithEnrollmentStatus extends Course {
+  isEnrolled?: boolean; 
+}
+
+
 // For DB interactions with `lms_course_resources` table
 export interface CourseResource {
   id: string;
@@ -384,6 +389,5 @@ export interface TeacherCourseEnrollment {
     teacher_id: string; // This is teachers.id (teacher_profile_id)
     course_id: string;
     assigned_at?: string;
-    // school_id?: string | null; // As per previous fixes, this might not be here
 }
     

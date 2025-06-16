@@ -4,117 +4,84 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { Course, UserRole } from '@/types';
-import { useState, useEffect } from 'react';
+import type { Course, UserRole, CourseWithEnrollmentStatus } from '@/types';
+import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Library, Lock, Unlock, Eye, ShoppingCart, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
-import { enrollUserInCourseAction } from '@/app/(app)/admin/lms/courses/actions';
+import { enrollUserInCourseAction, getAvailableCoursesWithEnrollmentStatusAction } from '@/app/(app)/admin/lms/courses/actions';
 import { Badge } from '@/components/ui/badge';
 
 
 export default function AvailableLmsCoursesPage() {
   const { toast } = useToast();
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [courses, setCourses] = useState<CourseWithEnrollmentStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserProfileId, setCurrentUserProfileId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
-  const [enrollmentStatus, setEnrollmentStatus] = useState<Record<string, boolean>>({});
   const [isEnrolling, setIsEnrolling] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    async function fetchData() {
-      setIsLoading(true);
-      let userProfileId: string | null = null;
-      let userSchoolId: string | null = null;
-      let userRole: UserRole | null = null;
-      let uId: string | null = null;
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    let userProfileIdToFetch: string | null = null;
+    let userSchoolIdToFetch: string | null = null;
+    let userRoleToFetch: UserRole | null = null;
+    let uIdToFetch: string | null = null;
 
-      if (typeof window !== 'undefined') {
-        userRole = localStorage.getItem('currentUserRole') as UserRole | null;
-        uId = localStorage.getItem('currentUserId');
-        setCurrentUserRole(userRole);
-        setCurrentUserId(uId);
+    if (typeof window !== 'undefined') {
+      userRoleToFetch = localStorage.getItem('currentUserRole') as UserRole | null;
+      uIdToFetch = localStorage.getItem('currentUserId');
+      setCurrentUserRole(userRoleToFetch); // Update state for immediate use in this render cycle if needed
+      setCurrentUserId(uIdToFetch);
 
-        if (uId && userRole) {
-          const profileTable = userRole === 'student' ? 'students' : userRole === 'teacher' ? 'teachers' : null;
-          if (profileTable) {
-            const { data: profile, error: profileError } = await supabase
-              .from(profileTable)
-              .select('id, school_id')
-              .eq('user_id', uId)
-              .single();
-
-            if (profileError || !profile) {
-              toast({ title: "Error", description: "Could not load user profile for enrollment checks.", variant: "destructive"});
-            } else {
-              userProfileId = profile.id;
-              userSchoolId = profile.school_id;
-              setCurrentUserProfileId(profile.id);
-              setCurrentSchoolId(profile.school_id);
-            }
-          } else if (userRole === 'admin' || userRole === 'superadmin') {
-             const { data: userRec, error: userErr } = await supabase
-              .from('users').select('school_id').eq('id', uId).single();
-            if (userRec) userSchoolId = userRec.school_id;
-            setCurrentSchoolId(userSchoolId);
+      if (uIdToFetch && userRoleToFetch) {
+        const profileTable = userRoleToFetch === 'student' ? 'students' : userRoleToFetch === 'teacher' ? 'teachers' : null;
+        if (profileTable) {
+          const { data: profile, error: profileError } = await supabase
+            .from(profileTable)
+            .select('id, school_id')
+            .eq('user_id', uIdToFetch)
+            .single();
+          if (profileError || !profile) {
+            toast({ title: "Error", description: "Could not load user profile.", variant: "destructive" });
+          } else {
+            userProfileIdToFetch = profile.id;
+            userSchoolIdToFetch = profile.school_id;
+            setCurrentUserProfileId(profile.id); // Update state
+            setCurrentSchoolId(profile.school_id); // Update state
+          }
+        } else if (userRoleToFetch === 'admin' || userRoleToFetch === 'superadmin') {
+          const { data: userRec, error: userErr } = await supabase.from('users').select('school_id').eq('id', uIdToFetch).single();
+          if (userRec) {
+            userSchoolIdToFetch = userRec.school_id;
+            setCurrentSchoolId(userSchoolIdToFetch); // Update state
           }
         }
       }
-
-      let courseQuery = supabase.from('lms_courses').select('*');
-      if (userSchoolId) {
-        courseQuery = courseQuery.or(`school_id.eq.${userSchoolId},school_id.is.null`);
-      } else if (userRole !== 'superadmin') {
-        courseQuery = courseQuery.is('school_id', null);
-      }
-
-      const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
-
-      if (coursesError) {
-        toast({ title: "Error", description: "Failed to fetch courses.", variant: "destructive" });
-        setCourses([]);
-      } else {
-        setCourses(coursesData || []);
-        if (userProfileId && userRole && (userRole === 'student' || userRole === 'teacher') && (coursesData && coursesData.length > 0)) {
-           await fetchEnrollmentStatuses(coursesData.map(c => c.id), userProfileId, userRole);
-        }
-      }
-      setIsLoading(false);
-    }
-    fetchData();
-  }, []);
-
-
-  async function fetchEnrollmentStatuses(courseIds: string[], profileId: string, role: UserRole) {
-    if (role !== 'student' && role !== 'teacher') return;
-
-    const enrollmentTable = role === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
-    const fkColumnNameInEnrollmentTable = role === 'student' ? 'student_id' : 'teacher_id';
-
-    const { data: enrollments, error } = await supabase
-      .from(enrollmentTable)
-      .select('course_id')
-      .eq(fkColumnNameInEnrollmentTable, profileId)
-      .in('course_id', courseIds);
-
-    if (error) {
-      toast({ title: "Error", description: "Failed to fetch enrollment status.", variant: "destructive" });
-      return;
     }
 
-    const statusMap: Record<string, boolean> = {};
-    courseIds.forEach(id => statusMap[id] = false);
-    (enrollments || []).forEach(en => {
-      if (en.course_id) {
-        statusMap[en.course_id] = true;
-      }
+    const result = await getAvailableCoursesWithEnrollmentStatusAction({
+        userProfileId: userProfileIdToFetch, // Use fetched values for this call
+        userRole: userRoleToFetch,
+        userSchoolId: userSchoolIdToFetch,
     });
-    setEnrollmentStatus(statusMap);
-  }
+
+    if (result.ok && result.courses) {
+      setCourses(result.courses);
+    } else {
+      toast({ title: "Error", description: result.message || "Failed to fetch courses.", variant: "destructive" });
+      setCourses([]);
+    }
+    setIsLoading(false);
+  }, [toast]); // toast is stable, so this effectively runs on mount and when fetchData is called manually
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
 
   const handleEnrollUnpaid = async (courseId: string) => {
     if (!currentUserProfileId || !currentUserRole || (currentUserRole !== 'student' && currentUserRole !== 'teacher')) {
@@ -126,13 +93,13 @@ export default function AvailableLmsCoursesPage() {
     const result = await enrollUserInCourseAction({
       course_id: courseId,
       user_profile_id: currentUserProfileId,
-      user_type: currentUserRole,
+      user_type: currentUserRole as 'student' | 'teacher', // Cast because we checked
     });
     setIsEnrolling(prev => ({ ...prev, [courseId]: false }));
 
     if (result.ok) {
       toast({ title: "Enrolled Successfully!", description: "You have been enrolled in the course."});
-      setEnrollmentStatus(prev => ({ ...prev, [courseId]: true }));
+      fetchData(); // Re-fetch all courses to update enrollment status
     } else {
       toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
     }
@@ -176,7 +143,7 @@ export default function AvailableLmsCoursesPage() {
                 )}
               </CardContent>
               <CardFooter>
-                {canEnroll && enrollmentStatus[course.id] ? (
+                {canEnroll && course.isEnrolled ? (
                    <Button asChild className="w-full" variant="secondary">
                      <Link href={`/lms/courses/${course.id}`}>
                        <Eye className="mr-2 h-4 w-4"/> View Course
@@ -193,10 +160,10 @@ export default function AvailableLmsCoursesPage() {
                     {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
                     {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
                   </Button>
-                ) : (
+                ) : ( // Admin/Superadmin view or user cannot enroll
                    <Button asChild className="w-full" variant="outline">
-                     <Link href={`/admin/lms/courses/${course.id}/content`}>
-                       <Eye className="mr-2 h-4 w-4"/> View Details (Admin)
+                     <Link href={`/admin/lms/courses/${course.id}/content`}> {/* Admins likely go to admin view */}
+                       <Eye className="mr-2 h-4 w-4"/> View Details
                      </Link>
                    </Button>
                 )}

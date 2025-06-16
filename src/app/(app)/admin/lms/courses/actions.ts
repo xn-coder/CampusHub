@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus } from '@/types';
 
 // --- Course Management ---
 interface CourseInput {
@@ -209,7 +209,7 @@ export async function generateActivationCodesAction(
 interface ManageEnrollmentInput {
   course_id: string;
   user_profile_id: string; // This is students.id or teachers.id
-  user_type: 'student' | 'teacher';
+  user_type: UserRole; // UserRole is 'student' | 'teacher' | 'admin' | 'superadmin'
 }
 
 export async function enrollUserInCourseAction(
@@ -244,7 +244,6 @@ export async function enrollUserInCourseAction(
 
   if (user_type === 'student') {
     enrollmentData.enrolled_at = new Date().toISOString();
-    // `school_id` is NOT part of lms_student_course_enrollments as per new schema
   } else { // teacher
     enrollmentData.assigned_at = new Date().toISOString();
   }
@@ -361,5 +360,68 @@ export async function getEnrolledTeachersForCourseAction(
   }
 
   return { ok: true, teachers: (teachersData as Teacher[]) || [] };
+}
+
+// --- Get Available Courses with Enrollment Status ---
+interface GetAvailableCoursesInput {
+  userProfileId: string | null;
+  userRole: UserRole | null;
+  userSchoolId: string | null;
+}
+
+export async function getAvailableCoursesWithEnrollmentStatusAction(
+  input: GetAvailableCoursesInput
+): Promise<{ ok: boolean; courses?: CourseWithEnrollmentStatus[]; message?: string }> {
+  const supabase = createSupabaseServerClient();
+  const { userProfileId, userRole, userSchoolId } = input;
+
+  try {
+    let courseQuery = supabase.from('lms_courses').select('*');
+    if (userSchoolId && userRole !== 'superadmin') {
+      courseQuery = courseQuery.or(`school_id.eq.${userSchoolId},school_id.is.null`);
+    } else if (userRole !== 'superadmin') { 
+      // Non-superadmin without school ID sees only global courses
+      courseQuery = courseQuery.is('school_id', null);
+    }
+    // Superadmin sees all courses if userSchoolId is not specified by them for filtering
+
+    const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
+
+    if (coursesError) {
+      console.error("Error fetching courses:", coursesError);
+      return { ok: false, message: `Failed to fetch courses: ${coursesError.message}` };
+    }
+    if (!coursesData) {
+      return { ok: true, courses: [] };
+    }
+
+    let enrolledCourseIds: string[] = [];
+    if (userProfileId && (userRole === 'student' || userRole === 'teacher')) {
+      const enrollmentTable = userRole === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
+      const fkColumn = userRole === 'student' ? 'student_id' : 'teacher_id';
+      
+      const { data: enrollments, error: enrollmentError } = await supabase
+        .from(enrollmentTable)
+        .select('course_id')
+        .eq(fkColumn, userProfileId);
+
+      if (enrollmentError) {
+        console.warn(`Could not fetch enrollment status for ${userRole} ${userProfileId}: ${enrollmentError.message}`);
+      } else if (enrollments) {
+        enrolledCourseIds = enrollments.map(e => e.course_id);
+      }
+    }
+
+    const coursesWithStatus: CourseWithEnrollmentStatus[] = coursesData.map(course => ({
+      ...course,
+      isEnrolled: (userRole === 'admin' || userRole === 'superadmin') ? true : enrolledCourseIds.includes(course.id),
+    }));
+    
+    return { ok: true, courses: coursesWithStatus };
+
+  } catch (error: any) {
+    console.error("Error in getAvailableCoursesWithEnrollmentStatusAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred." };
+  }
 }
     
