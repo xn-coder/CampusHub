@@ -231,10 +231,7 @@ export async function enrollUserInCourseAction(
   if (user_type === 'student') {
     existingEnrollmentCheckQuery = existingEnrollmentCheckQuery.eq('school_id', school_id);
   }
-  // For teachers, school_id is not directly on lms_teacher_course_enrollments, so we don't filter by it here.
-  // Scoping for teacher enrollment is implicitly handled by the fact that teachers belong to a school,
-  // and courses can be global or school-specific.
-
+  
   const { data: existingEnrollment, error: fetchError } = await existingEnrollmentCheckQuery.single();
   
   if (fetchError && fetchError.code !== 'PGRST116') { 
@@ -248,16 +245,17 @@ export async function enrollUserInCourseAction(
   const enrollmentData: any = { 
       id: uuidv4(), 
       course_id, 
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
   };
   enrollmentData[userIdColumn] = user_profile_id;
   enrollmentData[enrolledAtColumn] = new Date().toISOString();
 
   if (user_type === 'student') {
     enrollmentData.school_id = school_id; // Student enrollments are school-scoped
+    enrollmentData.created_at = new Date().toISOString();
+    enrollmentData.updated_at = new Date().toISOString();
   }
-  // Teacher enrollments do not have school_id on the enrollment record itself
+  // For TeacherCourseEnrollment, created_at and updated_at are not included if they don't exist in the DB table.
+  // school_id is also not directly on lms_teacher_course_enrollments.
 
 
   const { error } = await supabaseAdmin.from(enrollmentTable).insert(enrollmentData);
@@ -289,8 +287,7 @@ export async function unenrollUserFromCourseAction(
   if (user_type === 'student') {
     deleteQuery = deleteQuery.eq('school_id', school_id);
   }
-  // For teachers, school_id is not directly on lms_teacher_course_enrollments
-
+  
   const { error } = await deleteQuery;
 
   if (error) {
