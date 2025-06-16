@@ -1,3 +1,4 @@
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -17,7 +18,7 @@ export async function getTeacherStudentsAndClassesAction(teacherId: string, scho
     // Fetch classes assigned to this teacher
     const { data: teacherClassesData, error: classesError } = await supabase
       .from('classes')
-      .select('id, name, division')
+      .select('id, name, division') // Only fetch what's needed for display
       .eq('teacher_id', teacherId)
       .eq('school_id', schoolId);
 
@@ -30,25 +31,19 @@ export async function getTeacherStudentsAndClassesAction(teacherId: string, scho
     const assignedClassIds = assignedClasses.map(c => c.id);
 
     // Fetch students in those classes
+    // Select all necessary student fields for the report. Removed mock activity fields.
     const { data: studentsInClasses, error: studentsError } = await supabase
       .from('students')
-      .select('*')
+      .select('id, name, email, class_id, profile_picture_url, date_of_birth, contact_number, guardian_name, address, admission_date, user_id, school_id')
       .in('class_id', assignedClassIds)
       .eq('school_id', schoolId)
       .order('name');
     
     if (studentsError) throw new Error(`Fetching students for classes failed: ${studentsError.message}`);
 
-    const studentsWithMockActivity = (studentsInClasses || []).map(s => ({
-      ...s,
-      lastLogin: new Date(Date.now() - Math.random() * 10000000000).toLocaleDateString(),
-      assignmentsSubmitted: Math.floor(Math.random() * 20),
-      attendancePercentage: Math.floor(Math.random() * 51) + 50,
-    }));
-
     return {
       ok: true,
-      students: studentsWithMockActivity as Student[],
+      students: (studentsInClasses || []) as Student[],
       classes: assignedClasses,
     };
   } catch (e: any) {

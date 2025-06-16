@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -7,39 +8,37 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { Student, ClassData } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2 } from 'lucide-react';
-import { format, parseISO, isValid } from 'date-fns';
+import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2, Users, Briefcase } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getTeacherStudentsAndClassesAction } from './actions';
-import { supabase } from '@/lib/supabaseClient'; // For fetching teacher's profile initially
+import { supabase } from '@/lib/supabaseClient'; 
 
 export default function TeacherReportsPage() {
   const { toast } = useToast();
   const [teacherStudents, setTeacherStudents] = useState<Student[]>([]);
   const [teacherClasses, setTeacherClasses] = useState<ClassData[]>([]);
-  const [currentTeacherProfileId, setCurrentTeacherProfileId] = useState<string | null>(null); // Teacher Profile ID
+  const [currentTeacherProfileId, setCurrentTeacherProfileId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<keyof Student | ''>('name');
+  const [sortBy, setSortBy] = useState<keyof Student | ''>('name'); // Default sort by name
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     async function loadInitialData() {
       setIsLoading(true);
-      const teacherUserId = localStorage.getItem('currentUserId'); // This is User.id
+      const teacherUserId = localStorage.getItem('currentUserId');
       if (!teacherUserId) {
         toast({ title: "Error", description: "Teacher user not identified.", variant: "destructive" });
         setIsLoading(false);
         return;
       }
 
-      // Get Teacher Profile ID and School ID
       const { data: teacherProfile, error: profileError } = await supabase
         .from('teachers')
-        .select('id, school_id') // 'id' here is the teacher's profile ID
+        .select('id, school_id')
         .eq('user_id', teacherUserId)
         .single();
 
@@ -82,12 +81,6 @@ export default function TeacherReportsPage() {
     return classInfo ? `${classInfo.name} - ${classInfo.division}` : 'N/A';
   };
 
-  const formatDateSafe = (dateInput?: string | Date): string => {
-    if (!dateInput) return 'N/A';
-    const dateObj = typeof dateInput === 'string' ? parseISO(dateInput) : dateInput;
-    return isValid(dateObj) ? format(dateObj, 'PP') : 'N/A';
-  };
-
   const filteredAndSortedStudents = useMemo(() => {
     let students = [...teacherStudents];
     if (searchTerm) {
@@ -101,16 +94,17 @@ export default function TeacherReportsPage() {
     }
     if (sortBy) {
       students.sort((a, b) => {
-        let valA = a[sortBy];
-        let valB = b[sortBy];
-        if (sortBy === 'mockLoginDate') {
-           valA = a.mockLoginDate ? new Date(a.mockLoginDate).getTime() : 0;
-           valB = b.mockLoginDate ? new Date(b.mockLoginDate).getTime() : 0;
-        } else if (typeof valA === 'string') valA = valA.toLowerCase();
-        else if (typeof valA === 'undefined' || valA === null) valA = sortBy === 'assignmentsSubmitted' || sortBy === 'attendancePercentage' ? -Infinity : '';
+        let valA = a[sortBy as keyof Student]; // Type assertion
+        let valB = b[sortBy as keyof Student]; // Type assertion
         
-        if (typeof valB === 'string') valB = valB.toLowerCase();
-        else if (typeof valB === 'undefined' || valB === null) valB = sortBy === 'assignmentsSubmitted' || sortBy === 'attendancePercentage' ? -Infinity : '';
+        // Handle undefined or null values, pushing them to the end for sorting
+        if (valA === undefined || valA === null) valA = '' as any;
+        if (valB === undefined || valB === null) valB = '' as any;
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+          valA = valA.toLowerCase();
+          valB = valB.toLowerCase();
+        }
 
         if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
         if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
@@ -120,9 +114,10 @@ export default function TeacherReportsPage() {
     return students;
   }, [teacherStudents, searchTerm, selectedClassFilter, sortBy, sortOrder]);
 
-  const SortableHeader = ({ column, label }: { column: keyof Student; label: string }) => (
+  const SortableHeader = ({ column, label, icon: Icon }: { column: keyof Student; label: string, icon?: React.ElementType }) => (
     <TableHead onClick={() => handleSort(column)} className="cursor-pointer hover:bg-muted/50">
       <div className="flex items-center gap-1">
+        {Icon && <Icon className="h-4 w-4" />}
         {label}
         {sortBy === column && <ArrowDownUp className="h-3 w-3" />}
       </div>
@@ -144,13 +139,13 @@ export default function TeacherReportsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
-        title="Student Activity Reports (Teacher)" 
-        description="View activity for students in your assigned classes. Activity data is currently simplified/mocked." 
+        title="Student Reports (Teacher)" 
+        description="View student information for your assigned classes." 
       />
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-5 w-5" />My Students' Activity</CardTitle>
-          <CardDescription>Monitor engagement for students you teach. Note: 'Last Login', 'Assignments Submitted', and 'Attendance %' are illustrative mock data for now.</CardDescription>
+          <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-5 w-5" />Student Roster</CardTitle>
+          <CardDescription>Student details for the classes you teach.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4">
@@ -188,12 +183,10 @@ export default function TeacherReportsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortableHeader column="name" label="Student Name" />
+                  <SortableHeader column="name" label="Student Name" icon={Users} />
                   <SortableHeader column="email" label="Email" />
-                  <TableHead>Class</TableHead>
-                  <SortableHeader column="mockLoginDate" label="Last Login (Mock)" />
-                  <SortableHeader column="assignmentsSubmitted" label="Assignments Submitted (Mock)" />
-                  <SortableHeader column="attendancePercentage" label="Attendance % (Mock)" />
+                  <SortableHeader column="class_id" label="Class" icon={Briefcase} />
+                  {/* Add more sortable headers for actual student data if needed */}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -202,9 +195,7 @@ export default function TeacherReportsPage() {
                     <TableCell className="font-medium">{student.name}</TableCell>
                     <TableCell>{student.email}</TableCell>
                     <TableCell>{getClassDisplayName(student.class_id)}</TableCell>
-                    <TableCell>{formatDateSafe(student.mockLoginDate)}</TableCell>
-                    <TableCell>{student.assignmentsSubmitted ?? 'N/A'}</TableCell>
-                    <TableCell>{student.attendancePercentage !== undefined && student.attendancePercentage !== null ? `${student.attendancePercentage}%` : 'N/A'}</TableCell>
+                    {/* Add more cells for actual student data if needed */}
                   </TableRow>
                 ))}
               </TableBody>

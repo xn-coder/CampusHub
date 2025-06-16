@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Library, Lock, Unlock, Eye, ShoppingCart, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
-import { enrollUserInCourseAction } from '../../admin/lms/courses/actions'; // Re-use admin action for enrollment
+import { enrollUserInCourseAction } from '../../admin/lms/courses/actions';
 
 
 export default function AvailableLmsCoursesPage() {
@@ -27,70 +27,73 @@ export default function AvailableLmsCoursesPage() {
   useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
+      let userProfileId: string | null = null;
+      let userSchoolId: string | null = null;
+      let userRole: UserRole | null = null;
+
       if (typeof window !== 'undefined') {
-        const role = localStorage.getItem('currentUserRole') as UserRole | null;
-        const userId = localStorage.getItem('currentUserId');
-        setCurrentUserRole(role);
-        setCurrentUserId(userId);
+        userRole = localStorage.getItem('currentUserRole') as UserRole | null;
+        const uId = localStorage.getItem('currentUserId');
+        setCurrentUserRole(userRole);
+        setCurrentUserId(uId);
 
-        if (userId && role) {
-          // Fetch user's profile (student or teacher) to get their specific profile ID and school ID
-          const profileTable = role === 'student' ? 'students' : 'teachers';
-          const { data: userProfile, error: profileError } = await supabase
-            .from(profileTable)
-            .select('id, school_id')
-            .eq('user_id', userId)
-            .single();
+        if (uId && userRole) {
+          const profileTable = userRole === 'student' ? 'students' : userRole === 'teacher' ? 'teachers' : null;
+          if (profileTable) {
+            const { data: profile, error: profileError } = await supabase
+              .from(profileTable)
+              .select('id, school_id')
+              .eq('user_id', uId)
+              .single();
 
-          if (profileError || !userProfile) {
-            toast({ title: "Error", description: "Could not load user profile. Enrollment status might be inaccurate.", variant: "destructive"});
-            setCurrentUserProfileId(null);
-            setCurrentSchoolId(null);
-          } else {
-            setCurrentUserProfileId(userProfile.id);
-            setCurrentSchoolId(userProfile.school_id);
+            if (profileError || !profile) {
+              toast({ title: "Error", description: "Could not load user profile for enrollment checks.", variant: "destructive"});
+            } else {
+              userProfileId = profile.id;
+              userSchoolId = profile.school_id;
+              setCurrentUserProfileId(profile.id);
+              setCurrentSchoolId(profile.school_id);
+            }
+          } else if (userRole === 'admin' || userRole === 'superadmin') {
+            // For admin/superadmin, they don't enroll this way, but we need schoolId for course filtering if admin
+             const { data: userRec, error: userErr } = await supabase
+              .from('users').select('school_id').eq('id', uId).single();
+            if (userRec) userSchoolId = userRec.school_id;
+            setCurrentSchoolId(userSchoolId); // May be null for superadmin
           }
         }
+      }
         
-        // Fetch all courses (global or for the user's school if applicable)
-        // This logic can be refined based on how courses are scoped (global vs school-specific)
-        // For now, fetching all and filtering client-side, or server-side if `currentSchoolId` is known
-        let courseQuery = supabase.from('lms_courses').select('*');
-        // if (currentSchoolId) {
-        //   courseQuery = courseQuery.or(`school_id.eq.${currentSchoolId},school_id.is.null`); // Courses for this school or global
-        // } else {
-        //    courseQuery = courseQuery.is('school_id', null); // Only global courses if no school context
-        // }
-        
-        const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
+      // Fetch courses:
+      // 1. Courses specific to the user's school_id (if they have one)
+      // 2. Global courses (school_id is NULL)
+      let courseQuery = supabase.from('lms_courses').select('*');
+      if (userSchoolId) {
+        courseQuery = courseQuery.or(`school_id.eq.${userSchoolId},school_id.is.null`);
+      } else if (userRole !== 'superadmin') { // Non-superadmin without schoolId sees only global
+        courseQuery = courseQuery.is('school_id', null);
+      }
+      // Superadmin without a specific school context selected (userSchoolId is null) sees all courses
 
-        if (coursesError) {
-          toast({ title: "Error", description: "Failed to fetch courses.", variant: "destructive" });
-          setCourses([]);
-        } else {
-          setCourses(coursesData || []);
-          if (currentUserProfileId && role && (coursesData && coursesData.length > 0)) {
-            await fetchEnrollmentStatuses(coursesData.map(c => c.id), currentUserProfileId, role, currentSchoolId);
-          }
+      const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
+
+      if (coursesError) {
+        toast({ title: "Error", description: "Failed to fetch courses.", variant: "destructive" });
+        setCourses([]);
+      } else {
+        setCourses(coursesData || []);
+        if (userProfileId && userRole && userSchoolId && (coursesData && coursesData.length > 0)) {
+           // Student or Teacher, fetch their specific enrollments
+          await fetchEnrollmentStatuses(coursesData.map(c => c.id), userProfileId, userRole, userSchoolId);
         }
       }
       setIsLoading(false);
     }
     fetchData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUserProfileId, currentUserRole, currentSchoolId]); // Re-fetch if profile changes
+  }, [toast]);
 
 
-  async function fetchEnrollmentStatuses(courseIds: string[], userProfileId: string, role: UserRole, schoolId: string | null) {
-    if (!schoolId) { // Cannot check school-specific enrollments without schoolId
-        // If courses can be global and enrollments too, this needs adjustment
-        console.warn("School ID missing, cannot accurately fetch enrollment statuses for school-specific enrollments.");
-        const initialStatus: Record<string, boolean> = {};
-        courseIds.forEach(id => initialStatus[id] = false); // Default to not enrolled
-        setEnrollmentStatus(initialStatus);
-        return;
-    }
-
+  async function fetchEnrollmentStatuses(courseIds: string[], userProfileId: string, role: UserRole, schoolId: string) {
     const enrollmentTable = role === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
     const userIdColumn = role === 'student' ? 'student_id' : 'teacher_id';
 
@@ -107,7 +110,7 @@ export default function AvailableLmsCoursesPage() {
     }
 
     const statusMap: Record<string, boolean> = {};
-    courseIds.forEach(id => statusMap[id] = false); // Default to not enrolled
+    courseIds.forEach(id => statusMap[id] = false);
     (enrollments || []).forEach(en => {
       statusMap[en.course_id] = true;
     });
@@ -116,7 +119,7 @@ export default function AvailableLmsCoursesPage() {
 
   const handleEnrollUnpaid = async (courseId: string) => {
     if (!currentUserProfileId || !currentUserRole || !currentSchoolId) {
-      toast({ title: "Error", description: "User profile or school not identified. Please log in or ensure your profile is complete.", variant: "destructive"});
+      toast({ title: "Error", description: "User profile or school not identified. Cannot enroll.", variant: "destructive"});
       return;
     }
     
@@ -125,17 +128,19 @@ export default function AvailableLmsCoursesPage() {
       course_id: courseId,
       user_profile_id: currentUserProfileId,
       user_type: currentUserRole,
-      school_id: currentSchoolId, // Enrollments are school-specific
+      school_id: currentSchoolId,
     });
     setIsEnrolling(prev => ({ ...prev, [courseId]: false }));
 
     if (result.ok) {
       toast({ title: "Enrolled Successfully!", description: "You have been enrolled in the course."});
-      setEnrollmentStatus(prev => ({ ...prev, [courseId]: true })); // Update UI immediately
+      setEnrollmentStatus(prev => ({ ...prev, [courseId]: true }));
     } else {
       toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
     }
   };
+
+  const canEnroll = currentUserRole === 'student' || currentUserRole === 'teacher';
 
   return (
     <div className="flex flex-col gap-6">
@@ -165,31 +170,37 @@ export default function AvailableLmsCoursesPage() {
                     )}
                 </div>
                 <CardDescription className="line-clamp-3">{course.description || "No description available."}</CardDescription>
+                 {course.school_id ? null : <Badge variant="outline" className="mt-1 w-fit">Global Course</Badge>}
               </CardHeader>
               <CardContent className="flex-grow">
                 {course.is_paid && course.price && (
                   <p className="text-lg font-semibold text-foreground mb-2">${course.price.toFixed(2)}</p>
                 )}
-                {/* Add enrollment count if available/needed */}
               </CardContent>
               <CardFooter>
-                {enrollmentStatus[course.id] ? (
+                {canEnroll && enrollmentStatus[course.id] ? (
                    <Button asChild className="w-full" variant="secondary">
                      <Link href={`/lms/courses/${course.id}`}>
                        <Eye className="mr-2 h-4 w-4"/> View Course
                      </Link>
                    </Button>
-                ) : course.is_paid ? (
+                ) : canEnroll && course.is_paid ? (
                   <Button asChild className="w-full">
-                    <Link href={`/student/lms/activate?courseId=${course.id}`}>
+                    <Link href={`/student/lms/activate?courseId=${course.id}`}> {/* Assuming activation is primarily for students */}
                        <ShoppingCart className="mr-2 h-4 w-4"/> Activate Course
                     </Link>
                   </Button>
-                ) : (
+                ) : canEnroll && !course.is_paid ? (
                   <Button onClick={() => handleEnrollUnpaid(course.id)} className="w-full" disabled={isEnrolling[course.id] || !currentUserProfileId || !currentSchoolId}>
                     {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>} 
                     {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
                   </Button>
+                ) : ( // Case for admin/superadmin or users who can't enroll via this page
+                   <Button asChild className="w-full" variant="outline">
+                     <Link href={`/admin/lms/courses/${course.id}/content`}> {/* Admin/Superadmin view content/manage */}
+                       <Eye className="mr-2 h-4 w-4"/> View Details
+                     </Link>
+                   </Button>
                 )}
               </CardFooter>
             </Card>

@@ -8,13 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Label } from '@/components/ui/label';
-import type { ClassData, Student } from '@/types';
+import type { ClassData, Student, UserRole } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Printer, Aperture } from 'lucide-react';
-
-const MOCK_CLASSES_KEY = 'mockClassesData';
-const MOCK_STUDENTS_KEY = 'mockStudentsData';
+import { Printer, Aperture, Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 
 interface DisplayStudent extends Student {
   className?: string;
@@ -24,46 +22,74 @@ interface DisplayStudent extends Student {
 export default function TeacherIdCardPrintingPage() {
   const { toast } = useToast();
   const [assignedClasses, setAssignedClasses] = useState<ClassData[]>([]);
-  const [allStudents, setAllStudents] = useState<Student[]>([]); // Store all students once
-  const [selectedClassSectionId, setSelectedClassSectionId] = useState<string>('');
-  const [selectedStudents, setSelectedStudents] = useState<Record<string, boolean>>({}); // studentId: isSelected
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
+  const [allStudentsInSchool, setAllStudentsInSchool] = useState<Student[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [selectedStudents, setSelectedStudents] = useState<Record<string, boolean>>({});
   const [previewCardStudent, setPreviewCardStudent] = useState<DisplayStudent | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const teacherId = localStorage.getItem('currentUserId');
-      setCurrentTeacherId(teacherId);
+    async function fetchData() {
+      setIsLoading(true);
+      const teacherUserId = localStorage.getItem('currentUserId');
+      if (!teacherUserId) {
+        toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
 
-      const storedActiveClasses = localStorage.getItem(MOCK_CLASSES_KEY);
-      const allClasses: ClassData[] = storedActiveClasses ? JSON.parse(storedActiveClasses) : [];
-      const teacherClasses = teacherId ? allClasses.filter(cls => cls.teacherId === teacherId) : [];
-      setAssignedClasses(teacherClasses);
-      
-      const storedStudentsData = localStorage.getItem(MOCK_STUDENTS_KEY);
-      setAllStudents(storedStudentsData ? JSON.parse(storedStudentsData) : []);
+      const { data: teacherProfile, error: profileError } = await supabase
+        .from('teachers')
+        .select('id, school_id')
+        .eq('user_id', teacherUserId)
+        .single();
+
+      if (profileError || !teacherProfile) {
+        toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
+      setCurrentTeacherId(teacherProfile.id);
+      setCurrentSchoolId(teacherProfile.school_id);
+
+      if (teacherProfile.id && teacherProfile.school_id) {
+        const [classesRes, studentsRes] = await Promise.all([
+          supabase.from('classes').select('*').eq('teacher_id', teacherProfile.id).eq('school_id', teacherProfile.school_id),
+          supabase.from('students').select('*').eq('school_id', teacherProfile.school_id)
+        ]);
+
+        if (classesRes.error) toast({ title: "Error fetching classes", variant: "destructive" });
+        else setAssignedClasses(classesRes.data || []);
+
+        if (studentsRes.error) toast({ title: "Error fetching students", variant: "destructive" });
+        else setAllStudentsInSchool(studentsRes.data || []);
+      }
+      setIsLoading(false);
     }
-  }, []);
+    fetchData();
+  }, [toast]);
 
   const studentsInSelectedClass: DisplayStudent[] = useMemo(() => {
-    if (!selectedClassSectionId) return [];
-    const selectedClassDetails = assignedClasses.find(c => c.id === selectedClassSectionId);
+    if (!selectedClassId) return [];
+    const selectedClassDetails = assignedClasses.find(c => c.id === selectedClassId);
     if (!selectedClassDetails) return [];
 
-    return allStudents
-      .filter(s => s.classId === selectedClassSectionId)
+    return allStudentsInSchool
+      .filter(s => s.class_id === selectedClassId)
       .map(student => ({
         ...student,
         className: selectedClassDetails.name,
         classDivision: selectedClassDetails.division,
       }));
-  }, [selectedClassSectionId, allStudents, assignedClasses]);
+  }, [selectedClassId, allStudentsInSchool, assignedClasses]);
 
   useEffect(() => {
-    setSelectedStudents({}); // Reset selection when class changes
+    setSelectedStudents({});
     setPreviewCardStudent(null);
-  }, [selectedClassSectionId]);
+  }, [selectedClassId]);
 
 
   const handleStudentSelection = (studentId: string, checked: boolean) => {
@@ -88,7 +114,21 @@ export default function TeacherIdCardPrintingPage() {
     console.log("Printing ID cards for:", studentsToPrint.map(s => s.name));
   };
   
-  const selectedClassDetails = assignedClasses.find(c => c.id === selectedClassSectionId);
+  const selectedClassDetails = assignedClasses.find(c => c.id === selectedClassId);
+
+  if (isLoading && !currentTeacherId) {
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading teacher data...</span></div>;
+  }
+  if (!currentTeacherId || !currentSchoolId) {
+     return (
+        <div className="flex flex-col gap-6">
+        <PageHeader title="Student ID Card Printing" />
+        <Card><CardContent className="pt-6 text-center text-destructive">
+            Could not load teacher profile or school association.
+        </CardContent></Card>
+        </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -106,7 +146,7 @@ export default function TeacherIdCardPrintingPage() {
             <CardContent className="space-y-4">
               <div>
                 <Label htmlFor="classSelect">Select Your Class</Label>
-                <Select value={selectedClassSectionId} onValueChange={setSelectedClassSectionId}>
+                <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading}>
                   <SelectTrigger id="classSelect" className="max-w-md">
                     <SelectValue placeholder="Choose a class" />
                   </SelectTrigger>
@@ -118,17 +158,20 @@ export default function TeacherIdCardPrintingPage() {
                 </Select>
               </div>
 
-              {selectedClassSectionId && studentsInSelectedClass.length === 0 && (
+              {isLoading && selectedClassId && <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading students...</div>}
+
+              {!isLoading && selectedClassId && studentsInSelectedClass.length === 0 && (
                 <p className="text-muted-foreground text-center py-4">No students found in {selectedClassDetails?.name} - {selectedClassDetails?.division}.</p>
               )}
 
-              {studentsInSelectedClass.length > 0 && (
+              {!isLoading && studentsInSelectedClass.length > 0 && (
                 <div className="space-y-2 max-h-[60vh] overflow-y-auto">
                    <div className="mb-2 flex items-center space-x-2 p-2 border-b">
                        <Checkbox 
                         id="selectAllStudents" 
                         onCheckedChange={(checked) => handleSelectAll(!!checked)}
                         checked={studentsInSelectedClass.length > 0 && studentsInSelectedClass.every(s => selectedStudents[s.id])}
+                        disabled={isLoading}
                         />
                        <Label htmlFor="selectAllStudents">Select All ({studentsInSelectedClass.filter(s => selectedStudents[s.id]).length} selected)</Label>
                     </div>
@@ -138,23 +181,24 @@ export default function TeacherIdCardPrintingPage() {
                         id={`student-${student.id}`} 
                         checked={!!selectedStudents[student.id]} 
                         onCheckedChange={(checked) => handleStudentSelection(student.id, !!checked)}
+                        disabled={isLoading}
                       />
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={student.profilePictureUrl} alt={student.name} data-ai-hint="person student" />
+                        <AvatarImage src={student.profile_picture_url || undefined} alt={student.name} data-ai-hint="person student" />
                         <AvatarFallback>{student.name.substring(0,1).toUpperCase()}</AvatarFallback>
                       </Avatar>
                       <Label htmlFor={`student-${student.id}`} className="flex-grow cursor-pointer" onClick={() => setPreviewCardStudent(student)}>
                         {student.name}
                       </Label>
-                       <Button variant="ghost" size="sm" onClick={() => setPreviewCardStudent(student)}>Preview</Button>
+                       <Button variant="ghost" size="sm" onClick={() => setPreviewCardStudent(student)} disabled={isLoading}>Preview</Button>
                     </div>
                   ))}
                 </div>
               )}
             </CardContent>
-            {studentsInSelectedClass.length > 0 && (
+            {!isLoading && studentsInSelectedClass.length > 0 && (
               <CardFooter>
-                <Button onClick={handlePrintSelectedCards}><Printer className="mr-2 h-4 w-4" /> Print Selected ID Cards</Button>
+                <Button onClick={handlePrintSelectedCards} disabled={isLoading}><Printer className="mr-2 h-4 w-4" /> Print Selected ID Cards</Button>
               </CardFooter>
             )}
           </Card>
@@ -177,7 +221,7 @@ export default function TeacherIdCardPrintingPage() {
                   </div>
                   <div className="flex items-center">
                     <Avatar className="w-16 h-16 mr-3 border-2 border-primary">
-                       <AvatarImage src={previewCardStudent.profilePictureUrl} alt={previewCardStudent.name} data-ai-hint="person portrait" />
+                       <AvatarImage src={previewCardStudent.profile_picture_url || undefined} alt={previewCardStudent.name} data-ai-hint="person portrait" />
                        <AvatarFallback>{previewCardStudent.name.substring(0,1)}</AvatarFallback>
                     </Avatar>
                     <div>
