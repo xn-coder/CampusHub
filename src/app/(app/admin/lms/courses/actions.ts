@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus } from '@/types';
 
 // --- Course Management ---
 interface CourseInput {
@@ -165,7 +165,7 @@ export async function generateActivationCodesAction(
   input: GenerateCodesInput
 ): Promise<{ ok: boolean; message: string; generatedCodes?: string[] }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { course_id, num_codes, expires_in_days, school_id } = input;
+  const { course_id, num_codes, expires_in_days } = input; 
   const newCodes: Partial<CourseActivationCode>[] = [];
   const displayableCodes: string[] = [];
   const currentDate = new Date();
@@ -187,7 +187,6 @@ export async function generateActivationCodesAction(
       is_used: false,
       generated_date: currentDate.toISOString(),
       expiry_date: expiryDate,
-      school_id: school_id || null, 
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
@@ -209,30 +208,24 @@ export async function generateActivationCodesAction(
 interface ManageEnrollmentInput {
   course_id: string;
   user_profile_id: string; 
-  user_type: 'student' | 'teacher';
-  school_id: string; // This is the school_id of the user (student/teacher)
+  user_type: UserRole; 
 }
 
 export async function enrollUserInCourseAction(
   input: ManageEnrollmentInput
 ): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { course_id, user_profile_id, user_type, school_id } = input;
-  const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
-  const userIdColumn = user_type === 'student' ? 'student_id' : 'teacher_id';
-  const enrolledAtColumn = user_type === 'student' ? 'enrolled_at' : 'assigned_at';
+  const { course_id, user_profile_id, user_type } = input; 
 
-  let existingEnrollmentCheckQuery = supabaseAdmin
+  const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
+  const fkColumnNameInEnrollmentTable = user_type === 'student' ? 'student_id' : 'teacher_id';
+  
+  const { data: existingEnrollment, error: fetchError } = await supabaseAdmin
     .from(enrollmentTable)
     .select('id')
-    .eq(userIdColumn, user_profile_id)
-    .eq('course_id', course_id);
-
-  if (user_type === 'student') {
-    existingEnrollmentCheckQuery = existingEnrollmentCheckQuery.eq('school_id', school_id);
-  }
-  
-  const { data: existingEnrollment, error: fetchError } = await existingEnrollmentCheckQuery.single();
+    .eq(fkColumnNameInEnrollmentTable, user_profile_id)
+    .eq('course_id', course_id)
+    .maybeSingle(); 
   
   if (fetchError && fetchError.code !== 'PGRST116') { 
     console.error(`Error checking existing enrollment for ${user_type}:`, fetchError);
@@ -246,15 +239,13 @@ export async function enrollUserInCourseAction(
       id: uuidv4(), 
       course_id, 
   };
-  enrollmentData[userIdColumn] = user_profile_id;
-  enrollmentData[enrolledAtColumn] = new Date().toISOString();
+  enrollmentData[fkColumnNameInEnrollmentTable] = user_profile_id;
 
   if (user_type === 'student') {
-    enrollmentData.school_id = school_id; // Student enrollments are school-scoped
-    // created_at and updated_at for students will be handled by DB defaults if columns exist, or omitted if not.
+    enrollmentData.enrolled_at = new Date().toISOString();
+  } else { // teacher
+    enrollmentData.assigned_at = new Date().toISOString();
   }
-  // For TeacherCourseEnrollment, created_at and updated_at are not included
-
 
   const { error } = await supabaseAdmin.from(enrollmentTable).insert(enrollmentData);
 
@@ -265,6 +256,7 @@ export async function enrollUserInCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
+  revalidatePath('/student/study-material');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} enrolled successfully.` };
 }
 
@@ -272,22 +264,17 @@ export async function unenrollUserFromCourseAction(
   input: ManageEnrollmentInput
 ): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { course_id, user_profile_id, user_type, school_id } = input;
-  const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
-  const userIdColumn = user_type === 'student' ? 'student_id' : 'teacher_id';
+  const { course_id, user_profile_id, user_type } = input;
 
-  let deleteQuery = supabaseAdmin
+  const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
+  const fkColumnNameInEnrollmentTable = user_type === 'student' ? 'student_id' : 'teacher_id';
+  
+  const { error } = await supabaseAdmin
     .from(enrollmentTable)
     .delete()
-    .eq(userIdColumn, user_profile_id)
+    .eq(fkColumnNameInEnrollmentTable, user_profile_id)
     .eq('course_id', course_id);
-
-  if (user_type === 'student') {
-    deleteQuery = deleteQuery.eq('school_id', school_id);
-  }
   
-  const { error } = await deleteQuery;
-
   if (error) {
     console.error(`Error unenrolling ${user_type}:`, error);
     return { ok: false, message: `Failed to unenroll ${user_type}: ${error.message}` };
@@ -295,7 +282,311 @@ export async function unenrollUserFromCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
+  revalidatePath('/student/study-material');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} unenrolled successfully.` };
 }
+
+// --- Fetching Enrolled Users ---
+export async function getEnrolledStudentsForCourseAction(
+  courseId: string
+): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  
+  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
+    .from('lms_student_course_enrollments')
+    .select('student_id') 
+    .eq('course_id', courseId);
+
+  if (enrollmentError) {
+    console.error("Error fetching student enrollments:", enrollmentError);
+    return { ok: false, message: `Failed to fetch student enrollments: ${enrollmentError.message}` };
+  }
+
+  if (!enrollments || enrollments.length === 0) {
+    return { ok: true, students: [] };
+  }
+
+  const studentIdsFromEnrollments = enrollments.map(e => e.student_id).filter(id => !!id);
+  if (studentIdsFromEnrollments.length === 0) {
+    return { ok: true, students: [] };
+  }
+  
+  const { data: studentsData, error: studentsError } = await supabaseAdmin
+    .from('students') 
+    .select('*') 
+    .in('id', studentIdsFromEnrollments); 
+
+  if (studentsError) {
+    console.error("Error fetching student details:", studentsError);
+    return { ok: false, message: `Failed to fetch student details: ${studentsError.message}` };
+  }
+
+  return { ok: true, students: (studentsData as Student[]) || [] };
+}
+
+export async function getEnrolledTeachersForCourseAction(
+  courseId: string
+): Promise<{ ok: boolean; teachers?: Teacher[]; message?: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+
+  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
+    .from('lms_teacher_course_enrollments')
+    .select('teacher_id') 
+    .eq('course_id', courseId);
+
+  if (enrollmentError) {
+    console.error("Error fetching teacher enrollments:", enrollmentError);
+    return { ok: false, message: `Failed to fetch teacher enrollments: ${enrollmentError.message}` };
+  }
+
+  if (!enrollments || enrollments.length === 0) {
+    return { ok: true, teachers: [] };
+  }
+
+  const teacherIds = enrollments.map(e => e.teacher_id).filter(id => !!id);
+  if (teacherIds.length === 0) {
+    return { ok: true, teachers: [] };
+  }
+
+  const { data: teachersData, error: teachersError } = await supabaseAdmin
+    .from('teachers')
+    .select('*') 
+    .in('id', teacherIds);
+
+  if (teachersError) {
+    console.error("Error fetching teacher details:", teachersError);
+    return { ok: false, message: `Failed to fetch teacher details: ${teachersError.message}` };
+  }
+
+  return { ok: true, teachers: (teachersData as Teacher[]) || [] };
+}
+
+// --- Get Available Courses with Enrollment Status ---
+interface GetAvailableCoursesInput {
+  userProfileId: string | null;
+  userRole: UserRole | null;
+  userSchoolId: string | null;
+}
+
+export async function getAvailableCoursesWithEnrollmentStatusAction(
+  input: GetAvailableCoursesInput
+): Promise<{ ok: boolean; courses?: CourseWithEnrollmentStatus[]; message?: string }> {
+  const supabase = createSupabaseServerClient();
+  const { userProfileId, userRole, userSchoolId } = input;
+
+  try {
+    let courseQuery = supabase.from('lms_courses').select('*');
+    if (userSchoolId && userRole !== 'superadmin') {
+      courseQuery = courseQuery.or(`school_id.eq.${userSchoolId},school_id.is.null`);
+    } else if (userRole !== 'superadmin') { 
+      courseQuery = courseQuery.is('school_id', null);
+    }
+
+    const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
+
+    if (coursesError) {
+      console.error("Error fetching courses:", coursesError);
+      return { ok: false, message: `Failed to fetch courses: ${coursesError.message}` };
+    }
+    if (!coursesData) {
+      return { ok: true, courses: [] };
+    }
+
+    let enrolledCourseIds: string[] = [];
+    if (userProfileId && (userRole === 'student' || userRole === 'teacher')) {
+      const enrollmentTable = userRole === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
+      const fkColumn = userRole === 'student' ? 'student_id' : 'teacher_id';
+      
+      const { data: enrollments, error: enrollmentError } = await supabase
+        .from(enrollmentTable)
+        .select('course_id')
+        .eq(fkColumn, userProfileId);
+
+      if (enrollmentError) {
+        console.warn(`Could not fetch enrollment status for ${userRole} ${userProfileId}: ${enrollmentError.message}`);
+      } else if (enrollments) {
+        enrolledCourseIds = enrollments.map(e => e.course_id);
+      }
+    }
+
+    const coursesWithStatus: CourseWithEnrollmentStatus[] = coursesData.map(course => ({
+      ...course,
+      isEnrolled: (userRole === 'admin' || userRole === 'superadmin') ? true : enrolledCourseIds.includes(course.id),
+    }));
+    
+    return { ok: true, courses: coursesWithStatus };
+
+  } catch (error: any) {
+    console.error("Error in getAvailableCoursesWithEnrollmentStatusAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred." };
+  }
+}
+
+
+// --- Actions for Course Activation Page ---
+interface CourseActivationPageData {
+    targetCourse?: Course | null;
+    userProfileId?: string | null;
+    userSchoolId?: string | null;
+    userRole?: UserRole | null;
+}
+export async function getCourseActivationPageInitialDataAction(
+  courseIdFromQuery: string | null,
+  userId: string // This is users.id
+): Promise<{ ok: boolean; data?: CourseActivationPageData; message?: string }> {
+  const supabase = createSupabaseServerClient();
+  const resultData: CourseActivationPageData = {};
+
+  try {
+    // Fetch user details including role and school_id
+    const { data: userRec, error: userError } = await supabase
+      .from('users')
+      .select('id, role, school_id')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !userRec) {
+      return { ok: false, message: userError?.message || "User record not found." };
+    }
+    resultData.userRole = userRec.role as UserRole;
+    resultData.userSchoolId = userRec.school_id;
+
+    // Fetch specific user profile (student or teacher)
+    if (resultData.userRole === 'student') {
+      const { data: studentProfile, error: studentError } = await supabase
+        .from('students')
+        .select('id') // students.id
+        .eq('user_id', userId)
+        .single();
+      if (studentError || !studentProfile) {
+        return { ok: false, message: studentError?.message || "Student profile not found." };
+      }
+      resultData.userProfileId = studentProfile.id;
+    } else if (resultData.userRole === 'teacher') {
+      const { data: teacherProfile, error: teacherError } = await supabase
+        .from('teachers')
+        .select('id') // teachers.id
+        .eq('user_id', userId)
+        .single();
+      if (teacherError || !teacherProfile) {
+        return { ok: false, message: teacherError?.message || "Teacher profile not found." };
+      }
+      resultData.userProfileId = teacherProfile.id;
+    }
+
+    // Fetch target course details if courseIdFromQuery is provided
+    if (courseIdFromQuery) {
+      const { data: courseData, error: courseError } = await supabase
+        .from('lms_courses')
+        .select('*')
+        .eq('id', courseIdFromQuery)
+        .single();
+      if (courseError || !courseData) {
+        console.warn(`Could not fetch target course ${courseIdFromQuery}: ${courseError?.message}`);
+      } else {
+        resultData.targetCourse = courseData as Course;
+      }
+    }
+
+    return { ok: true, data: resultData };
+
+  } catch (error: any) {
+    console.error("Error in getCourseActivationPageInitialDataAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred." };
+  }
+}
+
+
+interface ActivateCourseWithCodeInput {
+  activationCode: string;
+  userProfileId: string; // students.id or teachers.id
+  userId: string; // users.id (for marking code as used)
+  userRole: UserRole;
+  schoolId: string | null; // User's school_id, can be null for global courses/users
+}
+export async function activateCourseWithCodeAction(
+  input: ActivateCourseWithCodeInput
+): Promise<{ ok: boolean; message: string; activatedCourse?: { id: string; title: string | null } }> {
+  const supabase = createSupabaseServerClient();
+  const { activationCode, userProfileId, userId, userRole, schoolId } = input;
+
+  try {
+    const { data: codeToActivate, error: codeError } = await supabase
+      .from('lms_course_activation_codes')
+      .select('*')
+      .eq('code', activationCode.toUpperCase())
+      .single();
+
+    if (codeError || !codeToActivate) {
+      return { ok: false, message: "Invalid activation code." };
+    }
+    if (codeToActivate.is_used) {
+      return { ok: false, message: "This activation code has already been used." };
+    }
+    if (codeToActivate.expiry_date && new Date() > new Date(codeToActivate.expiry_date)) {
+      return { ok: false, message: "This activation code has expired." };
+    }
+    
+    // Fetch the course to check its school_id
+    const { data: courseDetails, error: courseDetailsError } = await supabase
+        .from('lms_courses')
+        .select('id, title, school_id')
+        .eq('id', codeToActivate.course_id)
+        .single();
+
+    if (courseDetailsError || !courseDetails) {
+        return { ok: false, message: "Course associated with this code not found."};
+    }
+
+    // School scope check:
+    // If the course is school-specific, the user's school must match.
+    // If the course is global (course.school_id is null), any user (even without a school_id) can activate.
+    if (courseDetails.school_id && courseDetails.school_id !== schoolId) {
+        return { ok: false, message: "This activation code is for a course not available to your school."};
+    }
+
+
+    const enrollmentResult = await enrollUserInCourseAction({
+      course_id: codeToActivate.course_id,
+      user_profile_id: userProfileId,
+      user_type: userRole,
+    });
+
+    if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
+      return { ok: false, message: `Enrollment failed: ${enrollmentResult.message}` };
+    }
+
+    const { error: updateCodeError } = await supabase
+      .from('lms_course_activation_codes')
+      .update({ is_used: true, used_by_user_id: userId, used_at: new Date().toISOString() })
+      .eq('id', codeToActivate.id);
+
+    if (updateCodeError) {
+      console.error("Critical: Failed to mark activation code as used after enrollment:", updateCodeError);
+      return { 
+        ok: true, 
+        message: "Course enrolled, but there was an issue finalizing the activation code. Please contact support if problems persist.",
+        activatedCourse: { id: courseDetails.id, title: courseDetails.title }
+      };
+    }
+
+    revalidatePath('/lms/available-courses');
+    revalidatePath(`/lms/courses/${codeToActivate.course_id}`);
+
+    return { 
+      ok: true, 
+      message: `Successfully activated and enrolled in: ${courseDetails.title || 'the course'}.`, 
+      activatedCourse: { id: courseDetails.id, title: courseDetails.title }
+    };
+
+  } catch (error: any) {
+    console.error("Error in activateCourseWithCodeAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred during course activation." };
+  }
+}
+
+    
+    
+    
 
     
