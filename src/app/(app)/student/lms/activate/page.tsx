@@ -7,15 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { Course, UserRole } from '@/types';
-import { useState, useEffect, type FormEvent, useCallback } from 'react';
+import { useState, useEffect, type FormEvent, useCallback, Suspence } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { KeyRound, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 // import { supabase } from '@/lib/supabaseClient'; // Removed direct supabase client
 import { getCourseActivationPageInitialDataAction, activateCourseWithCodeAction } from '@/app/(app)/admin/lms/courses/actions';
 
-export default function ActivateLmsCoursePage() {
-  const { toast } = useToast();
+function activateLMFForm() {
+const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -155,5 +155,11 @@ export default function ActivateLmsCoursePage() {
       </Card>
     </div>
   );
+}
+
+export default function ActivateLmsCoursePage() {
+  <Suspence>
+    <activateLMFForm/>
+  </Suspence>
 }
 
