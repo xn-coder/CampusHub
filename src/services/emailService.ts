@@ -1,75 +1,79 @@
 // src/services/emailService.ts
 'use server';
 
+import emailjs from 'emailjs-com';
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { UserRole } from '@/types';
-import nodemailer from 'nodemailer';
 
 interface EmailOptions {
   to: string | string[];
   subject: string;
   html: string;
-  text?: string;
+  // text?: string; // EmailJS primarily works with HTML content via templates
 }
 
-const emailFrom = process.env.EMAIL_FROM;
-const emailHost = process.env.EMAIL_HOST;
-const emailPort = Number(process.env.EMAIL_PORT || 587);
-const emailUser = process.env.EMAIL_USER;
-const emailPass = process.env.EMAIL_PASS;
+const SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
+const TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID; // This will be your single generic template
+const USER_ID = process.env.EMAILJS_PUBLIC_KEY; // Or EMAILJS_USER_ID, depending on what you named it
 
-let transporter: nodemailer.Transporter | null = null;
-
-if (emailHost && emailUser && emailPass && emailFrom) {
-  transporter = nodemailer.createTransport({
-    host: emailHost,
-    port: emailPort,
-    secure: emailPort === 465, // true for 465, false for other ports
-    auth: {
-      user: emailUser,
-      pass: emailPass,
-    },
-  });
-  console.log("Nodemailer transporter configured.");
+let isEmailJsConfigured = false;
+if (SERVICE_ID && TEMPLATE_ID && USER_ID) {
+  isEmailJsConfigured = true;
+  // emailjs.init(USER_ID); // Not strictly necessary if passing USER_ID to send method, but good for default.
+  console.log("EmailJS service configured.");
 } else {
   console.warn(
-    "Nodemailer is not configured. Email environment variables (EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM) are missing. Emails will not be sent."
+    "EmailJS is not fully configured. Required environment variables (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY/USER_ID) are missing. Emails will be mocked."
   );
 }
 
 /**
- * Sends an email using Nodemailer if configured, otherwise logs a mock request.
+ * Sends an email using EmailJS if configured, otherwise logs a mock request.
+ * Assumes a single EmailJS template with variables like:
+ * {{to_email}}, {{subject_line}}, {{html_body}}, {{from_name}} (optional)
  */
 export async function sendEmail(options: EmailOptions): Promise<{ success: boolean; message: string }> {
-  if (!transporter || !emailFrom) {
-    console.log("--- MOCK EMAIL SEND REQUEST (Nodemailer not configured) ---");
+  if (!isEmailJsConfigured || !SERVICE_ID || !TEMPLATE_ID || !USER_ID) {
+    console.log("--- MOCK EMAIL SEND REQUEST (EmailJS not configured) ---");
     console.log("To:", Array.isArray(options.to) ? options.to.join(', ') : options.to);
     console.log("Subject:", options.subject);
-    // console.log("HTML Body:", options.html);
+    // console.log("HTML Body:", options.html); // Log HTML for debugging mock
     console.log("--- END MOCK EMAIL ---");
-    return { success: true, message: "Email sending is mocked as Nodemailer is not configured." };
+    return { success: true, message: "Email sending is mocked as EmailJS is not configured." };
   }
 
-  try {
-    const mailOptions = {
-      from: emailFrom,
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
-      text: options.text,
+  const sendToAddresses = Array.isArray(options.to) ? options.to : [options.to];
+  let allSuccessful = true;
+  let messages: string[] = [];
+
+  for (const recipientEmail of sendToAddresses) {
+    const templateParams = {
+      to_email: recipientEmail, // Your EmailJS template should use this for the 'to' field if necessary
+      subject_line: options.subject,
+      html_body: options.html,
+      from_name: 'CampusHub Notifications', // Optional: if your template uses it
+      reply_to: recipientEmail, // Good practice for EmailJS
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("Message sent: %s", info.messageId);
-    return { success: true, message: `Email sent successfully to ${Array.isArray(options.to) ? options.to.join(', ') : options.to}. Message ID: ${info.messageId}` };
-  } catch (error: any) {
-    console.error("Error sending email with Nodemailer:", error);
-    return { success: false, message: `Failed to send email: ${error.message}` };
+    try {
+      // Note: For server-side with emailjs-com, you often use an Access Token / Private Key,
+      // but USER_ID (Public Key) can work for basic sends.
+      // If you have a private key, you'd typically use it with emailjs.init() or a different SDK.
+      // We'll proceed with USER_ID as per common `emailjs-com` client-side pattern.
+      await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, USER_ID);
+      messages.push(`Email successfully sent to ${recipientEmail}.`);
+    } catch (error: any) {
+      console.error(`Error sending email to ${recipientEmail} with EmailJS:`, error);
+      messages.push(`Failed to send email to ${recipientEmail}: ${error.text || error.message || 'Unknown error'}`);
+      allSuccessful = false;
+    }
   }
+
+  return { success: allSuccessful, message: messages.join(' ') };
 }
 
 
-// Helper functions to fetch email addresses - can be expanded or moved
+// Helper functions to fetch email addresses - remain the same
 export async function getStudentEmailsByClassId(classId: string, schoolId: string): Promise<string[]> {
   if (!classId || !schoolId) return [];
   const supabase = createSupabaseServerClient();
@@ -91,7 +95,7 @@ export async function getTeacherEmailByTeacherProfileId(teacherProfileId: string
   const { data, error } = await supabase
     .from('teachers')
     .select('email')
-    .eq('id', teacherProfileId) // Assuming teacherProfileId is teachers.id
+    .eq('id', teacherProfileId) 
     .single();
   if (error || !data) {
     console.error("Error fetching teacher email by teacher profile ID:", error);
@@ -119,3 +123,4 @@ export async function getAllUserEmailsInSchool(schoolId: string, roles?: UserRol
   }
   return data.map(u => u.email).filter(email => !!email) as string[];
 }
+
