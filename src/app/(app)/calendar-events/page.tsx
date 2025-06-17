@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabaseClient';
 export default function CalendarEventsPage() {
   const { toast } = useToast();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [eventDates, setEventDates] = useState<Date[]>([]); // For highlighting dates
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
@@ -119,16 +120,19 @@ export default function CalendarEventsPage() {
       if (!currentSchoolId && currentUserRole !== 'superadmin') {
         setIsLoading(false); 
         setEvents([]);
+        setEventDates([]);
         return;
       }
       if (currentUserRole === 'superadmin' && !currentSchoolId) {
          setIsLoading(false); 
          setEvents([]);
+         setEventDates([]);
          return;
       }
       if (!currentSchoolId) {
         setIsLoading(false);
         setEvents([]);
+        setEventDates([]);
         return;
       }
 
@@ -136,9 +140,14 @@ export default function CalendarEventsPage() {
       const result = await getCalendarEventsAction(currentSchoolId, currentUserId!, currentUserRole);
       if (result.ok && result.events) {
         setEvents(result.events);
+        const datesWithEvents = result.events
+          .map(event => parseISO(event.date))
+          .filter(date => isValid(date));
+        setEventDates(datesWithEvents);
       } else {
         toast({ title: "Error", description: result.message || "Failed to fetch calendar events.", variant: "destructive" });
         setEvents([]);
+        setEventDates([]);
       }
       setIsLoading(false);
     }
@@ -221,7 +230,13 @@ export default function CalendarEventsPage() {
       });
       if (currentSchoolId && currentUserId && currentUserRole) {
          const fetchResult = await getCalendarEventsAction(currentSchoolId, currentUserId, currentUserRole);
-         if (fetchResult.ok && fetchResult.events) setEvents(fetchResult.events);
+         if (fetchResult.ok && fetchResult.events) {
+            setEvents(fetchResult.events);
+            const datesWithEvents = fetchResult.events
+              .map(event => parseISO(event.date))
+              .filter(date => isValid(date));
+            setEventDates(datesWithEvents);
+         }
       }
       setIsFormDialogOpen(false);
       resetForm();
@@ -243,7 +258,13 @@ export default function CalendarEventsPage() {
         toast({ title: "Event Deleted", variant: "destructive" });
          if (currentSchoolId && currentUserId && currentUserRole) {
             const fetchResult = await getCalendarEventsAction(currentSchoolId, currentUserId, currentUserRole);
-            if (fetchResult.ok && fetchResult.events) setEvents(fetchResult.events);
+            if (fetchResult.ok && fetchResult.events) {
+                setEvents(fetchResult.events);
+                const datesWithEvents = fetchResult.events
+                  .map(event => parseISO(event.date))
+                  .filter(date => isValid(date));
+                setEventDates(datesWithEvents);
+            }
         }
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -257,6 +278,10 @@ export default function CalendarEventsPage() {
         return isValid(eventDateObj) && format(eventDateObj, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
       })
     : [];
+    
+  const calendarModifiers = {
+    hasEvents: eventDates,
+  };
 
   const canManageEvents = (currentUserRole === 'admin' || currentUserRole === 'teacher') && !!currentSchoolId;
 
@@ -302,6 +327,8 @@ export default function CalendarEventsPage() {
                               className="rounded-md border"
                               initialFocus
                               disabled={isSubmitting || !currentSchoolId}
+                              modifiers={calendarModifiers}
+                              modifiersClassNames={{ hasEvents: 'rdp-day_hasEvents' }}
                           />
                       </CardContent>
                   </Card>

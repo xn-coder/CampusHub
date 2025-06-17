@@ -109,3 +109,46 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* Styles for react-day-picker event highlighting */
+.rdp-day_hasEvents:not(.rdp-day_selected):not(.rdp-day_today) {
+  position: relative;
+}
+
+.rdp-day_hasEvents:not(.rdp-day_selected):not(.rdp-day_today)::after {
+  content: '';
+  position: absolute;
+  bottom: 4px; /* Adjust vertical position of the dot */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px; /* Size of the dot */
+  height: 5px; /* Size of the dot */
+  border-radius: 50%;
+  background-color: hsl(var(--primary)); /* Dot color */
+}
+
+/* Ensure dot is visible and possibly different color if day is selected */
+.rdp-day_hasEvents.rdp-day_selected::after {
+  content: ''; /* Ensure pseudo-element is created */
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: hsl(var(--primary-foreground)); /* Dot color for selected day */
+}
+
+/* Ensure dot is visible and possibly different color if day is today */
+.rdp-day_hasEvents.rdp-day_today:not(.rdp-day_selected)::after {
+  content: ''; /* Ensure pseudo-element is created */
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: hsl(var(--primary)); /* Dot color for today, if not selected */
+}
