@@ -32,6 +32,7 @@ export default function CalendarEventsPage() {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null); // For author name prefill
 
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
@@ -45,7 +46,8 @@ export default function CalendarEventsPage() {
       setIsContextLoading(true);
       let role: UserRole | null = null;
       let userId: string | null = null;
-      let schoolId: string | null = null;
+      let fetchedSchoolId: string | null = null;
+      let fetchedUserName: string | null = null;
 
       if (typeof window !== 'undefined') {
         role = localStorage.getItem('currentUserRole') as UserRole | null;
@@ -56,28 +58,62 @@ export default function CalendarEventsPage() {
         if (userId) {
           const { data: userRec, error: userErr } = await supabase
             .from('users')
-            .select('school_id')
+            .select('school_id, name')
             .eq('id', userId)
             .single();
-
-          if (userErr || !userRec ) {
-            if (role && role !== 'superadmin') { 
-                 toast({title: "Error", description: "Could not determine user's school context.", variant: "destructive"});
+          
+          if (!userRec && !userErr) { 
+            if (role !== 'superadmin') {
+              toast({title: "Authentication Error", description: "User profile not found. Please log in again.", variant: "destructive"});
             }
-            schoolId = userRec?.school_id || null; 
-          } else {
-            schoolId = userRec.school_id;
+            fetchedSchoolId = null;
+          } else if (userErr) { 
+            if (role !== 'superadmin') {
+              toast({title: "Context Error", description: `Failed to load user details: ${userErr.message}`, variant: "destructive"});
+            }
+            fetchedSchoolId = null;
+          } else { // User record found
+            fetchedSchoolId = userRec.school_id;
+            fetchedUserName = userRec.name;
+            setCurrentUserName(userRec.name);
+
+
+            // Fallback for admin role if users.school_id is null AND userRec exists
+            if (role === 'admin' && userRec && !fetchedSchoolId) {
+              console.log("[Calendar Page] Admin user's users.school_id is null. Attempting fallback via schools.admin_user_id for user ID:", userId);
+              const { data: schoolDataFoundByAdminLink, error: schoolFetchErrorOnFallback } = await supabase
+                .from('schools')
+                .select('id')
+                .eq('admin_user_id', userId) // userId here is users.id
+                .single();
+              
+              if (schoolFetchErrorOnFallback && schoolFetchErrorOnFallback.code !== 'PGRST116') { // PGRST116 means no rows, which is fine
+                console.error("[Calendar Page] Error during admin_user_id fallback query:", schoolFetchErrorOnFallback.message);
+              } else if (schoolDataFoundByAdminLink) {
+                console.log("[Calendar Page] Fallback successful. Found school ID via schools.admin_user_id:", schoolDataFoundByAdminLink.id);
+                fetchedSchoolId = schoolDataFoundByAdminLink.id; // Update fetchedSchoolId
+              } else {
+                console.log("[Calendar Page] Fallback for admin failed. No school found where this user is admin_user_id.");
+              }
+            }
           }
-          setCurrentSchoolId(schoolId);
-        } else {
-           if (role !== null) { 
-             toast({ title: "Context Missing", description: "Cannot load calendar without user context.", variant: "destructive"});
-           }
-           schoolId = null;
-           setCurrentSchoolId(null);
+          
+          setCurrentSchoolId(fetchedSchoolId);
+
+          if (!fetchedSchoolId && role && role !== 'superadmin') {
+            // This toast will show if, after all attempts, context is still missing for a non-superadmin
+            // It's less aggressive than toasting inside the fetch logic itself.
+            // The page will display the "Cannot load calendar..." message.
+          }
+        } else { // No userId from localStorage
+          fetchedSchoolId = null;
+          setCurrentSchoolId(null);
+          if (role !== null) { 
+             toast({ title: "Context Missing", description: "User ID not found. Cannot load calendar.", variant: "destructive"});
+          }
         }
       }
-      setIsContextLoading(false); // Context loading done, now events can be fetched if possible
+      setIsContextLoading(false); 
     }
     loadUserContextAndEvents();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,28 +121,25 @@ export default function CalendarEventsPage() {
 
   useEffect(() => {
     async function fetchEventsForSchool() {
-      if (isContextLoading || !currentUserRole) return; // Wait for context and role
+      if (isContextLoading || !currentUserRole) return; 
 
       if (!currentSchoolId && currentUserRole !== 'superadmin') {
-        setIsLoading(false); // No school, nothing to load for non-superadmin
+        setIsLoading(false); 
         setEvents([]);
         return;
       }
       if (currentUserRole === 'superadmin' && !currentSchoolId) {
-         setIsLoading(false); // Superadmin without school context, show no school-specific events
+         setIsLoading(false); 
          setEvents([]);
          return;
       }
-      // Only proceed if schoolId is available (or superadmin, though they need school context for school-specific events)
       if (!currentSchoolId) {
         setIsLoading(false);
         setEvents([]);
         return;
       }
 
-
       setIsLoading(true);
-      // We have schoolId, userId, and role (asserted as non-null due to checks)
       const result = await getCalendarEventsAction(currentSchoolId, currentUserId!, currentUserRole);
       if (result.ok && result.events) {
         setEvents(result.events);
@@ -193,9 +226,8 @@ export default function CalendarEventsPage() {
     if (result.ok) {
       toast({
         title: editingEvent ? "Event Updated" : "Event Added",
-        description: `${result.message} Notifications would be sent. (This is a mock notification).`
+        description: `${result.message}`
       });
-      // Re-fetch events directly after successful submission
       if (currentSchoolId && currentUserId && currentUserRole) {
          const fetchResult = await getCalendarEventsAction(currentSchoolId, currentUserId, currentUserRole);
          if (fetchResult.ok && fetchResult.events) setEvents(fetchResult.events);
@@ -251,7 +283,7 @@ export default function CalendarEventsPage() {
         }
       />
 
-      {isContextLoading && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading user context...</div>}
+      {isContextLoading && <Card><CardContent className="pt-6 text-center"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading user context...</CardContent></Card>}
       
       {!isContextLoading && !currentSchoolId && currentUserRole !== 'superadmin' && (
         <Card><CardContent className="pt-6 text-center text-destructive">Cannot load calendar. User is not associated with a school or school context is missing.</CardContent></Card>
@@ -262,7 +294,7 @@ export default function CalendarEventsPage() {
 
       {!isContextLoading && currentSchoolId && (
         <>
-          {isLoading && <div className="text-center py-6"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading calendar data...</div>}
+          {isLoading && <Card><CardContent className="pt-6 text-center"><Loader2 className="h-6 w-6 animate-spin inline-block"/> Loading calendar data...</CardContent></Card>}
           {!isLoading && (
             <div className="grid md:grid-cols-3 gap-6">
               <div className="md:col-span-1">
