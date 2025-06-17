@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { Course, UserRole } from '@/types';
-import { useState, useEffect, type FormEvent, useCallback, Suspence } from 'react';
+import { useState, useEffect, type FormEvent, useCallback, Suspense } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { KeyRound, CheckCircle, XCircle, Loader2 } from 'lucide-react';
@@ -158,8 +158,8 @@ const { toast } = useToast();
 }
 
 export default function ActivateLmsCoursePage() {
-  <Suspence>
+  <Suspense>
     <activateLMFForm/>
-  </Suspence>
+  </Suspense>
 }
 
