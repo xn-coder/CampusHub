@@ -172,7 +172,8 @@ export interface CalendarEventDB {
   is_all_day: boolean;
   school_id: string;
   posted_by_user_id: string;
-  posted_by_role: UserRole;
+  // posted_by_role is not in the DB, fetched via join
+  posted_by_user?: { name: string; role: UserRole };
   created_at?: string;
   updated_at?: string;
 }

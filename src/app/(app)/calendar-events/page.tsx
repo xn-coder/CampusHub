@@ -32,7 +32,7 @@ export default function CalendarEventsPage() {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
-  const [currentUserName, setCurrentUserName] = useState<string | null>(null); // For author name prefill
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null); 
 
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
@@ -72,26 +72,25 @@ export default function CalendarEventsPage() {
               toast({title: "Context Error", description: `Failed to load user details: ${userErr.message}`, variant: "destructive"});
             }
             fetchedSchoolId = null;
-          } else { // User record found
+          } else { 
             fetchedSchoolId = userRec.school_id;
             fetchedUserName = userRec.name;
             setCurrentUserName(userRec.name);
 
 
-            // Fallback for admin role if users.school_id is null AND userRec exists
             if (role === 'admin' && userRec && !fetchedSchoolId) {
               console.log("[Calendar Page] Admin user's users.school_id is null. Attempting fallback via schools.admin_user_id for user ID:", userId);
               const { data: schoolDataFoundByAdminLink, error: schoolFetchErrorOnFallback } = await supabase
                 .from('schools')
                 .select('id')
-                .eq('admin_user_id', userId) // userId here is users.id
+                .eq('admin_user_id', userId) 
                 .single();
               
-              if (schoolFetchErrorOnFallback && schoolFetchErrorOnFallback.code !== 'PGRST116') { // PGRST116 means no rows, which is fine
+              if (schoolFetchErrorOnFallback && schoolFetchErrorOnFallback.code !== 'PGRST116') { 
                 console.error("[Calendar Page] Error during admin_user_id fallback query:", schoolFetchErrorOnFallback.message);
               } else if (schoolDataFoundByAdminLink) {
                 console.log("[Calendar Page] Fallback successful. Found school ID via schools.admin_user_id:", schoolDataFoundByAdminLink.id);
-                fetchedSchoolId = schoolDataFoundByAdminLink.id; // Update fetchedSchoolId
+                fetchedSchoolId = schoolDataFoundByAdminLink.id; 
               } else {
                 console.log("[Calendar Page] Fallback for admin failed. No school found where this user is admin_user_id.");
               }
@@ -100,12 +99,7 @@ export default function CalendarEventsPage() {
           
           setCurrentSchoolId(fetchedSchoolId);
 
-          if (!fetchedSchoolId && role && role !== 'superadmin') {
-            // This toast will show if, after all attempts, context is still missing for a non-superadmin
-            // It's less aggressive than toasting inside the fetch logic itself.
-            // The page will display the "Cannot load calendar..." message.
-          }
-        } else { // No userId from localStorage
+        } else { 
           fetchedSchoolId = null;
           setCurrentSchoolId(null);
           if (role !== null) { 
@@ -116,8 +110,7 @@ export default function CalendarEventsPage() {
       setIsContextLoading(false); 
     }
     loadUserContextAndEvents();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     async function fetchEventsForSchool() {
@@ -151,8 +144,7 @@ export default function CalendarEventsPage() {
     }
 
     fetchEventsForSchool();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSchoolId, currentUserId, currentUserRole, isContextLoading]);
+  }, [currentSchoolId, currentUserId, currentUserRole, isContextLoading, toast]);
 
 
   const resetForm = () => {
@@ -189,7 +181,7 @@ export default function CalendarEventsPage() {
 
   const handleSubmitEvent = async (e: FormEvent) => {
     e.preventDefault();
-    if (currentUserRole === 'student' || !currentSchoolId || !currentUserId || !currentUserRole) {
+    if (!currentSchoolId || !currentUserId || !currentUserRole) {
       toast({ title: "Error", description: "Action not permitted or missing context.", variant: "destructive" });
       return;
     }
@@ -213,7 +205,6 @@ export default function CalendarEventsPage() {
       description: eventDescription.trim() || null,
       school_id: currentSchoolId,
       posted_by_user_id: currentUserId,
-      posted_by_role: currentUserRole,
     };
 
     if (editingEvent) {
@@ -334,7 +325,7 @@ export default function CalendarEventsPage() {
                                 {event.is_all_day ? 'All Day' : `${event.start_time || ''}${event.start_time && event.end_time ? ' - ' : ''}${event.end_time || ''}`}
                               </CardDescription>
                               <CardDescription className="text-xs">
-                                By: {event.posted_by_role}
+                                Posted by: {event.posted_by_user?.name || 'Unknown User'} ({event.posted_by_user?.role || 'N/A'})
                               </CardDescription>
                             </div>
                             {canManageEvents && (

@@ -14,8 +14,6 @@ interface CalendarEventInput {
   description?: string | null;
   school_id: string;
   posted_by_user_id: string;
-  posted_by_role: UserRole;
-  // target_audience: CalendarEventTargetAudience | null; // Removed
 }
 
 export async function addCalendarEventAction(
@@ -34,10 +32,8 @@ export async function addCalendarEventAction(
         description: input.description,
         school_id: input.school_id,
         posted_by_user_id: input.posted_by_user_id,
-        posted_by_role: input.posted_by_role,
-        // target_audience: input.target_audience, // Removed
       })
-      .select()
+      .select('*, posted_by_user:posted_by_user_id (name, role)') // Eager load user details
       .single();
 
     if (error) {
@@ -54,18 +50,17 @@ export async function addCalendarEventAction(
 
 export async function updateCalendarEventAction(
   id: string,
-  input: Partial<CalendarEventInput> & { school_id: string; posted_by_user_id: string; posted_by_role: UserRole } // Removed target_audience
+  input: Partial<CalendarEventInput> & { school_id: string; posted_by_user_id: string }
 ): Promise<{ ok: boolean; message: string; event?: CalendarEventDB }> {
   const supabase = createSupabaseServerClient();
   
-  const updateData: Partial<CalendarEventDB> = { 
+  const updateData: Partial<Omit<CalendarEventDB, 'id' | 'created_at' | 'updated_at' | 'posted_by_user'>> = { 
     title: input.title,
     date: input.date,
     is_all_day: input.is_all_day,
     description: input.description,
-    posted_by_user_id: input.posted_by_user_id,
-    posted_by_role: input.posted_by_role,
-    // target_audience: input.target_audience, // Removed
+    posted_by_user_id: input.posted_by_user_id, // Ensure this is part of update if it can change
+    school_id: input.school_id // Though usually school_id shouldn't change for an existing event
   };
 
   if (input.is_all_day) {
@@ -83,7 +78,7 @@ export async function updateCalendarEventAction(
       .update(updateData)
       .eq('id', id)
       .eq('school_id', input.school_id) 
-      .select()
+      .select('*, posted_by_user:posted_by_user_id (name, role)') // Eager load user details
       .single();
 
     if (error) {
@@ -121,28 +116,31 @@ export async function deleteCalendarEventAction(id: string, school_id: string): 
 
 export async function getCalendarEventsAction(
   school_id: string,
-  requesting_user_id: string, // Keep for potential future use, or if poster_by_user_id needs checking
-  requesting_user_role: UserRole // Keep for potential future use
+  requesting_user_id: string, 
+  requesting_user_role: UserRole 
 ): Promise<{ ok: boolean; message?: string; events?: CalendarEventDB[] }> {
   const supabase = createSupabaseServerClient();
   try {
-    // Simplified query: All users in a school see all events for that school.
-    // Superadmin must have a school_id context to see events.
     let query = supabase
       .from('calendar_events')
-      .select('*')
+      .select(`
+        id, 
+        title, 
+        description, 
+        date, 
+        start_time, 
+        end_time, 
+        is_all_day, 
+        school_id,
+        posted_by_user_id,
+        created_at,
+        updated_at,
+        posted_by_user:posted_by_user_id (name, role)
+      `)
       .eq('school_id', school_id)
       .order('date', { ascending: true })
       .order('start_time', { ascending: true, nullsFirst: true });
       
-    // Removed target_audience filtering as the column does not exist.
-    // Example of previous filtering, now commented out:
-    // if (requesting_user_role === 'student') {
-    //   query = query.in('target_audience', ['all_school', 'students_only']);
-    // } else if (requesting_user_role === 'teacher') {
-    //   query = query.or(`target_audience.eq.all_school,target_audience.eq.teachers_only,posted_by_user_id.eq.${requesting_user_id}`);
-    // }
-
     const { data, error } = await query;
 
     if (error) {
@@ -155,5 +153,3 @@ export async function getCalendarEventsAction(
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
 }
-
-    
