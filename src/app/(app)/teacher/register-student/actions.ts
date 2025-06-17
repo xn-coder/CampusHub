@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { revalidatePath } from 'next/cache';
 import type { AdmissionRecord, Student, User, AdmissionStatus } from '@/types';
+import { sendEmail } from '@/services/emailService'; // Import sendEmail
 
 const SALT_ROUNDS = 10;
 
@@ -111,13 +112,33 @@ export async function registerStudentAction(
         console.warn('Error creating admission record:', admissionInsertError);
     }
 
+    // Send welcome email to the student
+    const emailSubject = "Welcome to CampusHub!";
+    const emailBody = `
+      <h1>Welcome, ${name.trim()}!</h1>
+      <p>Your account has been successfully created at CampusHub.</p>
+      <p>You can now log in to the portal using the following credentials:</p>
+      <ul>
+        <li><strong>Email:</strong> ${email.trim()}</li>
+        <li><strong>Password:</strong> ${defaultPassword}</li>
+      </ul>
+      <p>We recommend changing your password after your first login.</p>
+      <p>Thank you for joining us!</p>
+    `;
+
+    await sendEmail({
+      to: email.trim(),
+      subject: emailSubject,
+      html: emailBody,
+    });
+
     revalidatePath('/teacher/register-student');
     revalidatePath('/admin/manage-students'); 
     revalidatePath('/admin/admissions'); 
 
     return { 
       ok: true, 
-      message: `Student ${name} registered and account created. Default password: "password".`,
+      message: `Student ${name} registered and account created. Default password: "password". A welcome email has been sent.`,
       studentId: newStudentProfileId,
       userId: newUser.id,
       admissionRecordId: newAdmissionId,
