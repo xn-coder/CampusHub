@@ -116,7 +116,8 @@ export default function ClassManagementPage() {
     } finally {
         setIsLoading(false);
     }
-  }, []); // Removed toast from dependency array
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   useEffect(() => {
@@ -511,7 +512,7 @@ export default function ClassManagementPage() {
                 <SelectTrigger id="selectClassNameForActivation"><SelectValue placeholder="Choose a class name" /></SelectTrigger>
                 <SelectContent>
                   {classNamesList.map(cn => (<SelectItem key={cn.id} value={cn.id}>{cn.name}</SelectItem>))}
-                  {classNamesList.length === 0 && <SelectItem value="" disabled>No class names defined</SelectItem>}
+                  {classNamesList.length === 0 && <SelectItem value="no-class-names-placeholder" disabled>No class names defined</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -521,7 +522,7 @@ export default function ClassManagementPage() {
                 <SelectTrigger id="selectSectionNameForActivation"><SelectValue placeholder="Choose a section name" /></SelectTrigger>
                 <SelectContent>
                   {sectionNamesList.map(sn => (<SelectItem key={sn.id} value={sn.id}>{sn.name}</SelectItem>))}
-                  {sectionNamesList.length === 0 && <SelectItem value="" disabled>No section names defined</SelectItem>}
+                  {sectionNamesList.length === 0 && <SelectItem value="no-section-names-placeholder" disabled>No section names defined</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -532,7 +533,7 @@ export default function ClassManagementPage() {
                 <SelectContent>
                   <SelectItem value="none">None (General)</SelectItem>
                   {allAcademicYears.map(ay => (<SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>))}
-                  {allAcademicYears.length === 0 && <SelectItem value="" disabled>No academic years defined</SelectItem>}
+                  {allAcademicYears.length === 0 && <SelectItem value="no-academic-years-placeholder" disabled>No academic years defined</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -643,7 +644,7 @@ export default function ClassManagementPage() {
                 <SelectContent>
                   <SelectItem value="unassign">Unassign Teacher</SelectItem>
                   {allTeachersInSchool.map(teacher => (<SelectItem key={teacher.id} value={teacher.id}>{teacher.name} ({teacher.subject})</SelectItem>))}
-                  {allTeachersInSchool.length === 0 && <SelectItem value="" disabled>No teachers available</SelectItem>}
+                  {allTeachersInSchool.length === 0 && <SelectItem value="no-teachers-placeholder" disabled>No teachers available</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
