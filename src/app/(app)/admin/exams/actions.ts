@@ -4,8 +4,64 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Exam, Subject, ClassData, AcademicYear } from '@/types';
-import { sendEmail, getStudentEmailsByClassId, getAllUserEmailsInSchool } from '@/services/emailService'; // Assuming teacher emails are included in getAllUserEmailsInSchool with 'teacher' role
+import type { Exam, Subject, ClassData, AcademicYear, UserRole } from '@/types';
+import emailjs from 'emailjs-com';
+import { getStudentEmailsByClassId, getAllUserEmailsInSchool } from '@/services/emailService';
+
+const SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
+const TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
+const USER_ID = process.env.EMAILJS_PUBLIC_KEY;
+
+let isEmailJsConfigured = false;
+if (SERVICE_ID && TEMPLATE_ID && USER_ID) {
+  isEmailJsConfigured = true;
+  console.log("EmailJS service configured in exams/actions.ts.");
+} else {
+  console.warn(
+    "EmailJS is not fully configured in exams/actions.ts. Required environment variables (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY) are missing. Emails will be mocked."
+  );
+}
+
+interface EmailOptions {
+  to: string | string[];
+  subject: string;
+  html: string;
+}
+
+async function sendEmail(options: EmailOptions): Promise<{ success: boolean; message: string }> {
+  if (!isEmailJsConfigured || !SERVICE_ID || !TEMPLATE_ID || !USER_ID) {
+    console.log(`--- MOCK EMAIL SEND REQUEST (exams/actions.ts) ---`);
+    console.log("To:", Array.isArray(options.to) ? options.to.join(', ') : options.to);
+    console.log("Subject:", options.subject);
+    console.log("--- END MOCK EMAIL ---");
+    return { success: true, message: "Email sending is mocked as EmailJS is not configured." };
+  }
+
+  const sendToAddresses = Array.isArray(options.to) ? options.to : [options.to];
+  let allSuccessful = true;
+  let messages: string[] = [];
+
+  for (const recipientEmail of sendToAddresses) {
+    const templateParams = {
+      to_email: recipientEmail,
+      subject_line: options.subject,
+      html_body: options.html,
+      from_name: 'CampusHub Notifications',
+      reply_to: recipientEmail,
+    };
+
+    try {
+      await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, USER_ID);
+      messages.push(`Email successfully sent to ${recipientEmail}.`);
+    } catch (error: any) {
+      console.error(`Error sending email to ${recipientEmail} with EmailJS from exams/actions.ts:`, error);
+      messages.push(`Failed to send email to ${recipientEmail}: ${error.text || error.message || 'Unknown error'}`);
+      allSuccessful = false;
+    }
+  }
+  return { success: allSuccessful, message: messages.join(' ') };
+}
+
 
 async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
   if (!adminUserId) {
@@ -129,9 +185,7 @@ export async function addExamAction(
     let recipientEmails: string[] = [];
     if (exam.class_id && exam.school_id) {
       recipientEmails = await getStudentEmailsByClassId(exam.class_id, exam.school_id);
-      // Potentially add teacher emails for this class/subject
     } else if (exam.school_id) {
-      // If exam is not class-specific (e.g. general), notify all students and teachers
       recipientEmails = await getAllUserEmailsInSchool(exam.school_id, ['student', 'teacher']);
     }
 
@@ -158,7 +212,6 @@ export async function updateExamAction(
     academic_year_id: input.academic_year_id === 'none_ay_selection' ? null : input.academic_year_id,
     max_marks: input.max_marks === undefined || input.max_marks === null || isNaN(Number(input.max_marks)) ? null : Number(input.max_marks),
   };
-  // school_id is not updated, it's part of the query scope.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { school_id, ...updatePayload } = examData;
 
@@ -177,7 +230,6 @@ export async function updateExamAction(
   }
   revalidatePath('/admin/exams');
 
-  // Optionally, send update notification emails here, similar to addExamAction
   if (data) {
     const exam = data as Exam & { subject?: { name: string }, class?: { name: string, division: string } };
     const subjectName = exam.subject?.name || 'N/A';
@@ -219,7 +271,6 @@ export async function updateExamAction(
 
 export async function deleteExamAction(id: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-  // Check for dependencies (e.g., student_scores)
   const { count, error: depError } = await supabaseAdmin
     .from('student_scores')
     .select('id', { count: 'exact', head: true })
@@ -245,7 +296,6 @@ export async function deleteExamAction(id: string, schoolId: string): Promise<{ 
     return { ok: false, message: `Failed to delete exam: ${error.message}` };
   }
   revalidatePath('/admin/exams');
-  // Optionally, send cancellation notification emails here
   return { ok: true, message: 'Exam deleted successfully.' };
 }
     

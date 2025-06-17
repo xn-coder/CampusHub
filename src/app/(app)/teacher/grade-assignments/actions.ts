@@ -4,7 +4,61 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { Assignment, AssignmentSubmission, Student } from '@/types';
 import { revalidatePath } from 'next/cache';
-import { sendEmail } from '@/services/emailService';
+import emailjs from 'emailjs-com';
+
+const SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
+const TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
+const USER_ID = process.env.EMAILJS_PUBLIC_KEY;
+
+let isEmailJsConfigured = false;
+if (SERVICE_ID && TEMPLATE_ID && USER_ID) {
+  isEmailJsConfigured = true;
+  console.log("EmailJS service configured in teacher/grade-assignments/actions.ts.");
+} else {
+  console.warn(
+    "EmailJS is not fully configured in teacher/grade-assignments/actions.ts. Required environment variables (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY) are missing. Emails will be mocked."
+  );
+}
+
+interface EmailOptions {
+  to: string | string[];
+  subject: string;
+  html: string;
+}
+
+async function sendEmail(options: EmailOptions): Promise<{ success: boolean; message: string }> {
+  if (!isEmailJsConfigured || !SERVICE_ID || !TEMPLATE_ID || !USER_ID) {
+    console.log(`--- MOCK EMAIL SEND REQUEST (teacher/grade-assignments/actions.ts) ---`);
+    console.log("To:", Array.isArray(options.to) ? options.to.join(', ') : options.to);
+    console.log("Subject:", options.subject);
+    console.log("--- END MOCK EMAIL ---");
+    return { success: true, message: "Email sending is mocked as EmailJS is not configured." };
+  }
+
+  const sendToAddresses = Array.isArray(options.to) ? options.to : [options.to];
+  let allSuccessful = true;
+  let messages: string[] = [];
+
+  for (const recipientEmail of sendToAddresses) {
+    const templateParams = {
+      to_email: recipientEmail,
+      subject_line: options.subject,
+      html_body: options.html,
+      from_name: 'CampusHub Notifications',
+      reply_to: recipientEmail,
+    };
+
+    try {
+      await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, USER_ID);
+      messages.push(`Email successfully sent to ${recipientEmail}.`);
+    } catch (error: any) {
+      console.error(`Error sending email to ${recipientEmail} with EmailJS from teacher/grade-assignments/actions.ts:`, error);
+      messages.push(`Failed to send email to ${recipientEmail}: ${error.text || error.message || 'Unknown error'}`);
+      allSuccessful = false;
+    }
+  }
+  return { success: allSuccessful, message: messages.join(' ') };
+}
 
 
 interface EnrichedSubmission extends AssignmentSubmission {
@@ -121,7 +175,7 @@ export async function saveSingleGradeAndFeedbackAction(input: SaveGradeInput): P
       })
       .eq('id', submission_id)
       .eq('school_id', school_id)
-      .select('*, student:student_id(email), assignment:assignment_id(title)') // Eager load for notification
+      .select('*, student:student_id(email), assignment:assignment_id(title)') 
       .single();
 
     if (error) {
@@ -132,7 +186,6 @@ export async function saveSingleGradeAndFeedbackAction(input: SaveGradeInput): P
     revalidatePath('/teacher/grade-assignments');
     revalidatePath(`/student/assignments`); 
 
-    // Send email notification to the student
     if (data) {
       const submission = data as AssignmentSubmission & { student?: { email: string | null } | null, assignment?: { title: string | null } | null };
       if (submission.student?.email && submission.assignment?.title) {
