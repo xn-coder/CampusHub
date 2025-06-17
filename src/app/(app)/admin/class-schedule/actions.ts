@@ -14,7 +14,7 @@ const USER_ID = process.env.EMAILJS_PUBLIC_KEY;
 let isEmailJsConfigured = false;
 if (SERVICE_ID && TEMPLATE_ID && USER_ID) {
   isEmailJsConfigured = true;
-  console.log("EmailJS service configured in class-schedule/actions.ts.");
+  // console.log("EmailJS service configured in class-schedule/actions.ts.");
 } else {
   console.warn(
     "EmailJS is not fully configured in class-schedule/actions.ts. Required environment variables (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY) are missing. Emails will be mocked."
@@ -29,16 +29,17 @@ interface EmailOptions {
 
 async function sendEmail(options: EmailOptions): Promise<{ success: boolean; message: string }> {
   if (!isEmailJsConfigured || !SERVICE_ID || !TEMPLATE_ID || !USER_ID) {
-    console.log(`--- MOCK EMAIL SEND REQUEST (class-schedule/actions.ts) ---`);
+    console.log(`--- MOCK EMAIL SEND REQUEST (${options.subject}) ---`);
     console.log("To:", Array.isArray(options.to) ? options.to.join(', ') : options.to);
     console.log("Subject:", options.subject);
-    console.log("--- END MOCK EMAIL ---");
-    return { success: true, message: "Email sending is mocked as EmailJS is not configured." };
+    console.log("HTML Body:", options.html);
+    console.log("--- END MOCK EMAIL (from /src/app/(app)/admin/class-schedule/actions.ts) ---");
+    return { success: true, message: "Email sending is mocked as EmailJS is not configured. Check .env variables for EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY." };
   }
 
   const sendToAddresses = Array.isArray(options.to) ? options.to : [options.to];
   let allSuccessful = true;
-  let messages: string[] = [];
+  const detailedMessages: string[] = [];
 
   for (const recipientEmail of sendToAddresses) {
     const templateParams = {
@@ -50,15 +51,20 @@ async function sendEmail(options: EmailOptions): Promise<{ success: boolean; mes
     };
 
     try {
-      await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, USER_ID);
-      messages.push(`Email successfully sent to ${recipientEmail}.`);
+      const response = await emailjs.send(SERVICE_ID!, TEMPLATE_ID!, templateParams, USER_ID!);
+      detailedMessages.push(`Email successfully sent to ${recipientEmail}.`);
     } catch (error: any) {
-      console.error(`Error sending email to ${recipientEmail} with EmailJS from class-schedule/actions.ts:`, error);
-      messages.push(`Failed to send email to ${recipientEmail}: ${error.text || error.message || 'Unknown error'}`);
+      console.error(`Failed to send email to ${recipientEmail} via EmailJS from class-schedule/actions.ts. Status: ${error?.status}, Text: ${error?.text}. Full error:`, error);
+      detailedMessages.push(`Failed for ${recipientEmail}: ${error?.text || error?.message || 'Unknown EmailJS error'}`);
       allSuccessful = false;
     }
   }
-  return { success: allSuccessful, message: messages.join(' ') };
+  
+  const overallMessage = allSuccessful 
+    ? `Successfully sent ${sendToAddresses.length} email(s).` 
+    : `Email sending attempted. Results: ${detailedMessages.join('; ')}`;
+
+  return { success: allSuccessful, message: overallMessage };
 }
 
 
@@ -221,3 +227,4 @@ export async function deleteClassScheduleAction(id: string, school_id: string): 
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
 }
+
