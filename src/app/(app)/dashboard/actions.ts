@@ -49,8 +49,7 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
       const { data: announcements, error: annError } = await supabase
         .from('announcements')
         .select('id, title, date, author_name, posted_by_role, target_class:target_class_id ( name, division )')
-        .eq('school_id', schoolId)
-        .or('target_class_id.is.null') // General announcements
+        .eq('school_id', schoolId) // Fetch all announcements for this school
         .order('date', { ascending: false })
         .limit(3);
       if (annError) console.error("Error fetching announcements for dashboard:", annError.message);
