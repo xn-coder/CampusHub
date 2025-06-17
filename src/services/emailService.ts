@@ -1,10 +1,11 @@
+
 // src/services/emailService.ts
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { UserRole } from '@/types';
 
-// EmailJS configuration and sendEmail function have been moved to individual action files.
+// EmailJS configuration and the sendEmail function have been moved to /api/send-email/route.ts
 // This file now only contains helper functions for fetching email addresses.
 
 export async function getStudentEmailsByClassId(classId: string, schoolId: string): Promise<string[]> {
@@ -16,7 +17,7 @@ export async function getStudentEmailsByClassId(classId: string, schoolId: strin
     .eq('class_id', classId)
     .eq('school_id', schoolId);
   if (error || !data) {
-    console.error("Error fetching student emails by class ID:", error);
+    console.error("[LOG emailService] Error fetching student emails by class ID:", error);
     return [];
   }
   return data.map(s => s.email).filter(email => !!email) as string[];
@@ -31,7 +32,7 @@ export async function getTeacherEmailByTeacherProfileId(teacherProfileId: string
     .eq('id', teacherProfileId) 
     .single();
   if (error || !data) {
-    console.error("Error fetching teacher email by teacher profile ID:", error);
+    console.error("[LOG emailService] Error fetching teacher email by teacher profile ID:", error);
     return null;
   }
   return data.email;
@@ -51,7 +52,7 @@ export async function getAllUserEmailsInSchool(schoolId: string, roles?: UserRol
   
   const { data, error } = await query;
   if (error || !data) {
-    console.error("Error fetching all user emails in school:", error);
+    console.error("[LOG emailService] Error fetching all user emails in school:", error);
     return [];
   }
   return data.map(u => u.email).filter(email => !!email) as string[];

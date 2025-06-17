@@ -7,75 +7,7 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { Assignment, UserRole } from '@/types';
-import emailjs from 'emailjs-com';
 import { getStudentEmailsByClassId } from '@/services/emailService';
-
-const SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
-const TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
-const USER_ID = process.env.EMAILJS_PUBLIC_KEY;
-
-let isEmailJsConfigured = false;
-if (SERVICE_ID && TEMPLATE_ID && USER_ID) {
-  isEmailJsConfigured = true;
-  console.log("[LOG] EmailJS IS CONFIGURED in src/app/(app)/teacher/post-assignments/actions.ts");
-} else {
-  console.warn(
-    "[LOG] EmailJS IS NOT CONFIGURED in src/app/(app)/teacher/post-assignments/actions.ts. Required environment variables (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY) are missing. Emails will be mocked."
-  );
-}
-
-interface EmailOptions {
-  to: string | string[];
-  subject: string;
-  html: string;
-}
-
-async function sendEmail(options: EmailOptions): Promise<{ success: boolean; message: string }> {
-  console.log(`[LOG sendEmail_entry - src/app/(app)/teacher/post-assignments/actions.ts] Called. isEmailJsConfigured: ${isEmailJsConfigured}. Options subject: ${options.subject}`);
-  
-  if (!isEmailJsConfigured || !SERVICE_ID || !TEMPLATE_ID || !USER_ID) {
-    console.log(`[LOG sendEmail_mock - src/app/(app)/teacher/post-assignments/actions.ts] Mocking email.`);
-    console.log(" MOCK To:", Array.isArray(options.to) ? options.to.join(', ') : options.to);
-    console.log(" MOCK Subject:", options.subject);
-    console.log(" MOCK HTML Body:", options.html.substring(0, 200) + (options.html.length > 200 ? "..." : ""));
-    return { success: true, message: "Email sending is mocked as EmailJS is not configured." };
-  }
-
-  const sendToAddresses = Array.isArray(options.to) ? options.to : [options.to];
-  let allSuccessful = true;
-  const detailedMessages: string[] = [];
-
-  console.log(`[LOG sendEmail_attempt - src/app/(app)/teacher/post-assignments/actions.ts] Attempting to send ${sendToAddresses.length} email(s) via EmailJS.`);
-
-  for (const recipientEmail of sendToAddresses) {
-    const templateParams = {
-      to_email: recipientEmail,
-      subject_line: options.subject,
-      html_body: options.html,
-      from_name: 'CampusHub Notifications',
-      reply_to: recipientEmail,
-    };
-
-    try {
-      console.log(`[LOG sendEmail_sending - src/app/(app)/teacher/post-assignments/actions.ts] Sending to ${recipientEmail}`);
-      const response = await emailjs.send(SERVICE_ID!, TEMPLATE_ID!, templateParams, USER_ID!);
-      console.log(`[LOG sendEmail_success - src/app/(app)/teacher/post-assignments/actions.ts] EmailJS success for ${recipientEmail}: Status ${response.status}, Text: ${response.text}`);
-      detailedMessages.push(`Email successfully sent to ${recipientEmail}.`);
-    } catch (error: any) {
-      console.error(`[LOG sendEmail_error - src/app/(app)/teacher/post-assignments/actions.ts] Failed for ${recipientEmail}. Status: ${error?.status}, Text: ${error?.text}. Full error:`, error);
-      detailedMessages.push(`Failed for ${recipientEmail}: ${error?.text || error?.message || 'Unknown EmailJS error'}`);
-      allSuccessful = false;
-    }
-  }
-  
-  const overallMessage = allSuccessful 
-    ? `Successfully sent ${sendToAddresses.length} email(s).` 
-    : `Email sending attempted. Results: ${detailedMessages.join('; ')}`;
-  
-  console.log(`[LOG sendEmail_return - src/app/(app)/teacher/post-assignments/actions.ts] Returning:`, { success: allSuccessful, message: overallMessage });
-  return { success: allSuccessful, message: overallMessage };
-}
-
 
 const NO_SUBJECT_VALUE_INTERNAL = "__NO_SUBJECT__";
 
@@ -133,12 +65,23 @@ export async function postAssignmentAction(
         <p>Description: ${assignment.description || 'No description provided.'}</p>
       `;
       
-      console.log(`[postAssignmentAction] Attempting to send assignment notification to: ${studentEmails.join(', ')}`);
-      await sendEmail({
-        to: studentEmails,
-        subject: emailSubject,
-        html: emailBody,
-      });
+      try {
+        console.log(`[postAssignmentAction] Attempting to send assignment notification via API to: ${studentEmails.join(', ')}`);
+        const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
+        const apiResponse = await fetch(emailApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: studentEmails, subject: emailSubject, html: emailBody }),
+        });
+        const result = await apiResponse.json();
+        if (!apiResponse.ok || !result.success) {
+          console.error(`[postAssignmentAction] Failed to send email via API: ${result.message || apiResponse.statusText}`);
+        } else {
+          console.log(`[postAssignmentAction] Email successfully dispatched via API: ${result.message}`);
+        }
+      } catch (apiError: any) {
+        console.error(`[postAssignmentAction] Error calling email API: ${apiError.message}`);
+      }
     }
   }
 
