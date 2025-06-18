@@ -4,46 +4,46 @@
 
 @layer base {
   :root {
-    --background: 220 15% 10%; /* Very Dark Blue/Gray */
-    --foreground: 210 20% 90%; /* Light Gray for text */
+    /* Light Theme (Default) */
+    --background: 0 0% 100%; /* white */
+    --foreground: 220 40% 15%; /* very dark desaturated blue, almost black */
 
-    --muted: 220 15% 20%;
-    --muted-foreground: 210 15% 65%;
+    --muted: 220 30% 95%; /* very light blue-gray */
+    --muted-foreground: 220 20% 45%; /* medium blue-gray */
 
-    --popover: 220 15% 8%;
-    --popover-foreground: 210 20% 90%;
+    --popover: 0 0% 100%; /* white */
+    --popover-foreground: 220 40% 15%;
 
-    --card: 220 15% 15%; /* Content background */
-    --card-foreground: 210 20% 90%;
+    --card: 0 0% 100%; /* white cards */
+    --card-foreground: 220 40% 15%;
 
-    --border: 220 15% 25%;
-    --input: 220 15% 13%;
+    --border: 220 20% 88%; /* light blue-gray border */
+    --input: 220 30% 97%; /* very light blue-gray input background */
 
-    --primary: 175 60% 45%; /* Teal */
-    --primary-foreground: 0 0% 100%; /* White text on Teal */
+    --primary: 220 70% 45%; /* navy blue */
+    --primary-foreground: 0 0% 100%; /* white */
 
-    --secondary: 220 15% 22%; 
-    --secondary-foreground: 210 20% 90%;
+    --secondary: 220 40% 90%; /* light blue-gray for secondary elements */
+    --secondary-foreground: 220 70% 35%; /* darker navy for text on secondary */
 
-    --accent: 175 60% 45%; /* Teal for general accent */
-    --accent-foreground: 0 0% 100%; /* White text on Teal */
+    --accent: 210 80% 55%; /* a brighter, slightly lighter blue for accents */
+    --accent-foreground: 0 0% 100%; /* white */
 
-    --destructive: 0 70% 55%;
+    --destructive: 0 70% 55%; /* red */
     --destructive-foreground: 0 0% 98%;
 
-    --ring: 175 60% 45%; /* Teal for focus rings */
-
+    --ring: 210 80% 55%; /* brighter blue for focus rings */
     --radius: 0.5rem;
 
-    /* Sidebar specific colors */
-    --sidebar-background: 220 15% 12%;
-    --sidebar-foreground: 210 20% 85%;
-    --sidebar-primary: 175 65% 50%; /* Active sidebar item */
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 15% 18%; /* Hover color */
-    --sidebar-accent-foreground: 210 20% 95%;
-    --sidebar-border: 220 15% 20%;
-    --sidebar-ring: 175 60% 45%;
+    /* Sidebar specific colors for light mode */
+    --sidebar-background: 220 30% 96%; /* very light, slightly desaturated blue-gray */
+    --sidebar-foreground: 220 50% 25%; /* dark navy */
+    --sidebar-primary: 220 70% 45%; /* navy blue, same as primary */
+    --sidebar-primary-foreground: 0 0% 100%; /* white */
+    --sidebar-accent: 220 40% 90%; /* hover color - light blue-gray */
+    --sidebar-accent-foreground: 220 70% 35%; /* darker navy on hover */
+    --sidebar-border: 220 20% 88%; /* light border for sidebar elements */
+    --sidebar-ring: 210 80% 55%;
 
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
@@ -53,6 +53,7 @@
   }
 
   .dark {
+    /* Dark Theme */
     --background: 220 15% 10%; /* Very Dark Blue/Gray */
     --foreground: 210 20% 90%; /* Light Gray for text */
 
@@ -92,7 +93,7 @@
     --sidebar-border: 220 15% 20%;
     --sidebar-ring: 175 60% 45%;
     
-    --chart-1: 220 70% 50%;
+    --chart-1: 220 70% 50%; /* Keep dark theme chart colors */
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;

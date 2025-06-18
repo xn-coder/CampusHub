@@ -1,4 +1,3 @@
-
 "use client";
 
 import type React from 'react';
@@ -10,6 +9,7 @@ import SidebarNav from './sidebar-nav';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { ThemeToggleButton } from '@/components/theme-toggle-button';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -22,6 +22,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('currentUserRole');
+      localStorage.removeItem('currentUserId');
+      localStorage.removeItem('currentUserName');
     }
     toast({
       title: "Logout Successful",
@@ -46,10 +48,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <SidebarNav />
         </SidebarContent>
         <SidebarFooter className="p-2 border-t border-sidebar-border">
-           <Button variant="ghost" className="w-full justify-start group-data-[collapsible=icon]:justify-center" onClick={handleLogout}>
-            <LogOut className="mr-2 group-data-[collapsible=icon]:mr-0" />
-            <span className="group-data-[collapsible=icon]:hidden">Logout</span>
-          </Button>
+          <div className="flex flex-col gap-1 group-data-[collapsible=icon]:items-center">
+            <ThemeToggleButton />
+            <Button variant="ghost" className="w-full justify-start group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:p-0" onClick={handleLogout}>
+              <LogOut className="mr-2 group-data-[collapsible=icon]:mr-0" />
+              <span className="group-data-[collapsible=icon]:hidden">Logout</span>
+            </Button>
+          </div>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="flex-1 bg-background">
