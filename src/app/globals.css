@@ -23,8 +23,8 @@
     --primary: 220 70% 45%; /* navy blue */
     --primary-foreground: 0 0% 100%; /* white */
 
-    --secondary: 220 40% 90%; /* light blue-gray for secondary elements */
-    --secondary-foreground: 220 70% 35%; /* darker navy for text on secondary */
+    --secondary: 220 70% 45%; /* navy blue - UPDATED */
+    --secondary-foreground: 0 0% 100%; /* white - UPDATED for contrast */
 
     --accent: 210 80% 55%; /* a brighter, slightly lighter blue for accents */
     --accent-foreground: 0 0% 100%; /* white */
