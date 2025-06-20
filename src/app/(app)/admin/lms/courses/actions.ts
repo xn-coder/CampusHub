@@ -12,7 +12,10 @@ interface CourseInput {
   description?: string;
   is_paid: boolean;
   price?: number;
-  school_id?: string; // Optional: for school-specific courses
+  school_id?: string | null;
+  target_audience?: 'student' | 'teacher' | null;
+  target_class_id?: string | null;
+  created_by_user_id: string;
 }
 
 export async function createCourseAction(
@@ -24,7 +27,10 @@ export async function createCourseAction(
   const insertData = {
     ...input,
     id: courseId,
-    price: input.is_paid ? input.price : null, 
+    price: input.is_paid ? input.price : null,
+    school_id: input.school_id || null,
+    target_audience: input.target_audience || null,
+    target_class_id: input.target_audience === 'student' ? (input.target_class_id || null) : null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -49,14 +55,24 @@ export async function updateCourseAction(
   input: Partial<CourseInput>
 ): Promise<{ ok: boolean; message: string; course?: Course }> {
   const supabaseAdmin = createSupabaseServerClient();
-   const updateData = {
-    ...input,
+   const updateData: Partial<Course> = { // Use Partial<Course> for type safety
+    title: input.title,
+    description: input.description,
+    is_paid: input.is_paid,
     price: input.is_paid ? input.price : null,
+    school_id: input.school_id === undefined ? undefined : (input.school_id || null), // Handle undefined vs null
+    target_audience: input.target_audience === undefined ? undefined : (input.target_audience || null),
+    target_class_id: input.target_audience === 'student' ? (input.target_class_id || null) : null,
     updated_at: new Date().toISOString(),
   };
+
+  // Filter out undefined properties to avoid sending them in the update
+  const filteredUpdateData = Object.fromEntries(Object.entries(updateData).filter(([_, v]) => v !== undefined));
+
+
   const { error, data } = await supabaseAdmin
     .from('lms_courses')
-    .update(updateData)
+    .update(filteredUpdateData)
     .eq('id', id)
     .select()
     .single();
@@ -256,7 +272,6 @@ export async function enrollUserInCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
-  // revalidatePath('/student/study-material'); // Removed as page is removed
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} enrolled successfully.` };
 }
 
@@ -282,7 +297,6 @@ export async function unenrollUserFromCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
-  // revalidatePath('/student/study-material'); // Removed as page is removed
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} unenrolled successfully.` };
 }
 
@@ -375,7 +389,7 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
   const { userProfileId, userRole, userSchoolId } = input;
 
   try {
-    let courseQuery = supabase.from('lms_courses').select('*');
+    let courseQuery = supabase.from('lms_courses').select('*, target_class:target_class_id(name,division)');
     if (userSchoolId && userRole !== 'superadmin') {
       courseQuery = courseQuery.or(`school_id.eq.${userSchoolId},school_id.is.null`);
     } else if (userRole !== 'superadmin') { 
@@ -568,9 +582,6 @@ export async function activateCourseWithCodeAction(
 
     revalidatePath('/lms/available-courses');
     revalidatePath(`/lms/courses/${codeToActivate.course_id}`);
-    if (userRole === 'student') {
-      // revalidatePath('/student/study-material'); // Removed as page is removed
-    }
 
 
     return { 
@@ -592,5 +603,6 @@ export async function activateCourseWithCodeAction(
     
 
     
+
 
 

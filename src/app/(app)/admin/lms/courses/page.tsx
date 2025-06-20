@@ -10,25 +10,28 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { PlusCircle, Edit2, Trash2, Save, Library, Users, Settings, UserPlus, KeyRound, Copy, Loader2 } from 'lucide-react';
-import type { Course, CourseActivationCode, User } from '@/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { Course, CourseActivationCode, User, ClassData, UserRole } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { createCourseAction, updateCourseAction, deleteCourseAction, generateActivationCodesAction } from './actions';
+import { PlusCircle, Edit2, Trash2, Save, Library, Settings, UserPlus, KeyRound, Copy, Loader2, BookUser, Users as UsersIcon } from 'lucide-react';
 
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
+
+async function fetchAdminSchoolIdAndRole(adminUserId: string): Promise<{ schoolId: string | null, role: UserRole | null }> {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('school_id, role')
+    .eq('id', adminUserId)
     .single();
-  if (error || !school) {
-    console.error("Error fetching admin's school:", error?.message);
-    return null;
+  
+  if (error || !user) {
+    console.error("Error fetching admin's school/role:", error?.message);
+    return { schoolId: null, role: null };
   }
-  return school.id;
+  return { schoolId: user.school_id, role: user.role as UserRole };
 }
 
 export default function ManageCoursesPage() {
@@ -38,7 +41,10 @@ export default function ManageCoursesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
-  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null); // For school-specific courses
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  const [allClassesInSchool, setAllClassesInSchool] = useState<ClassData[]>([]);
+
 
   const [isCourseDialogOpen, setIsCourseDialogOpen] = useState(false);
   const [isCodeDialogOpen, setIsCodeDialogOpen] = useState(false);
@@ -49,42 +55,68 @@ export default function ManageCoursesPage() {
   const [numCodesToGenerate, setNumCodesToGenerate] = useState<number>(1);
   const [codeExpiresInDays, setCodeExpiresInDays] = useState<number>(365);
 
+  // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState<number | ''>('');
+  const [selectedTargetAudience, setSelectedTargetAudience] = useState<'student' | 'teacher' | ''>('');
+  const [selectedTargetClassId, setSelectedTargetClassId] = useState<string>(''); // Stores class ID or 'all_students_in_school'
+
 
   useEffect(() => {
     const adminId = localStorage.getItem('currentUserId');
     setCurrentAdminUserId(adminId);
     if (adminId) {
-      fetchAdminSchoolId(adminId).then(schoolId => {
-        setCurrentSchoolId(schoolId); // May be null if admin is not school-specific (e.g. superadmin creating global courses)
-        fetchCourses(schoolId); // Pass schoolId to fetch relevant courses
+      fetchAdminSchoolIdAndRole(adminId).then(({schoolId, role}) => {
+        setCurrentSchoolId(schoolId);
+        setCurrentUserRole(role);
+        fetchCourses(schoolId, adminId, role);
+        if (schoolId) {
+          fetchClassesForSchool(schoolId);
+        }
       });
     } else {
         toast({title: "Error", description: "Admin user not identified.", variant: "destructive"});
         setIsLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast]);
 
-  async function fetchCourses(schoolId: string | null) {
-    setIsLoading(true);
-    let query = supabase.from('lms_courses').select('*').order('created_at', { ascending: false });
-    // If schoolId is available, filter by it OR allow courses with NULL school_id (global courses)
-    // This logic depends on how you want to scope courses (global vs school-specific)
-    // For now, let's assume an admin sees courses they created or that are for their school, or global ones
-    // This might require more complex filtering based on created_by_user_id or school_id
-    if (schoolId && currentAdminUserId) { // A school admin might only see their school's courses or global ones
-        query = query.or(`school_id.eq.${schoolId},school_id.is.null,created_by_user_id.eq.${currentAdminUserId}`);
-    } else if (currentAdminUserId) { // A superadmin might see all courses, or only global ones they made
-        query = query.or(`school_id.is.null,created_by_user_id.eq.${currentAdminUserId}`);
+  async function fetchClassesForSchool(schoolId: string) {
+    const { data, error } = await supabase.from('classes').select('id, name, division').eq('school_id', schoolId);
+    if (error) {
+      toast({ title: "Error fetching classes", description: error.message, variant: "destructive" });
+      setAllClassesInSchool([]);
+    } else {
+      setAllClassesInSchool(data || []);
     }
+  }
 
+  async function fetchCourses(schoolId: string | null, adminUserId: string | null, userRole: UserRole | null) {
+    setIsLoading(true);
+    let query = supabase.from('lms_courses').select('*, target_class:target_class_id(name,division)').order('created_at', { ascending: false });
+    
+    if (userRole === 'superadmin') {
+      // Superadmin sees all courses
+    } else if (schoolId && adminUserId) { 
+        query = query.or(`school_id.eq.${schoolId},school_id.is.null`); // Admin sees their school's courses + global
+    } else if (adminUserId) { 
+        query = query.is('school_id', null); // Admin with no school sees only global
+    } else {
+      setCourses([]);
+      setIsLoading(false);
+      return;
+    }
 
     const { data, error } = await query;
     if (error) {
-      toast({ title: "Error", description: "Failed to fetch courses.", variant: "destructive" });
+      console.error("[LMS Courses Page] Error fetching courses from Supabase:", error);
+      let errorMessage = "Failed to fetch courses.";
+      if (error.message) errorMessage += ` Details: ${error.message}`;
+      else if (Object.keys(error).length > 0) errorMessage += ` Details: ${JSON.stringify(error)}`;
+
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
       setCourses([]);
     } else {
       setCourses(data || []);
@@ -98,6 +130,8 @@ export default function ManageCoursesPage() {
     setDescription('');
     setIsPaid(false);
     setPrice('');
+    setSelectedTargetAudience('');
+    setSelectedTargetClassId('');
     setEditingCourse(null);
   };
 
@@ -108,6 +142,8 @@ export default function ManageCoursesPage() {
       setDescription(course.description || '');
       setIsPaid(course.is_paid);
       setPrice(course.price ?? '');
+      setSelectedTargetAudience(course.target_audience || '');
+      setSelectedTargetClassId(course.target_class_id || (course.target_audience === 'student' && !course.target_class_id && course.school_id ? 'all_students_in_school' : ''));
     } else {
       resetCourseForm();
     }
@@ -124,6 +160,15 @@ export default function ManageCoursesPage() {
       toast({ title: "Error", description: "Price is required for paid courses and must be greater than 0.", variant: "destructive" });
       return;
     }
+    if (!selectedTargetAudience) {
+      toast({ title: "Error", description: "Target audience must be selected.", variant: "destructive"});
+      return;
+    }
+    if (selectedTargetAudience === 'student' && currentSchoolId && !selectedTargetClassId) {
+      toast({ title: "Error", description: "Target class must be selected for student audience in a school-specific course.", variant: "destructive"});
+      return;
+    }
+
     setIsSubmitting(true);
 
     const courseData = {
@@ -131,7 +176,10 @@ export default function ManageCoursesPage() {
       description: description.trim() || undefined,
       is_paid: isPaid,
       price: isPaid ? Number(price) : undefined,
-      school_id: currentSchoolId || undefined, // Assign to current admin's school if available
+      school_id: currentUserRole === 'superadmin' && !currentSchoolId ? null : currentSchoolId, // Superadmin can create global (null school_id) if they don't have a context school
+      target_audience: selectedTargetAudience as 'student' | 'teacher',
+      target_class_id: (selectedTargetAudience === 'student' && selectedTargetClassId && selectedTargetClassId !== 'all_students_in_school') ? selectedTargetClassId : null,
+      created_by_user_id: currentAdminUserId,
     };
 
     let result;
@@ -145,7 +193,7 @@ export default function ManageCoursesPage() {
       toast({ title: editingCourse ? "Course Updated" : "Course Added", description: result.message });
       resetCourseForm();
       setIsCourseDialogOpen(false);
-      fetchCourses(currentSchoolId);
+      fetchCourses(currentSchoolId, currentAdminUserId, currentUserRole);
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -160,7 +208,7 @@ export default function ManageCoursesPage() {
       const result = await deleteCourseAction(courseId);
       toast({ title: result.ok ? "Course Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
       if (result.ok) {
-        fetchCourses(currentSchoolId);
+        fetchCourses(currentSchoolId, currentAdminUserId, currentUserRole);
       }
       setIsSubmitting(false);
     }
@@ -193,7 +241,7 @@ export default function ManageCoursesPage() {
       course_id: courseForCodeGeneration.id,
       num_codes: numCodesToGenerate,
       expires_in_days: codeExpiresInDays,
-      school_id: courseForCodeGeneration.school_id || undefined, // Pass school_id if course is school-specific
+      school_id: courseForCodeGeneration.school_id || undefined,
     });
 
     if (result.ok && result.generatedCodes) {
@@ -203,13 +251,26 @@ export default function ManageCoursesPage() {
       toast({ title: "Error Generating Codes", description: result.message, variant: "destructive"});
     }
     setIsSubmitting(false);
-    // Don't close dialog, let admin see codes
   };
 
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code)
       .then(() => toast({ title: "Code Copied!", description: code }))
       .catch(() => toast({ title: "Copy Failed", variant: "destructive"}));
+  };
+
+  const getTargetAudienceDisplay = (audience?: 'student' | 'teacher' | null) => {
+    if (!audience) return 'N/A';
+    return audience.charAt(0).toUpperCase() + audience.slice(1);
+  };
+
+  const getTargetClassDisplay = (course: Course) => {
+    if (course.target_audience !== 'student') return 'N/A';
+    if (course.target_class_id) {
+      const cls = allClassesInSchool.find(c => c.id === course.target_class_id);
+      return cls ? `${cls.name} - ${cls.division}` : 'Unknown Class';
+    }
+    return course.school_id ? 'All Students (School)' : 'All Students (Global)';
   };
 
   return (
@@ -238,10 +299,11 @@ export default function ManageCoursesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
-                  <TableHead>Description</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Price</TableHead>
                   <TableHead>School</TableHead>
+                  <TableHead>Target Audience</TableHead>
+                  <TableHead>Target Class</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -249,10 +311,11 @@ export default function ManageCoursesPage() {
                 {courses.map((course) => (
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
-                    <TableCell className="max-w-xs truncate">{course.description}</TableCell>
                     <TableCell>{course.is_paid ? 'Paid' : 'Unpaid'}</TableCell>
                     <TableCell>{course.is_paid && course.price ? `$${course.price.toFixed(2)}` : 'N/A'}</TableCell>
                     <TableCell>{course.school_id ? 'School-Specific' : 'Global'}</TableCell>
+                    <TableCell>{getTargetAudienceDisplay(course.target_audience)}</TableCell>
+                    <TableCell>{getTargetClassDisplay(course)}</TableCell>
                     <TableCell className="space-x-1 text-right">
                       <Button variant="outline" size="sm" asChild disabled={isSubmitting}>
                         <Link href={`/admin/lms/courses/${course.id}/content`}>
@@ -318,7 +381,34 @@ export default function ManageCoursesPage() {
                   <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 49.99" step="0.01" min="0.01" required={isPaid} disabled={isSubmitting}/>
                 </div>
               )}
-              {/* Add school_id selection if superadmin is creating and it can be school-specific */}
+              <div>
+                <Label htmlFor="targetAudience">Target Audience</Label>
+                 <Select value={selectedTargetAudience} onValueChange={(value) => setSelectedTargetAudience(value as 'student' | 'teacher' | '')} required disabled={isSubmitting}>
+                    <SelectTrigger id="targetAudience"><SelectValue placeholder="Select target audience"/></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="student"><UsersIcon className="mr-2 h-4 w-4 inline-block"/>Students</SelectItem>
+                        <SelectItem value="teacher"><BookUser className="mr-2 h-4 w-4 inline-block"/>Teachers</SelectItem>
+                    </SelectContent>
+                 </Select>
+              </div>
+              {selectedTargetAudience === 'student' && (currentUserRole === 'admin' && currentSchoolId) && (
+                <div>
+                    <Label htmlFor="targetClassId">Target Class (for Students)</Label>
+                    <Select value={selectedTargetClassId} onValueChange={setSelectedTargetClassId} required disabled={isSubmitting}>
+                        <SelectTrigger id="targetClassId"><SelectValue placeholder="Select target class for students"/></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all_students_in_school">All Students in this School</SelectItem>
+                            {allClassesInSchool.map(cls => (
+                                <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                            ))}
+                             {allClassesInSchool.length === 0 && <SelectItem value="no_classes" disabled>No classes found for this school</SelectItem>}
+                        </SelectContent>
+                    </Select>
+                </div>
+              )}
+               {selectedTargetAudience === 'student' && currentUserRole === 'superadmin' && !currentSchoolId && (
+                 <p className="text-xs text-muted-foreground">For global student courses, class selection is not applicable.</p>
+              )}
             </div>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
