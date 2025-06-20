@@ -61,7 +61,7 @@ export default function ManageCoursesPage() {
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState<number | ''>('');
   const [selectedTargetAudience, setSelectedTargetAudience] = useState<'student' | 'teacher' | ''>('');
-  const [selectedTargetClassId, setSelectedTargetClassId] = useState<string>(''); // Stores class ID or 'all_students_in_school'
+  const [selectedTargetClassId, setSelectedTargetClassId] = useState<string>(''); 
 
 
   useEffect(() => {
@@ -95,15 +95,20 @@ export default function ManageCoursesPage() {
 
   async function fetchCourses(schoolId: string | null, adminUserId: string | null, userRole: UserRole | null) {
     setIsLoading(true);
+    // Corrected line: Ensure 'target_class:target_class_id(...)' is used.
     let query = supabase.from('lms_courses').select('*, target_class:target_class_id(name,division)').order('created_at', { ascending: false });
     
     if (userRole === 'superadmin') {
-      // Superadmin sees all courses
-    } else if (schoolId && adminUserId) { 
-        query = query.or(`school_id.eq.${schoolId},school_id.is.null`); // Admin sees their school's courses + global
-    } else if (adminUserId) { 
-        query = query.is('school_id', null); // Admin with no school sees only global
+      // Superadmin sees all courses - no additional filters on the base query
+    } else if (schoolId) { 
+      // Admin sees their school's courses + global courses
+      query = query.or(`school_id.eq.${schoolId},school_id.is.null`);
+    } else if (!schoolId && userRole !== 'superadmin') {
+      // Admin with no school (or other roles if they could reach here) sees only global
+      query = query.is('school_id', null);
     } else {
+      // Fallback or unhandled role without schoolId and not superadmin: show nothing or log error
+      console.warn(`[LMS Courses Page] fetchCourses: Unhandled case for role ${userRole} and schoolId ${schoolId}. Fetching no courses.`);
       setCourses([]);
       setIsLoading(false);
       return;
@@ -111,11 +116,19 @@ export default function ManageCoursesPage() {
 
     const { data, error } = await query;
     if (error) {
-      console.error("[LMS Courses Page] Error fetching courses from Supabase:", error);
       let errorMessage = "Failed to fetch courses.";
-      if (error.message) errorMessage += ` Details: ${error.message}`;
-      else if (Object.keys(error).length > 0) errorMessage += ` Details: ${JSON.stringify(error)}`;
-
+      if (error.message) {
+        errorMessage += ` Details: ${error.message}`;
+      } else {
+        // Attempt to stringify if message is not present, to catch more info from the error object
+        try {
+          const errorString = JSON.stringify(error);
+          errorMessage += ` Raw Error: ${errorString}`;
+        } catch (e) {
+          errorMessage += " Raw error object could not be stringified.";
+        }
+      }
+      console.error("[LMS Courses Page] Error fetching courses from Supabase:", error); // Log raw error
       toast({ title: "Error", description: errorMessage, variant: "destructive" });
       setCourses([]);
     } else {
@@ -176,7 +189,7 @@ export default function ManageCoursesPage() {
       description: description.trim() || undefined,
       is_paid: isPaid,
       price: isPaid ? Number(price) : undefined,
-      school_id: currentUserRole === 'superadmin' && !currentSchoolId ? null : currentSchoolId, // Superadmin can create global (null school_id) if they don't have a context school
+      school_id: currentUserRole === 'superadmin' && !currentSchoolId ? null : currentSchoolId, 
       target_audience: selectedTargetAudience as 'student' | 'teacher',
       target_class_id: (selectedTargetAudience === 'student' && selectedTargetClassId && selectedTargetClassId !== 'all_students_in_school') ? selectedTargetClassId : null,
       created_by_user_id: currentAdminUserId,
@@ -475,5 +488,4 @@ export default function ManageCoursesPage() {
     </div>
   );
 }
-
     
