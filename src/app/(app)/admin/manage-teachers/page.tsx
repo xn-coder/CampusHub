@@ -18,17 +18,43 @@ import { supabase } from '@/lib/supabaseClient';
 import { createTeacherAction, updateTeacherAction, deleteTeacherAction } from './actions';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase 
+  // First, try to get school_id directly from the user's record
+  const { data: userRec, error: userErr } = await supabase
+    .from('users')
+    .select('school_id')
+    .eq('id', adminUserId)
+    .single();
+  
+  if (userErr && userErr.code !== 'PGRST116') {
+    console.error("Error fetching user record for school ID:", userErr.message);
+    // Don't return yet, try fallback
+  }
+
+  if (userRec?.school_id) {
+    return userRec.school_id;
+  }
+
+  // Fallback: If school_id is null on the user record, check if they are an admin_user_id in the schools table
+  console.warn(`User ${adminUserId} has no school_id on their record. Falling back to check schools.admin_user_id.`);
+  const { data: school, error: schoolError } = await supabase 
     .from('schools')
     .select('id')
     .eq('admin_user_id', adminUserId)
     .single();
-  if (error || !school) {
-    console.error("Error fetching admin's school or admin not linked:", error?.message || "No school record found for this admin_user_id.");
+
+  if (schoolError && schoolError.code !== 'PGRST116') { // Ignore "no rows found" error
+    console.error("Error during fallback school fetch for admin:", schoolError.message);
     return null;
   }
-  return school.id;
+  
+  if (school) {
+    return school.id;
+  }
+
+  console.error(`Could not determine school ID for admin ${adminUserId} via user record or schools table.`);
+  return null;
 }
+
 
 export default function ManageTeachersPage() {
   const { toast } = useToast();
@@ -379,5 +405,7 @@ export default function ManageTeachersPage() {
   );
 }
 
+
+    
 
     
