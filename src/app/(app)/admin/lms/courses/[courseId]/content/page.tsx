@@ -14,7 +14,7 @@ import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2, External
 import type { Course, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; // Still needed for course details
-import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction } from '../../actions';
+import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction, addCourseFileResourceAction } from '../../actions';
 
 type ResourceTabKey = 'ebooks' | 'videos' | 'notes' | 'webinars';
 const resourceTypeMapping: Record<ResourceTabKey, CourseResourceType> = {
@@ -39,6 +39,7 @@ export default function ManageCourseContentPage() {
   const [activeTab, setActiveTab] = useState<ResourceTabKey>('ebooks');
   const [resourceTitle, setResourceTitle] = useState('');
   const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
+  const [resourceFile, setResourceFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (courseId) {
@@ -50,18 +51,18 @@ export default function ManageCourseContentPage() {
 
   async function fetchCourseDetails() {
     setIsLoadingPage(true);
-    const { data, error } = await supabase // Client-side fetch for course details is fine if RLS allows admins to see courses
+    const { data, error } = await supabase
       .from('lms_courses')
       .select('*')
       .eq('id', courseId)
       .single();
     if (error || !data) {
       toast({ title: "Error", description: "Course not found or failed to load.", variant: "destructive" });
-      router.push('/admin/lms/courses'); // Redirect if course itself can't be found
+      router.push('/admin/lms/courses');
     } else {
       setCourse(data as Course);
     }
-    setIsLoadingPage(false); // Page loading (course details) is done
+    setIsLoadingPage(false);
   }
   
   async function fetchCourseResources() {
@@ -77,26 +78,67 @@ export default function ManageCourseContentPage() {
     setIsLoadingResources(false);
   }
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        if (file.type !== 'application/pdf') {
+            toast({ title: "Invalid File Type", description: "Please select a PDF file for e-books.", variant: "destructive" });
+            setResourceFile(null);
+            e.target.value = '';
+            return;
+        }
+        setResourceFile(file);
+    } else {
+        setResourceFile(null);
+    }
+  };
 
   const handleAddResource = async (e: FormEvent) => {
     e.preventDefault();
-    if (!course || !resourceTitle.trim() || !resourceUrlOrContent.trim()) {
-      toast({ title: "Error", description: "Title and URL/Content are required.", variant: "destructive" });
+    if (!course || !resourceTitle.trim()) {
+      toast({ title: "Error", description: "Title is required.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
+    
+    let result;
 
-    const result = await addCourseResourceAction({
-      course_id: course.id,
-      title: resourceTitle.trim(),
-      type: resourceTypeMapping[activeTab],
-      url_or_content: resourceUrlOrContent.trim(),
-    });
+    if (activeTab === 'ebooks') {
+        if (!resourceFile) {
+            toast({ title: "Error", description: "A PDF file is required for e-books.", variant: "destructive" });
+            setIsSubmitting(false);
+            return;
+        }
+        const formData = new FormData();
+        formData.append('resourceFile', resourceFile);
+        formData.append('courseId', course.id);
+        formData.append('title', resourceTitle.trim());
+        formData.append('type', resourceTypeMapping[activeTab]);
+
+        result = await addCourseFileResourceAction(formData);
+
+    } else {
+        if (!resourceUrlOrContent.trim()) {
+            toast({ title: "Error", description: "URL/Content is required for this resource type.", variant: "destructive" });
+            setIsSubmitting(false);
+            return;
+        }
+        result = await addCourseResourceAction({
+            course_id: course.id,
+            title: resourceTitle.trim(),
+            type: resourceTypeMapping[activeTab],
+            url_or_content: resourceUrlOrContent.trim(),
+        });
+    }
 
     if (result.ok) {
       toast({ title: "Resource Added", description: result.message });
       setResourceTitle('');
       setResourceUrlOrContent('');
+      setResourceFile(null);
+      const fileInput = document.getElementById(`${activeTab}-content-file-input`) as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+
       fetchCourseResources(); 
     } else {
       toast({ title: "Error Adding Resource", description: result.message, variant: "destructive" });
@@ -158,6 +200,7 @@ export default function ManageCourseContentPage() {
         setActiveTab(value as ResourceTabKey);
         setResourceTitle(''); 
         setResourceUrlOrContent('');
+        setResourceFile(null);
       }} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
           <TabsTrigger value="ebooks"><BookOpen className="mr-2 h-4 w-4" /> E-books</TabsTrigger>
@@ -187,29 +230,45 @@ export default function ManageCourseContentPage() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor={`${tabKey}-content`}>
-                        {getResourceInputType(tabKey as ResourceTabKey) === 'url' ? 'URL' : 'Content'}
-                    </Label>
-                    {getResourceInputType(tabKey as ResourceTabKey) === 'textarea' ? (
-                        <Textarea 
-                            id={`${tabKey}-content`} 
-                            value={resourceUrlOrContent} 
-                            onChange={(e) => setResourceUrlOrContent(e.target.value)} 
-                            placeholder={getResourcePlaceholder(tabKey as ResourceTabKey)} 
-                            required 
-                            rows={5}
-                            disabled={isSubmitting}
+                    {tabKey === 'ebooks' ? (
+                      <>
+                        <Label htmlFor={`${tabKey}-content-file-input`}>PDF File</Label>
+                        <Input
+                          id={`${tabKey}-content-file-input`}
+                          type="file"
+                          accept=".pdf"
+                          onChange={handleFileChange}
+                          required
+                          disabled={isSubmitting}
                         />
+                      </>
                     ) : (
-                        <Input 
-                            id={`${tabKey}-content`} 
-                            type="url"
-                            value={resourceUrlOrContent} 
-                            onChange={(e) => setResourceUrlOrContent(e.target.value)} 
-                            placeholder={getResourcePlaceholder(tabKey as ResourceTabKey)} 
-                            required 
-                            disabled={isSubmitting}
-                        />
+                      <>
+                        <Label htmlFor={`${tabKey}-content`}>
+                          {getResourceInputType(tabKey as ResourceTabKey) === 'url' ? 'URL' : 'Content'}
+                        </Label>
+                        {getResourceInputType(tabKey as ResourceTabKey) === 'textarea' ? (
+                          <Textarea 
+                              id={`${tabKey}-content`} 
+                              value={resourceUrlOrContent} 
+                              onChange={(e) => setResourceUrlOrContent(e.target.value)} 
+                              placeholder={getResourcePlaceholder(tabKey as ResourceTabKey)} 
+                              required 
+                              rows={5}
+                              disabled={isSubmitting}
+                          />
+                        ) : (
+                          <Input 
+                              id={`${tabKey}-content`} 
+                              type="url"
+                              value={resourceUrlOrContent} 
+                              onChange={(e) => setResourceUrlOrContent(e.target.value)} 
+                              placeholder={getResourcePlaceholder(tabKey as ResourceTabKey)} 
+                              required 
+                              disabled={isSubmitting}
+                          />
+                        )}
+                      </>
                     )}
                   </div>
                    <Button type="submit" disabled={isSubmitting || activeTab !== tabKey}>
@@ -228,7 +287,7 @@ export default function ManageCourseContentPage() {
                       <li key={res.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate" title={res.title}>{res.title}</p>
-                          {res.type === 'note' ? (
+                          {res.type === 'note' && !res.file_name ? (
                              <div className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2 mt-1 rounded-sm max-h-24 overflow-y-auto">
                                 {res.url_or_content}
                              </div>
@@ -240,7 +299,7 @@ export default function ManageCourseContentPage() {
                                 className="text-xs text-primary hover:underline flex items-center truncate"
                                 title={res.url_or_content}
                             >
-                                {res.url_or_content} <ExternalLink className="ml-1 h-3 w-3 shrink-0"/>
+                                {res.file_name || res.url_or_content} <ExternalLink className="ml-1 h-3 w-3 shrink-0"/>
                             </a>
                           )}
                         </div>

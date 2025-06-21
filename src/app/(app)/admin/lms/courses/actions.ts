@@ -595,6 +595,72 @@ export async function activateCourseWithCodeAction(
     return { ok: false, message: error.message || "An unexpected error occurred during course activation." };
   }
 }
+
+export async function addCourseFileResourceAction(
+  formData: FormData
+): Promise<{ ok: boolean; message: string; resource?: CourseResource }> {
+  const supabaseAdmin = createSupabaseServerClient();
+
+  const file = formData.get('resourceFile') as File | null;
+  const courseId = formData.get('courseId') as string | null;
+  const title = formData.get('title') as string | null;
+  const type = formData.get('type') as CourseResourceType | null;
+
+  if (!file || !courseId || !title || !type) {
+    return { ok: false, message: 'Missing required data for file resource.' };
+  }
+  
+  if (type !== 'ebook') {
+      return { ok: false, message: "File uploads are currently only supported for the 'E-book' resource type."};
+  }
+
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+  const filePath = `public/lms-resources/${courseId}/${uuidv4()}-${sanitizedFileName}`;
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from('lms-course-resources')
+    .upload(filePath, file);
+
+  if (uploadError) {
+    console.error('Supabase storage upload error for course resource:', uploadError);
+    return { ok: false, message: `Failed to upload file: ${uploadError.message}` };
+  }
+  
+  const { data: publicUrlData } = supabaseAdmin.storage
+      .from('lms-course-resources')
+      .getPublicUrl(filePath);
+
+  if (!publicUrlData) {
+      await supabaseAdmin.storage.from('lms-course-resources').remove([filePath]);
+      return { ok: false, message: 'Could not retrieve public URL for the uploaded file.' };
+  }
+
+  const resourceId = uuidv4();
+  const { error: dbError, data: resourceData } = await supabaseAdmin
+    .from('lms_course_resources')
+    .insert({ 
+        id: resourceId,
+        course_id: courseId, 
+        title: title, 
+        type: type, 
+        url_or_content: publicUrlData.publicUrl,
+        file_name: sanitizedFileName,
+        created_at: new Date().toISOString(), 
+        updated_at: new Date().toISOString() 
+    })
+    .select()
+    .single();
+
+  if (dbError) {
+    console.error('Error adding file course resource to DB:', dbError);
+    await supabaseAdmin.storage.from('lms-course-resources').remove([filePath]);
+    return { ok: false, message: `Failed to add resource record: ${dbError.message}` };
+  }
+
+  revalidatePath(`/admin/lms/courses/${courseId}/content`);
+  revalidatePath(`/lms/courses/${courseId}`);
+  return { ok: true, message: 'File resource added successfully.', resource: resourceData as CourseResource };
+}
     
     
     
@@ -603,6 +669,7 @@ export async function activateCourseWithCodeAction(
     
 
     
+
 
 
 
