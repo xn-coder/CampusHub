@@ -16,6 +16,7 @@ import type { Course, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
 import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction, addCourseFileResourceAction } from '../../actions';
+import PdfViewer from '@/components/shared/pdf-viewer';
 
 type ResourceTabKey = 'ebooks' | 'videos' | 'notes' | 'webinars';
 const resourceTypeMapping: Record<ResourceTabKey, CourseResourceType> = {
@@ -338,17 +339,13 @@ export default function ManageCourseContentPage() {
       </Button>
 
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="sm:max-w-4xl h-[90vh]">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-4xl h-[90vh] p-0">
+          <DialogHeader className="p-4 border-b">
             <DialogTitle>E-Book Preview</DialogTitle>
           </DialogHeader>
-          <div className="h-full w-full">
+          <div className="h-full w-full overflow-hidden">
             {previewUrl ? (
-              <iframe
-                src={previewUrl}
-                className="h-full w-full border-0"
-                title="E-Book Preview"
-              />
+                <PdfViewer fileUrl={previewUrl} />
             ) : (
               <div className="flex items-center justify-center h-full">
                 <p>No URL to preview.</p>
@@ -360,5 +357,3 @@ export default function ManageCourseContentPage() {
     </div>
   );
 }
-
-    

@@ -405,6 +405,24 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
     if (!coursesData) {
       return { ok: true, courses: [] };
     }
+    
+    // Filter courses based on user role and course target audience
+    const filteredByAudienceCourses = coursesData.filter(course => {
+      if (!course.target_audience) {
+        return true; // Show to everyone if not set
+      }
+      if (userRole === 'student' && course.target_audience === 'student') {
+        return true;
+      }
+      if (userRole === 'teacher' && course.target_audience === 'teacher') {
+        return true;
+      }
+      if (userRole === 'admin' || userRole === 'superadmin') {
+        return true; // Admins see all
+      }
+      return false;
+    });
+
 
     let enrolledCourseIds: string[] = [];
     if (userProfileId && (userRole === 'student' || userRole === 'teacher')) {
@@ -423,7 +441,7 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       }
     }
 
-    const coursesWithStatus: CourseWithEnrollmentStatus[] = coursesData.map(course => ({
+    const coursesWithStatus: CourseWithEnrollmentStatus[] = filteredByAudienceCourses.map(course => ({
       ...course,
       isEnrolled: (userRole === 'admin' || userRole === 'superadmin') ? true : enrolledCourseIds.includes(course.id),
     }));
@@ -661,15 +679,3 @@ export async function addCourseFileResourceAction(
   revalidatePath(`/lms/courses/${courseId}`);
   return { ok: true, message: 'File resource added successfully.', resource: resourceData as CourseResource };
 }
-    
-    
-    
-    
-    
-    
-
-    
-
-
-
-
