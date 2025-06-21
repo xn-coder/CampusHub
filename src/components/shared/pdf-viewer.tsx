@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { ZoomIn, ZoomOut, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// Use a stable CDN link for the PDF worker to prevent fetching errors.
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
 
 interface PdfViewerProps {
   fileUrl: string;
