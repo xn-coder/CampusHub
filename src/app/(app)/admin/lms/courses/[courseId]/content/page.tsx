@@ -10,10 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2, ExternalLink } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2, ExternalLink, Eye } from 'lucide-react';
 import type { Course, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient'; // Still needed for course details
+import { supabase } from '@/lib/supabaseClient'; 
 import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction, addCourseFileResourceAction } from '../../actions';
 
 type ResourceTabKey = 'ebooks' | 'videos' | 'notes' | 'webinars';
@@ -35,6 +36,9 @@ export default function ManageCourseContentPage() {
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingResources, setIsLoadingResources] = useState(false);
+
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<ResourceTabKey>('ebooks');
   const [resourceTitle, setResourceTitle] = useState('');
@@ -77,6 +81,11 @@ export default function ManageCourseContentPage() {
     }
     setIsLoadingResources(false);
   }
+
+  const handleOpenPreview = (url: string) => {
+    setPreviewUrl(url);
+    setIsPreviewOpen(true);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -303,9 +312,16 @@ export default function ManageCourseContentPage() {
                             </a>
                           )}
                         </div>
-                        <Button variant="destructive" size="icon" onClick={() => handleDeleteResource(res.id)} disabled={isSubmitting} className="ml-2 shrink-0">
-                          {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        </Button>
+                        <div className="flex gap-1 ml-2 shrink-0">
+                          {res.type === 'ebook' && res.url_or_content && (
+                            <Button variant="outline" size="icon" title="Preview E-book" onClick={() => handleOpenPreview(res.url_or_content)} disabled={isSubmitting}>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button variant="destructive" size="icon" title="Delete Resource" onClick={() => handleDeleteResource(res.id)} disabled={isSubmitting}>
+                            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          </Button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -320,6 +336,29 @@ export default function ManageCourseContentPage() {
        <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} className="mt-4 self-start" disabled={isSubmitting}>
         Back to Courses
       </Button>
+
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="sm:max-w-4xl h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>E-Book Preview</DialogTitle>
+          </DialogHeader>
+          <div className="h-full w-full">
+            {previewUrl ? (
+              <iframe
+                src={previewUrl}
+                className="h-full w-full border-0"
+                title="E-Book Preview"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p>No URL to preview.</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
+    
