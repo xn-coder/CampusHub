@@ -13,7 +13,7 @@ interface CourseInput {
   is_paid: boolean;
   price?: number;
   school_id?: string | null;
-  target_audience?: 'student' | 'teacher' | null;
+  target_audience?: 'student' | 'teacher' | 'both' | null;
   target_class_id?: string | null;
   created_by_user_id: string;
 }
@@ -30,7 +30,7 @@ export async function createCourseAction(
     price: input.is_paid ? input.price : null,
     school_id: input.school_id || null,
     target_audience: input.target_audience || null,
-    target_class_id: input.target_audience === 'student' ? (input.target_class_id || null) : null,
+    target_class_id: (input.target_audience === 'student' || input.target_audience === 'both') ? (input.target_class_id || null) : null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -59,12 +59,31 @@ export async function updateCourseAction(
     title: input.title,
     description: input.description,
     is_paid: input.is_paid,
-    price: input.is_paid ? input.price : null,
     school_id: input.school_id === undefined ? undefined : (input.school_id || null), // Handle undefined vs null
     target_audience: input.target_audience === undefined ? undefined : (input.target_audience || null),
-    target_class_id: input.target_audience === 'student' ? (input.target_class_id || null) : null,
     updated_at: new Date().toISOString(),
   };
+
+  if (input.is_paid !== undefined) {
+    updateData.price = input.is_paid ? input.price : null;
+  }
+
+  // Logic to handle target_class_id based on target_audience
+  // This assumes client sends consistent data for audience and class.
+  if (input.target_audience) {
+      if (input.target_audience === 'student' || input.target_audience === 'both') {
+          updateData.target_class_id = input.target_class_id || null;
+      } else {
+          // for 'teacher'
+          updateData.target_class_id = null;
+      }
+  } else if (input.target_audience === null) {
+      // for "Both" or "General" if implemented that way
+      updateData.target_class_id = input.target_class_id || null;
+  } else if(input.target_class_id !== undefined) {
+      // if only class_id is sent, preserve it
+      updateData.target_class_id = input.target_class_id || null;
+  }
 
   // Filter out undefined properties to avoid sending them in the update
   const filteredUpdateData = Object.fromEntries(Object.entries(updateData).filter(([_, v]) => v !== undefined));
@@ -408,19 +427,17 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
     
     // Filter courses based on user role and course target audience
     const filteredByAudienceCourses = coursesData.filter(course => {
-      if (!course.target_audience) {
-        return true; // Show to everyone if not set
-      }
-      if (userRole === 'student' && course.target_audience === 'student') {
-        return true;
-      }
-      if (userRole === 'teacher' && course.target_audience === 'teacher') {
-        return true;
-      }
       if (userRole === 'admin' || userRole === 'superadmin') {
-        return true; // Admins see all
+        return true; // Admins see all courses they have access to (school/global)
       }
-      return false;
+      if (!course.target_audience) {
+        return true; // No specific audience, show to all roles (student, teacher)
+      }
+      if (course.target_audience === 'both') {
+        return userRole === 'student' || userRole === 'teacher';
+      }
+      // Direct match for 'student' or 'teacher' roles
+      return userRole === course.target_audience;
     });
 
 

@@ -360,7 +360,7 @@ export interface Course {
   is_paid: boolean;
   price?: number | null;
   school_id?: string | null;
-  target_audience?: 'student' | 'teacher' | null;
+  target_audience?: 'student' | 'teacher' | 'both' | null;
   target_class_id?: string | null;
   created_by_user_id: string;
   created_at?: string;
@@ -416,5 +416,3 @@ export interface TeacherCourseEnrollment {
     course_id: string;
     assigned_at?: string;
 }
-
-

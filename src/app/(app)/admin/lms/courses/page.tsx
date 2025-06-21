@@ -60,7 +60,7 @@ export default function ManageCoursesPage() {
   const [description, setDescription] = useState('');
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState<number | ''>('');
-  const [selectedTargetAudience, setSelectedTargetAudience] = useState<'student' | 'teacher' | ''>('');
+  const [selectedTargetAudience, setSelectedTargetAudience] = useState<'student' | 'teacher' | 'both' | ''>('');
   const [selectedTargetClassId, setSelectedTargetClassId] = useState<string>(''); 
 
 
@@ -95,7 +95,6 @@ export default function ManageCoursesPage() {
 
   async function fetchCourses(schoolId: string | null, adminUserId: string | null, userRole: UserRole | null) {
     setIsLoading(true);
-    // Corrected line: Ensure 'target_class:target_class_id(...)' is used.
     let query = supabase.from('lms_courses').select('*, target_class:target_class_id(name,division)').order('created_at', { ascending: false });
     
     if (userRole === 'superadmin') {
@@ -107,7 +106,6 @@ export default function ManageCoursesPage() {
       // Admin with no school (or other roles if they could reach here) sees only global
       query = query.is('school_id', null);
     } else {
-      // Fallback or unhandled role without schoolId and not superadmin: show nothing or log error
       console.warn(`[LMS Courses Page] fetchCourses: Unhandled case for role ${userRole} and schoolId ${schoolId}. Fetching no courses.`);
       setCourses([]);
       setIsLoading(false);
@@ -120,7 +118,6 @@ export default function ManageCoursesPage() {
       if (error.message) {
         errorMessage += ` Details: ${error.message}`;
       } else {
-        // Attempt to stringify if message is not present, to catch more info from the error object
         try {
           const errorString = JSON.stringify(error);
           errorMessage += ` Raw Error: ${errorString}`;
@@ -156,7 +153,7 @@ export default function ManageCoursesPage() {
       setIsPaid(course.is_paid);
       setPrice(course.price ?? '');
       setSelectedTargetAudience(course.target_audience || '');
-      setSelectedTargetClassId(course.target_class_id || (course.target_audience === 'student' && !course.target_class_id && course.school_id ? 'all_students_in_school' : ''));
+      setSelectedTargetClassId(course.target_class_id || ((course.target_audience === 'student' || course.target_audience === 'both') && !course.target_class_id && course.school_id ? 'all_students_in_school' : ''));
     } else {
       resetCourseForm();
     }
@@ -177,8 +174,8 @@ export default function ManageCoursesPage() {
       toast({ title: "Error", description: "Target audience must be selected.", variant: "destructive"});
       return;
     }
-    if (selectedTargetAudience === 'student' && currentSchoolId && !selectedTargetClassId) {
-      toast({ title: "Error", description: "Target class must be selected for student audience in a school-specific course.", variant: "destructive"});
+    if ((selectedTargetAudience === 'student' || selectedTargetAudience === 'both') && currentSchoolId && !selectedTargetClassId) {
+      toast({ title: "Error", description: "Target class must be selected for student/both audience in a school-specific course.", variant: "destructive"});
       return;
     }
 
@@ -190,8 +187,8 @@ export default function ManageCoursesPage() {
       is_paid: isPaid,
       price: isPaid ? Number(price) : undefined,
       school_id: currentUserRole === 'superadmin' && !currentSchoolId ? null : currentSchoolId, 
-      target_audience: selectedTargetAudience as 'student' | 'teacher',
-      target_class_id: (selectedTargetAudience === 'student' && selectedTargetClassId && selectedTargetClassId !== 'all_students_in_school') ? selectedTargetClassId : null,
+      target_audience: selectedTargetAudience as 'student' | 'teacher' | 'both',
+      target_class_id: (selectedTargetAudience === 'student' || selectedTargetAudience === 'both') ? (selectedTargetClassId && selectedTargetClassId !== 'all_students_in_school' ? selectedTargetClassId : null) : null,
       created_by_user_id: currentAdminUserId,
     };
 
@@ -272,13 +269,14 @@ export default function ManageCoursesPage() {
       .catch(() => toast({ title: "Copy Failed", variant: "destructive"}));
   };
 
-  const getTargetAudienceDisplay = (audience?: 'student' | 'teacher' | null) => {
+  const getTargetAudienceDisplay = (audience?: 'student' | 'teacher' | 'both' | null) => {
     if (!audience) return 'N/A';
+    if (audience === 'both') return 'Students & Teachers';
     return audience.charAt(0).toUpperCase() + audience.slice(1);
   };
 
   const getTargetClassDisplay = (course: Course) => {
-    if (course.target_audience !== 'student') return 'N/A';
+    if (course.target_audience !== 'student' && course.target_audience !== 'both') return 'N/A';
     if (course.target_class_id) {
       const cls = allClassesInSchool.find(c => c.id === course.target_class_id);
       return cls ? `${cls.name} - ${cls.division}` : 'Unknown Class';
@@ -396,15 +394,16 @@ export default function ManageCoursesPage() {
               )}
               <div>
                 <Label htmlFor="targetAudience">Target Audience</Label>
-                 <Select value={selectedTargetAudience} onValueChange={(value) => setSelectedTargetAudience(value as 'student' | 'teacher' | '')} required disabled={isSubmitting}>
+                 <Select value={selectedTargetAudience} onValueChange={(value) => setSelectedTargetAudience(value as 'student' | 'teacher' | 'both' | '')} required disabled={isSubmitting}>
                     <SelectTrigger id="targetAudience"><SelectValue placeholder="Select target audience"/></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="student"><UsersIcon className="mr-2 h-4 w-4 inline-block"/>Students</SelectItem>
-                        <SelectItem value="teacher"><BookUser className="mr-2 h-4 w-4 inline-block"/>Teachers</SelectItem>
+                        <SelectItem value="student">Students</SelectItem>
+                        <SelectItem value="teacher">Teachers</SelectItem>
+                        <SelectItem value="both">Both Students &amp; Teachers</SelectItem>
                     </SelectContent>
                  </Select>
               </div>
-              {selectedTargetAudience === 'student' && (currentUserRole === 'admin' && currentSchoolId) && (
+              {(selectedTargetAudience === 'student' || selectedTargetAudience === 'both') && (currentUserRole === 'admin' && currentSchoolId) && (
                 <div>
                     <Label htmlFor="targetClassId">Target Class (for Students)</Label>
                     <Select value={selectedTargetClassId} onValueChange={setSelectedTargetClassId} required disabled={isSubmitting}>
@@ -419,7 +418,7 @@ export default function ManageCoursesPage() {
                     </Select>
                 </div>
               )}
-               {selectedTargetAudience === 'student' && currentUserRole === 'superadmin' && !currentSchoolId && (
+               {(selectedTargetAudience === 'student' || selectedTargetAudience === 'both') && currentUserRole === 'superadmin' && !currentSchoolId && (
                  <p className="text-xs text-muted-foreground">For global student courses, class selection is not applicable.</p>
               )}
             </div>
