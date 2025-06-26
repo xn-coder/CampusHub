@@ -360,47 +360,51 @@ export async function getStudentPendingFeeCountAction(
   }
 }
 
-export async function studentPayFeeAction(
-  feePaymentId: string,
+export async function studentPayAllFeesAction(
+  studentProfileId: string,
   schoolId: string
-): Promise<{ ok: boolean; message: string }> {
+): Promise<{ ok: boolean; message: string; paidCount: number }> {
   const supabaseAdmin = createSupabaseServerClient();
 
-  // First, get the full details of the fee assignment to ensure it exists and get assigned amount
-  const { data: feePayment, error: fetchError } = await supabaseAdmin
+  const { data: unpaidFees, error: fetchError } = await supabaseAdmin
     .from('student_fee_payments')
-    .select('assigned_amount')
-    .eq('id', feePaymentId)
+    .select('id, assigned_amount')
+    .eq('student_id', studentProfileId)
     .eq('school_id', schoolId)
-    .single();
+    .in('status', ['Pending', 'Partially Paid', 'Overdue']);
 
-  if (fetchError || !feePayment) {
-    console.error("Error fetching fee payment for student payment:", fetchError);
-    return { ok: false, message: "Fee assignment not found or could not be verified." };
+  if (fetchError) {
+    console.error("Error fetching unpaid fees:", fetchError);
+    return { ok: false, message: "Could not retrieve fee records to process payment.", paidCount: 0 };
   }
 
-  // Update the record to be fully paid
-  const { error: updateError } = await supabaseAdmin
+  if (!unpaidFees || unpaidFees.length === 0) {
+    return { ok: true, message: "No pending fees to pay.", paidCount: 0 };
+  }
+
+  const paymentUpdates = unpaidFees.map(fee => ({
+    id: fee.id,
+    paid_amount: fee.assigned_amount,
+    status: 'Paid' as PaymentStatus,
+    payment_date: new Date().toISOString(),
+  }));
+
+  const { count, error: updateError } = await supabaseAdmin
     .from('student_fee_payments')
-    .update({
-      paid_amount: feePayment.assigned_amount, // Mark as fully paid
-      status: 'Paid',
-      payment_date: new Date().toISOString(),
-    })
-    .eq('id', feePaymentId);
+    .upsert(paymentUpdates, { onConflict: 'id' });
 
   if (updateError) {
-    console.error("Error updating fee status during student payment:", updateError);
-    return { ok: false, message: `Failed to process payment: ${updateError.message}` };
+    console.error("Error updating fee statuses during bulk payment:", updateError);
+    return { ok: false, message: `Failed to process payment for all fees: ${updateError.message}`, paidCount: 0 };
   }
-
-  // Revalidate paths to refresh data on relevant pages
+  
   revalidatePath('/student/payment-history');
   revalidatePath('/admin/student-fees');
-  revalidatePath('/dashboard'); // To update the pending fee count
+  revalidatePath('/dashboard');
 
-  return { ok: true, message: "Payment successful! The fee status has been updated." };
+  return { ok: true, message: `Payment successful! ${count || 0} fee record(s) have been updated. A receipt would be generated here.`, paidCount: count || 0 };
 }
+
 
 export async function checkStudentFeeStatusAction(
   studentProfileId: string,

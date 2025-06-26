@@ -2,15 +2,15 @@
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, FeeCategory, User } from '@/types';
 import { DollarSign, CalendarDays, FileText, Loader2, CreditCard } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { getStudentPaymentHistoryAction, studentPayFeeAction } from '@/app/(app)/admin/student-fees/actions';
+import { getStudentPaymentHistoryAction, studentPayAllFeesAction } from '@/app/(app)/admin/student-fees/actions';
 import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '@/components/ui/button';
 
@@ -20,7 +20,7 @@ export default function StudentPaymentHistoryPage() {
     const [payments, setPayments] = useState<StudentFeePayment[]>([]);
     const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isPaying, setIsPaying] = useState<string | null>(null);
+    const [isBulkPaying, setIsBulkPaying] = useState(false);
     const [currentStudentProfileId, setCurrentStudentProfileId] = useState<string | null>(null);
     const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
@@ -78,21 +78,27 @@ export default function StudentPaymentHistoryPage() {
         }
         fetchInitialData();
     }, [toast]);
+    
+    const totalDue = useMemo(() => {
+      return payments
+          .filter(p => p.status !== 'Paid')
+          .reduce((acc, p) => acc + (p.assigned_amount - p.paid_amount), 0);
+    }, [payments]);
 
-    const handlePayNow = async (paymentId: string) => {
-        if (!currentSchoolId) {
-            toast({ title: "Error", description: "School context is missing.", variant: "destructive" });
+    const handlePayTotal = async () => {
+        if (!currentStudentProfileId || !currentSchoolId) {
+            toast({ title: "Error", description: "User context is missing.", variant: "destructive" });
             return;
         }
-        setIsPaying(paymentId);
-        const result = await studentPayFeeAction(paymentId, currentSchoolId);
+        setIsBulkPaying(true);
+        const result = await studentPayAllFeesAction(currentStudentProfileId, currentSchoolId);
         if (result.ok) {
             toast({ title: "Payment Successful", description: result.message });
             await loadPaymentData(); // Reload data to show updated status
         } else {
             toast({ title: "Payment Failed", description: result.message, variant: "destructive" });
         }
-        setIsPaying(null);
+        setIsBulkPaying(false);
     };
 
     const getFeeCategoryName = (categoryId: string) => {
@@ -135,7 +141,6 @@ export default function StudentPaymentHistoryPage() {
                   <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4" />Payment Date</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead>Notes</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -157,30 +162,29 @@ export default function StudentPaymentHistoryPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs truncate max-w-xs">{payment.notes || 'N/A'}</TableCell>
-                    <TableCell className="text-right">
-                      {payment.status !== 'Paid' && (
-                          <Button
-                              size="sm"
-                              onClick={() => handlePayNow(payment.id)}
-                              disabled={isPaying === payment.id}
-                          >
-                              {isPaying === payment.id ? (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                  <CreditCard className="mr-2 h-4 w-4" />
-                              )}
-                              {isPaying === payment.id ? 'Processing...' : 'Pay Now'}
-                          </Button>
-                      )}
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           )}
         </CardContent>
+         {payments.length > 0 && (
+            <CardFooter>
+                <div className="flex flex-col sm:flex-row justify-end items-center w-full gap-4 pt-4 border-t">
+                    <div className="text-right">
+                        <p className="text-muted-foreground">Total Amount Due</p>
+                        <p className="text-2xl font-bold">${totalDue.toFixed(2)}</p>
+                    </div>
+                    <Button onClick={handlePayTotal} disabled={isBulkPaying || totalDue <= 0 || isLoading}>
+                        {isBulkPaying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+                        Pay Total Due
+                    </Button>
+                </div>
+            </CardFooter>
+         )}
       </Card>
     </div>
   );
 }
     
+
