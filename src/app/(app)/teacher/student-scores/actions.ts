@@ -1,24 +1,11 @@
 
 'use server';
 
-console.log('[LOG] Loading src/app/(app)/teacher/student-scores/actions.ts');
-
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { ClassData, Exam, Student, Subject } from '@/types';
+import type { ClassData, Exam, Student, Subject, GradebookEntry } from '@/types';
 
-interface SaveScoreInput {
-  student_id: string;
-  exam_id: string;
-  subject_id: string; 
-  class_id: string;
-  score: string | number | null; // Allow null to clear a score
-  max_marks?: number | null;
-  recorded_by_teacher_id: string; 
-  school_id: string;
-}
-
-export async function getTeacherStudentScoresPageInitialDataAction(teacherUserId: string): Promise<{
+export async function getTeacherGradebookInitialDataAction(teacherUserId: string): Promise<{
   ok: boolean;
   message?: string;
   teacherProfileId?: string;
@@ -67,184 +54,139 @@ export async function getTeacherStudentScoresPageInitialDataAction(teacherUserId
     };
 
   } catch (error: any) {
-    console.error("Error in getTeacherStudentScoresPageInitialDataAction:", error);
+    console.error("Error in getTeacherGradebookInitialDataAction:", error);
     return { ok: false, message: error.message || "An unexpected error occurred." };
   }
 }
 
-export async function getStudentsForClassAction(classId: string, schoolId: string): Promise<{
-  ok: boolean;
-  message?: string;
-  students?: Student[];
-}> {
-  if (!classId || !schoolId) {
-    return { ok: false, message: "Class ID and School ID are required." };
-  }
-  const supabase = createSupabaseServerClient();
-  try {
-    const { data, error } = await supabase
-      .from('students')
-      .select('*')
-      .eq('class_id', classId)
-      .eq('school_id', schoolId)
-      .order('name');
-    
-    if (error) throw error;
-    return { ok: true, students: (data || []) as Student[] };
-  } catch (error: any) {
-    console.error("Error in getStudentsForClassAction:", error);
-    return { ok: false, message: error.message || "An unexpected error occurred." };
-  }
-}
 
-export async function getScoresForExamAndStudentAction(
-  examId: string,
-  studentId: string,
+export async function getGradebookDataAction(
+  classId: string,
+  examGroupId: string, // The ID of the representative exam for the group
   schoolId: string,
+  allExams: Exam[], // Passed from client to avoid re-fetching
+  allSubjects: Subject[] // Passed from client to avoid re-fetching
 ): Promise<{
   ok: boolean;
   message?: string;
-  scores?: Record<string, string | number>; // subjectId: score
+  students?: Student[];
+  subjects?: Subject[];
+  scores?: Record<string, GradebookEntry>;
 }> {
-  if (!examId || !studentId || !schoolId) {
-    return { ok: true, scores: {} }; 
+  if (!classId || !examGroupId || !schoolId) {
+    return { ok: false, message: "Class ID, Exam Group ID, and School ID are required." };
   }
   const supabase = createSupabaseServerClient();
+
   try {
-    const { data: fetchedScoresData, error } = await supabase
-      .from('student_scores')
-      .select('subject_id, score')
-      .eq('exam_id', examId)
-      .eq('student_id', studentId)
-      .eq('school_id', schoolId);
+    const representativeExam = allExams.find(e => e.id === examGroupId);
+    if (!representativeExam) {
+      return { ok: false, message: "Exam event not found." };
+    }
+    const examGroupName = representativeExam.name.split(' - ')[0];
 
-    if (error) throw error;
+    const examsInGroup = allExams.filter(e => 
+        e.name.startsWith(examGroupName) && 
+        e.date === representativeExam.date &&
+        e.class_id === representativeExam.class_id
+    );
+    const subjectIdsInGroup = examsInGroup.map(e => e.subject_id);
+    const subjectsForGradebook = allSubjects.filter(s => subjectIdsInGroup.includes(s.id));
+    const examIdsInGroup = examsInGroup.map(e => e.id);
 
-    const scoresMap: Record<string, string | number> = {};
-    (fetchedScoresData || []).forEach(fetchedScore => {
-      scoresMap[fetchedScore.subject_id] = fetchedScore.score;
+    const { data: students, error: studentsError } = await supabase
+        .from('students').select('*').eq('class_id', classId).eq('school_id', schoolId).order('name');
+    if (studentsError) throw new Error("Failed to fetch students.");
+    
+    const studentIds = (students || []).map(s => s.id);
+    const scoresMap: Record<string, GradebookEntry> = {};
+
+    if (studentIds.length > 0) {
+        const { data: existingScores, error: scoresError } = await supabase
+            .from('student_scores')
+            .select('*')
+            .in('student_id', studentIds)
+            .in('exam_id', examIdsInGroup);
+
+        if (scoresError) throw new Error("Failed to fetch existing scores.");
+
+        (existingScores || []).forEach(score => {
+            const key = `${score.student_id}-${score.subject_id}`;
+            scoresMap[key] = {
+                score: score.score,
+                max_marks: score.max_marks || examsInGroup.find(e => e.id === score.exam_id)?.max_marks || 100,
+                student_id: score.student_id,
+                exam_id: score.exam_id,
+                subject_id: score.subject_id,
+                class_id: classId,
+            };
+        });
+    }
+
+    // Pre-fill the map with empty entries for the UI
+    (students || []).forEach(student => {
+        subjectsForGradebook.forEach(subject => {
+            const key = `${student.id}-${subject.id}`;
+            if (!scoresMap[key]) {
+                const correspondingExam = examsInGroup.find(e => e.subject_id === subject.id);
+                scoresMap[key] = {
+                    score: '',
+                    max_marks: correspondingExam?.max_marks || 100,
+                    student_id: student.id,
+                    exam_id: correspondingExam?.id || '',
+                    subject_id: subject.id,
+                    class_id: classId,
+                };
+            }
+        });
     });
-    return { ok: true, scores: scoresMap };
+
+    return {
+      ok: true,
+      students: students || [],
+      subjects: subjectsForGradebook,
+      scores: scoresMap
+    };
   } catch (error: any) {
-    console.error("Error in getScoresForExamAndStudentAction:", error);
+    console.error("Error in getGradebookDataAction:", error);
     return { ok: false, message: error.message || "An unexpected error occurred." };
   }
 }
 
-
-export async function saveSingleScoreAction(scoreInput: SaveScoreInput): Promise<{ ok: boolean; message: string; }> {
-  const supabaseAdmin = createSupabaseServerClient();
-  
-  if (scoreInput.score === null) {
-      // If score is explicitly null, it means we should delete the record
-      const { error: deleteError } = await supabaseAdmin
-          .from('student_scores')
-          .delete()
-          .eq('student_id', scoreInput.student_id)
-          .eq('exam_id', scoreInput.exam_id)
-          .eq('subject_id', scoreInput.subject_id);
-      
-      if (deleteError) {
-          console.error("Error deleting score record:", deleteError);
-          return { ok: false, message: "Failed to clear existing score." };
-      }
-      revalidatePath('/teacher/student-scores');
-      return { ok: true, message: "Score cleared successfully."};
-  }
-
-  const { data: existingRecord, error: fetchError } = await supabaseAdmin
-    .from('student_scores')
-    .select('id')
-    .eq('student_id', scoreInput.student_id)
-    .eq('exam_id', scoreInput.exam_id)
-    .eq('subject_id', scoreInput.subject_id)
-    .maybeSingle();
-
-  if (fetchError) {
-    console.error(`Error checking existing score:`, fetchError);
-    return { ok: false, message: 'Database error checking for existing score.' };
-  }
-
-  const recordData = {
-    score: String(scoreInput.score),
-    max_marks: scoreInput.max_marks,
-    recorded_by_teacher_id: scoreInput.recorded_by_teacher_id,
-    date_recorded: new Date().toISOString().split('T')[0],
-  };
-  
-  let finalMessage = '';
-  let opOK = false;
-  
-  if (existingRecord) {
-    const { error: updateError } = await supabaseAdmin
-      .from('student_scores')
-      .update(recordData)
-      .eq('id', existingRecord.id);
-
-    if (updateError) {
-      console.error("Update error:", updateError);
-      finalMessage = "Failed to update score.";
-    } else {
-      finalMessage = "Score updated successfully.";
-      opOK = true;
+export async function saveGradebookScoresAction(
+    scoresToSave: GradebookEntry[],
+    teacherId: string,
+    schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+    if (scoresToSave.length === 0) {
+        return { ok: true, message: "No scores to save." };
     }
-  } else {
-    const { error: insertError } = await supabaseAdmin
-      .from('student_scores')
-      .insert({
-        ...recordData,
-        student_id: scoreInput.student_id,
-        exam_id: scoreInput.exam_id,
-        subject_id: scoreInput.subject_id,
-        class_id: scoreInput.class_id,
-        school_id: scoreInput.school_id,
-      });
+    const supabaseAdmin = createSupabaseServerClient();
+
+    const recordsForUpsert = scoresToSave.map(score => ({
+        student_id: score.student_id,
+        exam_id: score.exam_id,
+        subject_id: score.subject_id,
+        class_id: score.class_id,
+        score: String(score.score),
+        max_marks: score.max_marks,
+        recorded_by_teacher_id: teacherId,
+        school_id: schoolId,
+        date_recorded: new Date().toISOString().split('T')[0],
+    }));
     
-    if (insertError) {
-      console.error("Insert error:", insertError);
-      finalMessage = "Failed to save new score.";
-    } else {
-      finalMessage = "Score saved successfully.";
-      opOK = true;
-    }
-  }
+    const { error } = await supabaseAdmin
+        .from('student_scores')
+        .upsert(recordsForUpsert, { onConflict: 'student_id,exam_id,subject_id' });
 
-  if (opOK) {
+    if (error) {
+        console.error("Error upserting scores:", error);
+        return { ok: false, message: `Failed to save scores: ${error.message}` };
+    }
+    
     revalidatePath('/teacher/student-scores');
     revalidatePath('/admin/student-scores');
     revalidatePath('/student/my-scores');
 
-     // Send email notification on successful save/update
-    try {
-      const { data: studentEmailData } = await supabaseAdmin.from('students').select('email').eq('id', scoreInput.student_id).single();
-      const { data: examDetails } = await supabaseAdmin.from('exams').select('name').eq('id', scoreInput.exam_id).single();
-      
-      if (studentEmailData?.email && examDetails?.name) {
-        const emailSubject = `Scores Updated for Exam: ${examDetails.name}`;
-        const emailBody = `
-          <h1>Scores Updated</h1>
-          <p>Your scores for the exam "<strong>${examDetails.name}</strong>" have been updated by your teacher.</p>
-          <p>Please log in to CampusHub to view your detailed results once they are published.</p>
-        `;
-        
-        // This part remains the same, sending notification via API
-        const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
-        const apiResponse = await fetch(emailApiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: studentEmailData.email, subject: emailSubject, html: emailBody }),
-        });
-        const result = await apiResponse.json();
-        if (!apiResponse.ok || !result.success) {
-          console.error(`[saveSingleScoreAction] Failed to send email via API: ${result.message || apiResponse.statusText}`);
-        } else {
-          console.log(`[saveSingleScoreAction] Email successfully dispatched via API: ${result.message}`);
-        }
-      }
-    } catch (emailSetupError: any) {
-      console.error(`Failed to prepare data for score notification to student ${scoreInput.student_id}:`, emailSetupError.message);
-    }
-  }
-
-  return { ok: opOK, message: finalMessage };
+    return { ok: true, message: `${recordsForUpsert.length} score(s) saved successfully.` };
 }

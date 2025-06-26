@@ -236,6 +236,16 @@ export interface StudentScore {
   updated_at?: string;
 }
 
+export interface GradebookEntry {
+  score: string | number;
+  max_marks: number;
+  student_id: string;
+  exam_id: string;
+  subject_id: string;
+  class_id: string;
+}
+
+
 // Type for displaying exams with student's score information
 export interface ExamWithStudentScore extends Exam {
   studentScores?: {

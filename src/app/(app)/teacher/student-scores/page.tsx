@@ -1,41 +1,40 @@
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { ClassData, Student, Exam, Subject } from '@/types';
-import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
+import type { ClassData, Student, Exam, Subject, GradebookEntry } from '@/types';
+import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Award, Save, Users, FileText, Loader2, Edit2 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
-import { 
-  getTeacherStudentScoresPageInitialDataAction, 
-  getStudentsForClassAction, 
-  getScoresForExamAndStudentAction,
-  saveSingleScoreAction // Renamed for clarity
-} from './actions';
-
+import { getTeacherGradebookInitialDataAction, getGradebookDataAction, saveGradebookScoresAction } from './actions';
 
 export default function TeacherStudentScoresPage() {
   const { toast } = useToast();
+  // Initial data from server
   const [assignedClasses, setAssignedClasses] = useState<ClassData[]>([]);
   const [allExams, setAllExams] = useState<Exam[]>([]);
-  
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
+
+  // User selections
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [studentsInSelectedClass, setStudentsInSelectedClass] = useState<Student[]>([]);
-  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
-  const [selectedExamId, setSelectedExamId] = useState<string>('');
-  const [score, setScore] = useState<string | number>(''); 
+  const [selectedExamId, setSelectedExamId] = useState<string>(''); // This will be the ID of the first exam in a group to identify it
 
-  const [isLoading, setIsLoading] = useState(false); 
-  const [isFetchingInitialData, setIsFetchingInitialData] = useState(true); 
-  const [isFetchingStudents, setIsFetchingStudents] = useState(false); 
-  const [isFetchingScore, setIsFetchingScore] = useState(false); 
+  // Data for the gradebook table
+  const [students, setStudents] = useState<Student[]>([]);
+  const [examSubjects, setExamSubjects] = useState<Subject[]>([]);
+  const [scores, setScores] = useState<Record<string, GradebookEntry>>({}); // Key: `studentId-subjectId`
 
+  // Loading states
+  const [isFetchingInitialData, setIsFetchingInitialData] = useState(true);
+  const [isFetchingGradebook, setIsFetchingGradebook] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // User context
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
@@ -43,16 +42,17 @@ export default function TeacherStudentScoresPage() {
     setIsFetchingInitialData(true);
     const teacherUserId = localStorage.getItem('currentUserId');
     if (!teacherUserId) {
-      toast({ title: "Error", description: "Teacher not identified.", variant: "destructive"});
+      toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
       setIsFetchingInitialData(false);
       return;
     }
-    const result = await getTeacherStudentScoresPageInitialDataAction(teacherUserId);
+    const result = await getTeacherGradebookInitialDataAction(teacherUserId);
     if (result.ok) {
       setCurrentTeacherId(result.teacherProfileId || null);
       setCurrentSchoolId(result.schoolId || null);
       setAssignedClasses(result.assignedClasses || []);
       setAllExams(result.allExams || []);
+      setAllSubjects(result.allSubjects || []);
     } else {
       toast({ title: "Error loading initial data", description: result.message, variant: "destructive" });
     }
@@ -63,115 +63,79 @@ export default function TeacherStudentScoresPage() {
     fetchInitialData();
   }, [fetchInitialData]);
 
-  const fetchStudentsForClass = useCallback(async (classId: string, schoolId: string) => {
-    setIsFetchingStudents(true);
-    setStudentsInSelectedClass([]);
-    setSelectedStudentId('');
-    setSelectedExamId('');
-    setScore('');
-    const result = await getStudentsForClassAction(classId, schoolId);
-    if (result.ok && result.students) {
-      setStudentsInSelectedClass(result.students);
-    } else {
-      toast({ title: "Error fetching students for class", description: result.message, variant: "destructive" });
-    }
-    setIsFetchingStudents(false);
-  }, [toast]);
+  const handleFetchGradebook = useCallback(async () => {
+    if (!selectedClassId || !selectedExamId || !currentSchoolId) return;
 
-  useEffect(() => { 
-    if (selectedClassId && currentSchoolId) {
-      fetchStudentsForClass(selectedClassId, currentSchoolId);
-    }
-  }, [selectedClassId, currentSchoolId, fetchStudentsForClass]);
-  
-  const fetchScore = useCallback(async () => {
-    if (selectedStudentId && selectedExamId && currentSchoolId) {
-      setIsFetchingScore(true);
-      const selectedExam = allExams.find(e => e.id === selectedExamId);
-      if (!selectedExam) {
-        setScore('');
-        setIsFetchingScore(false);
-        return;
-      }
-      
-      const { data: scoreData, error } = await supabase
-        .from('student_scores')
-        .select('score')
-        .eq('student_id', selectedStudentId)
-        .eq('exam_id', selectedExamId)
-        .single();
-        
-      if (error && error.code !== 'PGRST116') { // Ignore "No rows found"
-        toast({ title: "Error fetching existing score", description: error.message, variant: "destructive" });
-        setScore('');
-      } else {
-        setScore(scoreData?.score || '');
-      }
-      
-      setIsFetchingScore(false);
-    }
-  }, [selectedStudentId, selectedExamId, currentSchoolId, allExams, toast]);
-  
-  useEffect(() => {
-    if (selectedStudentId && selectedExamId) {
-      fetchScore();
-    } else {
-      setScore('');
-    }
-  }, [selectedStudentId, selectedExamId, fetchScore]);
+    setIsFetchingGradebook(true);
+    setStudents([]);
+    setExamSubjects([]);
+    setScores({});
 
-  const handleSaveScore = async (e: FormEvent) => {
-    e.preventDefault();
-    const selectedExam = allExams.find(exam => exam.id === selectedExamId);
-    if (!selectedStudentId || !selectedExam || !selectedClassId || !currentTeacherId || !currentSchoolId) {
-      toast({ title: "Error", description: "All fields (Class, Student, Exam) must be selected.", variant: "destructive" });
+    const result = await getGradebookDataAction(selectedClassId, selectedExamId, currentSchoolId, allExams, allSubjects);
+    if (result.ok) {
+      setStudents(result.students || []);
+      setExamSubjects(result.subjects || []);
+      setScores(result.scores || {});
+    } else {
+      toast({ title: "Error fetching gradebook", description: result.message, variant: "destructive" });
+    }
+    setIsFetchingGradebook(false);
+  }, [selectedClassId, selectedExamId, currentSchoolId, allExams, allSubjects, toast]);
+
+  const handleScoreChange = (studentId: string, subjectId: string, value: string) => {
+    const key = `${studentId}-${subjectId}`;
+    setScores(prev => ({
+      ...prev,
+      [key]: { ...prev[key], score: value }
+    }));
+  };
+
+  const handleSaveAllGrades = async () => {
+    if (!currentTeacherId || !currentSchoolId || students.length === 0 || examSubjects.length === 0) {
+      toast({ title: "Error", description: "Missing required context or data to save grades.", variant: "destructive" });
       return;
     }
+    setIsSaving(true);
     
-    setIsLoading(true);
+    // Flatten the scores map into an array of records to save
+    const recordsToSave = Object.entries(scores)
+        .map(([key, entry]) => ({ ...entry }))
+        .filter(entry => entry.score !== undefined && entry.score !== null && String(entry.score).trim() !== ''); // Only save non-empty scores
 
-    const scoreToSave = {
-      student_id: selectedStudentId,
-      exam_id: selectedExamId,
-      subject_id: selectedExam.subject_id,
-      class_id: selectedClassId,
-      score: String(score).trim() === '' ? null : score,
-      max_marks: selectedExam.max_marks,
-      recorded_by_teacher_id: currentTeacherId,
-      school_id: currentSchoolId,
-    };
-    
-    if (scoreToSave.score === null) {
-      toast({title: "Info", description: "Score field was empty, no changes saved."});
-      setIsLoading(false);
-      return;
+    const result = await saveGradebookScoresAction(recordsToSave, currentTeacherId, currentSchoolId);
+
+    if (result.ok) {
+      toast({ title: "Success", description: result.message });
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-
-    const result = await saveSingleScoreAction(scoreToSave);
-    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-    setIsLoading(false);
+    setIsSaving(false);
   };
   
-  const relevantExams = useMemo(() => {
-      if (!selectedClassId) return [];
-      return allExams.filter(exam => exam.class_id === selectedClassId);
+  const groupedExams = useMemo(() => {
+    const examMap: Record<string, Exam> = {};
+    allExams.forEach(exam => {
+        if (!exam.class_id || exam.class_id === selectedClassId) {
+            const groupKey = `${exam.name.split(' - ')[0]}_${exam.date}_${exam.class_id || 'global'}`;
+            if (!examMap[groupKey]) {
+                examMap[groupKey] = exam; // Store the first exam of the group as the representative
+            }
+        }
+    });
+    return Object.values(examMap);
   }, [allExams, selectedClassId]);
 
-  const selectedExamDetails = useMemo(() => {
-      return allExams.find(e => e.id === selectedExamId);
-  }, [selectedExamId, allExams]);
+  const selectedExamDetails = allExams.find(e => e.id === selectedExamId);
 
   if (isFetchingInitialData) {
-      return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading initial data...</span></div>;
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading initial data...</span></div>;
   }
   if (!currentTeacherId || !currentSchoolId) {
-       return (
-        <div className="flex flex-col gap-6">
+    return (
+      <div className="flex flex-col gap-6">
         <PageHeader title="Gradebook" />
-        <Card><CardContent className="pt-6 text-center text-destructive">
-            Could not load teacher profile or school association. Ensure your account is set up.
-        </CardContent></Card>
-        </div>
+        <Card><CardContent className="pt-6 text-center text-destructive">Could not load teacher profile. Please ensure your account is set up by an admin.</CardContent></Card>
+      </div>
     );
   }
 
@@ -179,18 +143,18 @@ export default function TeacherStudentScoresPage() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Gradebook: Enter Student Scores" 
-        description="Select a class, student, and a specific exam to input the score." 
+        description="Select a class and exam event to load the grade sheet for all students and subjects." 
       />
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><Award className="mr-2 h-5 w-5" /> Manage Scores</CardTitle>
-          <CardDescription>Select a class, student, and a single exam to begin grading.</CardDescription>
+          <CardTitle className="flex items-center"><Award className="mr-2 h-5 w-5" /> Score Entry</CardTitle>
+          <CardDescription>Select a class and exam to begin grading. Scores for all subjects registered in the school are listed below for the selected exam.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid md:grid-cols-3 gap-4 items-end">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
             <div>
               <Label htmlFor="classSelect">1. Select Class</Label>
-              <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isFetchingStudents || isFetchingInitialData || assignedClasses.length === 0}>
+              <Select value={selectedClassId} onValueChange={(value) => { setSelectedClassId(value); setSelectedExamId(''); setStudents([]); setExamSubjects([]); setScores({}); }} disabled={assignedClasses.length === 0}>
                 <SelectTrigger id="classSelect"><SelectValue placeholder="Choose a class" /></SelectTrigger>
                 <SelectContent>
                   {assignedClasses.map(cls => (<SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>))}
@@ -198,60 +162,69 @@ export default function TeacherStudentScoresPage() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="studentSelect">2. Select Student</Label>
-              <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={isFetchingStudents || studentsInSelectedClass.length === 0}>
-                <SelectTrigger id="studentSelect"><SelectValue placeholder="Choose a student" /></SelectTrigger>
+              <Label htmlFor="examSelect">2. Select Exam Event</Label>
+              <Select value={selectedExamId} onValueChange={(value) => { setSelectedExamId(value); setStudents([]); setExamSubjects([]); setScores({}); }} disabled={!selectedClassId || groupedExams.length === 0}>
+                <SelectTrigger id="examSelect"><SelectValue placeholder="Choose an exam event" /></SelectTrigger>
                 <SelectContent>
-                  {isFetchingStudents ? <SelectItem value="-" disabled>Loading...</SelectItem> :
-                  studentsInSelectedClass.map(s => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                  {groupedExams.map(exam => (<SelectItem key={exam.id} value={exam.id}>{exam.name.split(' - ')[0]} ({exam.date})</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="examSelect">3. Select Exam</Label>
-              <Select value={selectedExamId} onValueChange={setSelectedExamId} disabled={!selectedClassId || relevantExams.length === 0}>
-                <SelectTrigger id="examSelect"><SelectValue placeholder="Choose an exam" /></SelectTrigger>
-                <SelectContent>
-                  {relevantExams.map(exam => (<SelectItem key={exam.id} value={exam.id}>{exam.name}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Button onClick={handleFetchGradebook} disabled={!selectedClassId || !selectedExamId || isFetchingGradebook}>
+              {isFetchingGradebook ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Users className="mr-2 h-4 w-4"/>} Load Grade Sheet
+            </Button>
           </div>
-          
-          {(isFetchingStudents || isFetchingScore) && <div className="text-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Loading...</div>}
 
-          {selectedClassId && selectedStudentId && selectedExamId && !isFetchingScore && !isFetchingStudents && (
-            <form onSubmit={handleSaveScore} className="mt-6 border-t pt-6">
-              <div className="mb-4">
-                <h3 className="text-lg font-medium">
-                  Enter Score for: {studentsInSelectedClass.find(s => s.id === selectedStudentId)?.name}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Exam: {selectedExamDetails?.name}
-                </p>
+          {isFetchingGradebook && <div className="text-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Loading grade sheet...</div>}
+
+          {!isFetchingGradebook && students.length > 0 && examSubjects.length > 0 && (
+            <div className="border-t pt-6">
+              <h3 className="text-lg font-semibold mb-2">Grade Sheet for {selectedExamDetails?.name.split(' - ')[0]}</h3>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="sticky left-0 bg-background z-10">Student Name</TableHead>
+                      {examSubjects.map(subject => (
+                        <TableHead key={subject.id} className="text-center">
+                          {subject.name} <br/> (Max: {allExams.find(e => e.subject_id === subject.id && e.name.startsWith(selectedExamDetails?.name.split(' - ')[0] || ''))?.max_marks || 100})
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {students.map(student => (
+                      <TableRow key={student.id}>
+                        <TableCell className="font-medium sticky left-0 bg-background z-10">{student.name}</TableCell>
+                        {examSubjects.map(subject => {
+                          const key = `${student.id}-${subject.id}`;
+                          const maxMarks = scores[key]?.max_marks || 100;
+                          return (
+                            <TableCell key={subject.id} className="min-w-[100px]">
+                              <Input
+                                type="number"
+                                placeholder="Score"
+                                value={scores[key]?.score ?? ''}
+                                onChange={(e) => handleScoreChange(student.id, subject.id, e.target.value)}
+                                max={maxMarks}
+                                min={0}
+                                className="text-center"
+                              />
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                <div>
-                  <Label>Score</Label>
-                  <Input 
-                    value={score}
-                    onChange={(e) => setScore(e.target.value)}
-                    placeholder="Enter score"
-                    type="number"
-                    max={selectedExamDetails?.max_marks || 100}
-                    min="0"
-                  />
-                </div>
-                 <div>
-                    <Label>Max Marks</Label>
-                    <Input value={selectedExamDetails?.max_marks || 100} readOnly disabled />
-                </div>
-                <Button type="submit" disabled={isLoading}>
-                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
-                    Save Score
-                </Button>
+              <div className="mt-6 flex justify-end">
+                  <Button onClick={handleSaveAllGrades} disabled={isSaving}>
+                      {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
+                      Save All Grades
+                  </Button>
               </div>
-            </form>
+            </div>
           )}
         </CardContent>
       </Card>
