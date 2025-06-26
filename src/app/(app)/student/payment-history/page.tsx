@@ -13,6 +13,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { getStudentPaymentHistoryAction, studentPayAllFeesAction } from '@/app/(app)/admin/student-fees/actions';
 import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '@/components/ui/button';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 
 export default function StudentPaymentHistoryPage() {
@@ -23,6 +25,7 @@ export default function StudentPaymentHistoryPage() {
     const [isBulkPaying, setIsBulkPaying] = useState(false);
     const [currentStudentProfileId, setCurrentStudentProfileId] = useState<string | null>(null);
     const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+    const [currentStudentName, setCurrentStudentName] = useState<string | null>(null);
 
     async function loadPaymentData() {
         const studentUserId = localStorage.getItem('currentUserId');
@@ -55,7 +58,7 @@ export default function StudentPaymentHistoryPage() {
 
             const { data: studentProfile, error: profileError } = await supabase
                 .from('students')
-                .select('id, school_id')
+                .select('id, school_id, name')
                 .eq('user_id', studentUserId)
                 .single();
             
@@ -66,6 +69,7 @@ export default function StudentPaymentHistoryPage() {
             }
             setCurrentStudentProfileId(studentProfile.id);
             setCurrentSchoolId(studentProfile.school_id);
+            setCurrentStudentName(studentProfile.name);
             
             const result = await getStudentPaymentHistoryAction(studentProfile.id, studentProfile.school_id);
             if (result.ok) {
@@ -108,7 +112,7 @@ export default function StudentPaymentHistoryPage() {
     const formatDateSafe = (dateString?: string | null) => {
         if (!dateString) return 'N/A';
         const dateObj = parseISO(dateString);
-        return isValid(dateObj) ? format(dateObj, 'PP') : 'N/A';
+        return isValid(dateObj) ? format(dateObj, 'PP') : 'Invalid Date';
     };
 
     const handleDownloadHistory = () => {
@@ -117,37 +121,55 @@ export default function StudentPaymentHistoryPage() {
             return;
         }
 
-        const headers = ["Fee Category", "Due Date", "Assigned ($)", "Paid ($)", "Payment Date", "Status", "Notes"];
-        
-        const csvRows = [
-            headers.join(','),
-            ...payments.map(payment => {
-                const row = [
-                    `"${getFeeCategoryName(payment.fee_category_id).replace(/"/g, '""')}"`,
-                    `"${formatDateSafe(payment.due_date)}"`,
-                    payment.assigned_amount.toFixed(2),
-                    payment.paid_amount.toFixed(2),
-                    `"${formatDateSafe(payment.payment_date)}"`,
-                    `"${payment.status}"`,
-                    `"${(payment.notes || 'N/A').replace(/"/g, '""')}"`
-                ];
-                return row.join(',');
-            })
-        ];
+        const doc = new jsPDF();
+        const tableColumn = ["Fee Category", "Due Date", "Assigned ($)", "Paid ($)", "Payment Date", "Status", "Notes"];
+        const tableRows: (string | number)[][] = [];
 
-        const csvString = csvRows.join('\n');
-        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `payment_history_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        payments.forEach(payment => {
+            const paymentData = [
+                getFeeCategoryName(payment.fee_category_id),
+                formatDateSafe(payment.due_date),
+                payment.assigned_amount.toFixed(2),
+                payment.paid_amount.toFixed(2),
+                formatDateSafe(payment.payment_date),
+                payment.status,
+                payment.notes || 'N/A'
+            ];
+            tableRows.push(paymentData);
+        });
+        
+        doc.setFontSize(18);
+        doc.text("Fee Payment History Statement", 14, 22);
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+        doc.text(`Student: ${currentStudentName || 'N/A'}`, 14, 29);
+        doc.text(`Date Generated: ${format(new Date(), 'PP')}`, 14, 34);
+
+        autoTable(doc, {
+            startY: 40,
+            head: [tableColumn],
+            body: tableRows,
+            theme: 'striped',
+            headStyles: { fillColor: [34, 197, 94] },
+        });
+
+        const finalY = (doc as any).lastAutoTable.finalY;
+        doc.setFontSize(12);
+        doc.text("Summary:", 14, finalY + 15);
+        doc.setFontSize(10);
+        const totalAssigned = payments.reduce((acc, p) => acc + p.assigned_amount, 0);
+        const totalPaid = payments.reduce((acc, p) => acc + p.paid_amount, 0);
+        doc.text(`Total Assigned: $${totalAssigned.toFixed(2)}`, 14, finalY + 22);
+        doc.text(`Total Paid: $${totalPaid.toFixed(2)}`, 14, finalY + 28);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Total Due: $${totalDue.toFixed(2)}`, 14, finalY + 34);
+        doc.setFont('helvetica', 'normal');
+
+        doc.save(`payment_history_${(currentStudentName || 'student').replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
 
         toast({
             title: "Download Started",
-            description: "Your payment history CSV is being downloaded."
+            description: "Your payment history PDF is being downloaded."
         });
     };
 
