@@ -78,7 +78,6 @@ interface ExamInput {
   end_time?: string | null;   // HH:MM
   max_marks?: number | null;
   school_id: string;
-  publish_date?: string | null; // ISO string
 }
 
 export async function addExamAction(
@@ -122,7 +121,6 @@ export async function addExamAction(
         <li><strong>Date:</strong> ${new Date(exam.date).toLocaleDateString()}</li>
         ${exam.start_time ? `<li><strong>Time:</strong> ${exam.start_time}${exam.end_time ? ` - ${exam.end_time}` : ''}</li>` : ''}
         ${exam.max_marks ? `<li><strong>Max Marks:</strong> ${exam.max_marks} per subject</li>` : ''}
-        ${exam.publish_date ? `<li><strong>Results will be published on:</strong> ${new Date(exam.publish_date).toLocaleString()}</li>` : ''}
       </ul>
       <p>Please prepare accordingly.</p>
     `;
@@ -172,7 +170,6 @@ export async function updateExamAction(
     start_time: input.start_time || null,
     end_time: input.end_time || null,
     max_marks: input.max_marks === undefined || input.max_marks === null || isNaN(Number(input.max_marks)) ? null : Number(input.max_marks),
-    publish_date: input.publish_date || null,
   };
 
   const { error, data } = await supabaseAdmin

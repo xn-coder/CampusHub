@@ -211,7 +211,6 @@ export interface Exam {
   end_time?: string | null;
   max_marks?: number | null;
   school_id: string;
-  publish_date?: string | null; // NEW: ISO string for result publication
   created_at?: string;
   updated_at?: string;
   // For joined data

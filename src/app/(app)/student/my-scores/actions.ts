@@ -18,8 +18,7 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
   }
 
   const supabase = createSupabaseServerClient();
-  const now = new Date().toISOString();
-
+  
   try {
     const { data: studentData, error: studentError } = await supabase
       .from('students')
@@ -38,12 +37,11 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
 
     const { id: studentProfileId, school_id: studentSchoolId } = studentData;
 
-    // Fetch all exams for the school where the results have been published
+    // Fetch all exams for the school
     const { data: examsData, error: examsError } = await supabase
       .from('exams')
       .select('*')
       .eq('school_id', studentSchoolId)
-      .lte('publish_date', now) // Only fetch exams where publish_date is in the past
       .order('date', { ascending: false });
 
     if (examsError) {
@@ -55,7 +53,7 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
 
     const examIds = examsData.map(e => e.id);
 
-    // Fetch all scores for this student for the published exams
+    // Fetch all scores for this student for the exams
     const { data: scoresData, error: scoresError } = await supabase
       .from('student_scores')
       .select('exam_id, subject_id, score, max_marks')

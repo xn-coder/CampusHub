@@ -37,8 +37,6 @@ export default function ExamsPage() {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [maxMarks, setMaxMarks] = useState<string>('');
-  const [publishDate, setPublishDate] = useState('');
-  const [publishTime, setPublishTime] = useState('');
 
   useEffect(() => {
     const adminUserId = localStorage.getItem('currentUserId');
@@ -70,7 +68,6 @@ export default function ExamsPage() {
     setExamName(''); setSelectedClassId(undefined);
     setSelectedAcademicYearId(undefined); setExamDate(''); setStartTime('');
     setEndTime(''); setMaxMarks(''); setEditingExam(null);
-    setPublishDate(''); setPublishTime('');
   };
 
   const handleOpenDialog = (exam?: Exam) => {
@@ -83,14 +80,6 @@ export default function ExamsPage() {
       setStartTime(exam.start_time || '');
       setEndTime(exam.end_time || '');
       setMaxMarks(exam.max_marks?.toString() || '');
-      if (exam.publish_date) {
-        const publishDateTime = parseISO(exam.publish_date);
-        setPublishDate(format(publishDateTime, 'yyyy-MM-dd'));
-        setPublishTime(format(publishDateTime, 'HH:mm'));
-      } else {
-        setPublishDate('');
-        setPublishTime('');
-      }
     } else {
       resetForm();
     }
@@ -105,8 +94,6 @@ export default function ExamsPage() {
     }
     setIsSubmitting(true);
 
-    const publishDateTime = publishDate && publishTime ? `${publishDate}T${publishTime}:00` : null;
-
     const examData = {
         name: examName.trim(),
         class_id: selectedClassId === 'none_cs_selection' ? null : selectedClassId,
@@ -116,7 +103,6 @@ export default function ExamsPage() {
         end_time: endTime || null,
         max_marks: maxMarks !== '' ? Number(maxMarks) : null,
         school_id: currentSchoolId,
-        publish_date: publishDateTime,
     };
 
     let result;
@@ -174,12 +160,6 @@ export default function ExamsPage() {
     const dateObj = parseISO(dateString);
     return isValid(dateObj) ? format(dateObj, 'PP') : 'Invalid Date';
   };
-  const formatDateTimeString = (dateString?: string | null) => {
-    if (!dateString) return 'N/A';
-    const dateObj = parseISO(dateString);
-    return isValid(dateObj) ? format(dateObj, 'PPpp') : 'Invalid Date';
-  };
-
 
   return (
     <div className="flex flex-col gap-6">
@@ -211,7 +191,6 @@ export default function ExamsPage() {
                   <TableHead>Exam Name</TableHead>
                   <TableHead>Class/Section</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead>Publish Date</TableHead>
                   <TableHead>Max Marks</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -222,7 +201,6 @@ export default function ExamsPage() {
                     <TableCell className="font-medium">{exam.name}</TableCell>
                     <TableCell>{getClassSectionName(exam.class_id)}</TableCell>
                     <TableCell>{formatDateString(exam.date)}</TableCell>
-                    <TableCell>{formatDateTimeString(exam.publish_date)}</TableCell>
                     <TableCell>{exam.max_marks ?? 'N/A'}</TableCell>
                     <TableCell className="space-x-1 text-right">
                        <Button variant="outline" size="sm" onClick={() => handleMockNotify(exam)} title="Simulate Notification" disabled={isSubmitting}>
@@ -292,16 +270,6 @@ export default function ExamsPage() {
                <div>
                 <Label htmlFor="maxMarks">Default Max Marks (per subject)</Label>
                 <Input id="maxMarks" type="number" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} placeholder="e.g., 100" min="0" disabled={isSubmitting} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="publishDate">Result Publish Date</Label>
-                    <Input id="publishDate" type="date" value={publishDate} onChange={(e) => setPublishDate(e.target.value)} disabled={isSubmitting} />
-                  </div>
-                  <div>
-                    <Label htmlFor="publishTime">Result Publish Time</Label>
-                    <Input id="publishTime" type="time" value={publishTime} onChange={(e) => setPublishTime(e.target.value)} disabled={isSubmitting} />
-                  </div>
               </div>
             </div>
             <DialogFooter className="mt-4">
