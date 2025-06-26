@@ -162,31 +162,75 @@ export async function saveGradebookScoresAction(
         return { ok: true, message: "No scores to save." };
     }
     const supabaseAdmin = createSupabaseServerClient();
+    let successCount = 0;
+    let errorCount = 0;
+    const errorMessages: string[] = [];
 
-    const recordsForUpsert = scoresToSave.map(score => ({
-        student_id: score.student_id,
-        exam_id: score.exam_id,
-        subject_id: score.subject_id,
-        class_id: score.class_id,
-        score: String(score.score),
-        max_marks: score.max_marks,
-        recorded_by_teacher_id: teacherId,
-        school_id: schoolId,
-        date_recorded: new Date().toISOString().split('T')[0],
-    }));
-    
-    const { error } = await supabaseAdmin
-        .from('student_scores')
-        .upsert(recordsForUpsert, { onConflict: 'student_id,exam_id,subject_id' });
+    // Process each score individually to avoid ON CONFLICT issues by manually checking.
+    for (const score of scoresToSave) {
+        try {
+            // A score is uniquely identified by the student and the specific exam instance.
+            const { data: existingScore, error: checkError } = await supabaseAdmin
+                .from('student_scores')
+                .select('id')
+                .eq('student_id', score.student_id)
+                .eq('exam_id', score.exam_id)
+                .maybeSingle(); // Use maybeSingle to handle 0 or 1 result without error.
 
-    if (error) {
-        console.error("Error upserting scores:", error);
-        return { ok: false, message: `Failed to save scores: ${error.message}` };
+            if (checkError) throw new Error(`DB check failed: ${checkError.message}`);
+
+            const recordToSave = {
+                score: String(score.score),
+                max_marks: score.max_marks,
+                recorded_by_teacher_id: teacherId,
+                date_recorded: new Date().toISOString().split('T')[0],
+            };
+
+            if (existingScore) {
+                // UPDATE existing score
+                const { error: updateError } = await supabaseAdmin
+                    .from('student_scores')
+                    .update(recordToSave)
+                    .eq('id', existingScore.id);
+                
+                if (updateError) throw new Error(`Update failed: ${updateError.message}`);
+                successCount++;
+
+            } else {
+                // INSERT new score
+                const { error: insertError } = await supabaseAdmin
+                    .from('student_scores')
+                    .insert({
+                        ...recordToSave,
+                        student_id: score.student_id,
+                        exam_id: score.exam_id,
+                        subject_id: score.subject_id,
+                        class_id: score.class_id,
+                        school_id: schoolId,
+                    });
+
+                if (insertError) throw new Error(`Insert failed: ${insertError.message}`);
+                successCount++;
+            }
+        } catch (e: any) {
+            errorCount++;
+            errorMessages.push(`Failed for student ${score.student_id}, subject ${score.subject_id}: ${e.message}`);
+            console.error(`Error processing score for student ${score.student_id}:`, e);
+        }
     }
-    
-    revalidatePath('/teacher/student-scores');
-    revalidatePath('/admin/student-scores');
-    revalidatePath('/student/my-scores');
 
-    return { ok: true, message: `${recordsForUpsert.length} score(s) saved successfully.` };
+    if (successCount > 0) {
+        revalidatePath('/teacher/student-scores');
+        revalidatePath('/admin/student-scores');
+        revalidatePath('/student/my-scores');
+    }
+
+    if (errorCount > 0) {
+        return { 
+            ok: false, 
+            message: `Successfully saved ${successCount} scores, but failed for ${errorCount}. Errors: ${errorMessages.join('; ')}`
+        };
+    }
+
+    return { ok: true, message: `${successCount} score(s) saved successfully.` };
 }
