@@ -382,27 +382,40 @@ export async function studentPayAllFeesAction(
     return { ok: true, message: "No pending fees to pay.", paidCount: 0 };
   }
 
-  const paymentUpdates = unpaidFees.map(fee => ({
-    id: fee.id,
-    paid_amount: fee.assigned_amount,
-    status: 'Paid' as PaymentStatus,
-    payment_date: new Date().toISOString(),
-  }));
+  let paidCount = 0;
+  const errors = [];
+  
+  for (const fee of unpaidFees) {
+    const { error: updateError } = await supabaseAdmin
+      .from('student_fee_payments')
+      .update({
+        paid_amount: fee.assigned_amount,
+        status: 'Paid' as PaymentStatus,
+        payment_date: new Date().toISOString(),
+      })
+      .eq('id', fee.id);
+    
+    if (updateError) {
+      errors.push(updateError.message);
+      console.error(`Failed to update fee ID ${fee.id}:`, updateError);
+    } else {
+      paidCount++;
+    }
+  }
 
-  const { count, error: updateError } = await supabaseAdmin
-    .from('student_fee_payments')
-    .upsert(paymentUpdates, { onConflict: 'id' });
-
-  if (updateError) {
-    console.error("Error updating fee statuses during bulk payment:", updateError);
-    return { ok: false, message: `Failed to process payment for all fees: ${updateError.message}`, paidCount: 0 };
+  if (errors.length > 0) {
+    return { 
+      ok: false, 
+      message: `Successfully paid ${paidCount} fees, but failed to update ${errors.length} fee records. Please contact support.`,
+      paidCount
+    };
   }
   
   revalidatePath('/student/payment-history');
   revalidatePath('/admin/student-fees');
   revalidatePath('/dashboard');
 
-  return { ok: true, message: `Payment successful! ${count || 0} fee record(s) have been updated. A receipt would be generated here.`, paidCount: count || 0 };
+  return { ok: true, message: `Payment successful! ${paidCount} fee record(s) have been updated. A receipt would be generated here.`, paidCount };
 }
 
 
