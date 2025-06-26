@@ -104,6 +104,69 @@ export async function assignStudentFeeAction(
   return { ok: true, message: 'Fee assigned successfully.', feePayment: data as StudentFeePayment };
 }
 
+interface AssignFeeToClassInput {
+  class_id: string;
+  fee_category_id: string;
+  assigned_amount: number;
+  due_date?: string;
+  notes?: string;
+  academic_year_id?: string;
+  school_id: string;
+}
+
+export async function assignFeeToClassAction(
+  input: AssignFeeToClassInput
+): Promise<{ ok: boolean; message: string; assignmentsCreated: number }> {
+    const supabaseAdmin = createSupabaseServerClient();
+    const { class_id, fee_category_id, school_id, ...restOfInput } = input;
+
+    const { data: students, error: studentsError } = await supabaseAdmin
+        .from('students')
+        .select('id')
+        .eq('class_id', class_id)
+        .eq('school_id', school_id);
+    
+    if (studentsError) {
+        console.error("Error fetching students for bulk fee assignment:", studentsError);
+        return { ok: false, message: `Failed to fetch students in the class: ${studentsError.message}`, assignmentsCreated: 0 };
+    }
+
+    if (!students || students.length === 0) {
+        return { ok: false, message: "No students found in the selected class.", assignmentsCreated: 0 };
+    }
+
+    // TODO: Add logic to check for existing fee assignments for this category/academic year to avoid duplicates if needed.
+    // For now, we will assign it to all students regardless.
+
+    const feeAssignments = students.map(student => ({
+        id: uuidv4(),
+        student_id: student.id,
+        fee_category_id: fee_category_id,
+        assigned_amount: restOfInput.assigned_amount,
+        due_date: restOfInput.due_date,
+        notes: restOfInput.notes,
+        academic_year_id: restOfInput.academic_year_id,
+        school_id: school_id,
+        paid_amount: 0,
+        status: 'Pending' as PaymentStatus,
+    }));
+
+    const { error: insertError, count } = await supabaseAdmin
+        .from('student_fee_payments')
+        .insert(feeAssignments);
+
+    if (insertError) {
+        console.error("Error bulk-assigning student fees:", insertError);
+        return { ok: false, message: `Failed to assign fees: ${insertError.message}`, assignmentsCreated: 0 };
+    }
+
+    revalidatePath('/admin/student-fees');
+    revalidatePath('/student/payment-history');
+
+    return { ok: true, message: `Successfully assigned fee to ${count || 0} students in the class.`, assignmentsCreated: count || 0 };
+}
+
+
 interface RecordPaymentInput {
   fee_payment_id: string;
   payment_amount: number;
