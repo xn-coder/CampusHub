@@ -86,15 +86,12 @@ export async function addExamAction(
   input: ExamInput
 ): Promise<{ ok: boolean; message: string; exam?: Exam }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const examId = uuidv4();
   
+  // The input from the client component (`page.tsx`) is already processed.
+  // We can trust it and simplify this part.
   const examData = {
     ...input,
-    id: examId,
-    class_id: input.class_id === 'none_cs_selection' ? null : input.class_id,
-    academic_year_id: input.academic_year_id === 'none_ay_selection' ? null : input.academic_year_id,
-    max_marks: input.max_marks === undefined || input.max_marks === null || isNaN(Number(input.max_marks)) ? null : Number(input.max_marks),
-    publish_date: input.publish_date || null,
+    id: uuidv4(),
   };
 
   const { error, data } = await supabaseAdmin
@@ -104,9 +101,13 @@ export async function addExamAction(
     .single();
 
   if (error) {
+    if (error.code === '23505') { // Handle unique constraint violation
+      return { ok: false, message: `Failed to add exam for subject: An exam with these details (name, subject, class) likely already exists.` };
+    }
     console.error("Error adding exam:", error);
     return { ok: false, message: `Failed to add exam: ${error.message}` };
   }
+
   revalidatePath('/admin/exams');
 
   if (data) {
