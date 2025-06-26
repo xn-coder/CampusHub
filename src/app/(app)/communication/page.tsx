@@ -9,10 +9,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { AnnouncementDB as Announcement, UserRole, ClassData, Student, Exam } from '@/types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PlusCircle, Send, Loader2, Link as LinkIcon, FileText } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { postAnnouncementAction, getAnnouncementsAction } from './actions';
+import { postAnnouncementAction, getAnnouncementsAction, getExamDetailsForLinkingAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
 import { format, parseISO } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
@@ -119,20 +119,30 @@ export default function CommunicationPage() {
     loadUserAndSchoolContext();
   }, [toast]);
   
-  useEffect(() => {
-    // Pre-fill form from URL parameters
+  const prefillFromUrl = useCallback(() => {
     const examId = searchParams.get('examId');
-    const examName = searchParams.get('examName');
-    if (examId && examName) {
-        setNewAnnouncement(prev => ({
-            ...prev,
-            title: `Notification for Exam: ${examName}`,
-            content: `This is an official notification regarding the upcoming exam: ${examName}.\n\nPlease prepare accordingly. Further details will be communicated by your teachers.`,
-            linkedExamId: examId,
-        }));
-        setShowForm(true);
+    if (examId) {
+        getExamDetailsForLinkingAction(examId).then(result => {
+            if (result.ok && result.exam) {
+                const exam = result.exam;
+                setShowForm(true); // Automatically open the form
+                setNewAnnouncement(prev => ({
+                    ...prev,
+                    title: `Notification for Exam: ${exam.name}`,
+                    content: `This is an official notification regarding the upcoming exam: ${exam.name}.\n\nPlease prepare accordingly. Further details will be communicated by your teachers.`,
+                    linkedExamId: exam.id,
+                    targetClassId: exam.class_id || '', // Pre-select the target class
+                }));
+            } else {
+                toast({ title: "Error", description: "Could not fetch details for the linked exam.", variant: "destructive"});
+            }
+        });
     }
-  }, [searchParams]);
+  }, [searchParams, toast]);
+
+  useEffect(() => {
+    prefillFromUrl();
+  }, [prefillFromUrl]);
 
   useEffect(() => {
     async function fetchAnnouncements() {
@@ -264,7 +274,7 @@ export default function CommunicationPage() {
                  {(currentUserRole === 'teacher' || currentUserRole === 'admin') && (
                     <div>
                       <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
-                      <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0}>
+                      <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
                         <SelectTrigger id="targetClassId">
                           <SelectValue placeholder="General Announcement" />
                         </SelectTrigger>
@@ -275,7 +285,7 @@ export default function CommunicationPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground mt-1">If not specified, announcement is school-wide.</p>
+                      <p className="text-xs text-muted-foreground mt-1">If not specified or an exam is linked, announcement is school-wide or targeted to the exam's class.</p>
                     </div>
                   )}
                   

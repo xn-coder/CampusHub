@@ -139,7 +139,7 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
         *,
         posted_by:posted_by_user_id ( name, email ),
         target_class:target_class_id ( name, division ),
-        linked_exam:linked_exam_id ( name, date )
+        linked_exam:linked_exam_id ( id, name, date, class_id )
       `)
       .order('date', { ascending: false });
 
@@ -175,4 +175,24 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
     console.error("Unexpected error fetching announcements:", e);
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
+}
+
+export async function getExamDetailsForLinkingAction(examId: string): Promise<{
+    ok: boolean;
+    exam?: Exam | null;
+    message?: string;
+}> {
+    if (!examId) return { ok: false, message: "Exam ID is required." };
+    const supabase = createSupabaseServerClient();
+    const { data, error } = await supabase
+        .from('exams')
+        .select('id, name, class_id')
+        .eq('id', examId)
+        .single();
+    
+    if (error) {
+        console.error("Error fetching exam details for linking:", error);
+        return { ok: false, message: `DB error: ${error.message}` };
+    }
+    return { ok: true, exam: data as Exam };
 }
