@@ -3,6 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { ClassData, Student, AttendanceRecord } from '@/types';
+import { startOfYear, endOfYear } from 'date-fns';
 
 async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
   if (!adminUserId) {
@@ -56,30 +57,34 @@ export async function getAdminAttendancePageDataAction(adminUserId: string): Pro
   }
 }
 
-export async function fetchAttendanceRecordsAction(
+export async function fetchAttendanceForReportAction(
   schoolId: string,
   classId: string,
-  date: string
-): Promise<{ ok: boolean; records?: AttendanceRecord[]; message?: string }> {
-  if (!schoolId || !classId || !date) {
-    return { ok: false, message: "School ID, Class ID, and Date are required." };
+  year: number
+): Promise<{ ok: boolean; records?: Pick<AttendanceRecord, 'student_id' | 'status' | 'date'>[]; message?: string }> {
+  if (!schoolId || !classId || !year) {
+    return { ok: false, message: "School ID, Class ID, and Year are required." };
   }
   const supabaseAdmin = createSupabaseServerClient();
   try {
+    const startDate = startOfYear(new Date(year, 0, 1));
+    const endDate = endOfYear(new Date(year, 11, 31));
+
     const { data, error } = await supabaseAdmin
       .from('attendance_records')
-      .select('*')
+      .select('student_id, status, date')
       .eq('school_id', schoolId)
       .eq('class_id', classId)
-      .eq('date', date);
+      .gte('date', startDate.toISOString())
+      .lte('date', endDate.toISOString());
 
     if (error) {
-      console.error("Error fetching attendance records:", error);
+      console.error("Error fetching attendance records for report:", error);
       return { ok: false, message: `Database error: ${error.message}` };
     }
     return { ok: true, records: data || [] };
   } catch (error: any) {
-    console.error("Unexpected error fetching attendance records:", error);
+    console.error("Unexpected error fetching attendance report data:", error);
     return { ok: false, message: `Unexpected error: ${error.message}` };
   }
 }

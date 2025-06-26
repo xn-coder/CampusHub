@@ -8,22 +8,46 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import type { ClassData, Student, AttendanceRecord } from '@/types';
-import { useState, useEffect } from 'react';
-import { ListChecks, Users, CalendarDays, Search, Loader2 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { useState, useEffect, useMemo } from 'react';
+import { ListChecks, Users, Search, Loader2, Download } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { getAdminAttendancePageDataAction, fetchAttendanceRecordsAction } from './actions';
+import { getAdminAttendancePageDataAction, fetchAttendanceForReportAction } from './actions';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+interface AttendanceSummary {
+  studentId: string;
+  studentName: string;
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+  total: number;
+  percentage: number;
+}
+
+const years = [new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2];
+const months = [
+    { value: 'all', label: 'All Year' }, { value: '1', label: 'January' }, { value: '2', label: 'February' },
+    { value: '3', label: 'March' }, { value: '4', label: 'April' }, { value: '5', label: 'May' },
+    { value: '6', label: 'June' }, { value: '7', label: 'July' }, { value: '8', label: 'August' },
+    { value: '9', label: 'September' }, { value: '10', label: 'October' }, { value: '11', label: 'November' },
+    { value: '12', label: 'December' },
+];
 
 export default function AdminAttendancePage() {
   const { toast } = useToast();
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
-  const [allStudents, setAllStudents] = useState<Student[]>([]); // All students for the school
-  const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
-  const [displayedAttendance, setDisplayedAttendance] = useState<Array<AttendanceRecord & { studentName: string }>>([]);
+  const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [allYearlyRecords, setAllYearlyRecords] = useState<Pick<AttendanceRecord, 'student_id' | 'status' | 'date'>[]>([]);
+  const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary[]>([]);
   
+  const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+
   const [isLoadingPage, setIsLoadingPage] = useState(true);
-  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
   const [searchAttempted, setSearchAttempted] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
@@ -50,140 +74,173 @@ export default function AdminAttendancePage() {
     }
     setIsLoadingPage(false);
   }
-
+  
   const handleSearchAttendance = async () => {
-    if (!selectedClassId || !selectedDate || !currentSchoolId) {
-      toast({title: "Error", description: "Please select a class and date, and ensure school context is available.", variant: "destructive"});
+    if (!selectedClassId || !selectedYear || !currentSchoolId) {
+      toast({title: "Error", description: "Please select a class and year.", variant: "destructive"});
       return;
     }
-    setIsLoadingRecords(true);
+    setIsLoadingReport(true);
     setSearchAttempted(true);
     
-    const result = await fetchAttendanceRecordsAction(currentSchoolId, selectedClassId, selectedDate);
-    let recordsToShow: Array<AttendanceRecord & { studentName: string }> = [];
-
+    const result = await fetchAttendanceForReportAction(currentSchoolId, selectedClassId, selectedYear);
     if (result.ok && result.records) {
-      recordsToShow = result.records.map(rec => {
-        const student = allStudents.find(s => s.id === rec.student_id);
-        return {
-          ...rec,
-          studentName: student ? student.name : 'Unknown Student'
-        };
-      });
-    } else if (!result.ok) {
-        toast({title: "Error Fetching Records", description: result.message, variant: "destructive"});
+        setAllYearlyRecords(result.records);
+    } else {
+        toast({title: "Error Fetching Report Data", description: result.message, variant: "destructive"});
+        setAllYearlyRecords([]);
     }
-    
-    // If no specific records found for the day, show all students from that class as 'Not Recorded'
-    if (recordsToShow.length === 0) {
-        const studentsInClass = allStudents.filter(s => s.class_id === selectedClassId);
-        recordsToShow = studentsInClass.map(student => ({
-            student_id: student.id,
-            studentName: student.name,
-            date: selectedDate,
-            status: 'Not Recorded' as any, // Using 'any' to allow custom status for display
-            class_id: selectedClassId,
-            school_id: currentSchoolId,
-            taken_by_teacher_id: '', // Placeholder
-        }));
-    }
-
-    setDisplayedAttendance(recordsToShow);
-    setIsLoadingRecords(false);
+    setIsLoadingReport(false);
   };
   
+  useEffect(() => {
+    if (allYearlyRecords.length > 0 || searchAttempted) {
+        const studentsInClass = allStudents.filter(s => s.class_id === selectedClassId);
+        let recordsForPeriod = allYearlyRecords;
+        if(selectedMonth !== 'all') {
+            recordsForPeriod = allYearlyRecords.filter(r => {
+                const recordDate = new Date(r.date);
+                return recordDate.getMonth() + 1 === Number(selectedMonth);
+            });
+        }
+        
+        const summary = studentsInClass.map(student => {
+            const studentRecords = recordsForPeriod.filter(r => r.student_id === student.id);
+            const present = studentRecords.filter(r => r.status === 'Present' || r.status === 'Late' || r.status === 'Excused').length;
+            const absent = studentRecords.filter(r => r.status === 'Absent').length;
+            const total = studentRecords.length;
+            const percentage = total > 0 ? (present / total) * 100 : 0;
+
+            return {
+                studentId: student.id,
+                studentName: student.name,
+                present,
+                absent,
+                late: studentRecords.filter(r => r.status === 'Late').length,
+                excused: studentRecords.filter(r => r.status === 'Excused').length,
+                total,
+                percentage
+            };
+        });
+        setAttendanceSummary(summary);
+    }
+  }, [allYearlyRecords, selectedMonth, selectedClassId, allStudents, searchAttempted]);
+
+  const handleDownloadPdf = () => {
+    if (attendanceSummary.length === 0) {
+      toast({ title: "No data to download", variant: "destructive"});
+      return;
+    }
+    const doc = new jsPDF();
+    const selectedClass = allClasses.find(c => c.id === selectedClassId);
+    const monthLabel = months.find(m => m.value === selectedMonth)?.label;
+    const title = `Attendance Report for ${selectedClass?.name} - ${selectedClass?.division}`;
+    const subtitle = `${monthLabel}, ${selectedYear}`;
+
+    doc.setFontSize(18);
+    doc.text(title, 14, 22);
+    doc.setFontSize(12);
+    doc.text(subtitle, 14, 30);
+    
+    autoTable(doc, {
+        startY: 35,
+        head: [['Student Name', 'Present Days', 'Absent Days', 'Attendance %']],
+        body: attendanceSummary.map(s => [
+            s.studentName,
+            s.present,
+            s.absent,
+            `${s.percentage.toFixed(2)}%`
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [41, 128, 185] }
+    });
+    doc.save(`Attendance_${selectedClass?.name}_${monthLabel}_${selectedYear}.pdf`);
+  };
+
   const selectedClassDetails = allClasses.find(c => c.id === selectedClassId);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
-        title="View Attendance Records" 
-        description="Review student attendance data submitted by teachers." 
+        title="View Attendance Reports" 
+        description="Generate and download monthly or yearly attendance reports for your classes." 
       />
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><ListChecks className="mr-2 h-5 w-5" /> Consolidated Attendance</CardTitle>
-          <CardDescription>Select a class and date to view attendance records.</CardDescription>
+          <CardTitle className="flex items-center"><ListChecks className="mr-2 h-5 w-5" /> Attendance Report Generator</CardTitle>
+          <CardDescription>Select a class, year, and month to generate an attendance summary.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid md:grid-cols-3 gap-4 items-end">
+          <div className="grid md:grid-cols-4 gap-4 items-end">
             <div>
               <Label htmlFor="classSelect">Select Class</Label>
               <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingPage || !currentSchoolId}>
-                <SelectTrigger id="classSelect">
-                  <SelectValue placeholder="Choose a class" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allClasses.length > 0 ? allClasses.map(cls => (
-                    <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
-                  )) : <SelectItem value="-" disabled>No classes found</SelectItem>}
-                </SelectContent>
+                <SelectTrigger id="classSelect"><SelectValue placeholder="Choose a class" /></SelectTrigger>
+                <SelectContent>{allClasses.map(cls => <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+             <div>
+              <Label htmlFor="yearSelect">Select Year</Label>
+              <Select value={String(selectedYear)} onValueChange={(val) => setSelectedYear(Number(val))} disabled={isLoadingPage || !currentSchoolId}>
+                <SelectTrigger id="yearSelect"><SelectValue /></SelectTrigger>
+                <SelectContent>{years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="dateSelect">Select Date</Label>
-              <input 
-                type="date" 
-                id="dateSelect" 
-                value={selectedDate} 
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isLoadingPage || !currentSchoolId}
-              />
+              <Label htmlFor="monthSelect">Select Month</Label>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={isLoadingPage || !currentSchoolId}>
+                <SelectTrigger id="monthSelect"><SelectValue /></SelectTrigger>
+                <SelectContent>{months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
-            <Button onClick={handleSearchAttendance} disabled={isLoadingPage || isLoadingRecords || !selectedClassId || !selectedDate || !currentSchoolId}>
-                {isLoadingRecords ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Search className="mr-2 h-4 w-4" />} Search
-            </Button>
+            <div className="flex gap-2">
+                <Button onClick={handleSearchAttendance} disabled={isLoadingPage || isLoadingReport || !selectedClassId} className="w-full">
+                    {isLoadingReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Search className="mr-2 h-4 w-4" />} Search
+                </Button>
+                <Button onClick={handleDownloadPdf} disabled={isLoadingReport || attendanceSummary.length === 0} variant="outline" className="w-full">
+                    <Download className="mr-2 h-4 w-4" /> Download
+                </Button>
+            </div>
           </div>
-
-          {isLoadingPage && <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading page data...</div>}
-          {isLoadingRecords && <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading attendance records...</div>}
           
           {!isLoadingPage && !currentSchoolId && (
              <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot view attendance.</p>
           )}
 
-          {!isLoadingPage && !isLoadingRecords && searchAttempted && displayedAttendance.length === 0 && selectedClassDetails && (
-            <p className="text-muted-foreground text-center py-4">No attendance records found for {selectedClassDetails.name} - {selectedClassDetails.division} on {format(parseISO(selectedDate), 'PP')}. It might not have been taken yet.</p>
-          )}
-          {!isLoadingPage && !isLoadingRecords && searchAttempted && displayedAttendance.length === 0 && !selectedClassDetails && selectedClassId && (
-            <p className="text-muted-foreground text-center py-4">Please select a valid class.</p>
-          )}
+          {isLoadingReport && <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading attendance report...</div>}
 
-          {!isLoadingPage && !isLoadingRecords && displayedAttendance.length > 0 && (
+          {!isLoadingReport && searchAttempted && (
             <div className="overflow-x-auto">
-                <h3 className="text-lg font-medium my-2">Attendance for {selectedClassDetails?.name} - {selectedClassDetails?.division} on {format(parseISO(selectedDate), 'PP')}</h3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead><Users className="inline-block mr-1 h-4 w-4" />Student Name</TableHead>
-                    <TableHead className="text-center"><CalendarDays className="inline-block mr-1 h-4 w-4" />Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayedAttendance.map(record => (
-                    <TableRow key={record.student_id}>
-                      <TableCell className="font-medium">{record.studentName}</TableCell>
-                      <TableCell className="text-center">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          record.status === 'Present' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 
-                          record.status === 'Absent' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
-                          record.status === 'Late' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                          record.status === 'Excused' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
-                          'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' // For 'Not Recorded'
-                        }`}>
-                          {record.status}
-                        </span>
-                      </TableCell>
+              <h3 className="text-lg font-medium my-2">Attendance Summary</h3>
+              {attendanceSummary.length > 0 ? (
+                <Table>
+                    <TableHeader>
+                    <TableRow>
+                        <TableHead><Users className="inline-block mr-1 h-4 w-4" />Student Name</TableHead>
+                        <TableHead className="text-center">Present Days</TableHead>
+                        <TableHead className="text-center">Absent Days</TableHead>
+                        <TableHead className="text-center">Attendance %</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                    </TableHeader>
+                    <TableBody>
+                    {attendanceSummary.map(record => (
+                        <TableRow key={record.studentId}>
+                        <TableCell className="font-medium">{record.studentName}</TableCell>
+                        <TableCell className="text-center">{record.present}</TableCell>
+                        <TableCell className="text-center">{record.absent}</TableCell>
+                        <TableCell className="text-center font-semibold">{record.percentage.toFixed(2)}%</TableCell>
+                        </TableRow>
+                    ))}
+                    </TableBody>
+                </Table>
+              ) : (
+                <p className="text-muted-foreground text-center py-4">No attendance records found for the selected period.</p>
+              )}
             </div>
           )}
         </CardContent>
          <CardFooter>
-            <p className="text-xs text-muted-foreground">Attendance is recorded by class teachers. Select a class and date to view the submitted records.</p>
+            <p className="text-xs text-muted-foreground">Select a class and time period, then click 'Search' to generate the report.</p>
         </CardFooter>
       </Card>
     </div>
