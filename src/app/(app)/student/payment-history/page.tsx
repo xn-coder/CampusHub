@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -110,11 +111,13 @@ export default function StudentPaymentHistoryPage() {
         return isValid(dateObj) ? format(dateObj, 'PP') : 'N/A';
     };
 
-    const handleDownloadReceipt = (payment: StudentFeePayment) => {
+    const handleDownloadHistory = () => {
         toast({
-            title: "Receipt Download (Mock)",
-            description: `A receipt for your payment of $${payment.paid_amount.toFixed(2)} for "${getFeeCategoryName(payment.fee_category_id)}" would be downloaded here.`,
+            title: "Payment History Download (Mock)",
+            description: `A statement of all your fee transactions would be downloaded here.`,
         });
+        // In a real app, you would generate a CSV or PDF here.
+        console.log("Generating payment history download...");
     };
 
 
@@ -147,7 +150,6 @@ export default function StudentPaymentHistoryPage() {
                   <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4" />Payment Date</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead>Notes</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -169,18 +171,6 @@ export default function StudentPaymentHistoryPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs truncate max-w-xs">{payment.notes || 'N/A'}</TableCell>
-                    <TableCell className="text-right">
-                      {payment.status === 'Paid' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownloadReceipt(payment)}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          Receipt
-                        </Button>
-                      )}
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -190,6 +180,10 @@ export default function StudentPaymentHistoryPage() {
          {payments.length > 0 && (
             <CardFooter>
                 <div className="flex flex-col sm:flex-row justify-end items-center w-full gap-4 pt-4 border-t">
+                    <Button variant="outline" onClick={handleDownloadHistory} disabled={isLoading}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Download History
+                    </Button>
                     <div className="text-right">
                         <p className="text-muted-foreground">Total Amount Due</p>
                         <p className="text-2xl font-bold">${totalDue.toFixed(2)}</p>
