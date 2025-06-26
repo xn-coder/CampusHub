@@ -143,8 +143,11 @@ export default function ExamsPage() {
         }
 
         const promises = selectedSubjectIds.map(subjectId => {
+            const subject = subjects.find(s => s.id === subjectId);
+            const subjectIdentifier = subject ? ` - ${subject.name}` : ``;
+            
             const examData = {
-                name: examName.trim(),
+                name: `${examName.trim()}${subjectIdentifier}`,
                 subject_id: subjectId,
                 class_id: selectedClassId === 'none_cs_selection' ? null : selectedClassId,
                 academic_year_id: selectedAcademicYearId === 'none_ay_selection' ? null : selectedAcademicYearId,
@@ -401,3 +404,5 @@ export default function ExamsPage() {
     </div>
   );
 }
+
+    
