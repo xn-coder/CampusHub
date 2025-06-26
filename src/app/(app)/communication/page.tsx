@@ -8,27 +8,29 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { AnnouncementDB as Announcement, UserRole, ClassData, Student, User } from '@/types';
+import type { AnnouncementDB as Announcement, UserRole, ClassData, Student, Exam } from '@/types';
 import { useState, useEffect } from 'react';
-import { PlusCircle, Send, Loader2 } from 'lucide-react';
+import { PlusCircle, Send, Loader2, Link as LinkIcon, FileText } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { postAnnouncementAction, getAnnouncementsAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
 import { format, parseISO } from 'date-fns';
+import { useSearchParams } from 'next/navigation';
 
 interface GetAnnouncementsParams {
   school_id?: string | null;
   user_role: UserRole;
   user_id?: string;
-  student_class_id?: string | null; // Can be null if student not in class
+  student_class_id?: string | null;
   teacher_class_ids?: string[];
 }
 
 
 export default function CommunicationPage() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>([]);
-  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '' });
+  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '', linkedExamId: '' });
   const [showForm, setShowForm] = useState(false);
   const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false); 
@@ -40,7 +42,9 @@ export default function CommunicationPage() {
   const [studentProfile, setStudentProfile] = useState<Student | null>(null);
 
   const [teacherAssignedClasses, setTeacherAssignedClasses] = useState<ClassData[]>([]);
-  const [adminAllSchoolClasses, setAdminAllSchoolClasses] = useState<ClassData[]>([]);
+  const [allSchoolClasses, setAllSchoolClasses] = useState<ClassData[]>([]);
+  const [allSchoolExams, setAllSchoolExams] = useState<Exam[]>([]);
+
 
   useEffect(() => { 
     async function loadUserAndSchoolContext() {
@@ -48,7 +52,6 @@ export default function CommunicationPage() {
       let fetchedRole: UserRole | null = null;
       let fetchedUserId: string | null = null;
       let fetchedSchoolId: string | null = null;
-      // let fetchedUserName: string | null = null; // Not used directly, set via userRec.name
 
       if (typeof window !== 'undefined') {
         fetchedRole = localStorage.getItem('currentUserRole') as UserRole | null;
@@ -70,8 +73,7 @@ export default function CommunicationPage() {
           }
           fetchedSchoolId = userRec.school_id;
           setCurrentSchoolId(fetchedSchoolId);
-          setNewAnnouncement(prev => ({ ...prev, authorName: userRec.name })); // Set author name from user context
-
+          setNewAnnouncement(prev => ({ ...prev, authorName: userRec.name }));
 
           if (fetchedSchoolId) {
             if (fetchedRole === 'teacher') {
@@ -92,15 +94,22 @@ export default function CommunicationPage() {
                     .select('id, name, division')
                     .eq('school_id', fetchedSchoolId);
                 if (classesError) toast({title: "Error", description: "Failed to fetch school classes for admin.", variant: "destructive"});
-                else setAdminAllSchoolClasses(classesData || []);
+                else setAllSchoolClasses(classesData || []);
             } else if (fetchedRole === 'student') {
               const { data: studentData, error: studentError } = await supabase
                 .from('students')
-                .select('*') // Fetch all student fields including class_id
+                .select('*') 
                 .eq('user_id', fetchedUserId) 
                 .single();
               if (studentError || !studentData) toast({title: "Error", description: "Could not load student profile.", variant: "destructive"});
               else setStudentProfile(studentData as Student);
+            }
+            
+            // Fetch exams for the school if admin or teacher
+            if (fetchedRole === 'admin' || fetchedRole === 'teacher') {
+                const { data: examsData, error: examsError } = await supabase.from('exams').select('*').eq('school_id', fetchedSchoolId);
+                if (examsError) toast({title: "Error fetching exams for dropdown", variant: "destructive"});
+                else setAllSchoolExams(examsData || []);
             }
           }
         }
@@ -109,6 +118,21 @@ export default function CommunicationPage() {
     }
     loadUserAndSchoolContext();
   }, [toast]);
+  
+  useEffect(() => {
+    // Pre-fill form from URL parameters
+    const examId = searchParams.get('examId');
+    const examName = searchParams.get('examName');
+    if (examId && examName) {
+        setNewAnnouncement(prev => ({
+            ...prev,
+            title: `Notification for Exam: ${examName}`,
+            content: `This is an official notification regarding the upcoming exam: ${examName}.\n\nPlease prepare accordingly. Further details will be communicated by your teachers.`,
+            linkedExamId: examId,
+        }));
+        setShowForm(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     async function fetchAnnouncements() {
@@ -120,7 +144,7 @@ export default function CommunicationPage() {
         school_id: currentSchoolId,
         user_role: currentUserRole,
         user_id: currentUserId || undefined,
-        student_class_id: studentProfile?.class_id || null, // Pass null if not applicable or student not in class
+        student_class_id: studentProfile?.class_id || null, 
         teacher_class_ids: teacherAssignedClasses.map(c => c.id),
       };
       
@@ -151,8 +175,8 @@ export default function CommunicationPage() {
     setNewAnnouncement(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleTargetClassChange = (value: string) => {
-    setNewAnnouncement(prev => ({ ...prev, targetClassId: value === "general" ? "" : value }));
+  const handleSelectChange = (name: 'targetClassId' | 'linkedExamId') => (value: string) => {
+    setNewAnnouncement(prev => ({ ...prev, [name]: value === "none" ? "" : value }));
   };
 
   const handleSubmitAnnouncement = async (e: React.FormEvent) => {
@@ -175,6 +199,7 @@ export default function CommunicationPage() {
       posted_by_role: currentUserRole,
       target_class_id: newAnnouncement.targetClassId || undefined,
       school_id: currentSchoolId,
+      linked_exam_id: newAnnouncement.linkedExamId || undefined,
     });
     setIsSubmitting(false);
 
@@ -193,7 +218,7 @@ export default function CommunicationPage() {
         if (fetchResult.ok && fetchResult.announcements) setAllAnnouncements(fetchResult.announcements);
       }
 
-      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '' })); 
+      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', linkedExamId: '' })); 
       setShowForm(false);
     } else {
       toast({ title: "Error", description: result.message || "Failed to post announcement.", variant: "destructive" });
@@ -201,7 +226,7 @@ export default function CommunicationPage() {
   };
 
   const canPostAnnouncement = (currentUserRole === 'superadmin' || currentUserRole === 'admin' || currentUserRole === 'teacher') && !!currentSchoolId;
-  const availableClassesForTargeting = currentUserRole === 'admin' ? adminAllSchoolClasses : teacherAssignedClasses;
+  const availableClassesForTargeting = currentUserRole === 'admin' ? allSchoolClasses : teacherAssignedClasses;
 
   return (
     <div className="flex flex-col gap-6">
@@ -234,23 +259,45 @@ export default function CommunicationPage() {
                 <Label htmlFor="authorName">Author Name / Department</Label>
                 <Input id="authorName" name="authorName" value={newAnnouncement.authorName} onChange={handleInputChange} placeholder="e.g., Principal's Office, Your Name" required disabled={isSubmitting}/>
               </div>
-              {(currentUserRole === 'teacher' || currentUserRole === 'admin') && availableClassesForTargeting.length > 0 && (
-                <div>
-                  <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
-                  <Select value={newAnnouncement.targetClassId || "general"} onValueChange={handleTargetClassChange} disabled={isSubmitting}>
-                    <SelectTrigger id="targetClassId">
-                      <SelectValue placeholder={`General Announcement for ${currentUserRole === 'teacher' ? 'Your Students' : 'the School'}`} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="general">General Announcement</SelectItem>
-                      {availableClassesForTargeting.map(cls => (
-                        <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-1">If not specified, announcement is considered general for your role's scope.</p>
-                </div>
-              )}
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 {(currentUserRole === 'teacher' || currentUserRole === 'admin') && (
+                    <div>
+                      <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
+                      <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0}>
+                        <SelectTrigger id="targetClassId">
+                          <SelectValue placeholder="General Announcement" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">General Announcement</SelectItem>
+                          {availableClassesForTargeting.map(cls => (
+                            <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">If not specified, announcement is school-wide.</p>
+                    </div>
+                  )}
+                  
+                  {(currentUserRole === 'teacher' || currentUserRole === 'admin') && (
+                     <div>
+                       <Label htmlFor="linkedExamId">Link to Exam (Optional)</Label>
+                        <Select value={newAnnouncement.linkedExamId || "none"} onValueChange={handleSelectChange('linkedExamId')} disabled={isSubmitting || allSchoolExams.length === 0}>
+                            <SelectTrigger id="linkedExamId">
+                                <SelectValue placeholder="No linked exam" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">None</SelectItem>
+                                {allSchoolExams.map(exam => (
+                                    <SelectItem key={exam.id} value={exam.id}>{exam.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">Include exam details in the notification.</p>
+                     </div>
+                  )}
+              </div>
+
               <div>
                 <Label htmlFor="content">Content</Label>
                 <Textarea id="content" name="content" value={newAnnouncement.content} onChange={handleInputChange} placeholder="Write your announcement here..." required rows={5} disabled={isSubmitting}/>
@@ -273,7 +320,7 @@ export default function CommunicationPage() {
       )}
       
       {!isLoading && !isContextLoading && (currentUserRole === 'superadmin' && !currentSchoolId) && (
-         <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Announcements are school-specific. Global announcements may appear if not school-bound.</CardContent></Card>
+         <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Announcements are school-specific.</CardContent></Card>
       )}
 
       {!isLoading && !isContextLoading && ((currentSchoolId && currentUserRole) || currentUserRole === 'superadmin') && (
@@ -284,11 +331,16 @@ export default function CommunicationPage() {
                 <CardTitle>{announcement.title}</CardTitle>
                 <CardDescription>
                   Posted by {announcement.author_name || announcement.posted_by?.name || 'System'} ({announcement.posted_by_role}) on {format(parseISO(announcement.date), 'PPpp')}
-                  {announcement.target_class_id && announcement.target_class && (
-                      <span className="text-xs block text-blue-500"> (Targeted to class: {announcement.target_class?.name} - {announcement.target_class?.division})</span>
-                  )}
-                  {!announcement.target_class_id && <span className="text-xs block text-gray-500"> (General Announcement)</span>}
                 </CardDescription>
+                {announcement.target_class && (
+                      <span className="text-xs font-semibold text-blue-600 dark:text-blue-400"> (For Class: {announcement.target_class.name} - {announcement.target_class.division})</span>
+                )}
+                 {announcement.linked_exam && (
+                      <span className="text-xs font-semibold text-green-600 dark:text-green-400 flex items-center gap-1"> 
+                        <FileText className="h-3 w-3"/>
+                        (Related Exam: {announcement.linked_exam.name} on {format(parseISO(announcement.linked_exam.date), 'PP')})
+                      </span>
+                 )}
               </CardHeader>
               <CardContent>
                 <p className="whitespace-pre-wrap">{announcement.content}</p>
@@ -306,4 +358,3 @@ export default function CommunicationPage() {
     </div>
   );
 }
-    

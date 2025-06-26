@@ -5,7 +5,7 @@ console.log('[LOG] Loading src/app/(app)/communication/actions.ts');
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { AnnouncementDB, UserRole, ClassData } from '@/types';
+import type { AnnouncementDB, UserRole, ClassData, Exam } from '@/types';
 import { getStudentEmailsByClassId, getAllUserEmailsInSchool, getTeacherEmailByTeacherProfileId } from '@/services/emailService';
 
 interface PostAnnouncementInput {
@@ -16,6 +16,7 @@ interface PostAnnouncementInput {
   posted_by_role: UserRole;
   target_class_id?: string;
   school_id: string;
+  linked_exam_id?: string;
 }
 
 export async function postAnnouncementAction(
@@ -26,11 +27,17 @@ export async function postAnnouncementAction(
     const { data, error } = await supabase
       .from('announcements')
       .insert({
-        ...input,
+        title: input.title,
+        content: input.content,
+        author_name: input.author_name,
+        posted_by_user_id: input.posted_by_user_id,
+        posted_by_role: input.posted_by_role,
         date: new Date().toISOString(), 
         target_class_id: input.target_class_id || null, 
+        school_id: input.school_id,
+        linked_exam_id: input.linked_exam_id || null,
       })
-      .select('*, target_class:target_class_id(name, division, teacher_id)')
+      .select('*, target_class:target_class_id(name, division, teacher_id), linked_exam:linked_exam_id(*)')
       .single();
 
     if (error) {
@@ -41,9 +48,13 @@ export async function postAnnouncementAction(
     revalidatePath('/communication');
 
     if (data) {
-      const announcement = data as AnnouncementDB & { target_class?: { name: string, division: string, teacher_id?: string | null } };
-      const subject = `New Announcement: ${announcement.title}`;
-      const emailBody = `
+      const announcement = data as AnnouncementDB & { 
+        target_class?: { name: string, division: string, teacher_id?: string | null },
+        linked_exam?: Exam | null
+      };
+      
+      let subject = `New Announcement: ${announcement.title}`;
+      let emailBody = `
         <h1>New Announcement: ${announcement.title}</h1>
         <p><strong>Posted by:</strong> ${announcement.author_name} (${announcement.posted_by_role})</p>
         <p><strong>Date:</strong> ${new Date(announcement.date).toLocaleString()}</p>
@@ -51,14 +62,30 @@ export async function postAnnouncementAction(
         <hr>
         <div>${announcement.content.replace(/\n/g, '<br>')}</div>
         <br>
-        <p>Please check the communication portal for more details.</p>
       `;
       
+      if (announcement.linked_exam) {
+          subject = `Exam Notification: ${announcement.linked_exam.name}`;
+          emailBody += `
+            <h2>Related Exam Details</h2>
+            <ul>
+              <li><strong>Exam:</strong> ${announcement.linked_exam.name}</li>
+              <li><strong>Date:</strong> ${new Date(announcement.linked_exam.date).toLocaleDateString()}</li>
+              ${announcement.linked_exam.start_time ? `<li><strong>Time:</strong> ${announcement.linked_exam.start_time}${announcement.linked_exam.end_time ? ` - ${announcement.linked_exam.end_time}` : ''}</li>` : ''}
+              ${announcement.linked_exam.max_marks ? `<li><strong>Max Marks:</strong> ${announcement.linked_exam.max_marks}</li>` : ''}
+            </ul>
+          `;
+      }
+      emailBody += `<p>Please check the communication portal for more details.</p>`;
+      
       let recipientEmails: string[] = [];
-      if (announcement.target_class_id && announcement.school_id) {
-        recipientEmails = await getStudentEmailsByClassId(announcement.target_class_id, announcement.school_id);
-        if (announcement.target_class?.teacher_id) {
-            const teacherEmail = await getTeacherEmailByTeacherProfileId(announcement.target_class.teacher_id);
+      const targetClassId = announcement.linked_exam?.class_id || announcement.target_class_id;
+      
+      if (targetClassId && announcement.school_id) {
+        recipientEmails = await getStudentEmailsByClassId(targetClassId, announcement.school_id);
+        const { data: classTeacher } = await supabase.from('classes').select('teacher_id').eq('id', targetClassId).single();
+        if (classTeacher?.teacher_id) {
+            const teacherEmail = await getTeacherEmailByTeacherProfileId(classTeacher.teacher_id);
             if (teacherEmail) recipientEmails.push(teacherEmail);
         }
       } else if (announcement.school_id) {
@@ -111,7 +138,8 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
       .select(`
         *,
         posted_by:posted_by_user_id ( name, email ),
-        target_class:target_class_id ( name, division )
+        target_class:target_class_id ( name, division ),
+        linked_exam:linked_exam_id ( name, date )
       `)
       .order('date', { ascending: false });
 
@@ -148,4 +176,3 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
 }
-    

@@ -11,11 +11,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Exam, Subject, ClassData, AcademicYear } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, FileTextIcon, BellRing, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid } from 'date-fns';
 import { getExamsPageDataAction, addExamAction, updateExamAction, deleteExamAction } from './actions';
+import Link from 'next/link';
+
+interface ExamGroup {
+  id: string; // Using the first exam's ID for keys
+  name: string; // The base name, e.g., "Midterm"
+  date: string;
+  class_id?: string | null;
+  academic_year_id?: string | null;
+  max_marks?: number | null;
+  subjects: { id: string | null; name: string }[];
+  examIds: string[]; // All original exam IDs in this group
+}
+
 
 export default function ExamsPage() {
   const { toast } = useToast();
@@ -77,7 +90,7 @@ export default function ExamsPage() {
   const handleOpenDialog = (exam?: Exam) => {
     if (exam) {
       setEditingExam(exam);
-      setExamName(exam.name);
+      setExamName(exam.name.split(' - ')[0]); // Get base name
       setSelectedClassId(exam.class_id || undefined);
       setSelectedAcademicYearId(exam.academic_year_id || undefined);
       setExamDate(exam.date ? format(parseISO(exam.date), 'yyyy-MM-dd') : '');
@@ -112,9 +125,11 @@ export default function ExamsPage() {
          setIsSubmitting(false);
          return;
       }
-      // Update logic for a single exam
+      const subjectName = subjects.find(s => s.id === editingExam.subject_id)?.name || '';
+      const updatedName = subjectName ? `${examName.trim()} - ${subjectName}` : examName.trim();
+
       const result = await updateExamAction(editingExam.id, {
-        name: examName.trim(),
+        name: updatedName,
         class_id: selectedClassId === 'none_cs_selection' ? null : selectedClassId,
         academic_year_id: selectedAcademicYearId === 'none_ay_selection' ? null : selectedAcademicYearId,
         date: examDate,
@@ -122,7 +137,7 @@ export default function ExamsPage() {
         end_time: endTime || null,
         max_marks: maxMarks !== '' ? Number(maxMarks) : null,
         school_id: currentSchoolId,
-        subject_id: editingExam.subject_id, // Subject is not editable
+        subject_id: editingExam.subject_id,
       });
       if(result.ok) {
         toast({ title: "Exam Updated", description: result.message });
@@ -134,7 +149,6 @@ export default function ExamsPage() {
       }
 
     } else {
-      // Create logic for multiple subjects
       if (!examName.trim() || !examDate || selectedSubjectIds.length === 0) {
         toast({ title: "Error", description: "Exam Name, Date, and at least one Subject are required.", variant: "destructive" });
         setIsSubmitting(false);
@@ -178,11 +192,11 @@ export default function ExamsPage() {
     setIsSubmitting(false);
   };
   
-  const handleDeleteExam = async (examId: string) => {
+  const handleDeleteExamGroup = async (examIds: string[]) => {
     if (!currentSchoolId) return;
-    if (confirm("Are you sure you want to delete this exam schedule?")) {
+    if (confirm("Are you sure you want to delete this exam schedule and all its associated subjects?")) {
       setIsSubmitting(true);
-      const result = await deleteExamAction(examId, currentSchoolId);
+      const result = await deleteExamAction(examIds, currentSchoolId);
       toast({ title: result.ok ? "Exam Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
       if (result.ok) {
         const adminUserId = localStorage.getItem('currentUserId');
@@ -191,23 +205,10 @@ export default function ExamsPage() {
       setIsSubmitting(false);
     }
   };
-  
-  const handleMockNotify = (exam: Exam) => {
-    toast({
-      title: "Notification Simulated",
-      description: `Students and teachers for exam '${exam.name}' would be notified. (This is a mock action)`,
-    });
-  };
 
-  const getSubjectName = (exam: Exam) => {
-      if (!exam.subject_id) return 'N/A';
-      const subject = exam.subject as any; // Cast because Supabase join type can be complex
-      return subject?.name ? `${subject.name} (${subject.code})` : 'Unknown';
-  };
-
-  const getClassSectionName = (exam: Exam) => {
+  const getClassSectionName = (exam: Exam | ExamGroup) => {
     if (!exam.class_id) return 'All Classes';
-    const classInfo = exam.class as any;
+    const classInfo = activeClasses.find(c => c.id === exam.class_id);
     return classInfo ? `${classInfo.name} - ${classInfo.division}` : 'N/A';
   };
   
@@ -216,6 +217,39 @@ export default function ExamsPage() {
     const dateObj = parseISO(dateString);
     return isValid(dateObj) ? format(dateObj, 'PP') : 'Invalid Date';
   };
+  
+  const examGroups: ExamGroup[] = useMemo(() => {
+    const getSubjectName = (subjectId?: string | null) => {
+      if (!subjectId) return 'N/A';
+      return subjects.find(s => s.id === subjectId)?.name || 'Unknown';
+    };
+
+    const grouped = exams.reduce((acc, exam) => {
+      const namePrefix = exam.name.split(' - ')[0];
+      const key = `${namePrefix}_${exam.date}_${exam.class_id || 'global'}_${exam.academic_year_id || 'general'}`;
+      
+      if (!acc[key]) {
+        acc[key] = {
+          id: exam.id,
+          name: namePrefix,
+          date: exam.date,
+          class_id: exam.class_id,
+          academic_year_id: exam.academic_year_id,
+          max_marks: exam.max_marks,
+          subjects: [],
+          examIds: [],
+        };
+      }
+      
+      acc[key].subjects.push({ id: exam.subject_id, name: getSubjectName(exam.subject_id) });
+      acc[key].examIds.push(exam.id);
+      
+      return acc;
+    }, {} as Record<string, ExamGroup>);
+
+    return Object.values(grouped);
+  }, [exams, subjects]);
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -238,14 +272,14 @@ export default function ExamsPage() {
             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
           ) : !currentSchoolId ? (
              <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage exams.</p>
-          ) : exams.length === 0 ? (
+          ) : examGroups.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">No exams scheduled yet for this school.</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Exam Name</TableHead>
-                  <TableHead>Subject</TableHead>
+                  <TableHead>Subjects</TableHead>
                   <TableHead>Class/Section</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Max Marks</TableHead>
@@ -253,21 +287,23 @@ export default function ExamsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {exams.map((exam) => (
-                  <TableRow key={exam.id}>
-                    <TableCell className="font-medium">{exam.name}</TableCell>
-                    <TableCell>{getSubjectName(exam)}</TableCell>
-                    <TableCell>{getClassSectionName(exam)}</TableCell>
-                    <TableCell>{formatDateString(exam.date)}</TableCell>
-                    <TableCell>{exam.max_marks ?? 'N/A'}</TableCell>
+                {examGroups.map((group) => (
+                  <TableRow key={group.id}>
+                    <TableCell className="font-medium">{group.name}</TableCell>
+                    <TableCell className="max-w-xs">{group.subjects.map(s => s.name).join(', ')}</TableCell>
+                    <TableCell>{getClassSectionName(group)}</TableCell>
+                    <TableCell>{formatDateString(group.date)}</TableCell>
+                    <TableCell>{group.max_marks ?? 'N/A'}</TableCell>
                     <TableCell className="space-x-1 text-right">
-                       <Button variant="outline" size="sm" onClick={() => handleMockNotify(exam)} title="Simulate Notification" disabled={isSubmitting}>
-                        <BellRing className="h-4 w-4" />
+                       <Button variant="outline" size="sm" asChild disabled={isSubmitting}>
+                        <Link href={`/communication?examId=${group.examIds[0]}&examName=${encodeURIComponent(group.name)}`}>
+                           <BellRing className="mr-1 h-3 w-3" /> Notify
+                        </Link>
                       </Button>
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(exam)} disabled={isSubmitting}>
+                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(exams.find(e => e.id === group.id))} disabled={isSubmitting}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteExam(exam.id)} disabled={isSubmitting}>
+                      <Button variant="destructive" size="icon" onClick={() => handleDeleteExamGroup(group.examIds)} disabled={isSubmitting}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -289,9 +325,15 @@ export default function ExamsPage() {
               <div>
                 <Label htmlFor="examName">Exam Name</Label>
                 <Input id="examName" value={examName} onChange={(e) => setExamName(e.target.value)} placeholder="e.g., Midterm, Final Term" required disabled={isSubmitting} />
+                {editingExam && <p className="text-xs text-muted-foreground mt-1">Editing base name. Subject will be appended.</p>}
               </div>
 
-              {!editingExam && (
+              {editingExam ? (
+                 <div>
+                    <Label>Subject (Read-only)</Label>
+                    <Input value={subjects.find(s => s.id === editingExam.subject_id)?.name || 'N/A'} readOnly disabled />
+                 </div>
+              ) : (
                 <div>
                     <Label>Subjects</Label>
                     <div className="max-h-40 overflow-y-auto rounded-md border p-2 space-y-2">

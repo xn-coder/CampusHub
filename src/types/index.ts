@@ -154,11 +154,13 @@ export interface AnnouncementDB {
   posted_by_role: UserRole;
   target_class_id?: string | null;
   school_id: string;
+  linked_exam_id?: string | null;
   created_at?: string;
   updated_at?: string;
   // For joined data
   posted_by?: { name: string; email: string };
   target_class?: { name: string; division: string };
+  linked_exam?: { name: string; date: string };
 }
 
 
@@ -203,7 +205,7 @@ export interface Subject {
 export interface Exam {
   id: string;
   name: string;
-  subject_id?: string | null;
+  subject_id: string;
   class_id?: string | null;
   academic_year_id?: string | null;
   date: string;
@@ -215,6 +217,7 @@ export interface Exam {
   updated_at?: string;
   // For joined data
   class?: { name: string; division: string };
+  subject?: { name: string, code: string };
 }
 
 

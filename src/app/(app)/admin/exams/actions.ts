@@ -7,7 +7,6 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { Exam, Subject, ClassData, AcademicYear, UserRole } from '@/types';
-import { getStudentEmailsByClassId, getAllUserEmailsInSchool } from '@/services/emailService';
 
 async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
   if (!adminUserId) {
@@ -78,7 +77,7 @@ interface ExamInput {
   end_time?: string | null;   // HH:MM
   max_marks?: number | null;
   school_id: string;
-  subject_id: string; // This is now mandatory for creation.
+  subject_id: string;
 }
 
 export async function addExamAction(
@@ -91,7 +90,6 @@ export async function addExamAction(
 
   const results = await Promise.allSettled(
     inputs.map(async (input) => {
-      // Check for uniqueness of exam name for this class and subject combo
       let query = supabaseAdmin
         .from('exams')
         .select('id')
@@ -118,7 +116,7 @@ export async function addExamAction(
       const { data: insertedData, error: insertError } = await supabaseAdmin
         .from('exams')
         .insert({ ...input, id: uuidv4() })
-        .select('*, class:class_id(name,division), subject:subject_id(name)')
+        .select()
         .single();
       
       if (insertError) {
@@ -128,14 +126,9 @@ export async function addExamAction(
     })
   );
 
-  const successfulCreations: Exam[] = [];
-
   results.forEach((result, index) => {
     if (result.status === 'fulfilled') {
       savedCount++;
-      if (result.value) {
-        successfulCreations.push(result.value as Exam);
-      }
     } else {
       errorCount++;
       errorMessages.push(result.reason.message);
@@ -145,47 +138,6 @@ export async function addExamAction(
 
   if (savedCount > 0) {
     revalidatePath('/admin/exams');
-
-    // Notify students of the first successfully created exam as an example
-    const firstCreated = successfulCreations[0] as Exam & { class?: { name: string, division: string }, subject?: { name: string | null } };
-    if (firstCreated && firstCreated.school_id) {
-        const className = firstCreated.class ? `${firstCreated.class.name} - ${firstCreated.class.division}` : 'All Classes';
-        
-        const emailSubject = `New Exam Scheduled: ${firstCreated.name}`;
-        const emailBody = `
-          <h1>New Exam Scheduled</h1>
-          <p>An exam has been scheduled:</p>
-          <ul>
-            <li><strong>Exam Name:</strong> ${firstCreated.name}</li>
-            <li><strong>Class:</strong> ${className}</li>
-            <li><strong>Date:</strong> ${new Date(firstCreated.date).toLocaleDateString()}</li>
-            ${firstCreated.start_time ? `<li><strong>Time:</strong> ${firstCreated.start_time}${firstCreated.end_time ? ` - ${firstCreated.end_time}` : ''}</li>` : ''}
-            ${firstCreated.max_marks ? `<li><strong>Max Marks:</strong> ${firstCreated.max_marks}</li>` : ''}
-          </ul>
-          <p>Please prepare accordingly. Note: If multiple subjects were scheduled, you will receive separate notifications or can check the portal.</p>
-        `;
-        
-        let recipientEmails: string[] = [];
-        if (firstCreated.class_id) {
-          recipientEmails = await getStudentEmailsByClassId(firstCreated.class_id, firstCreated.school_id);
-        } else {
-          recipientEmails = await getAllUserEmailsInSchool(firstCreated.school_id, ['student', 'teacher']);
-        }
-
-        if (recipientEmails.length > 0) {
-           try {
-              console.log(`[addExamAction] Attempting to send exam notification via API to: ${recipientEmails.join(', ')}`);
-              const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
-              await fetch(emailApiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ to: recipientEmails, subject: emailSubject, html: emailBody }),
-              });
-            } catch (apiError: any) {
-              console.error(`[addExamAction] Error calling email API: ${apiError.message}`);
-            }
-        }
-    }
   }
 
   const message = `Successfully created ${savedCount} exam(s). Failed to create ${errorCount} exam(s). ${errorCount > 0 ? 'Errors: ' + errorMessages.join('; ') : ''}`;
@@ -217,12 +169,14 @@ export async function updateExamAction(
   return { ok: true, message: 'Exam updated successfully.', exam: data as Exam };
 }
 
-export async function deleteExamAction(id: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
+export async function deleteExamAction(examIds: string[], schoolId: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
+  
+  // Check for dependencies across all exams in the group
   const { count, error: depError } = await supabaseAdmin
     .from('student_scores')
     .select('id', { count: 'exact', head: true })
-    .eq('exam_id', id)
+    .in('exam_id', examIds)
     .eq('school_id', schoolId);
 
   if (depError) {
@@ -230,19 +184,20 @@ export async function deleteExamAction(id: string, schoolId: string): Promise<{ 
     return { ok: false, message: `Error checking dependencies: ${depError.message}` };
   }
   if (count && count > 0) {
-    return { ok: false, message: `Cannot delete exam: It has ${count} student score(s) associated with it.` };
+    return { ok: false, message: `Cannot delete exam group: It has ${count} student score(s) associated with it.` };
   }
 
   const { error } = await supabaseAdmin
     .from('exams')
     .delete()
-    .eq('id', id)
+    .in('id', examIds)
     .eq('school_id', schoolId);
 
   if (error) {
-    console.error("Error deleting exam:", error);
-    return { ok: false, message: `Failed to delete exam: ${error.message}` };
+    console.error("Error deleting exam group:", error);
+    return { ok: false, message: `Failed to delete exam group: ${error.message}` };
   }
+  
   revalidatePath('/admin/exams');
-  return { ok: true, message: 'Exam deleted successfully.' };
+  return { ok: true, message: 'Exam group deleted successfully.' };
 }
