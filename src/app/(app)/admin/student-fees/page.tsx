@@ -18,13 +18,15 @@ import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid } from 'date-fns';
 import {
   assignStudentFeeAction,
-  assignFeeToClassAction,
+  assignMultipleFeesToClassAction,
   recordStudentFeePaymentAction,
   deleteStudentFeeAssignmentAction,
   fetchAdminSchoolIdForFees,
   fetchStudentFeesPageDataAction,
   updateStudentFeeAction,
 } from './actions';
+import { Checkbox } from '@/components/ui/checkbox';
+
 
 export default function AdminStudentFeesPage() {
   const { toast } = useToast();
@@ -52,6 +54,7 @@ export default function AdminStudentFeesPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [selectedClassIdForFee, setSelectedClassIdForFee] = useState<string>('');
   const [selectedFeeCategoryId, setSelectedFeeCategoryId] = useState<string>('');
+  const [selectedFeeCategoryIds, setSelectedFeeCategoryIds] = useState<string[]>([]);
   const [assignedAmount, setAssignedAmount] = useState<number | ''>('');
   const [dueDate, setDueDate] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
@@ -118,6 +121,7 @@ export default function AdminStudentFeesPage() {
     setSelectedStudentId(''); 
     setSelectedClassIdForFee('');
     setSelectedFeeCategoryId(''); 
+    setSelectedFeeCategoryIds([]);
     setAssignedAmount('');
     setDueDate(''); 
     setNotes(''); 
@@ -154,8 +158,8 @@ export default function AdminStudentFeesPage() {
 
   const handleAssignFeeSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!currentSchoolId || !selectedFeeCategoryId || assignedAmount === '' || Number(assignedAmount) <= 0) {
-        toast({ title: "Error", description: "Fee Category, valid Assigned Amount, and School context are required.", variant: "destructive" });
+    if (!currentSchoolId) {
+        toast({ title: "Error", description: "School context is required.", variant: "destructive" });
         return;
     }
     
@@ -163,8 +167,8 @@ export default function AdminStudentFeesPage() {
     let result;
 
     if (assignmentType === 'individual') {
-        if (!selectedStudentId) {
-            toast({ title: "Error", description: "Please select a student.", variant: "destructive" });
+        if (!selectedStudentId || !selectedFeeCategoryId || assignedAmount === '' || Number(assignedAmount) <= 0) {
+            toast({ title: "Error", description: "Student, Fee Category, and a valid Assigned Amount are required.", variant: "destructive" });
             setIsSubmitting(false);
             return;
         }
@@ -178,15 +182,14 @@ export default function AdminStudentFeesPage() {
             school_id: currentSchoolId,
         });
     } else { // assignmentType === 'class'
-        if (!selectedClassIdForFee) {
-            toast({ title: "Error", description: "Please select a class.", variant: "destructive" });
+        if (!selectedClassIdForFee || selectedFeeCategoryIds.length === 0) {
+            toast({ title: "Error", description: "Please select a class and at least one fee category.", variant: "destructive" });
             setIsSubmitting(false);
             return;
         }
-        result = await assignFeeToClassAction({
+        result = await assignMultipleFeesToClassAction({
             class_id: selectedClassIdForFee,
-            fee_category_id: selectedFeeCategoryId,
-            assigned_amount: Number(assignedAmount),
+            fee_category_ids: selectedFeeCategoryIds,
             due_date: dueDate || undefined,
             notes: notes.trim() || undefined,
             academic_year_id: selectedAcademicYearId === 'none' ? undefined : selectedAcademicYearId,
@@ -455,44 +458,73 @@ export default function AdminStudentFeesPage() {
               </div>
 
               {assignmentType === 'individual' ? (
-                <div>
-                  <Label htmlFor="studentId">Student</Label>
-                  <Select value={selectedStudentId} onValueChange={setSelectedStudentId} required disabled={isSubmitting}>
-                    <SelectTrigger><SelectValue placeholder="Select student" /></SelectTrigger>
-                    <SelectContent>
-                      {students.length > 0 ? students.map(s => (<SelectItem key={s.id} value={s.id}>{s.name} ({s.email})</SelectItem>)) : <SelectItem value="-" disabled>No students found</SelectItem>}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <>
+                  <div>
+                    <Label htmlFor="studentId">Student</Label>
+                    <Select value={selectedStudentId} onValueChange={setSelectedStudentId} required disabled={isSubmitting}>
+                      <SelectTrigger><SelectValue placeholder="Select student" /></SelectTrigger>
+                      <SelectContent>
+                        {students.length > 0 ? students.map(s => (<SelectItem key={s.id} value={s.id}>{s.name} ({s.email})</SelectItem>)) : <SelectItem value="-" disabled>No students found</SelectItem>}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="feeCategoryId">Fee Category</Label>
+                    <Select value={selectedFeeCategoryId} onValueChange={(val) => {
+                        setSelectedFeeCategoryId(val);
+                        const cat = feeCategories.find(fc => fc.id === val);
+                        if (cat?.amount) setAssignedAmount(cat.amount); else setAssignedAmount('');
+                    }} required disabled={isSubmitting}>
+                      <SelectTrigger><SelectValue placeholder="Select fee category" /></SelectTrigger>
+                      <SelectContent>
+                        {feeCategories.length > 0 ? feeCategories.map(fc => (<SelectItem key={fc.id} value={fc.id}>{fc.name} {fc.amount ? `($${fc.amount.toFixed(2)})` : ''}</SelectItem>)) : <SelectItem value="-" disabled>No fee categories defined</SelectItem>}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="assignedAmount">Assigned Amount ($)</Label>
+                    <Input id="assignedAmount" type="number" value={assignedAmount} onChange={(e) => setAssignedAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 100.00" step="0.01" min="0.01" required disabled={isSubmitting} />
+                  </div>
+                </>
               ) : (
-                <div>
-                  <Label htmlFor="classIdForFee">Class</Label>
-                  <Select value={selectedClassIdForFee} onValueChange={setSelectedClassIdForFee} required disabled={isSubmitting}>
-                    <SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger>
-                    <SelectContent>
-                      {classes.length > 0 ? classes.map(c => (<SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)) : <SelectItem value="-" disabled>No classes found</SelectItem>}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <>
+                  <div>
+                    <Label htmlFor="classIdForFee">Class</Label>
+                    <Select value={selectedClassIdForFee} onValueChange={setSelectedClassIdForFee} required disabled={isSubmitting}>
+                      <SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger>
+                      <SelectContent>
+                        {classes.length > 0 ? classes.map(c => (<SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)) : <SelectItem value="-" disabled>No classes found</SelectItem>}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Fee Categories to Assign</Label>
+                    <Card className="max-h-48 overflow-y-auto p-2 border">
+                      <div className="space-y-2">
+                        {feeCategories.length > 0 ? feeCategories.map(fc => (
+                          <div key={fc.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`fee-cat-${fc.id}`}
+                              checked={selectedFeeCategoryIds.includes(fc.id)}
+                              onCheckedChange={(checked) => {
+                                setSelectedFeeCategoryIds(prev => 
+                                  checked ? [...prev, fc.id] : prev.filter(id => id !== fc.id)
+                                );
+                              }}
+                              disabled={isSubmitting}
+                            />
+                            <Label htmlFor={`fee-cat-${fc.id}`} className="font-normal w-full cursor-pointer">
+                              {fc.name} {fc.amount ? `($${fc.amount.toFixed(2)})` : ''}
+                            </Label>
+                          </div>
+                        )) : <p className="text-xs text-muted-foreground text-center">No fee categories defined.</p>}
+                      </div>
+                    </Card>
+                    <p className="text-xs text-muted-foreground mt-1">The pre-defined amount for each selected category will be used.</p>
+                  </div>
+                </>
               )}
 
-              <div>
-                <Label htmlFor="feeCategoryId">Fee Category</Label>
-                <Select value={selectedFeeCategoryId} onValueChange={(val) => {
-                    setSelectedFeeCategoryId(val);
-                    const cat = feeCategories.find(fc => fc.id === val);
-                    if (cat?.amount) setAssignedAmount(cat.amount); else setAssignedAmount('');
-                }} required disabled={isSubmitting}>
-                  <SelectTrigger><SelectValue placeholder="Select fee category" /></SelectTrigger>
-                  <SelectContent>
-                    {feeCategories.length > 0 ? feeCategories.map(fc => (<SelectItem key={fc.id} value={fc.id}>{fc.name} {fc.amount ? `($${fc.amount.toFixed(2)})` : ''}</SelectItem>)) : <SelectItem value="-" disabled>No fee categories defined</SelectItem>}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="assignedAmount">Assigned Amount ($)</Label>
-                <Input id="assignedAmount" type="number" value={assignedAmount} onChange={(e) => setAssignedAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 100.00" step="0.01" min="0.01" required disabled={isSubmitting} />
-              </div>
               <div>
                 <Label htmlFor="dueDate">Due Date (Optional)</Label>
                 <Input id="dueDate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={isSubmitting}/>

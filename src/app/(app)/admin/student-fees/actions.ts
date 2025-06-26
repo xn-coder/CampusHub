@@ -106,21 +106,24 @@ export async function assignStudentFeeAction(
   return { ok: true, message: 'Fee assigned successfully.', feePayment: data as StudentFeePayment };
 }
 
-interface AssignFeeToClassInput {
+interface AssignMultipleFeesToClassInput {
   class_id: string;
-  fee_category_id: string;
-  assigned_amount: number;
+  fee_category_ids: string[];
   due_date?: string;
   notes?: string;
   academic_year_id?: string;
   school_id: string;
 }
 
-export async function assignFeeToClassAction(
-  input: AssignFeeToClassInput
+export async function assignMultipleFeesToClassAction(
+  input: AssignMultipleFeesToClassInput
 ): Promise<{ ok: boolean; message: string; assignmentsCreated: number }> {
     const supabaseAdmin = createSupabaseServerClient();
-    const { class_id, fee_category_id, school_id, ...restOfInput } = input;
+    const { class_id, fee_category_ids, school_id, ...restOfInput } = input;
+
+    if (!fee_category_ids || fee_category_ids.length === 0) {
+        return { ok: false, message: "No fee categories selected.", assignmentsCreated: 0 };
+    }
 
     const { data: students, error: studentsError } = await supabaseAdmin
         .from('students')
@@ -129,43 +132,74 @@ export async function assignFeeToClassAction(
         .eq('school_id', school_id);
     
     if (studentsError) {
-        console.error("Error fetching students for bulk fee assignment:", studentsError);
         return { ok: false, message: `Failed to fetch students in the class: ${studentsError.message}`, assignmentsCreated: 0 };
     }
 
     if (!students || students.length === 0) {
         return { ok: false, message: "No students found in the selected class.", assignmentsCreated: 0 };
     }
+    const studentIds = students.map(s => s.id);
 
-    // TODO: Add logic to check for existing fee assignments for this category/academic year to avoid duplicates if needed.
-    // For now, we will assign it to all students regardless.
+    const { data: categoriesData, error: categoriesError } = await supabaseAdmin
+        .from('fee_categories')
+        .select('id, amount')
+        .in('id', fee_category_ids)
+        .eq('school_id', school_id);
+    
+    if (categoriesError) {
+        return { ok: false, message: `Failed to fetch fee category details: ${categoriesError.message}`, assignmentsCreated: 0 };
+    }
 
-    const feeAssignments = students.map(student => ({
-        id: uuidv4(),
-        student_id: student.id,
-        fee_category_id: fee_category_id,
-        assigned_amount: restOfInput.assigned_amount,
-        due_date: restOfInput.due_date,
-        notes: restOfInput.notes,
-        academic_year_id: restOfInput.academic_year_id,
-        school_id: school_id,
-        paid_amount: 0,
-        status: 'Pending' as PaymentStatus,
-    }));
+    const { data: existingAssignments, error: existingCheckError } = await supabaseAdmin
+        .from('student_fee_payments')
+        .select('student_id, fee_category_id')
+        .in('student_id', studentIds)
+        .in('fee_category_id', fee_category_ids)
+        .eq('school_id', school_id);
+
+    if (existingCheckError) {
+        return { ok: false, message: `DB error checking existing assignments: ${existingCheckError.message}`, assignmentsCreated: 0 };
+    }
+
+    const existingSet = new Set((existingAssignments || []).map(a => `${a.student_id}-${a.fee_category_id}`));
+    
+    const feeAssignments = [];
+    for (const student of students) {
+        for (const category of categoriesData) {
+            const assignmentKey = `${student.id}-${category.id}`;
+            if (!existingSet.has(assignmentKey)) {
+                feeAssignments.push({
+                    id: uuidv4(),
+                    student_id: student.id,
+                    fee_category_id: category.id,
+                    assigned_amount: category.amount || 0,
+                    due_date: restOfInput.due_date,
+                    notes: restOfInput.notes,
+                    academic_year_id: restOfInput.academic_year_id,
+                    school_id: school_id,
+                    paid_amount: 0,
+                    status: 'Pending' as PaymentStatus,
+                });
+            }
+        }
+    }
+    
+    if (feeAssignments.length === 0) {
+        return { ok: true, message: "No new fees to assign. All selected fees may already be assigned to these students.", assignmentsCreated: 0 };
+    }
 
     const { error: insertError, count } = await supabaseAdmin
         .from('student_fee_payments')
         .insert(feeAssignments);
 
     if (insertError) {
-        console.error("Error bulk-assigning student fees:", insertError);
         return { ok: false, message: `Failed to assign fees: ${insertError.message}`, assignmentsCreated: 0 };
     }
 
     revalidatePath('/admin/student-fees');
     revalidatePath('/student/payment-history');
 
-    return { ok: true, message: `Successfully assigned fee to ${count || 0} students in the class.`, assignmentsCreated: count || 0 };
+    return { ok: true, message: `Successfully assigned ${feeAssignments.length} new fee records to ${students.length} students.`, assignmentsCreated: count || 0 };
 }
 
 
