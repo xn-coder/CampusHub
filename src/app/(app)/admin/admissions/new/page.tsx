@@ -152,12 +152,16 @@ export default function AdminNewAdmissionPage() {
             </div>
             <div>
               <Label htmlFor="feeCategorySelect">Assign Admission Fee (Optional)</Label>
-              <Select value={selectedFeeCategoryId} onValueChange={setSelectedFeeCategoryId} disabled={isLoading || allFeeCategories.length === 0}>
+              <Select
+                value={selectedFeeCategoryId}
+                onValueChange={(value) => setSelectedFeeCategoryId(value === 'none' ? '' : value)}
+                disabled={isLoading || allFeeCategories.length === 0}
+              >
                 <SelectTrigger id="feeCategorySelect">
                   <SelectValue placeholder="Select a fee to assign" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   {allFeeCategories.length > 0 ? allFeeCategories.map(cat => (
                     <SelectItem key={cat.id} value={cat.id}>{cat.name} (${cat.amount?.toFixed(2)})</SelectItem>
                   )) : <SelectItem value="no-cat" disabled>No fee categories found</SelectItem>}
