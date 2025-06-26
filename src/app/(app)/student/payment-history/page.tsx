@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -6,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, FeeCategory, User } from '@/types';
-import { DollarSign, CalendarDays, FileText, Loader2, CreditCard } from 'lucide-react';
+import { DollarSign, CalendarDays, FileText, Loader2, CreditCard, Download } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
@@ -111,6 +110,13 @@ export default function StudentPaymentHistoryPage() {
         return isValid(dateObj) ? format(dateObj, 'PP') : 'N/A';
     };
 
+    const handleDownloadReceipt = (payment: StudentFeePayment) => {
+        toast({
+            title: "Receipt Download (Mock)",
+            description: `A receipt for your payment of $${payment.paid_amount.toFixed(2)} for "${getFeeCategoryName(payment.fee_category_id)}" would be downloaded here.`,
+        });
+    };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -141,6 +147,7 @@ export default function StudentPaymentHistoryPage() {
                   <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4" />Payment Date</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -162,6 +169,18 @@ export default function StudentPaymentHistoryPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs truncate max-w-xs">{payment.notes || 'N/A'}</TableCell>
+                    <TableCell className="text-right">
+                      {payment.status === 'Paid' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDownloadReceipt(payment)}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Receipt
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -187,4 +206,3 @@ export default function StudentPaymentHistoryPage() {
   );
 }
     
-
