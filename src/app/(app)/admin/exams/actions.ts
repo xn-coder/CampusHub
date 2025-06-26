@@ -44,7 +44,7 @@ export async function getExamsPageDataAction(adminUserId: string): Promise<{
   const supabaseAdmin = createSupabaseServerClient();
   try {
     const [examsRes, subjectsRes, classesRes, academicYearsRes] = await Promise.all([
-      supabaseAdmin.from('exams').select('*, class:class_id(name,division)').eq('school_id', schoolId).order('date', { ascending: false }),
+      supabaseAdmin.from('exams').select('*, class:class_id(name,division), subject:subject_id(name,code)').eq('school_id', schoolId).order('date', { ascending: false }),
       supabaseAdmin.from('subjects').select('*').eq('school_id', schoolId).order('name'),
       supabaseAdmin.from('classes').select('*').eq('school_id', schoolId).order('name'),
       supabaseAdmin.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
@@ -78,106 +78,135 @@ interface ExamInput {
   end_time?: string | null;   // HH:MM
   max_marks?: number | null;
   school_id: string;
+  subject_id: string; // This is now mandatory for creation.
 }
 
 export async function addExamAction(
-  input: ExamInput
-): Promise<{ ok: boolean; message: string; exam?: Exam }> {
+  inputs: ExamInput[]
+): Promise<{ ok: boolean; message: string; savedCount: number, errorCount: number, errors: string[] }> {
   const supabaseAdmin = createSupabaseServerClient();
-  
-  const examData = {
-    ...input,
-    id: uuidv4(),
-    subject_id: null,
-  };
+  let savedCount = 0;
+  let errorCount = 0;
+  const errorMessages: string[] = [];
 
-  const { error, data } = await supabaseAdmin
-    .from('exams')
-    .insert(examData)
-    .select('*, class:class_id(name,division)')
-    .single();
+  const results = await Promise.allSettled(
+    inputs.map(async (input) => {
+      // Check for uniqueness of exam name for this class and subject combo
+      let query = supabaseAdmin
+        .from('exams')
+        .select('id')
+        .eq('name', input.name)
+        .eq('school_id', input.school_id)
+        .eq('subject_id', input.subject_id);
+      
+      if (input.class_id) {
+        query = query.eq('class_id', input.class_id);
+      } else {
+        query = query.is('class_id', null);
+      }
 
-  if (error) {
-    if (error.code === '23505') { 
-      return { ok: false, message: `An exam with this name and configuration likely already exists.` };
+      const { data: existingExam, error: checkError } = await query.maybeSingle();
+
+      if (checkError) {
+        throw new Error(`DB check failed for "${input.name}": ${checkError.message}`);
+      }
+
+      if (existingExam) {
+        throw new Error(`Exam "${input.name}" for this subject/class already exists.`);
+      }
+
+      const { data: insertedData, error: insertError } = await supabaseAdmin
+        .from('exams')
+        .insert({ ...input, id: uuidv4() })
+        .select('*, class:class_id(name,division), subject:subject_id(name)')
+        .single();
+      
+      if (insertError) {
+        throw new Error(`Insert failed for "${input.name}": ${insertError.message}`);
+      }
+      return insertedData;
+    })
+  );
+
+  const successfulCreations: Exam[] = [];
+
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      savedCount++;
+      if (result.value) {
+        successfulCreations.push(result.value as Exam);
+      }
+    } else {
+      errorCount++;
+      errorMessages.push(result.reason.message);
+      console.error(`Error creating exam for input ${index}:`, result.reason);
     }
-    console.error("Error adding exam:", error);
-    return { ok: false, message: `Failed to add exam: ${error.message}` };
-  }
+  });
 
-  revalidatePath('/admin/exams');
+  if (savedCount > 0) {
+    revalidatePath('/admin/exams');
 
-  if (data) {
-    const exam = data as Exam & { class?: { name: string, division: string } };
-    const className = exam.class ? `${exam.class.name} - ${exam.class.division}` : 'All Classes';
-    
-    const emailSubject = `New Exam Scheduled: ${exam.name}`;
-    const emailBody = `
-      <h1>New Exam Scheduled</h1>
-      <p>An exam has been scheduled:</p>
-      <ul>
-        <li><strong>Exam Name:</strong> ${exam.name}</li>
-        <li><strong>Class:</strong> ${className}</li>
-        <li><strong>Date:</strong> ${new Date(exam.date).toLocaleDateString()}</li>
-        ${exam.start_time ? `<li><strong>Time:</strong> ${exam.start_time}${exam.end_time ? ` - ${exam.end_time}` : ''}</li>` : ''}
-        ${exam.max_marks ? `<li><strong>Max Marks:</strong> ${exam.max_marks} per subject</li>` : ''}
-      </ul>
-      <p>Please prepare accordingly.</p>
-    `;
-    
-    let recipientEmails: string[] = [];
-    if (exam.class_id && exam.school_id) {
-      recipientEmails = await getStudentEmailsByClassId(exam.class_id, exam.school_id);
-    } else if (exam.school_id) {
-      recipientEmails = await getAllUserEmailsInSchool(exam.school_id, ['student', 'teacher']);
-    }
+    // Notify students of the first successfully created exam as an example
+    const firstCreated = successfulCreations[0] as Exam & { class?: { name: string, division: string }, subject?: { name: string | null } };
+    if (firstCreated && firstCreated.school_id) {
+        const className = firstCreated.class ? `${firstCreated.class.name} - ${firstCreated.class.division}` : 'All Classes';
+        
+        const emailSubject = `New Exam Scheduled: ${firstCreated.name}`;
+        const emailBody = `
+          <h1>New Exam Scheduled</h1>
+          <p>An exam has been scheduled:</p>
+          <ul>
+            <li><strong>Exam Name:</strong> ${firstCreated.name}</li>
+            <li><strong>Class:</strong> ${className}</li>
+            <li><strong>Date:</strong> ${new Date(firstCreated.date).toLocaleDateString()}</li>
+            ${firstCreated.start_time ? `<li><strong>Time:</strong> ${firstCreated.start_time}${firstCreated.end_time ? ` - ${firstCreated.end_time}` : ''}</li>` : ''}
+            ${firstCreated.max_marks ? `<li><strong>Max Marks:</strong> ${firstCreated.max_marks}</li>` : ''}
+          </ul>
+          <p>Please prepare accordingly. Note: If multiple subjects were scheduled, you will receive separate notifications or can check the portal.</p>
+        `;
+        
+        let recipientEmails: string[] = [];
+        if (firstCreated.class_id) {
+          recipientEmails = await getStudentEmailsByClassId(firstCreated.class_id, firstCreated.school_id);
+        } else {
+          recipientEmails = await getAllUserEmailsInSchool(firstCreated.school_id, ['student', 'teacher']);
+        }
 
-    if (recipientEmails.length > 0) {
-       try {
-          console.log(`[addExamAction] Attempting to send exam notification via API to: ${recipientEmails.join(', ')}`);
-          const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
-          const apiResponse = await fetch(emailApiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: recipientEmails, subject: emailSubject, html: emailBody }),
-          });
-          const result = await apiResponse.json();
-          if (!apiResponse.ok || !result.success) {
-            console.error(`[addExamAction] Failed to send email via API: ${result.message || apiResponse.statusText}`);
-          } else {
-            console.log(`[addExamAction] Email successfully dispatched via API: ${result.message}`);
-          }
-        } catch (apiError: any) {
-          console.error(`[addExamAction] Error calling email API: ${apiError.message}`);
+        if (recipientEmails.length > 0) {
+           try {
+              console.log(`[addExamAction] Attempting to send exam notification via API to: ${recipientEmails.join(', ')}`);
+              const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
+              await fetch(emailApiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to: recipientEmails, subject: emailSubject, html: emailBody }),
+              });
+            } catch (apiError: any) {
+              console.error(`[addExamAction] Error calling email API: ${apiError.message}`);
+            }
         }
     }
   }
 
-  return { ok: true, message: 'Exam scheduled successfully.', exam: data as Exam };
+  const message = `Successfully created ${savedCount} exam(s). Failed to create ${errorCount} exam(s). ${errorCount > 0 ? 'Errors: ' + errorMessages.join('; ') : ''}`;
+  return { ok: errorCount === 0, message, savedCount, errorCount, errors: errorMessages };
 }
+
 
 export async function updateExamAction(
   id: string,
-  input: ExamInput
+  input: Omit<ExamInput, 'subject_id'> & {subject_id?: string} // subject_id is not updatable
 ): Promise<{ ok: boolean; message: string; exam?: Exam }> {
   const supabaseAdmin = createSupabaseServerClient();
   
-  const updatePayload = {
-    name: input.name,
-    class_id: input.class_id === 'none_cs_selection' ? null : input.class_id,
-    academic_year_id: input.academic_year_id === 'none_ay_selection' ? null : input.academic_year_id,
-    date: input.date,
-    start_time: input.start_time || null,
-    end_time: input.end_time || null,
-    max_marks: input.max_marks === undefined || input.max_marks === null || isNaN(Number(input.max_marks)) ? null : Number(input.max_marks),
-  };
+  const { subject_id, school_id, ...updatePayload } = input;
 
   const { error, data } = await supabaseAdmin
     .from('exams')
     .update(updatePayload)
     .eq('id', id)
-    .eq('school_id', input.school_id)
-    .select('*, class:class_id(name,division)')
+    .eq('school_id', school_id) // Scope update to school
+    .select('*, class:class_id(name,division), subject:subject_id(name,code)')
     .single();
 
   if (error) {
