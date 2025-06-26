@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import type { ClassData } from '@/types';
+import type { ClassData, FeeCategory } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { FilePlus, UserPlus, Loader2 } from 'lucide-react';
@@ -21,6 +21,7 @@ export default function AdminNewAdmissionPage() {
   const [isFetchingInitialData, setIsFetchingInitialData] = useState(true);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
+  const [allFeeCategories, setAllFeeCategories] = useState<FeeCategory[]>([]);
 
   // Form state
   const [name, setName] = useState('');
@@ -31,6 +32,7 @@ export default function AdminNewAdmissionPage() {
   const [address, setAddress] = useState('');
   const [profilePictureUrl, setProfilePictureUrl] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [selectedFeeCategoryId, setSelectedFeeCategoryId] = useState<string>('');
 
   useEffect(() => {
     async function loadContext() {
@@ -47,8 +49,9 @@ export default function AdminNewAdmissionPage() {
         const result = await getNewAdmissionPageDataAction(userRec.school_id);
         if (result.ok) {
           setAllClasses(result.classes || []);
+          setAllFeeCategories(result.feeCategories || []);
         } else {
-          toast({ title: "Error", description: "Failed to load class list.", variant: "destructive" });
+          toast({ title: "Error", description: result.message || "Failed to load class list or fee categories.", variant: "destructive" });
         }
       } else {
         toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
@@ -73,6 +76,7 @@ export default function AdminNewAdmissionPage() {
       contactNumber: contactNumber || undefined,
       address: address || undefined,
       profilePictureUrl: profilePictureUrl || undefined,
+      feeCategoryId: selectedFeeCategoryId || undefined,
     });
 
     if (result.ok) {
@@ -80,6 +84,7 @@ export default function AdminNewAdmissionPage() {
       // Reset form
       setName(''); setEmail(''); setDateOfBirth(''); setGuardianName(''); 
       setContactNumber(''); setAddress(''); setSelectedClassId(''); setProfilePictureUrl('');
+      setSelectedFeeCategoryId('');
     } else {
       toast({ title: "Admission Failed", description: result.message, variant: "destructive" });
     }
@@ -144,6 +149,21 @@ export default function AdminNewAdmissionPage() {
                   )) : <SelectItem value="no-class" disabled>No classes found for this school</SelectItem>}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label htmlFor="feeCategorySelect">Assign Admission Fee (Optional)</Label>
+              <Select value={selectedFeeCategoryId} onValueChange={setSelectedFeeCategoryId} disabled={isLoading || allFeeCategories.length === 0}>
+                <SelectTrigger id="feeCategorySelect">
+                  <SelectValue placeholder="Select a fee to assign" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None</SelectItem>
+                  {allFeeCategories.length > 0 ? allFeeCategories.map(cat => (
+                    <SelectItem key={cat.id} value={cat.id}>{cat.name} (${cat.amount?.toFixed(2)})</SelectItem>
+                  )) : <SelectItem value="no-cat" disabled>No fee categories found</SelectItem>}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">Select a fee to automatically assign it as 'Pending' to the student's account.</p>
             </div>
             <hr className="my-3"/>
             <p className="text-sm text-muted-foreground">Optional Details:</p>

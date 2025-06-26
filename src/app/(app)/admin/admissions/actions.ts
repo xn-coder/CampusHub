@@ -93,6 +93,7 @@ export async function updateAdmissionStatusAction(
 export async function getNewAdmissionPageDataAction(schoolId: string): Promise<{
   ok: boolean;
   classes?: ClassData[];
+  feeCategories?: FeeCategory[];
   message?: string;
 }> {
   if (!schoolId) {
@@ -100,17 +101,18 @@ export async function getNewAdmissionPageDataAction(schoolId: string): Promise<{
   }
   const supabase = createSupabaseServerClient();
   try {
-    const { data: classesData, error: classesError } = await supabase
-      .from('classes')
-      .select('id, name, division')
-      .eq('school_id', schoolId)
-      .order('name');
+    const [classesRes, feeCategoriesRes] = await Promise.all([
+      supabase.from('classes').select('id, name, division').eq('school_id', schoolId).order('name'),
+      supabase.from('fee_categories').select('*').eq('school_id', schoolId).order('name')
+    ]);
 
-    if (classesError) throw new Error(`Failed to fetch classes: ${classesError.message}`);
+    if (classesRes.error) throw new Error(`Failed to fetch classes: ${classesRes.error.message}`);
+    if (feeCategoriesRes.error) throw new Error(`Failed to fetch fee categories: ${feeCategoriesRes.error.message}`);
     
     return { 
         ok: true, 
-        classes: classesData || [],
+        classes: classesRes.data || [],
+        feeCategories: feeCategoriesRes.data || [],
     };
   } catch (error: any) {
     console.error("Error in getNewAdmissionPageDataAction:", error);
@@ -129,6 +131,7 @@ interface AdmitStudentInput {
   classId: string; 
   schoolId: string;
   profilePictureUrl?: string;
+  feeCategoryId?: string;
 }
 
 export async function admitNewStudentAction(
@@ -136,7 +139,7 @@ export async function admitNewStudentAction(
 ): Promise<{ ok: boolean; message: string; studentId?: string; userId?: string; admissionRecordId?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   const { 
-    name, email, dateOfBirth, guardianName, contactNumber, address, classId, schoolId, profilePictureUrl 
+    name, email, dateOfBirth, guardianName, contactNumber, address, classId, schoolId, profilePictureUrl, feeCategoryId 
   } = input;
   const defaultPassword = "password";
 
@@ -199,45 +202,44 @@ export async function admitNewStudentAction(
       return { ok: false, message: `Failed to create student profile: ${studentInsertError.message}` };
     }
 
-    try {
-      const { data: admissionFeeCategory, error: feeCategoryError } = await supabaseAdmin
-        .from('fee_categories')
-        .select('id, amount')
-        .ilike('name', '%admission%')
-        .eq('school_id', schoolId)
-        .limit(1)
-        .single();
+    if (feeCategoryId) {
+      try {
+        const { data: selectedFeeCategory, error: feeCategoryError } = await supabaseAdmin
+          .from('fee_categories')
+          .select('id, amount')
+          .eq('id', feeCategoryId)
+          .eq('school_id', schoolId)
+          .single();
 
-      if (feeCategoryError && feeCategoryError.code !== 'PGRST116') {
-        console.warn(`Could not check for Admission Fee category: ${feeCategoryError.message}`);
-      }
+        if (feeCategoryError) {
+          console.warn(`Could not fetch selected Fee category (${feeCategoryId}): ${feeCategoryError.message}`);
+        } else if (selectedFeeCategory && selectedFeeCategory.amount !== null && selectedFeeCategory.amount >= 0) {
+          const feePaymentId = uuidv4();
+          const { error: feeInsertError } = await supabaseAdmin
+            .from('student_fee_payments')
+            .insert({
+              id: feePaymentId,
+              student_id: newStudentProfileId,
+              fee_category_id: selectedFeeCategory.id,
+              class_id: classId, // Store the class context with the fee
+              assigned_amount: selectedFeeCategory.amount,
+              paid_amount: 0,
+              status: 'Pending' as PaymentStatus,
+              payment_date: null,
+              due_date: new Date().toISOString().split('T')[0],
+              school_id: schoolId,
+            });
 
-      if (admissionFeeCategory && admissionFeeCategory.amount && admissionFeeCategory.amount > 0) {
-        const feePaymentId = uuidv4();
-        const { error: feeInsertError } = await supabaseAdmin
-          .from('student_fee_payments')
-          .insert({
-            id: feePaymentId,
-            student_id: newStudentProfileId,
-            fee_category_id: admissionFeeCategory.id,
-            class_id: classId, // Store the class context with the fee
-            assigned_amount: admissionFeeCategory.amount,
-            paid_amount: 0,
-            status: 'Pending' as PaymentStatus,
-            payment_date: null,
-            due_date: new Date().toISOString().split('T')[0],
-            school_id: schoolId,
-          });
-
-        if (feeInsertError) {
-          console.warn(`Failed to assign PENDING Admission Fee to student ${newStudentProfileId}: ${feeInsertError.message}`);
-        } else {
-          console.log(`Successfully assigned PENDING Admission Fee to student ${newStudentProfileId}.`);
-          revalidatePath('/admin/student-fees');
+          if (feeInsertError) {
+            console.warn(`Failed to assign selected fee to student ${newStudentProfileId}: ${feeInsertError.message}`);
+          } else {
+            console.log(`Successfully assigned PENDING fee to student ${newStudentProfileId}.`);
+            revalidatePath('/admin/student-fees');
+          }
         }
+      } catch (feeError: any) {
+        console.warn(`An error occurred during fee assignment: ${feeError.message}`);
       }
-    } catch (feeError: any) {
-      console.warn(`An error occurred during automatic fee assignment: ${feeError.message}`);
     }
 
     const newAdmissionId = uuidv4();
@@ -265,9 +267,11 @@ export async function admitNewStudentAction(
     revalidatePath('/admin/admissions'); 
     revalidatePath('/admin/manage-students');
     
+    const message = `Student ${name} admitted and account created. ${feeCategoryId ? 'Fee has been assigned and is pending payment.' : ''} Default password is "password".`;
+    
     return { 
       ok: true, 
-      message: `Student ${name} admitted and account created. Admission fee has been assigned and is pending payment. Default password is "password".`,
+      message,
       studentId: newStudentProfileId,
       userId: newUser.id,
       admissionRecordId: newAdmissionId,
