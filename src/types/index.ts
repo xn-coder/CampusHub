@@ -160,7 +160,6 @@ export interface AnnouncementDB {
   // For joined data
   posted_by?: { name: string; email: string };
   target_class?: { name: string; division: string };
-  linked_exam?: { id: string; name: string; date: string; class_id?: string | null };
 }
 
 

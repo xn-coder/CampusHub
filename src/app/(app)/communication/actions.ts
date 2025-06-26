@@ -23,21 +23,53 @@ export async function postAnnouncementAction(
   input: PostAnnouncementInput
 ): Promise<{ ok: boolean; message: string; announcement?: AnnouncementDB }> {
   const supabase = createSupabaseServerClient();
+  let finalContent = input.content;
+  let emailHtmlBody = `<p>${input.content.replace(/\n/g, '<br>')}</p>`;
+
   try {
+    // If an exam is linked, fetch its details and append them to the content
+    if (input.linked_exam_id) {
+      const { data: examDetails, error: examError } = await supabase
+        .from('exams')
+        .select('name, date, start_time, end_time, max_marks')
+        .eq('id', input.linked_exam_id)
+        .single();
+      
+      if (examError) {
+        console.warn(`Could not fetch linked exam details: ${examError.message}`);
+      } else if (examDetails) {
+        const examInfoText = `\n\n--- Associated Exam Details ---\nExam: ${examDetails.name}\nDate: ${new Date(examDetails.date).toLocaleDateString()}\nTime: ${examDetails.start_time || 'N/A'}`;
+        finalContent += examInfoText;
+        
+        const examInfoHtml = `
+          <hr>
+          <h2>Associated Exam Details</h2>
+          <ul>
+            <li><strong>Exam:</strong> ${examDetails.name}</li>
+            <li><strong>Date:</strong> ${new Date(examDetails.date).toLocaleDateString()}</li>
+            ${examDetails.start_time ? `<li><strong>Time:</strong> ${examDetails.start_time}${examDetails.end_time ? ` - ${examDetails.end_time}` : ''}</li>` : ''}
+            ${examDetails.max_marks ? `<li><strong>Max Marks:</strong> ${examDetails.max_marks}</li>` : ''}
+          </ul>
+        `;
+        emailHtmlBody += examInfoHtml;
+      }
+    }
+
+
     const { data, error } = await supabase
       .from('announcements')
       .insert({
         title: input.title,
-        content: input.content,
+        content: finalContent, // Use the potentially modified content
         author_name: input.author_name,
         posted_by_user_id: input.posted_by_user_id,
         posted_by_role: input.posted_by_role,
         date: new Date().toISOString(), 
         target_class_id: input.target_class_id || null, 
         school_id: input.school_id,
-        linked_exam_id: input.linked_exam_id || null,
+        // linked_exam_id is NOT saved
       })
-      .select('*, target_class:target_class_id(name, division, teacher_id), linked_exam:linked_exam_id(*)')
+      .select('*, target_class:target_class_id(name, division, teacher_id)')
       .single();
 
     if (error) {
@@ -48,38 +80,26 @@ export async function postAnnouncementAction(
     revalidatePath('/communication');
 
     if (data) {
-      const announcement = data as AnnouncementDB & { 
+       const announcement = data as AnnouncementDB & { 
         target_class?: { name: string, division: string, teacher_id?: string | null },
-        linked_exam?: Exam | null
       };
       
       let subject = `New Announcement: ${announcement.title}`;
-      let emailBody = `
-        <h1>New Announcement: ${announcement.title}</h1>
+       if (input.linked_exam_id) {
+          subject = `Exam Notification: ${announcement.title}`;
+      }
+      
+      const fullEmailBody = `
+        <h1>${subject}</h1>
         <p><strong>Posted by:</strong> ${announcement.author_name} (${announcement.posted_by_role})</p>
         <p><strong>Date:</strong> ${new Date(announcement.date).toLocaleString()}</p>
         ${announcement.target_class_id && announcement.target_class ? `<p><strong>For Class:</strong> ${announcement.target_class.name} - ${announcement.target_class.division}</p>` : '<p>This is a general announcement for the school.</p>'}
-        <hr>
-        <div>${announcement.content.replace(/\n/g, '<br>')}</div>
-        <br>
+        ${emailHtmlBody}
+        <p>Please check the communication portal for more details.</p>
       `;
       
-      if (announcement.linked_exam) {
-          subject = `Exam Notification: ${announcement.linked_exam.name}`;
-          emailBody += `
-            <h2>Related Exam Details</h2>
-            <ul>
-              <li><strong>Exam:</strong> ${announcement.linked_exam.name}</li>
-              <li><strong>Date:</strong> ${new Date(announcement.linked_exam.date).toLocaleDateString()}</li>
-              ${announcement.linked_exam.start_time ? `<li><strong>Time:</strong> ${announcement.linked_exam.start_time}${announcement.linked_exam.end_time ? ` - ${announcement.linked_exam.end_time}` : ''}</li>` : ''}
-              ${announcement.linked_exam.max_marks ? `<li><strong>Max Marks:</strong> ${announcement.linked_exam.max_marks}</li>` : ''}
-            </ul>
-          `;
-      }
-      emailBody += `<p>Please check the communication portal for more details.</p>`;
-      
       let recipientEmails: string[] = [];
-      const targetClassId = announcement.linked_exam?.class_id || announcement.target_class_id;
+      const targetClassId = input.target_class_id;
       
       if (targetClassId && announcement.school_id) {
         recipientEmails = await getStudentEmailsByClassId(targetClassId, announcement.school_id);
@@ -99,7 +119,7 @@ export async function postAnnouncementAction(
           const apiResponse = await fetch(emailApiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: recipientEmails, subject: subject, html: emailBody }),
+            body: JSON.stringify({ to: recipientEmails, subject: subject, html: fullEmailBody }),
           });
           const result = await apiResponse.json();
            if (!apiResponse.ok || !result.success) {
@@ -138,8 +158,7 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
       .select(`
         *,
         posted_by:posted_by_user_id ( name, email ),
-        target_class:target_class_id ( name, division ),
-        linked_exam:linked_exam_id ( id, name, date, class_id )
+        target_class:target_class_id ( name, division )
       `)
       .order('date', { ascending: false });
 

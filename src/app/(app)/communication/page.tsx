@@ -121,7 +121,7 @@ export default function CommunicationPage() {
                 setNewAnnouncement(prev => ({
                     ...prev,
                     title: `Notification for Exam: ${exam.name}`,
-                    content: `This is an official notification regarding the upcoming exam: ${exam.name}.\n\nPlease prepare accordingly. Further details will be communicated by your teachers.`,
+                    content: `This is an official notification regarding an upcoming exam.`,
                     linkedExamId: exam.id,
                     targetClassId: exam.class_id || '', // Pre-select the target class
                 }));
@@ -301,10 +301,6 @@ export default function CommunicationPage() {
         <Card><CardContent className="pt-6 text-center text-muted-foreground">Please ensure you are associated with a school to view or post announcements.</CardContent></Card>
       )}
       
-      {!isLoading && !isContextLoading && (currentUserRole === 'superadmin' && !currentSchoolId) && (
-         <Card><CardContent className="pt-6 text-center text-muted-foreground">Superadmin: No specific school selected. Announcements are school-specific.</CardContent></Card>
-      )}
-
       {!isLoading && !isContextLoading && ((currentSchoolId && currentUserRole) || currentUserRole === 'superadmin') && (
         <div className="space-y-6">
           {allAnnouncements.length > 0 ? allAnnouncements.map(announcement => (
@@ -317,12 +313,6 @@ export default function CommunicationPage() {
                 {announcement.target_class && (
                       <span className="text-xs font-semibold text-blue-600 dark:text-blue-400"> (For Class: {announcement.target_class.name} - {announcement.target_class.division})</span>
                 )}
-                 {announcement.linked_exam && (
-                      <span className="text-xs font-semibold text-green-600 dark:text-green-400 flex items-center gap-1"> 
-                        <FileText className="h-3 w-3"/>
-                        (Related Exam: {announcement.linked_exam.name} on {format(parseISO(announcement.linked_exam.date), 'PP')})
-                      </span>
-                 )}
               </CardHeader>
               <CardContent>
                 <p className="whitespace-pre-wrap">{announcement.content}</p>
