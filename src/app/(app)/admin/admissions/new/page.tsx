@@ -14,6 +14,7 @@ import { FilePlus, UserPlus, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getNewAdmissionPageDataAction, admitNewStudentAction } from '../actions';
 import { supabase } from '@/lib/supabaseClient';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export default function AdminNewAdmissionPage() {
   const { toast } = useToast();
@@ -32,6 +33,9 @@ export default function AdminNewAdmissionPage() {
   const [address, setAddress] = useState('');
   const [profilePictureUrl, setProfilePictureUrl] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
+  
+  // New state for fee assignment
+  const [shouldAssignFee, setShouldAssignFee] = useState(false);
   const [selectedFeeCategoryId, setSelectedFeeCategoryId] = useState<string>('');
 
   useEffect(() => {
@@ -61,10 +65,22 @@ export default function AdminNewAdmissionPage() {
     loadContext();
   }, [toast]);
 
+  // New useEffect to manage fee category selection based on checkbox state
+  useEffect(() => {
+    if (!shouldAssignFee) {
+      setSelectedFeeCategoryId('');
+    }
+  }, [shouldAssignFee]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!name || !email || !selectedClassId || !currentSchoolId) {
       toast({ title: "Error", description: "Name, Email, and Class are required.", variant: "destructive" });
+      return;
+    }
+    // New validation: if fee is to be assigned, a category must be selected
+    if (shouldAssignFee && !selectedFeeCategoryId) {
+      toast({ title: "Error", description: "Please select a fee category to assign.", variant: "destructive" });
       return;
     }
     setIsLoading(true);
@@ -76,7 +92,7 @@ export default function AdminNewAdmissionPage() {
       contactNumber: contactNumber || undefined,
       address: address || undefined,
       profilePictureUrl: profilePictureUrl || undefined,
-      feeCategoryId: selectedFeeCategoryId || undefined,
+      feeCategoryId: shouldAssignFee ? (selectedFeeCategoryId || undefined) : undefined,
     });
 
     if (result.ok) {
@@ -85,6 +101,7 @@ export default function AdminNewAdmissionPage() {
       setName(''); setEmail(''); setDateOfBirth(''); setGuardianName(''); 
       setContactNumber(''); setAddress(''); setSelectedClassId(''); setProfilePictureUrl('');
       setSelectedFeeCategoryId('');
+      setShouldAssignFee(false);
     } else {
       toast({ title: "Admission Failed", description: result.message, variant: "destructive" });
     }
@@ -150,24 +167,41 @@ export default function AdminNewAdmissionPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="feeCategorySelect">Assign Admission Fee (Optional)</Label>
-              <Select
-                value={selectedFeeCategoryId}
-                onValueChange={(value) => setSelectedFeeCategoryId(value === 'none' ? '' : value)}
-                disabled={isLoading || allFeeCategories.length === 0}
-              >
-                <SelectTrigger id="feeCategorySelect">
-                  <SelectValue placeholder="Select a fee to assign" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {allFeeCategories.length > 0 ? allFeeCategories.map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>{cat.name} (${cat.amount?.toFixed(2)})</SelectItem>
-                  )) : <SelectItem value="no-cat" disabled>No fee categories found</SelectItem>}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">Select a fee to automatically assign it as 'Pending' to the student's account.</p>
+            <div className="space-y-2 rounded-md border p-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="assignFeeCheckbox"
+                  checked={shouldAssignFee}
+                  onCheckedChange={(checked) => setShouldAssignFee(!!checked)}
+                  disabled={isLoading || allFeeCategories.length === 0}
+                />
+                <Label htmlFor="assignFeeCheckbox" className="font-medium">Assign Admission Fee (Optional)</Label>
+              </div>
+
+              {shouldAssignFee && (
+                <div className="pl-6 pt-2">
+                  <Label htmlFor="feeCategorySelect" className="text-sm text-muted-foreground">Fee Category</Label>
+                  <Select
+                    value={selectedFeeCategoryId}
+                    onValueChange={setSelectedFeeCategoryId}
+                    required={shouldAssignFee}
+                    disabled={isLoading}
+                  >
+                    <SelectTrigger id="feeCategorySelect">
+                      <SelectValue placeholder="Select a fee to assign" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allFeeCategories.map(cat => (
+                        <SelectItem key={cat.id} value={cat.id}>{cat.name} (${cat.amount?.toFixed(2)})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">Select a fee to automatically assign it as 'Pending' to the student's account.</p>
+                </div>
+              )}
+               {allFeeCategories.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">No fee categories are defined for this school.</p>
+               )}
             </div>
             <hr className="my-3"/>
             <p className="text-sm text-muted-foreground">Optional Details:</p>
