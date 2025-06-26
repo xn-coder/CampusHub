@@ -112,12 +112,43 @@ export default function StudentPaymentHistoryPage() {
     };
 
     const handleDownloadHistory = () => {
+        if (payments.length === 0) {
+            toast({ title: "No Data", description: "There is no payment history to download.", variant: "destructive" });
+            return;
+        }
+
+        const headers = ["Fee Category", "Due Date", "Assigned ($)", "Paid ($)", "Payment Date", "Status", "Notes"];
+        
+        const csvRows = [
+            headers.join(','),
+            ...payments.map(payment => {
+                const row = [
+                    `"${getFeeCategoryName(payment.fee_category_id).replace(/"/g, '""')}"`,
+                    `"${formatDateSafe(payment.due_date)}"`,
+                    payment.assigned_amount.toFixed(2),
+                    payment.paid_amount.toFixed(2),
+                    `"${formatDateSafe(payment.payment_date)}"`,
+                    `"${payment.status}"`,
+                    `"${(payment.notes || 'N/A').replace(/"/g, '""')}"`
+                ];
+                return row.join(',');
+            })
+        ];
+
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `payment_history_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
         toast({
-            title: "Payment History Download (Mock)",
-            description: `A statement of all your fee transactions would be downloaded here.`,
+            title: "Download Started",
+            description: "Your payment history CSV is being downloaded."
         });
-        // In a real app, you would generate a CSV or PDF here.
-        console.log("Generating payment history download...");
     };
 
 
