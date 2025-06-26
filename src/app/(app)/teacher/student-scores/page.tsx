@@ -204,10 +204,15 @@ export default function TeacherStudentScoresPage() {
           {(isFetchingStudents || isFetchingScores) && <div className="text-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Loading...</div>}
 
           {selectedClassId && selectedStudentId && selectedExamId && !isFetchingScores && !isFetchingStudents && (
-            <form onSubmit={handleSaveScores}>
-              <h3 className="text-lg font-medium mb-4">
-                Enter Scores for: {studentsInSelectedClass.find(s => s.id === selectedStudentId)?.name}
-              </h3>
+            <form onSubmit={handleSaveScores} className="mt-6 border-t pt-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-medium">
+                  Enter Scores for: {studentsInSelectedClass.find(s => s.id === selectedStudentId)?.name}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Scores for all subjects registered in the school are listed below for the selected exam.
+                </p>
+              </div>
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>

@@ -105,6 +105,7 @@ export async function addSubjectAction(
     return { ok: false, message: `Failed to add subject: ${error.message}` };
   }
   revalidatePath('/admin/subjects');
+  revalidatePath('/teacher/student-scores');
   return { ok: true, message: 'Subject added successfully.', subject: data as Subject };
 }
 
@@ -149,6 +150,7 @@ export async function updateSubjectAction(
     return { ok: false, message: `Failed to update subject: ${error.message}` };
   }
   revalidatePath('/admin/subjects');
+  revalidatePath('/teacher/student-scores');
   return { ok: true, message: 'Subject updated successfully.', subject: data as Subject };
 }
 
@@ -183,6 +185,7 @@ export async function deleteSubjectAction(id: string, schoolId: string): Promise
     return { ok: false, message: `Failed to delete subject: ${error.message}` };
   }
   revalidatePath('/admin/subjects');
+  revalidatePath('/teacher/student-scores');
   return { ok: true, message: 'Subject deleted successfully.' };
 }
     
