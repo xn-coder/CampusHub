@@ -137,35 +137,73 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
     return { ok: true, message: 'No scores provided to save.', savedCount: 0 };
   }
 
-  const upsertData = scoresToSave.map(scoreInput => ({
-    student_id: scoreInput.student_id,
-    exam_id: scoreInput.exam_id,
-    subject_id: scoreInput.subject_id,
-    class_id: scoreInput.class_id,
-    score: String(scoreInput.score),
-    max_marks: scoreInput.max_marks,
-    recorded_by_teacher_id: scoreInput.recorded_by_teacher_id,
-    date_recorded: new Date().toISOString().split('T')[0],
-    school_id: scoreInput.school_id,
-  }));
-  
-  const { error, count } = await supabaseAdmin.from('student_scores').upsert(upsertData, {
-    onConflict: 'student_id,exam_id,subject_id',
-  });
+  let savedCount = 0;
+  const errors: string[] = [];
 
-  if (error) {
-    console.error("Error upserting scores:", error);
-    return { ok: false, message: `Error saving scores: ${error.message}`, savedCount: 0 };
+  for (const scoreInput of scoresToSave) {
+    const { data: existingRecord, error: fetchError } = await supabaseAdmin
+      .from('student_scores')
+      .select('id')
+      .eq('student_id', scoreInput.student_id)
+      .eq('exam_id', scoreInput.exam_id)
+      .eq('subject_id', scoreInput.subject_id)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error(`Error checking existing score for student ${scoreInput.student_id}, subject ${scoreInput.subject_id}:`, fetchError);
+      errors.push(`DB error for subject ${scoreInput.subject_id}`);
+      continue;
+    }
+
+    const recordData = {
+      score: String(scoreInput.score),
+      max_marks: scoreInput.max_marks,
+      recorded_by_teacher_id: scoreInput.recorded_by_teacher_id,
+      date_recorded: new Date().toISOString().split('T')[0],
+    };
+    
+    if (existingRecord) {
+      const { error: updateError } = await supabaseAdmin
+        .from('student_scores')
+        .update(recordData)
+        .eq('id', existingRecord.id);
+
+      if (updateError) {
+        errors.push(`Update failed for subject ${scoreInput.subject_id}`);
+        console.error("Update error:", updateError);
+      } else {
+        savedCount++;
+      }
+    } else {
+      const { error: insertError } = await supabaseAdmin
+        .from('student_scores')
+        .insert({
+          ...recordData,
+          student_id: scoreInput.student_id,
+          exam_id: scoreInput.exam_id,
+          subject_id: scoreInput.subject_id,
+          class_id: scoreInput.class_id,
+          school_id: scoreInput.school_id,
+        });
+      
+      if (insertError) {
+        errors.push(`Insert failed for subject ${scoreInput.subject_id}`);
+        console.error("Insert error:", insertError);
+      } else {
+        savedCount++;
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, message: `Successfully saved ${savedCount} scores, but failed for ${errors.length}. Errors: ${errors.join(', ')}`, savedCount };
   }
   
-  const savedCount = count ?? 0;
-
+  revalidatePath('/teacher/student-scores');
+  revalidatePath('/admin/student-scores'); 
+  revalidatePath('/student/my-scores'); 
+  
   if (savedCount > 0) {
-    revalidatePath('/teacher/student-scores');
-    revalidatePath('/admin/student-scores'); 
-    revalidatePath('/student/my-scores'); 
-    
-    // Send email notification for the first student in the batch as an example
     const firstScore = scoresToSave[0];
      try {
         const { data: studentEmailData } = await supabaseAdmin.from('students').select('email').eq('id', firstScore.student_id).single();
