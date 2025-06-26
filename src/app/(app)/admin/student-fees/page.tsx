@@ -12,9 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
-import { PlusCircle, Trash2, Save, Receipt, DollarSign, Search, Loader2, FileDown, Edit2 } from 'lucide-react';
+import { PlusCircle, Trash2, Save, Receipt, DollarSign, Search, Loader2, FileDown, Edit2, FolderOpen } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, isPast, isToday } from 'date-fns';
 import {
   assignMultipleFeesToClassAction,
   recordStudentFeePaymentAction,
@@ -24,6 +24,19 @@ import {
   updateStudentFeeAction,
 } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
+
+type StudentFeeStatus = 'Paid' | 'Partially Paid' | 'Pending' | 'Overdue';
+interface StudentFeeSummary {
+  studentId: string;
+  studentName: string;
+  classId?: string | null;
+  className?: string;
+  totalAssigned: number;
+  totalPaid: number;
+  totalDue: number;
+  status: StudentFeeStatus;
+  payments: StudentFeePayment[];
+}
 
 
 export default function AdminStudentFeesPage() {
@@ -41,9 +54,12 @@ export default function AdminStudentFeesPage() {
   const [isAssignFeeDialogOpen, setIsAssignFeeDialogOpen] = useState(false);
   const [isRecordPaymentDialogOpen, setIsRecordPaymentDialogOpen] = useState(false);
   const [isEditFeeDialogOpen, setIsEditFeeDialogOpen] = useState(false);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
 
 
   const [editingFeePayment, setEditingFeePayment] = useState<StudentFeePayment | null>(null);
+  const [selectedStudentSummary, setSelectedStudentSummary] = useState<StudentFeeSummary | null>(null);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
@@ -105,7 +121,8 @@ export default function AdminStudentFeesPage() {
   const getStudentName = (studentId: string) => students.find(s => s.id === studentId)?.name || 'N/A';
   const getFeeCategoryName = (feeCategoryId: string) => feeCategories.find(fc => fc.id === feeCategoryId)?.name || 'N/A';
   const getAcademicYearName = (yearId?: string | null) => yearId ? academicYears.find(ay => ay.id === yearId)?.name : undefined;
-  const getClassDisplayName = (classId: string) => {
+  const getClassDisplayName = (classId?: string | null) => {
+    if (!classId) return 'N/A';
     const cls = classes.find(c => c.id === classId);
     return cls ? `${cls.name} - ${cls.division}` : 'N/A';
   };
@@ -143,6 +160,11 @@ export default function AdminStudentFeesPage() {
     setEditDueDate(feePayment.due_date ? format(parseISO(feePayment.due_date), 'yyyy-MM-dd') : '');
     setEditNotes(feePayment.notes || '');
     setIsEditFeeDialogOpen(true);
+  };
+
+  const handleOpenDetailsDialog = (summary: StudentFeeSummary) => {
+    setSelectedStudentSummary(summary);
+    setIsDetailsDialogOpen(true);
   };
 
 
@@ -246,48 +268,104 @@ export default function AdminStudentFeesPage() {
     }
   };
 
-  const filteredFeePayments = useMemo(() => {
-    return feePayments.filter(fp => {
+  const studentFeeSummaries: StudentFeeSummary[] = useMemo(() => {
+    const studentDataMap: Record<string, StudentFeeSummary> = {};
+    const today = new Date();
+
+    feePayments.forEach(fp => {
       const student = students.find(s => s.id === fp.student_id);
-      if (!student) return false;
+      if (!student) return;
 
-      const studentName = student.name.toLowerCase();
-      const feeCategoryName = getFeeCategoryName(fp.fee_category_id).toLowerCase();
-      const search = searchTerm.toLowerCase();
-
-      const matchesSearch = studentName.includes(search) || feeCategoryName.includes(search);
-      const matchesClass = selectedClassFilter === 'all' || student.class_id === selectedClassFilter;
-      const matchesStatus = selectedStatusFilter === 'all' || 
-                            (selectedStatusFilter === 'Paid' && fp.status === 'Paid') ||
-                            (selectedStatusFilter === 'Unpaid' && (fp.status === 'Pending' || fp.status === 'Partially Paid' || fp.status === 'Overdue'));
-
-      return matchesSearch && matchesClass && matchesStatus;
+      if (!studentDataMap[student.id]) {
+        studentDataMap[student.id] = {
+          studentId: student.id,
+          studentName: student.name,
+          classId: student.class_id,
+          className: student.class_id ? getClassDisplayName(student.class_id) : 'N/A',
+          totalAssigned: 0,
+          totalPaid: 0,
+          totalDue: 0,
+          status: 'Paid',
+          payments: []
+        };
+      }
+      
+      const summary = studentDataMap[student.id];
+      summary.totalAssigned += fp.assigned_amount;
+      summary.totalPaid += fp.paid_amount;
+      summary.payments.push(fp);
     });
-  }, [feePayments, searchTerm, students, feeCategories, selectedClassFilter, selectedStatusFilter]);
+
+    return Object.values(studentDataMap).map(summary => {
+      let hasPending = false;
+      let hasPaid = false;
+      let isOverdue = false;
+      
+      for (const payment of summary.payments) {
+          if (payment.status !== 'Paid') {
+              hasPending = true;
+              if (payment.due_date && isPast(parseISO(payment.due_date)) && !isToday(parseISO(payment.due_date))) {
+                  isOverdue = true;
+                  break; // Overdue is the highest priority status
+              }
+          } else {
+              hasPaid = true;
+          }
+      }
+      
+      summary.totalDue = summary.totalAssigned - summary.totalPaid;
+      
+      if (isOverdue) {
+          summary.status = 'Overdue';
+      } else if (hasPending && summary.totalPaid > 0) {
+          summary.status = 'Partially Paid';
+      } else if (hasPending) {
+          summary.status = 'Pending';
+      } else {
+          summary.status = 'Paid';
+      }
+      
+      return summary;
+    });
+
+  }, [feePayments, students, classes]);
+
+  const filteredSummaries = useMemo(() => {
+    return studentFeeSummaries.filter(summary => {
+        const studentName = summary.studentName.toLowerCase();
+        const search = searchTerm.toLowerCase();
+
+        const matchesSearch = studentName.includes(search);
+        const matchesClass = selectedClassFilter === 'all' || summary.classId === selectedClassFilter;
+        
+        let statusCheck: StudentFeeStatus[] = [];
+        if (selectedStatusFilter === 'Paid') statusCheck = ['Paid'];
+        else if (selectedStatusFilter === 'Unpaid') statusCheck = ['Pending', 'Partially Paid', 'Overdue'];
+
+        const matchesStatus = selectedStatusFilter === 'all' || statusCheck.includes(summary.status);
+
+        return matchesSearch && matchesClass && matchesStatus;
+    });
+  }, [studentFeeSummaries, searchTerm, selectedClassFilter, selectedStatusFilter]);
 
   const handleDownloadCsv = () => {
-    if (filteredFeePayments.length === 0) {
+    if (filteredSummaries.length === 0) {
         toast({ title: "No Data", description: "There is no data to download for the current filters.", variant: "destructive"});
         return;
     }
 
-    const headers = ["Student Name", "Class", "Fee Category", "Assigned Amount", "Paid Amount", "Due Date", "Status", "Notes"];
+    const headers = ["Student Name", "Class", "Total Assigned ($)", "Total Paid ($)", "Total Due ($)", "Overall Status"];
     
     const csvRows = [
         headers.join(','),
-        ...filteredFeePayments.map(fp => {
-            const student = students.find(s => s.id === fp.student_id);
-            const className = student && student.class_id ? getClassDisplayName(student.class_id) : 'N/A';
-            
+        ...filteredSummaries.map(summary => {
             const row = [
-                `"${student?.name || 'N/A'}"`,
-                `"${className}"`,
-                `"${getFeeCategoryName(fp.fee_category_id)}"`,
-                fp.assigned_amount,
-                fp.paid_amount,
-                fp.due_date ? format(parseISO(fp.due_date), 'yyyy-MM-dd') : 'N/A',
-                fp.status,
-                `"${fp.notes?.replace(/"/g, '""') || ''}"` // Escape double quotes
+                `"${summary.studentName.replace(/"/g, '""')}"`,
+                `"${summary.className}"`,
+                summary.totalAssigned.toFixed(2),
+                summary.totalPaid.toFixed(2),
+                summary.totalDue.toFixed(2),
+                summary.status,
             ];
             return row.join(',');
         })
@@ -298,7 +376,7 @@ export default function AdminStudentFeesPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `student_fees_report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `student_fees_summary_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -318,12 +396,12 @@ export default function AdminStudentFeesPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Student Fee Records</CardTitle>
-          <CardDescription>Manage all student fee assignments and payments.</CardDescription>
+          <CardDescription>A summarized overview of each student's fee status. Click "View & Manage" for details.</CardDescription>
         </CardHeader>
         <CardContent>
            <div className="mb-4 flex flex-col md:flex-row gap-4 items-center">
              <Input
-                placeholder="Search by student or fee category..."
+                placeholder="Search by student name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="max-w-md"
@@ -346,61 +424,58 @@ export default function AdminStudentFeesPage() {
                     <SelectItem value="all">All Statuses</SelectItem>
                     <SelectItem value="Paid">Paid</SelectItem>
                     <SelectItem value="Unpaid">Unpaid</SelectItem>
+                    <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="Partially Paid">Partially Paid</SelectItem>
+                    <SelectItem value="Overdue">Overdue</SelectItem>
                 </SelectContent>
             </Select>
-            <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredFeePayments.length === 0} className="md:ml-auto">
+            <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredSummaries.length === 0} className="md:ml-auto">
                 <FileDown className="mr-2 h-4 w-4" />
-                Download Report
+                Download Summary
             </Button>
            </div>
           {isLoadingPage ? (
             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>
           ) : !currentSchoolId ? (
              <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>
-          ) : filteredFeePayments.length === 0 ? (
+          ) : filteredSummaries.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">
-                {searchTerm || selectedClassFilter !== 'all' || selectedStatusFilter !== 'all' ? "No records match your filters." : "No student fee records found for this school."}
+                {searchTerm || selectedClassFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Student</TableHead>
-                  <TableHead>Fee Category</TableHead>
-                  <TableHead className="text-right">Assigned ($)</TableHead>
-                  <TableHead>Due Date</TableHead>
+                  <TableHead>Class</TableHead>
+                  <TableHead className="text-right">Total Assigned ($)</TableHead>
+                  <TableHead className="text-right">Total Paid ($)</TableHead>
+                  <TableHead className="text-right">Total Due ($)</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredFeePayments.map((fp) => (
-                  <TableRow key={fp.id}>
-                    <TableCell className="font-medium">{getStudentName(fp.student_id)}</TableCell>
-                    <TableCell>{getFeeCategoryName(fp.fee_category_id)}</TableCell>
-                    <TableCell className="text-right">{fp.assigned_amount.toFixed(2)}</TableCell>
-                    <TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell>
+                {filteredSummaries.map((summary) => (
+                  <TableRow key={summary.studentId}>
+                    <TableCell className="font-medium">{summary.studentName}</TableCell>
+                    <TableCell>{summary.className}</TableCell>
+                    <TableCell className="text-right">{summary.totalAssigned.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{summary.totalPaid.toFixed(2)}</TableCell>
+                     <TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}>{summary.totalDue.toFixed(2)}</TableCell>
                     <TableCell>
                       <Badge variant={
-                        fp.status === 'Paid' ? 'default' :
-                        fp.status === 'Partially Paid' ? 'secondary' :
-                        fp.status === 'Overdue' ? 'destructive' : 'outline'
+                        summary.status === 'Paid' ? 'default' :
+                        summary.status === 'Partially Paid' ? 'secondary' :
+                        summary.status === 'Overdue' ? 'destructive' : 'outline'
                       }>
-                        {fp.status}
+                        {summary.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="space-x-1 text-right">
-                      {fp.status !== 'Paid' && (
-                        <Button variant="outline" size="sm" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}>
-                           <DollarSign className="mr-1 h-3 w-3" /> Record Payment
+                    <TableCell className="text-right">
+                       <Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}>
+                           <FolderOpen className="mr-1 h-3 w-3" /> View & Manage
                         </Button>
-                      )}
-                      <Button variant="outline" size="icon" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                       <Button variant="destructive" size="icon" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -409,6 +484,8 @@ export default function AdminStudentFeesPage() {
           )}
         </CardContent>
       </Card>
+      
+      {/* DIALOGS SECTION */}
 
       <Dialog open={isAssignFeeDialogOpen} onOpenChange={setIsAssignFeeDialogOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -481,6 +558,50 @@ export default function AdminStudentFeesPage() {
         </DialogContent>
       </Dialog>
       
+      <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
+        <DialogContent className="sm:max-w-3xl">
+           <DialogHeader>
+            <DialogTitle>Fee Details for: {selectedStudentSummary?.studentName}</DialogTitle>
+             <CardDescription>
+                Class: {selectedStudentSummary?.className} | Total Due: ${selectedStudentSummary?.totalDue.toFixed(2)}
+            </CardDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Fee Category</TableHead>
+                        <TableHead>Assigned ($)</TableHead>
+                        <TableHead>Due Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(selectedStudentSummary?.payments || []).map((fp) => (
+                      <TableRow key={fp.id}>
+                        <TableCell className="font-medium">{getFeeCategoryName(fp.fee_category_id)}</TableCell>
+                        <TableCell>{fp.assigned_amount.toFixed(2)}</TableCell>
+                        <TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell>
+                        <TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell>
+                        <TableCell className="space-x-1 text-right">
+                          {fp.status !== 'Paid' && (
+                              <Button variant="outline" size="xs" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}>Record Payment</Button>
+                          )}
+                          <Button variant="outline" size="xs" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}>Edit</Button>
+                          <Button variant="destructive" size="xs" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}>Delete</Button>
+                        </TableCell>
+                      </TableRow>
+                  ))}
+                </TableBody>
+            </Table>
+          </div>
+           <DialogFooter>
+              <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isEditFeeDialogOpen} onOpenChange={setIsEditFeeDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -511,7 +632,6 @@ export default function AdminStudentFeesPage() {
           </form>
         </DialogContent>
       </Dialog>
-
 
       <Dialog open={isRecordPaymentDialogOpen} onOpenChange={setIsRecordPaymentDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -545,3 +665,4 @@ export default function AdminStudentFeesPage() {
     </div>
   );
 }
+
