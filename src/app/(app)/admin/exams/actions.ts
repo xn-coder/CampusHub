@@ -166,16 +166,18 @@ export async function updateExamAction(
   input: ExamInput
 ): Promise<{ ok: boolean; message: string; exam?: Exam }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const examData = {
-    ...input,
+  
+  const updatePayload = {
+    name: input.name,
+    // Do not update subject_id
     class_id: input.class_id === 'none_cs_selection' ? null : input.class_id,
     academic_year_id: input.academic_year_id === 'none_ay_selection' ? null : input.academic_year_id,
+    date: input.date,
+    start_time: input.start_time || null,
+    end_time: input.end_time || null,
     max_marks: input.max_marks === undefined || input.max_marks === null || isNaN(Number(input.max_marks)) ? null : Number(input.max_marks),
     publish_date: input.publish_date || null,
   };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { school_id, ...updatePayload } = examData;
-
 
   const { error, data } = await supabaseAdmin
     .from('exams')

@@ -142,8 +142,6 @@ export default function ExamsPage() {
             return;
         }
 
-        let successCount = 0;
-        let errorCount = 0;
         const promises = selectedSubjectIds.map(subjectId => {
             const examData = {
                 name: examName.trim(),
@@ -160,14 +158,32 @@ export default function ExamsPage() {
             return addExamAction(examData);
         });
 
-        const results = await Promise.all(promises);
+        const results = await Promise.allSettled(promises);
+        let successCount = 0;
+        let errorCount = 0;
+        const failedMessages: string[] = [];
+        
         results.forEach(result => {
-            if (result.ok) successCount++;
-            else errorCount++;
+            if (result.status === 'fulfilled' && result.value.ok) {
+                successCount++;
+            } else {
+                errorCount++;
+                if (result.status === 'rejected') {
+                    failedMessages.push(result.reason?.message || 'An unknown server error occurred.');
+                    console.error("Exam creation promise rejected:", result.reason);
+                } else {
+                    failedMessages.push(result.value.message);
+                }
+            }
         });
 
         if (errorCount > 0) {
-            toast({ title: "Partial Success", description: `Successfully created ${successCount} exam entries. ${errorCount} failed.`, variant: "destructive" });
+            toast({
+                title: "Partial Success or Failure",
+                description: `Successfully created ${successCount} exam(s). ${errorCount} failed. Errors: ${failedMessages.join('; ')}`,
+                variant: "destructive",
+                duration: 9000,
+            });
         } else {
             toast({ title: "Success", description: `Successfully created ${successCount} exam entries.` });
         }
