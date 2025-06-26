@@ -9,10 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { StudentScore, Student, Exam, ClassData, Subject, Teacher } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
-import { Award, Filter, Search, User, BookOpen, CalendarCheck, UserCogIcon, FileText, Loader2 } from 'lucide-react';
+import { Award, Filter, Search, User, BookOpen, CalendarCheck, UserCogIcon, FileText, Loader2, FileDown } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { getStudentScoresPageDataAction } from './actions';
+import { Button } from '@/components/ui/button';
 
 export default function AdminStudentScoresPage() {
   const { toast } = useToast();
@@ -81,6 +82,41 @@ export default function AdminStudentScoresPage() {
       return matchesSearchTerm && matchesClass && matchesExam && matchesSubject;
     });
   }, [allScores, searchTerm, selectedClassFilter, selectedExamFilter, selectedSubjectFilter, allStudents, allExams, allClasses, allSubjects]);
+  
+  const handleDownloadCsv = () => {
+    if (filteredScores.length === 0) {
+        toast({ title: "No Data", description: "There is no data to download for the current filters.", variant: "destructive"});
+        return;
+    }
+    const headers = ["Student", "Class", "Exam", "Subject", "Score", "Max Marks", "Recorded By", "Date Recorded"];
+    const csvRows = [
+        headers.join(','),
+        ...filteredScores.map(score => {
+            const row = [
+                `"${getStudentName(score.student_id).replace(/"/g, '""')}"`,
+                `"${getClassName(score.class_id).replace(/"/g, '""')}"`,
+                `"${getExamName(score.exam_id).replace(/"/g, '""')}"`,
+                `"${getSubjectName(score.subject_id).replace(/"/g, '""')}"`,
+                `"${String(score.score)}"`
+                ,
+                score.max_marks ?? 'N/A',
+                `"${getTeacherName(score.recorded_by_teacher_id).replace(/"/g, '""')}"`,
+                `"${format(parseISO(score.date_recorded), 'yyyy-MM-dd')}"`
+            ];
+            return row.join(',');
+        })
+    ];
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `student_scores_report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -94,7 +130,7 @@ export default function AdminStudentScoresPage() {
           <CardDescription>View student scores across various exams and classes. Use filters to narrow down results.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
             <div>
               <Label htmlFor="searchTerm" className="block mb-1"><Search className="inline-block mr-1 h-4 w-4" />Search Student</Label>
               <Input 
@@ -134,6 +170,11 @@ export default function AdminStudentScoresPage() {
                   {allExams.map(exam => <SelectItem key={exam.id} value={exam.id}>{exam.name} ({getSubjectName(exam.subject_id)})</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+             <div className="lg:col-start-4">
+                 <Button onClick={handleDownloadCsv} disabled={isLoading || filteredScores.length === 0} className="w-full">
+                    <FileDown className="mr-2 h-4 w-4" /> Download Report
+                </Button>
             </div>
           </div>
 
@@ -178,4 +219,3 @@ export default function AdminStudentScoresPage() {
     </div>
   );
 }
-    

@@ -403,7 +403,7 @@ export default function ManageCoursesPage() {
                     </SelectContent>
                  </Select>
               </div>
-              {(selectedTargetAudience === 'student' || selectedTargetAudience === 'both') && (currentUserRole === 'admin' && currentSchoolId) && (
+              {(selectedTargetAudience === 'student' || selectedTargetAudience === 'both') && currentSchoolId && (
                 <div>
                     <Label htmlFor="targetClassId">Target Class (for Students)</Label>
                     <Select value={selectedTargetClassId} onValueChange={setSelectedTargetClassId} required disabled={isSubmitting}>
@@ -487,4 +487,3 @@ export default function ManageCoursesPage() {
     </div>
   );
 }
-    

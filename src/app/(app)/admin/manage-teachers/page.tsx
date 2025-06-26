@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Teacher, User } from '@/types'; 
 import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2, FileDown } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { createTeacherAction, updateTeacherAction, deleteTeacherAction } from './actions';
@@ -226,6 +226,34 @@ export default function ManageTeachersPage() {
     setIsLoading(false);
   };
 
+  const handleDownloadCsv = () => {
+    if (filteredTeachers.length === 0) {
+        toast({ title: "No Data", description: "There are no teachers to download for the current filter.", variant: "destructive"});
+        return;
+    }
+    const headers = ["Name", "Email", "Subject"];
+    const csvRows = [
+        headers.join(','),
+        ...filteredTeachers.map(teacher => {
+            const row = [
+                `"${teacher.name.replace(/"/g, '""')}"`,
+                `"${(teacher.email || 'N/A').replace(/"/g, '""')}"`,
+                `"${(teacher.subject || 'N/A').replace(/"/g, '""')}"`
+            ];
+            return row.join(',');
+        })
+    ];
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `teacher_roster_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   
   if (!currentSchoolId && !isLoading) { 
     return (
@@ -263,15 +291,21 @@ export default function ManageTeachersPage() {
               <CardDescription>View, search, and manage all teacher profiles.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 flex items-center gap-2">
-                <Search className="h-5 w-5 text-muted-foreground" />
-                <Input 
-                  placeholder="Search teachers by name, email, or subject..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="max-w-sm"
-                  disabled={isLoading || !currentSchoolId}
-                />
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <div className="flex-grow flex items-center gap-2">
+                    <Search className="h-5 w-5 text-muted-foreground" />
+                    <Input 
+                    placeholder="Search teachers by name, email, or subject..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="max-w-sm"
+                    disabled={isLoading || !currentSchoolId}
+                    />
+                </div>
+                <Button onClick={handleDownloadCsv} disabled={isLoading || filteredTeachers.length === 0}>
+                    <FileDown className="mr-2 h-4 w-4"/>
+                    Download Report
+                </Button>
               </div>
               {isLoading && <p className="text-center text-muted-foreground py-4">Loading teachers...</p>}
               {!isLoading && currentSchoolId && filteredTeachers.length === 0 && (
@@ -404,8 +438,3 @@ export default function ManageTeachersPage() {
     </div>
   );
 }
-
-
-    
-
-    

@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Student, User, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
-import { Edit2, Trash2, Search, Users, Activity, Save, Loader2 } from 'lucide-react';
+import { Edit2, Trash2, Search, Users, Activity, Save, Loader2, FileDown } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
 
@@ -225,6 +225,36 @@ export default function ManageStudentsPage() {
     }
   };
 
+  const handleDownloadCsv = () => {
+    if (filteredStudents.length === 0) {
+        toast({ title: "No Data", description: "There are no students to download for the current filter.", variant: "destructive"});
+        return;
+    }
+    const headers = ["Name", "Email", "Class"];
+    const csvRows = [
+        headers.join(','),
+        ...filteredStudents.map(student => {
+            const className = getClassDisplayName(student.class_id);
+            const row = [
+                `"${student.name.replace(/"/g, '""')}"`,
+                `"${(student.email || 'N/A').replace(/"/g, '""')}"`,
+                `"${className.replace(/"/g, '""')}"`
+            ];
+            return row.join(',');
+        })
+    ];
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `student_roster_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+
   if (!currentSchoolId && !isLoading) {
     return (
         <div className="flex flex-col gap-6">
@@ -254,15 +284,21 @@ export default function ManageStudentsPage() {
               <CardDescription>View, search, and manage enrolled student profiles. New students are registered by teachers via their portal.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 flex items-center gap-2">
-                <Search className="h-5 w-5 text-muted-foreground" />
-                <Input 
-                  placeholder="Search students by name or email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="max-w-sm"
-                  disabled={isLoading}
-                />
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <div className="flex-grow flex items-center gap-2">
+                    <Search className="h-5 w-5 text-muted-foreground" />
+                    <Input 
+                    placeholder="Search students by name or email..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="max-w-sm"
+                    disabled={isLoading}
+                    />
+                </div>
+                <Button onClick={handleDownloadCsv} disabled={isLoading || filteredStudents.length === 0}>
+                    <FileDown className="mr-2 h-4 w-4"/>
+                    Download Report
+                </Button>
               </div>
               {isLoading && !currentSchoolId ? (
                  <p className="text-center text-muted-foreground py-4">Identifying admin school...</p>
@@ -370,5 +406,3 @@ export default function ManageStudentsPage() {
     </div>
   );
 }
-
-
