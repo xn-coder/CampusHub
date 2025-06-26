@@ -203,7 +203,7 @@ export async function admitNewStudentAction(
       const { data: admissionFeeCategory, error: feeCategoryError } = await supabaseAdmin
         .from('fee_categories')
         .select('id, amount')
-        .ilike('name', 'Admission Fee')
+        .ilike('name', '%admission%')
         .eq('school_id', schoolId)
         .limit(1)
         .single();
