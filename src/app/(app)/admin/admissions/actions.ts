@@ -222,17 +222,17 @@ export async function admitNewStudentAction(
             fee_category_id: admissionFeeCategory.id,
             class_id: classId, // Store the class context with the fee
             assigned_amount: admissionFeeCategory.amount,
-            paid_amount: admissionFeeCategory.amount,
-            status: 'Paid' as PaymentStatus,
-            payment_date: new Date().toISOString(),
+            paid_amount: 0,
+            status: 'Pending' as PaymentStatus,
+            payment_date: null,
             due_date: new Date().toISOString().split('T')[0],
             school_id: schoolId,
           });
 
         if (feeInsertError) {
-          console.warn(`Failed to assign PAID Admission Fee to student ${newStudentProfileId}: ${feeInsertError.message}`);
+          console.warn(`Failed to assign PENDING Admission Fee to student ${newStudentProfileId}: ${feeInsertError.message}`);
         } else {
-          console.log(`Successfully assigned PAID Admission Fee to student ${newStudentProfileId}.`);
+          console.log(`Successfully assigned PENDING Admission Fee to student ${newStudentProfileId}.`);
           revalidatePath('/admin/student-fees');
         }
       }
@@ -267,7 +267,7 @@ export async function admitNewStudentAction(
     
     return { 
       ok: true, 
-      message: `Student ${name} admitted and account created. Admission fee marked as paid. Default password is "password".`,
+      message: `Student ${name} admitted and account created. Admission fee has been assigned and is pending payment. Default password is "password".`,
       studentId: newStudentProfileId,
       userId: newUser.id,
       admissionRecordId: newAdmissionId,
