@@ -43,7 +43,6 @@ export default function CommunicationPage() {
 
   const [teacherAssignedClasses, setTeacherAssignedClasses] = useState<ClassData[]>([]);
   const [allSchoolClasses, setAllSchoolClasses] = useState<ClassData[]>([]);
-  const [allSchoolExams, setAllSchoolExams] = useState<Exam[]>([]);
 
 
   useEffect(() => { 
@@ -103,13 +102,6 @@ export default function CommunicationPage() {
                 .single();
               if (studentError || !studentData) toast({title: "Error", description: "Could not load student profile.", variant: "destructive"});
               else setStudentProfile(studentData as Student);
-            }
-            
-            // Fetch exams for the school if admin or teacher
-            if (fetchedRole === 'admin' || fetchedRole === 'teacher') {
-                const { data: examsData, error: examsError } = await supabase.from('exams').select('*').eq('school_id', fetchedSchoolId);
-                if (examsError) toast({title: "Error fetching exams for dropdown", variant: "destructive"});
-                else setAllSchoolExams(examsData || []);
             }
           }
         }
@@ -185,7 +177,7 @@ export default function CommunicationPage() {
     setNewAnnouncement(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (name: 'targetClassId' | 'linkedExamId') => (value: string) => {
+  const handleSelectChange = (name: 'targetClassId') => (value: string) => {
     setNewAnnouncement(prev => ({ ...prev, [name]: value === "none" ? "" : value }));
   };
 
@@ -270,43 +262,23 @@ export default function CommunicationPage() {
                 <Input id="authorName" name="authorName" value={newAnnouncement.authorName} onChange={handleInputChange} placeholder="e.g., Principal's Office, Your Name" required disabled={isSubmitting}/>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 {(currentUserRole === 'teacher' || currentUserRole === 'admin') && (
-                    <div>
-                      <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
-                      <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
-                        <SelectTrigger id="targetClassId">
-                          <SelectValue placeholder="General Announcement" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">General Announcement</SelectItem>
-                          {availableClassesForTargeting.map(cls => (
-                            <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground mt-1">If not specified or an exam is linked, announcement is school-wide or targeted to the exam's class.</p>
-                    </div>
-                  )}
-                  
-                  {(currentUserRole === 'teacher' || currentUserRole === 'admin') && (
-                     <div>
-                       <Label htmlFor="linkedExamId">Link to Exam (Optional)</Label>
-                        <Select value={newAnnouncement.linkedExamId || "none"} onValueChange={handleSelectChange('linkedExamId')} disabled={isSubmitting || allSchoolExams.length === 0}>
-                            <SelectTrigger id="linkedExamId">
-                                <SelectValue placeholder="No linked exam" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">None</SelectItem>
-                                {allSchoolExams.map(exam => (
-                                    <SelectItem key={exam.id} value={exam.id}>{exam.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground mt-1">Include exam details in the notification.</p>
-                     </div>
-                  )}
-              </div>
+              {(currentUserRole === 'teacher' || currentUserRole === 'admin') && (
+                <div>
+                  <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
+                  <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
+                    <SelectTrigger id="targetClassId">
+                      <SelectValue placeholder="General Announcement" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">General Announcement</SelectItem>
+                      {availableClassesForTargeting.map(cls => (
+                        <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">If not specified, this will be a school-wide announcement.</p>
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="content">Content</Label>
