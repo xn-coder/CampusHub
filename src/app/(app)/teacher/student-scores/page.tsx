@@ -12,12 +12,22 @@ import type { ClassData, Student, Exam, Subject } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Award, Save, Users, FileText, Loader2, Edit2 } from 'lucide-react';
+import { parseISO } from 'date-fns';
 import { 
   getTeacherStudentScoresPageInitialDataAction, 
   getStudentsForClassAction, 
   getScoresForExamAndStudentAction,
   saveStudentScoresAction 
 } from './actions';
+
+interface ExamGroup {
+  id: string; // Composite key for the select, e.g., "Mid Term|2024-10-26|class-id"
+  name: string; // Clean name, e.g., "Mid Term"
+  displayName: string; // Formatted for dropdown, e.g., "Mid Term (Class 1 - A)"
+  date: string;
+  classId: string | null;
+  exams: Exam[]; // The individual exam records making up this group
+}
 
 export default function TeacherStudentScoresPage() {
   const { toast } = useToast();
@@ -28,7 +38,7 @@ export default function TeacherStudentScoresPage() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [studentsInSelectedClass, setStudentsInSelectedClass] = useState<Student[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
-  const [selectedExamId, setSelectedExamId] = useState<string>('');
+  const [selectedExamGroupId, setSelectedExamGroupId] = useState<string>('');
   const [scores, setScores] = useState<Record<string, string | number>>({}); // subjectId: score
   
   const [isLoading, setIsLoading] = useState(false); 
@@ -69,7 +79,7 @@ export default function TeacherStudentScoresPage() {
     setStudentsInSelectedClass([]);
     setSelectedStudentId('');
     setScores({});                 
-    setSelectedExamId('');         
+    setSelectedExamGroupId('');         
     const result = await getStudentsForClassAction(classId, schoolId);
     if (result.ok && result.students) {
       setStudentsInSelectedClass(result.students);
@@ -84,28 +94,83 @@ export default function TeacherStudentScoresPage() {
       fetchStudentsForClass(selectedClassId, currentSchoolId);
     }
   }, [selectedClassId, currentSchoolId, fetchStudentsForClass]);
+  
+  const examGroups = useMemo(() => {
+    const groups: Record<string, ExamGroup> = {};
+    const relevantExams = allExams.filter(exam => exam.class_id === selectedClassId);
+
+    relevantExams.forEach(exam => {
+      const namePrefix = exam.name.split(' - ')[0].trim();
+      const key = `${namePrefix}|${exam.date}|${exam.class_id || 'global'}`;
+
+      if (!groups[key]) {
+        const className = assignedClasses.find(c => c.id === exam.class_id)?.name || 'General';
+        const divisionName = assignedClasses.find(c => c.id === exam.class_id)?.division;
+        const classDisplay = exam.class_id ? `${className} - ${divisionName}` : 'All Classes';
+        
+        groups[key] = {
+          id: key,
+          name: namePrefix,
+          displayName: `${namePrefix} (${classDisplay})`,
+          date: exam.date,
+          classId: exam.class_id,
+          exams: [],
+        };
+      }
+      groups[key].exams.push(exam);
+    });
+    return Object.values(groups).sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+  }, [allExams, assignedClasses, selectedClassId]);
+
+  const selectedExamGroup = useMemo(() => {
+    return examGroups.find(g => g.id === selectedExamGroupId);
+  }, [selectedExamGroupId, examGroups]);
+
 
   const fetchScores = useCallback(async () => {
-    if (selectedStudentId && selectedExamId && currentSchoolId) {
+    if (selectedStudentId && selectedExamGroup && currentSchoolId) {
       setIsFetchingScores(true);
-      const result = await getScoresForExamAndStudentAction(selectedExamId, selectedStudentId, currentSchoolId);
-      if (result.ok && result.scores) {
-        setScores(result.scores);
-      } else {
-        toast({ title: "Error fetching existing scores", description: result.message, variant: "destructive" });
+      const examIds = selectedExamGroup.exams.map(e => e.id);
+
+      const { data: fetchedScoresData, error } = await getScoresForExamAndStudentAction(examIds[0], selectedStudentId, currentSchoolId);
+
+      const scoresMap: Record<string, string | number> = {};
+      
+      if (error) {
+        toast({ title: "Error fetching existing scores", description: error, variant: "destructive" });
         setScores({});
+      } else if (fetchedScoresData) {
+        // Since we are now fetching scores for one exam of the group, we need to adapt
+        // This part needs a rethink. The action should probably fetch for ALL exams in the group
+        const { data: allScoresForStudent, error: allScoresError } = await supabase
+            .from('student_scores')
+            .select('subject_id, score')
+            .eq('student_id', selectedStudentId)
+            .in('exam_id', examIds)
+            .eq('school_id', currentSchoolId);
+        
+        if (allScoresError) {
+          toast({ title: "Error fetching all scores for student", description: allScoresError.message, variant: "destructive"});
+        } else {
+            (allScoresForStudent || []).forEach(s => {
+                scoresMap[s.subject_id] = s.score;
+            });
+        }
+        setScores(scoresMap);
       }
+      
       setIsFetchingScores(false);
     }
-  }, [selectedStudentId, selectedExamId, currentSchoolId, toast]);
+  }, [selectedStudentId, selectedExamGroup, currentSchoolId, toast]);
 
   useEffect(() => {
-    if (selectedStudentId && selectedExamId) {
+    if (selectedStudentId && selectedExamGroup) {
       fetchScores();
     } else {
       setScores({});
     }
-  }, [selectedStudentId, selectedExamId, fetchScores]);
+  }, [selectedStudentId, selectedExamGroup, fetchScores]);
+
 
   const handleScoreChange = (subjectId: string, value: string) => {
     setScores(prev => ({ ...prev, [subjectId]: value }));
@@ -113,23 +178,22 @@ export default function TeacherStudentScoresPage() {
 
   const handleSaveScores = async (e: FormEvent) => {
     e.preventDefault();
-    if (!selectedStudentId || !selectedExamId || !selectedClassId || !currentTeacherId || !currentSchoolId) {
+    if (!selectedStudentId || !selectedExamGroup || !selectedClassId || !currentTeacherId || !currentSchoolId) {
       toast({ title: "Error", description: "Required context (Class, Student, Exam) is missing.", variant: "destructive" });
       return;
     }
     
     setIsLoading(true);
-    const selectedExamDetails = allExams.find(ex => ex.id === selectedExamId);
 
-    const scoresToSave = Object.entries(scores)
-      .filter(([_, score]) => String(score).trim() !== '')
-      .map(([subjectId, score]) => ({
+    const scoresToSave = selectedExamGroup.exams
+      .filter(exam => scores[exam.subject_id] !== undefined && String(scores[exam.subject_id]).trim() !== '')
+      .map(exam => ({
         student_id: selectedStudentId,
-        exam_id: selectedExamId,
-        subject_id: subjectId,
+        exam_id: exam.id, // The specific exam ID for this subject from the group
+        subject_id: exam.subject_id,
         class_id: selectedClassId,
-        score: score,
-        max_marks: selectedExamDetails?.max_marks,
+        score: scores[exam.subject_id],
+        max_marks: exam.max_marks,
         recorded_by_teacher_id: currentTeacherId,
         school_id: currentSchoolId,
       }));
@@ -163,7 +227,7 @@ export default function TeacherStudentScoresPage() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Gradebook: Enter Student Scores" 
-        description="Select a class, student, and exam to input scores for all subjects." 
+        description="Select a class, student, and exam event to input scores for the relevant subjects." 
       />
       <Card>
         <CardHeader>
@@ -186,16 +250,17 @@ export default function TeacherStudentScoresPage() {
               <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={isFetchingStudents || studentsInSelectedClass.length === 0}>
                 <SelectTrigger id="studentSelect"><SelectValue placeholder="Choose a student" /></SelectTrigger>
                 <SelectContent>
-                  {studentsInSelectedClass.map(s => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                  {isFetchingStudents ? <SelectItem value="-" disabled>Loading...</SelectItem> :
+                  studentsInSelectedClass.map(s => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="examSelect">3. Select Exam</Label>
-              <Select value={selectedExamId} onValueChange={setSelectedExamId} disabled={!selectedStudentId || allExams.length === 0}>
-                <SelectTrigger id="examSelect"><SelectValue placeholder="Choose an exam" /></SelectTrigger>
+              <Label htmlFor="examSelect">3. Select Exam Event</Label>
+              <Select value={selectedExamGroupId} onValueChange={setSelectedExamGroupId} disabled={!selectedStudentId || examGroups.length === 0}>
+                <SelectTrigger id="examSelect"><SelectValue placeholder="Choose an exam event" /></SelectTrigger>
                 <SelectContent>
-                  {allExams.map(exam => (<SelectItem key={exam.id} value={exam.id}>{exam.name}</SelectItem>))}
+                  {examGroups.map(group => (<SelectItem key={group.id} value={group.id}>{group.displayName}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
@@ -203,14 +268,14 @@ export default function TeacherStudentScoresPage() {
           
           {(isFetchingStudents || isFetchingScores) && <div className="text-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/> Loading...</div>}
 
-          {selectedClassId && selectedStudentId && selectedExamId && !isFetchingScores && !isFetchingStudents && (
+          {selectedClassId && selectedStudentId && selectedExamGroupId && !isFetchingScores && !isFetchingStudents && (
             <form onSubmit={handleSaveScores} className="mt-6 border-t pt-6">
               <div className="mb-4">
                 <h3 className="text-lg font-medium">
                   Enter Scores for: {studentsInSelectedClass.find(s => s.id === selectedStudentId)?.name}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Scores for all subjects registered in the school are listed below for the selected exam.
+                  Exam: {selectedExamGroup?.name}
                 </p>
               </div>
               <div className="overflow-x-auto">
@@ -223,7 +288,10 @@ export default function TeacherStudentScoresPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {allSubjects.map(subject => (
+                    {selectedExamGroup?.exams.map(exam => {
+                      const subject = allSubjects.find(s => s.id === exam.subject_id);
+                      if (!subject) return null;
+                      return (
                       <TableRow key={subject.id}>
                         <TableCell>{subject.name}</TableCell>
                         <TableCell>
@@ -231,17 +299,19 @@ export default function TeacherStudentScoresPage() {
                             value={scores[subject.id] || ''}
                             onChange={(e) => handleScoreChange(subject.id, e.target.value)}
                             placeholder="Enter score"
+                            type="number"
                           />
                         </TableCell>
-                        <TableCell>{allExams.find(ex => ex.id === selectedExamId)?.max_marks || 100}</TableCell>
+                        <TableCell>{exam.max_marks || 100}</TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
               <Button type="submit" className="mt-4" disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
-                Save All Scores
+                Save Scores
               </Button>
             </form>
           )}

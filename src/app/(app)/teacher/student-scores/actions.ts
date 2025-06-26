@@ -86,7 +86,8 @@ export async function getStudentsForClassAction(classId: string, schoolId: strin
       .from('students')
       .select('*')
       .eq('class_id', classId)
-      .eq('school_id', schoolId);
+      .eq('school_id', schoolId)
+      .order('name');
     
     if (error) throw error;
     return { ok: true, students: (data || []) as Student[] };
