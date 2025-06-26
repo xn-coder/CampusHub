@@ -220,6 +220,7 @@ export async function admitNewStudentAction(
             id: feePaymentId,
             student_id: newStudentProfileId,
             fee_category_id: admissionFeeCategory.id,
+            class_id: classId, // Store the class context with the fee
             assigned_amount: admissionFeeCategory.amount,
             paid_amount: admissionFeeCategory.amount,
             status: 'Paid' as PaymentStatus,

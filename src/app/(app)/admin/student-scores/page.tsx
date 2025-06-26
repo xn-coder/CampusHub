@@ -9,11 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { StudentScore, Student, Exam, ClassData, Subject, Teacher } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
-import { Award, Filter, Search, User, BookOpen, CalendarCheck, UserCogIcon, FileText, Loader2, FileDown } from 'lucide-react';
+import { Award, Filter, Search, User, BookOpen, CalendarCheck, UserCogIcon, FileText, Loader2, FileDown, TrendingUp, RefreshCcw } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { getStudentScoresPageDataAction } from './actions';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 export default function AdminStudentScoresPage() {
   const { toast } = useToast();
@@ -81,17 +82,19 @@ export default function AdminStudentScoresPage() {
       
       return matchesSearchTerm && matchesClass && matchesExam && matchesSubject;
     });
-  }, [allScores, searchTerm, selectedClassFilter, selectedExamFilter, selectedSubjectFilter, allStudents, allExams, allClasses, allSubjects]);
+  }, [allScores, searchTerm, selectedClassFilter, selectedExamFilter, selectedSubjectFilter, allStudents]);
   
   const handleDownloadCsv = () => {
     if (filteredScores.length === 0) {
         toast({ title: "No Data", description: "There is no data to download for the current filters.", variant: "destructive"});
         return;
     }
-    const headers = ["Student", "Class", "Exam", "Subject", "Score", "Max Marks", "Recorded By", "Date Recorded"];
+    const headers = ["Student", "Class", "Exam", "Subject", "Score", "Max Marks", "Result", "Recorded By", "Date Recorded"];
     const csvRows = [
         headers.join(','),
         ...filteredScores.map(score => {
+            const maxMarks = score.max_marks ?? allExams.find(e => e.id === score.exam_id)?.max_marks ?? 100;
+            const isPass = typeof score.score === 'number' && score.score >= maxMarks * 0.4;
             const row = [
                 `"${getStudentName(score.student_id).replace(/"/g, '""')}"`,
                 `"${getClassName(score.class_id).replace(/"/g, '""')}"`,
@@ -100,6 +103,7 @@ export default function AdminStudentScoresPage() {
                 `"${String(score.score)}"`
                 ,
                 score.max_marks ?? 'N/A',
+                isPass ? 'Pass' : 'Fail',
                 `"${getTeacherName(score.recorded_by_teacher_id).replace(/"/g, '""')}"`,
                 `"${format(parseISO(score.date_recorded), 'yyyy-MM-dd')}"`
             ];
@@ -115,6 +119,13 @@ export default function AdminStudentScoresPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+  
+  const handleMockAction = (action: 'Promote' | 'Re-exam', studentName: string) => {
+    toast({
+        title: `Mock Action: ${action}`,
+        description: `This would trigger the '${action}' workflow for student ${studentName}. This is a placeholder for a future feature.`
+    });
   };
 
 
@@ -190,27 +201,44 @@ export default function AdminStudentScoresPage() {
                 <TableRow>
                   <TableHead><User className="inline-block mr-1 h-4 w-4"/>Student</TableHead>
                   <TableHead>Class</TableHead>
-                  <TableHead><FileText className="inline-block mr-1 h-4 w-4"/>Exam</TableHead>
-                  <TableHead><BookOpen className="inline-block mr-1 h-4 w-4"/>Subject</TableHead>
+                  <TableHead>Exam</TableHead>
+                  <TableHead>Subject</TableHead>
                   <TableHead>Score</TableHead>
-                  <TableHead>Max Marks</TableHead>
-                  <TableHead><UserCogIcon className="inline-block mr-1 h-4 w-4"/>Recorded By</TableHead>
-                  <TableHead><CalendarCheck className="inline-block mr-1 h-4 w-4"/>Date Recorded</TableHead>
+                  <TableHead>Result</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredScores.map((score) => (
-                  <TableRow key={score.id}>
-                    <TableCell className="font-medium">{getStudentName(score.student_id)}</TableCell>
-                    <TableCell>{getClassName(score.class_id)}</TableCell>
-                    <TableCell>{getExamName(score.exam_id)}</TableCell>
-                    <TableCell>{getSubjectName(score.subject_id)}</TableCell>
-                    <TableCell className="font-semibold">{String(score.score)}</TableCell>
-                    <TableCell>{score.max_marks ?? 'N/A'}</TableCell>
-                    <TableCell>{getTeacherName(score.recorded_by_teacher_id)}</TableCell>
-                    <TableCell>{format(parseISO(score.date_recorded), 'PP')}</TableCell>
-                  </TableRow>
-                ))}
+                {filteredScores.map((score) => {
+                    const studentName = getStudentName(score.student_id);
+                    const maxMarks = score.max_marks ?? allExams.find(e => e.id === score.exam_id)?.max_marks ?? 100;
+                    const isPass = typeof score.score === 'number' && score.score >= maxMarks * 0.4;
+                    return (
+                        <TableRow key={score.id}>
+                            <TableCell className="font-medium">{studentName}</TableCell>
+                            <TableCell>{getClassName(score.class_id)}</TableCell>
+                            <TableCell>{getExamName(score.exam_id)}</TableCell>
+                            <TableCell>{getSubjectName(score.subject_id)}</TableCell>
+                            <TableCell className="font-semibold">{String(score.score)} / {maxMarks}</TableCell>
+                            <TableCell>
+                                <Badge variant={isPass ? 'default' : 'destructive'}>
+                                    {isPass ? 'Pass' : 'Fail'}
+                                </Badge>
+                            </TableCell>
+                            <TableCell className="text-right space-x-1">
+                                {isPass ? (
+                                    <Button variant="outline" size="xs" onClick={() => handleMockAction('Promote', studentName)} title="Promotion is handled at end of academic year via Class Management.">
+                                        <TrendingUp className="h-3 w-3 mr-1" /> Promote
+                                    </Button>
+                                ) : (
+                                    <Button variant="secondary" size="xs" onClick={() => handleMockAction('Re-exam', studentName)}>
+                                        <RefreshCcw className="h-3 w-3 mr-1" /> Schedule Re-exam
+                                    </Button>
+                                )}
+                            </TableCell>
+                        </TableRow>
+                    );
+                })}
               </TableBody>
             </Table>
           )}

@@ -172,6 +172,7 @@ export async function assignMultipleFeesToClassAction(
                     id: uuidv4(),
                     student_id: student.id,
                     fee_category_id: category.id,
+                    class_id: class_id, // Store the class context with the fee
                     assigned_amount: category.amount || 0,
                     due_date: restOfInput.due_date,
                     notes: restOfInput.notes,
