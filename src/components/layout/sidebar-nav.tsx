@@ -27,7 +27,6 @@ import {
   UserCircle,
   CreditCard,
   ClipboardList, 
-  // BookMarked, // Icon for Study Material, removed
   Settings, 
   FilePlus2,
   Tags,
@@ -48,7 +47,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton'; 
-import { getStudentPendingFeeCountAction } from '@/app/(app)/admin/student-fees/actions';
+import { getStudentPendingFeeCountAction, checkStudentFeeStatusAction } from '@/app/(app)/admin/student-fees/actions';
 import { supabase } from '@/lib/supabaseClient';
 
 
@@ -107,7 +106,6 @@ const studentNavItems: NavItem[] = [
   { href: '/student/subjects', label: 'My Subjects', icon: BookOpenText }, 
   { href: '/student/assignments', label: 'My Assignments', icon: ClipboardList }, 
   { href: '/student/my-scores', label: 'My Scores', icon: Award },
-  // { href: '/student/study-material', label: 'Study Material', icon: BookMarked }, // Removed
   { href: '/lms/available-courses', label: 'LMS Courses', icon: Library },
   { href: '/student/lms/activate', label: 'Activate Course', icon: KeyRound },
   { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit },
@@ -116,11 +114,23 @@ const studentNavItems: NavItem[] = [
   { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
 ];
 
+const lockedStudentFeatures = [
+    '/student/subjects',
+    '/student/assignments',
+    '/student/my-scores',
+    '/lms/available-courses',
+    '/student/lms/activate',
+    '/leave-application',
+];
+
 export default function SidebarNav() {
   const pathname = usePathname();
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null); 
   const [isMounted, setIsMounted] = useState(false); 
   const [pendingFeeCount, setPendingFeeCount] = useState<number | null>(null);
+  const [isFeeDefaulter, setIsFeeDefaulter] = useState(false);
+  const [lockoutMessage, setLockoutMessage] = useState('');
+
 
   useEffect(() => {
     setIsMounted(true); 
@@ -134,7 +144,7 @@ export default function SidebarNav() {
   }, []);
 
   useEffect(() => {
-    async function fetchFeeCount() {
+    async function fetchStudentStatus() {
         if (currentUserRole === 'student') {
             const userId = localStorage.getItem('currentUserId');
             if (userId) {
@@ -145,15 +155,26 @@ export default function SidebarNav() {
                     .single();
                 
                 if (studentProfile && studentProfile.school_id) {
-                    const feeResult = await getStudentPendingFeeCountAction(studentProfile.id, studentProfile.school_id);
-                    if (feeResult.ok) {
-                        setPendingFeeCount(feeResult.count);
+                    const [feeCountResult, feeStatusResult] = await Promise.all([
+                        getStudentPendingFeeCountAction(studentProfile.id, studentProfile.school_id),
+                        checkStudentFeeStatusAction(studentProfile.id, studentProfile.school_id)
+                    ]);
+                    
+                    if (feeCountResult.ok) {
+                        setPendingFeeCount(feeCountResult.count);
+                    }
+                    if (feeStatusResult.ok) {
+                        setIsFeeDefaulter(feeStatusResult.isDefaulter);
+                        setLockoutMessage(feeStatusResult.message);
                     }
                 }
             }
+        } else {
+            setIsFeeDefaulter(false);
+            setLockoutMessage('');
         }
     }
-    fetchFeeCount();
+    fetchStudentStatus();
   }, [currentUserRole]);
 
 
@@ -210,7 +231,10 @@ export default function SidebarNav() {
         } else if (paymentHistoryItem) {
             delete paymentHistoryItem.badge; 
         }
-        navItems = studentNavItems;
+        navItems = studentNavItems.map(item => ({
+            ...item,
+            disabled: isFeeDefaulter && lockedStudentFeatures.includes(item.href)
+        }));
       }
       break;
     default:
@@ -221,11 +245,14 @@ export default function SidebarNav() {
     <SidebarMenu>
       {navItems.map((item) => (
         <SidebarMenuItem key={item.label + item.href}>
-          <Link href={item.href} passHref legacyBehavior>
+          <Link href={item.disabled ? '#' : item.href} passHref legacyBehavior>
             <SidebarMenuButton
               asChild
-              isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href) && item.href.length > 1 && pathname.split('/')[1] === item.href.split('/')[1] && pathname.split('/')[2] === item.href.split('/')[2] ) } 
-              tooltip={{ children: item.label, side: 'right', align: 'center' }}
+              isActive={!item.disabled && (pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href) && item.href.length > 1 && pathname.split('/')[1] === item.href.split('/')[1] && pathname.split('/')[2] === item.href.split('/')[2] ) )} 
+              tooltip={{ children: item.disabled ? lockoutMessage : item.label, side: 'right', align: 'center' }}
+              disabled={item.disabled}
+              aria-disabled={item.disabled}
+              className={item.disabled ? 'cursor-not-allowed text-muted-foreground' : ''}
             >
               <a>
                 <item.icon />

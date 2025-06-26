@@ -5,9 +5,9 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
-    Megaphone, CalendarPlus, UserPlus, FileEdit, Users, Briefcase, Award, FileText as FileTextIcon, // Renamed FileText to FileTextIcon
+    Megaphone, CalendarPlus, UserPlus, FileEdit, Users, Briefcase, Award, FileText as FileTextIcon,
     ClipboardList, Building, Settings, School, UserCog, Library, Receipt, Tags, BarChart3, Clock,
-    ClipboardCheck, CalendarDays, BookOpenText, KeyRound, CreditCard, BookMarked, Loader2
+    ClipboardCheck, CalendarDays, BookOpenText, KeyRound, CreditCard, BookMarked, Loader2, AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
@@ -15,6 +15,10 @@ import { useToast } from '@/hooks/use-toast';
 import type { UserRole, NavItem } from '@/types';
 import { getDashboardDataAction } from './actions';
 import { format, parseISO, isValid } from 'date-fns';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { checkStudentFeeStatusAction } from '@/app/(app)/admin/student-fees/actions';
+import { supabase } from '@/lib/supabaseClient';
+
 
 interface DashboardStats {
   upcomingAssignmentsCount?: number;
@@ -39,6 +43,8 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [feeStatus, setFeeStatus] = useState<{ isDefaulter: boolean; message: string }>({ isDefaulter: false, message: '' });
+
 
   useEffect(() => {
     const role = localStorage.getItem('currentUserRole') as UserRole | null;
@@ -48,24 +54,46 @@ export default function DashboardPage() {
     setCurrentUserRole(role);
     setCurrentUserName(userName);
 
-    if (userId && role) {
-      setIsLoading(true);
-      getDashboardDataAction(userId, role)
-        .then(result => {
-          if (result.ok && result.data) {
-            setDashboardData(result.data);
-          } else {
-            toast({ title: "Error loading dashboard", description: result.message, variant: "destructive" });
-          }
-        })
-        .catch(err => {
-          toast({ title: "Error", description: "Failed to fetch dashboard data.", variant: "destructive"});
-          console.error(err);
-        })
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false); // No user, no loading
+    async function loadData() {
+      if (userId && role) {
+        setIsLoading(true);
+        const [dashboardResult, feeResult] = await Promise.all([
+          getDashboardDataAction(userId, role),
+          role === 'student' ? getFeeStatus(userId) : Promise.resolve(null)
+        ]);
+
+        if (dashboardResult.ok && dashboardResult.data) {
+          setDashboardData(dashboardResult.data);
+        } else {
+          toast({ title: "Error loading dashboard", description: dashboardResult.message, variant: "destructive" });
+        }
+        
+        if (feeResult) {
+            setFeeStatus(feeResult);
+        }
+
+        setIsLoading(false);
+      } else {
+        setIsLoading(false); // No user, no loading
+      }
     }
+    
+    async function getFeeStatus(studentUserId: string) {
+        const { data: studentProfile } = await supabase
+            .from('students')
+            .select('id, school_id')
+            .eq('user_id', studentUserId)
+            .single();
+        if (studentProfile?.id && studentProfile.school_id) {
+            const result = await checkStudentFeeStatusAction(studentProfile.id, studentProfile.school_id);
+            if (result.ok) {
+                return { isDefaulter: result.isDefaulter, message: result.message };
+            }
+        }
+        return { isDefaulter: false, message: '' };
+    }
+    
+    loadData();
   }, [toast]);
 
   const getQuickLinks = (): NavItem[] => {
@@ -177,6 +205,19 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Dashboard" description={`Welcome back, ${currentUserName || 'User'}! Here's your overview.`} />
       
+      {currentUserRole === 'student' && feeStatus.isDefaulter && (
+          <Alert variant="destructive" className="border-2">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Action Required: Overdue Fees</AlertTitle>
+              <AlertDescription>
+                  {feeStatus.message} Access to some features is temporarily restricted.
+                  <Button asChild variant="link" className="p-0 pl-1 h-auto text-destructive-foreground font-bold">
+                    <Link href="/student/payment-history">Go to Payments</Link>
+                  </Button>
+              </AlertDescription>
+          </Alert>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {renderStatsCards()}
       </div>

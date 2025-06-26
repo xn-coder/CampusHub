@@ -13,7 +13,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
-import { PlusCircle, Trash2, Save, Receipt, DollarSign, Search, Loader2, FileDown } from 'lucide-react';
+import { PlusCircle, Trash2, Save, Receipt, DollarSign, Search, Loader2, FileDown, Edit2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid } from 'date-fns';
 import {
@@ -22,7 +22,8 @@ import {
   recordStudentFeePaymentAction,
   deleteStudentFeeAssignmentAction,
   fetchAdminSchoolIdForFees,
-  fetchStudentFeesPageDataAction
+  fetchStudentFeesPageDataAction,
+  updateStudentFeeAction,
 } from './actions';
 
 export default function AdminStudentFeesPage() {
@@ -39,6 +40,8 @@ export default function AdminStudentFeesPage() {
 
   const [isAssignFeeDialogOpen, setIsAssignFeeDialogOpen] = useState(false);
   const [isRecordPaymentDialogOpen, setIsRecordPaymentDialogOpen] = useState(false);
+  const [isEditFeeDialogOpen, setIsEditFeeDialogOpen] = useState(false);
+
 
   const [editingFeePayment, setEditingFeePayment] = useState<StudentFeePayment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,6 +59,12 @@ export default function AdminStudentFeesPage() {
 
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentDate, setPaymentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+
+  // Edit form state
+  const [editAssignedAmount, setEditAssignedAmount] = useState<number | ''>('');
+  const [editDueDate, setEditDueDate] = useState<string>('');
+  const [editNotes, setEditNotes] = useState<string>('');
+
 
   useEffect(() => {
     const adminUserId = localStorage.getItem('currentUserId');
@@ -115,6 +124,13 @@ export default function AdminStudentFeesPage() {
     setSelectedAcademicYearId(undefined);
     setEditingFeePayment(null);
   };
+  
+  const resetEditFeeForm = () => {
+    setEditingFeePayment(null);
+    setEditAssignedAmount('');
+    setEditDueDate('');
+    setEditNotes('');
+  }
 
   const resetRecordPaymentForm = () => {
     setPaymentAmount(''); setPaymentDate(format(new Date(), 'yyyy-MM-dd'));
@@ -126,6 +142,15 @@ export default function AdminStudentFeesPage() {
   const handleOpenRecordPaymentDialog = (feePayment: StudentFeePayment) => {
     resetRecordPaymentForm(); setEditingFeePayment(feePayment); setIsRecordPaymentDialogOpen(true);
   };
+
+  const handleOpenEditFeeDialog = (feePayment: StudentFeePayment) => {
+    setEditingFeePayment(feePayment);
+    setEditAssignedAmount(feePayment.assigned_amount);
+    setEditDueDate(feePayment.due_date ? format(parseISO(feePayment.due_date), 'yyyy-MM-dd') : '');
+    setEditNotes(feePayment.notes || '');
+    setIsEditFeeDialogOpen(true);
+  };
+
 
   const handleAssignFeeSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -178,6 +203,32 @@ export default function AdminStudentFeesPage() {
     }
     setIsSubmitting(false);
   };
+  
+  const handleEditFeeSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingFeePayment || !currentSchoolId || editAssignedAmount === '' || Number(editAssignedAmount) <= 0) {
+      toast({ title: "Error", description: "A valid fee amount and context are required.", variant: "destructive" });
+      return;
+    }
+    setIsSubmitting(true);
+
+    const result = await updateStudentFeeAction(editingFeePayment.id, currentSchoolId, {
+      assigned_amount: Number(editAssignedAmount),
+      due_date: editDueDate || undefined,
+      notes: editNotes.trim() || undefined,
+    });
+    
+    if (result.ok) {
+        toast({ title: "Fee Updated", description: result.message });
+        setIsEditFeeDialogOpen(false);
+        resetEditFeeForm();
+        if (currentSchoolId) refreshAllFeeData(currentSchoolId);
+    } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsSubmitting(false);
+  };
+
 
   const handleRecordPaymentSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -339,9 +390,7 @@ export default function AdminStudentFeesPage() {
                 <TableRow>
                   <TableHead>Student</TableHead>
                   <TableHead>Fee Category</TableHead>
-                  <TableHead>Academic Year</TableHead>
                   <TableHead className="text-right">Assigned ($)</TableHead>
-                  <TableHead className="text-right">Paid ($)</TableHead>
                   <TableHead>Due Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -352,9 +401,7 @@ export default function AdminStudentFeesPage() {
                   <TableRow key={fp.id}>
                     <TableCell className="font-medium">{getStudentName(fp.student_id)}</TableCell>
                     <TableCell>{getFeeCategoryName(fp.fee_category_id)}</TableCell>
-                    <TableCell>{getAcademicYearName(fp.academic_year_id) || 'N/A'}</TableCell>
                     <TableCell className="text-right">{fp.assigned_amount.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{fp.paid_amount.toFixed(2)}</TableCell>
                     <TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell>
                     <TableCell>
                       <Badge variant={
@@ -371,6 +418,9 @@ export default function AdminStudentFeesPage() {
                            <DollarSign className="mr-1 h-3 w-3" /> Record Payment
                         </Button>
                       )}
+                      <Button variant="outline" size="icon" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}>
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
                        <Button variant="destructive" size="icon" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -471,6 +521,38 @@ export default function AdminStudentFeesPage() {
           </form>
         </DialogContent>
       </Dialog>
+      
+      <Dialog open={isEditFeeDialogOpen} onOpenChange={setIsEditFeeDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Fee for {getStudentName(editingFeePayment?.student_id || '')}</DialogTitle>
+            <CardDescription>Category: {getFeeCategoryName(editingFeePayment?.fee_category_id || '')}</CardDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditFeeSubmit}>
+            <div className="grid gap-4 py-4">
+                <div>
+                  <Label htmlFor="editAssignedAmount">Assigned Amount ($)</Label>
+                  <Input id="editAssignedAmount" type="number" value={editAssignedAmount} onChange={(e) => setEditAssignedAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} required disabled={isSubmitting}/>
+                </div>
+                <div>
+                  <Label htmlFor="editDueDate">Due Date</Label>
+                  <Input id="editDueDate" type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} disabled={isSubmitting}/>
+                </div>
+                <div>
+                  <Label htmlFor="editNotes">Notes</Label>
+                  <Input id="editNotes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} disabled={isSubmitting}/>
+                </div>
+            </div>
+            <DialogFooter>
+               <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
 
       <Dialog open={isRecordPaymentDialogOpen} onOpenChange={setIsRecordPaymentDialogOpen}>
         <DialogContent className="sm:max-w-md">
