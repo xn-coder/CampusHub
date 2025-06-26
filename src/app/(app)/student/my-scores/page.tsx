@@ -4,12 +4,12 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { ExamWithStudentScore } from '@/types';
 import { useState, useEffect } from 'react';
 import { Award, BookOpen, CalendarCheck, FileText, Loader2, TrendingUp, RefreshCcw, Download } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from "@/hooks/use-toast";
 import { getStudentScoresAndExamsAction } from './actions';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
