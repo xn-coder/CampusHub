@@ -4,17 +4,20 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { AdmissionRecord, ClassData } from '@/types';
+import type { AdmissionRecord, ClassData, StudentFeePayment, FeeCategory } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { ListChecks, CheckSquare, Loader2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 import { updateAdmissionStatusAction, fetchAdminSchoolIdForAdmissions, fetchAdmissionPageDataAction } from './actions';
 
 export default function AdmissionsPage() {
   const { toast } = useToast();
   const [admissionRecords, setAdmissionRecords] = useState<AdmissionRecord[]>([]);
   const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
+  const [feePayments, setFeePayments] = useState<StudentFeePayment[]>([]);
+  const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
@@ -37,10 +40,14 @@ export default function AdmissionsPage() {
         if (pageDataResult.ok) {
           setAdmissionRecords(pageDataResult.admissions || []);
           setActiveClasses(pageDataResult.classes || []);
+          setFeePayments(pageDataResult.feePayments || []);
+          setFeeCategories(pageDataResult.feeCategories || []);
         } else {
           toast({ title: "Error loading data", description: pageDataResult.message, variant: "destructive" });
           setAdmissionRecords([]);
           setActiveClasses([]);
+          setFeePayments([]);
+          setFeeCategories([]);
         }
       } else {
         toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
@@ -57,6 +64,8 @@ export default function AdmissionsPage() {
     if (pageDataResult.ok) {
         setAdmissionRecords(pageDataResult.admissions || []);
         setActiveClasses(pageDataResult.classes || []);
+        setFeePayments(pageDataResult.feePayments || []);
+        setFeeCategories(pageDataResult.feeCategories || []);
     } else {
         toast({ title: "Error refreshing data", description: pageDataResult.message, variant: "destructive" });
     }
@@ -81,6 +90,8 @@ export default function AdmissionsPage() {
     }
     setIsSubmitting(false);
   };
+
+  const admissionFeeCategory = feeCategories.find(fc => fc.name.toLowerCase() === 'admission fee');
 
   return (
     <div className="flex flex-col gap-6">
@@ -108,6 +119,7 @@ export default function AdmissionsPage() {
                     <TableHead>Email</TableHead>
                     <TableHead>Class Assigned</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Admission Fee</TableHead>
                     <TableHead>Action</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -115,6 +127,25 @@ export default function AdmissionsPage() {
                   {admissionRecords.map(record => {
                     const assignedClassDetails = activeClasses.find(c => c.id === record.class_id);
                     const classText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'N/A';
+                    
+                    let feeStatus: React.ReactNode = <span className="text-xs text-muted-foreground">N/A</span>;
+                    if (admissionFeeCategory && record.student_profile_id) {
+                        const payment = feePayments.find(p => 
+                            p.student_id === record.student_profile_id && 
+                            p.fee_category_id === admissionFeeCategory.id
+                        );
+
+                        if (payment) {
+                            feeStatus = (
+                                <Badge variant={payment.status === 'Paid' ? 'default' : payment.status === 'Partially Paid' ? 'secondary' : 'destructive'}>
+                                    {payment.status}
+                                </Badge>
+                            );
+                        } else {
+                            feeStatus = <span className="text-xs text-muted-foreground">Not Assigned</span>;
+                        }
+                    }
+
                     return (
                     <TableRow key={record.id}>
                       <TableCell className="font-medium">{record.name}</TableCell>
@@ -130,6 +161,7 @@ export default function AdmissionsPage() {
                           {record.status}
                         </span>
                       </TableCell>
+                      <TableCell>{feeStatus}</TableCell>
                       <TableCell>
                         {record.status === 'Admitted' && (
                            <Button variant="outline" size="sm" onClick={() => handleEnrollStudent(record.id)} disabled={isSubmitting}>

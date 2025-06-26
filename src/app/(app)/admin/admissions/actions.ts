@@ -3,7 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { AdmissionStatus, AdmissionRecord, ClassData } from '@/types';
+import type { AdmissionStatus, AdmissionRecord, ClassData, StudentFeePayment, FeeCategory } from '@/types';
 
 export async function fetchAdminSchoolIdForAdmissions(adminUserId: string): Promise<string | null> {
   if (!adminUserId) {
@@ -27,6 +27,8 @@ export async function fetchAdmissionPageDataAction(schoolId: string): Promise<{
   ok: boolean;
   admissions?: AdmissionRecord[];
   classes?: ClassData[];
+  feeCategories?: FeeCategory[];
+  feePayments?: StudentFeePayment[];
   message?: string;
 }> {
   if (!schoolId) {
@@ -34,28 +36,25 @@ export async function fetchAdmissionPageDataAction(schoolId: string): Promise<{
   }
   const supabaseAdmin = createSupabaseServerClient();
   try {
-    const { data: admissionsData, error: admissionsError } = await supabaseAdmin
-      .from('admission_records')
-      .select('*')
-      .eq('school_id', schoolId)
-      .order('created_at', { ascending: false });
+    const [admissionsRes, classesRes, feeCategoriesRes, feePaymentsRes] = await Promise.all([
+        supabaseAdmin.from('admission_records').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        supabaseAdmin.from('classes').select('id, name, division').eq('school_id', schoolId),
+        supabaseAdmin.from('fee_categories').select('id, name').eq('school_id', schoolId),
+        supabaseAdmin.from('student_fee_payments').select('*').eq('school_id', schoolId),
+    ]);
 
-    if (admissionsError) {
-      console.error("Error fetching admissions data action:", admissionsError);
-      return { ok: false, message: `Failed to fetch admissions: ${admissionsError.message}` };
-    }
-
-    const { data: classesData, error: classesError } = await supabaseAdmin
-      .from('classes')
-      .select('id, name, division') // Only fetch needed fields
-      .eq('school_id', schoolId);
-
-    if (classesError) {
-      console.error("Error fetching classes data action:", classesError);
-      return { ok: false, message: `Failed to fetch classes: ${classesError.message}` };
-    }
-
-    return { ok: true, admissions: admissionsData || [], classes: classesData || [] };
+    if (admissionsRes.error) throw new Error(`Failed to fetch admissions: ${admissionsRes.error.message}`);
+    if (classesRes.error) throw new Error(`Failed to fetch classes: ${classesRes.error.message}`);
+    if (feeCategoriesRes.error) throw new Error(`Failed to fetch fee categories: ${feeCategoriesRes.error.message}`);
+    if (feePaymentsRes.error) throw new Error(`Failed to fetch fee payments: ${feePaymentsRes.error.message}`);
+    
+    return { 
+        ok: true, 
+        admissions: admissionsRes.data || [], 
+        classes: classesRes.data || [],
+        feeCategories: feeCategoriesRes.data || [],
+        feePayments: feePaymentsRes.data || [],
+    };
   } catch (error: any) {
     console.error("Unexpected error in fetchAdmissionPageDataAction:", error);
     return { ok: false, message: `An unexpected error occurred: ${error.message}` };

@@ -7,7 +7,7 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { revalidatePath } from 'next/cache';
-import type { AdmissionRecord, Student, User, AdmissionStatus, UserRole } from '@/types';
+import type { AdmissionRecord, Student, User, AdmissionStatus, UserRole, PaymentStatus } from '@/types';
 
 const SALT_ROUNDS = 10;
 
@@ -90,6 +90,47 @@ export async function registerStudentAction(
       await supabaseAdmin.from('users').delete().eq('id', newUser.id);
       return { ok: false, message: `Failed to create student profile: ${studentInsertError.message}` };
     }
+
+    // --- Assign Admission Fee ---
+    try {
+      const { data: admissionFeeCategory, error: feeCategoryError } = await supabaseAdmin
+        .from('fee_categories')
+        .select('id, amount')
+        .ilike('name', 'Admission Fee')
+        .eq('school_id', schoolId)
+        .limit(1)
+        .single();
+
+      if (feeCategoryError && feeCategoryError.code !== 'PGRST116') {
+        console.warn(`Could not check for Admission Fee category: ${feeCategoryError.message}`);
+      }
+
+      if (admissionFeeCategory && admissionFeeCategory.amount && admissionFeeCategory.amount > 0) {
+        const feePaymentId = uuidv4();
+        const { error: feeInsertError } = await supabaseAdmin
+          .from('student_fee_payments')
+          .insert({
+            id: feePaymentId,
+            student_id: newStudentProfileId,
+            fee_category_id: admissionFeeCategory.id,
+            assigned_amount: admissionFeeCategory.amount,
+            paid_amount: 0,
+            status: 'Pending' as PaymentStatus,
+            school_id: schoolId,
+          });
+
+        if (feeInsertError) {
+          console.warn(`Failed to assign Admission Fee to student ${newStudentProfileId}: ${feeInsertError.message}`);
+        } else {
+          console.log(`Successfully assigned Admission Fee to student ${newStudentProfileId}.`);
+          revalidatePath('/admin/student-fees');
+          revalidatePath('/student/payment-history');
+        }
+      }
+    } catch (feeError: any) {
+      console.warn(`An error occurred during automatic fee assignment: ${feeError.message}`);
+    }
+    // --- End Fee Assignment ---
     
     const newAdmissionId = uuidv4();
     const { error: admissionInsertError } = await supabaseAdmin
