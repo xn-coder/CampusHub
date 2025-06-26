@@ -6,6 +6,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuBadge,
 } from '@/components/ui/sidebar';
 import {
   LayoutDashboard,
@@ -47,6 +48,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton'; 
+import { getStudentPendingFeeCountAction } from '@/app/(app)/admin/student-fees/actions';
+import { supabase } from '@/lib/supabaseClient';
+
 
 const superAdminNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -116,19 +120,42 @@ export default function SidebarNav() {
   const pathname = usePathname();
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null); 
   const [isMounted, setIsMounted] = useState(false); 
+  const [pendingFeeCount, setPendingFeeCount] = useState<number | null>(null);
 
   useEffect(() => {
     setIsMounted(true); 
-    if (typeof window !== 'undefined') {
-      const storedRole = localStorage.getItem('currentUserRole') as UserRole | null;
-      const validRoles: UserRole[] = ['superadmin', 'admin', 'teacher', 'student'];
-      if (storedRole && validRoles.includes(storedRole)) {
-        setCurrentUserRole(storedRole);
-      } else {
-        setCurrentUserRole(null); 
-      }
+    const storedRole = localStorage.getItem('currentUserRole') as UserRole | null;
+    const validRoles: UserRole[] = ['superadmin', 'admin', 'teacher', 'student'];
+    if (storedRole && validRoles.includes(storedRole)) {
+      setCurrentUserRole(storedRole);
+    } else {
+      setCurrentUserRole(null); 
     }
   }, []);
+
+  useEffect(() => {
+    async function fetchFeeCount() {
+        if (currentUserRole === 'student') {
+            const userId = localStorage.getItem('currentUserId');
+            if (userId) {
+                const { data: studentProfile, error } = await supabase
+                    .from('students')
+                    .select('id, school_id')
+                    .eq('user_id', userId)
+                    .single();
+                
+                if (studentProfile && studentProfile.school_id) {
+                    const feeResult = await getStudentPendingFeeCountAction(studentProfile.id, studentProfile.school_id);
+                    if (feeResult.ok) {
+                        setPendingFeeCount(feeResult.count);
+                    }
+                }
+            }
+        }
+    }
+    fetchFeeCount();
+  }, [currentUserRole]);
+
 
   if (!isMounted) {
     return (
@@ -163,7 +190,6 @@ export default function SidebarNav() {
     );
   }
 
-
   let navItems: NavItem[];
 
   switch (currentUserRole) {
@@ -177,7 +203,15 @@ export default function SidebarNav() {
       navItems = teacherNavItems;
       break;
     case 'student':
-      navItems = studentNavItems;
+      {
+        const paymentHistoryItem = studentNavItems.find(item => item.href === '/student/payment-history');
+        if (paymentHistoryItem && pendingFeeCount !== null && pendingFeeCount > 0) {
+            paymentHistoryItem.badge = pendingFeeCount;
+        } else if (paymentHistoryItem) {
+            delete paymentHistoryItem.badge; 
+        }
+        navItems = studentNavItems;
+      }
       break;
     default:
       navItems = []; 
@@ -199,9 +233,9 @@ export default function SidebarNav() {
               </a>
             </SidebarMenuButton>
           </Link>
+          {item.badge && item.badge > 0 && <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>}
         </SidebarMenuItem>
       ))}
     </SidebarMenu>
   );
 }
-

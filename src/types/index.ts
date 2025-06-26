@@ -30,6 +30,7 @@ export type NavItem = {
   disabled?: boolean;
   external?: boolean;
   children?: NavItem[];
+  badge?: React.ReactNode;
 };
 
 export interface SchoolEntry {

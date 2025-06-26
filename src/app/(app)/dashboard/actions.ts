@@ -18,6 +18,7 @@ interface DashboardData {
   totalSchoolTeachers?: number;
   totalSchoolClasses?: number;
   pendingAdmissionsCount?: number;
+  pendingFeesCount?: number;
   // Superadmin specific
   totalSchools?: number;
   totalUsers?: number;
@@ -166,21 +167,24 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
       }
     } else if (userRole === 'admin') {
         if (effectiveSchoolId) { // Admin has a school context
-            const [studentsRes, teachersRes, classesRes, admissionsRes] = await Promise.all([
+            const [studentsRes, teachersRes, classesRes, admissionsRes, feesRes] = await Promise.all([
                 supabase.from('students').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId),
                 supabase.from('teachers').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId),
                 supabase.from('classes').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId),
-                supabase.from('admission_records').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId).eq('status', 'Pending Review')
+                supabase.from('admission_records').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId).eq('status', 'Pending Review'),
+                supabase.from('student_fee_payments').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId).in('status', ['Pending', 'Partially Paid', 'Overdue'])
             ]);
             dashboardData.totalSchoolStudents = studentsRes.count ?? 0;
             dashboardData.totalSchoolTeachers = teachersRes.count ?? 0;
             dashboardData.totalSchoolClasses = classesRes.count ?? 0;
             dashboardData.pendingAdmissionsCount = admissionsRes.count ?? 0;
+            dashboardData.pendingFeesCount = feesRes.count ?? 0;
         } else { // Admin not linked to any school
             dashboardData.totalSchoolStudents = 0;
             dashboardData.totalSchoolTeachers = 0;
             dashboardData.totalSchoolClasses = 0;
             dashboardData.pendingAdmissionsCount = 0;
+            dashboardData.pendingFeesCount = 0;
         }
     } else if (userRole === 'superadmin') {
       const [schoolsRes, usersRes] = await Promise.all([

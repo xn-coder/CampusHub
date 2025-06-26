@@ -25,6 +25,7 @@ interface DashboardStats {
   totalSchoolTeachers?: number;
   totalSchoolClasses?: number;
   pendingAdmissionsCount?: number;
+  pendingFeesCount?: number;
   totalSchools?: number;
   totalUsers?: number;
   recentAnnouncements?: { id: string; title: string; date: string, author_name?: string | null, posted_by_role?: UserRole | null, target_class?: {name: string, division: string} | null }[];
@@ -133,7 +134,7 @@ export default function DashboardPage() {
             <StatsCard title="Total Students" value={dashboardData.totalSchoolStudents ?? 0} icon={Users} />
             <StatsCard title="Total Teachers" value={dashboardData.totalSchoolTeachers ?? 0} icon={Briefcase} />
             <StatsCard title="Active Classes" value={dashboardData.totalSchoolClasses ?? 0} icon={School} />
-            <StatsCard title="Pending Admissions" value={dashboardData.pendingAdmissionsCount ?? 0} icon={UserPlus} />
+            <StatsCard title="Pending Fees" value={dashboardData.pendingFeesCount ?? 0} icon={Receipt} />
           </>
         );
       case 'superadmin':
@@ -260,4 +261,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

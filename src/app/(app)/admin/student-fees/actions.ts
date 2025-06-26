@@ -227,4 +227,31 @@ export async function getStudentPaymentHistoryAction(
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
 }
+
+export async function getStudentPendingFeeCountAction(
+  studentProfileId: string,
+  schoolId: string
+): Promise<{ ok: boolean; count: number; message?: string }> {
+  if (!studentProfileId || !schoolId) {
+    return { ok: false, count: 0, message: "Student and School IDs are required." };
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { count, error } = await supabase
+      .from('student_fee_payments')
+      .select('id', { count: 'exact', head: true })
+      .eq('student_id', studentProfileId)
+      .eq('school_id', schoolId)
+      .in('status', ['Pending', 'Partially Paid', 'Overdue']);
+
+    if (error) {
+      console.error("Error fetching pending fee count:", error);
+      return { ok: false, count: 0, message: `Database error: ${error.message}` };
+    }
+    return { ok: true, count: count || 0 };
+  } catch (e: any) {
+    console.error("Unexpected error fetching pending fee count:", e);
+    return { ok: false, count: 0, message: `Unexpected error: ${e.message}` };
+  }
+}
     
