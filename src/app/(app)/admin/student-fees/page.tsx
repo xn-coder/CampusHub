@@ -10,9 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import type { StudentFeePayment, Student, FeeCategory, AcademicYear } from '@/types';
+import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
-import { PlusCircle, Trash2, Save, Receipt, DollarSign, Search, Loader2 } from 'lucide-react';
+import { PlusCircle, Trash2, Save, Receipt, DollarSign, Search, Loader2, FileDown } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid } from 'date-fns';
 import {
@@ -29,6 +29,7 @@ export default function AdminStudentFeesPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [classes, setClasses] = useState<ClassData[]>([]);
 
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,6 +40,8 @@ export default function AdminStudentFeesPage() {
 
   const [editingFeePayment, setEditingFeePayment] = useState<StudentFeePayment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
 
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [selectedFeeCategoryId, setSelectedFeeCategoryId] = useState<string>('');
@@ -82,6 +85,7 @@ export default function AdminStudentFeesPage() {
       setStudents(pageDataResult.students || []);
       setFeeCategories(pageDataResult.feeCategories || []);
       setAcademicYears(pageDataResult.academicYears || []);
+      setClasses(pageDataResult.classes || []);
     } else {
       toast({ title: "Error loading fee data", description: pageDataResult.message, variant: "destructive" });
     }
@@ -91,6 +95,10 @@ export default function AdminStudentFeesPage() {
   const getStudentName = (studentId: string) => students.find(s => s.id === studentId)?.name || 'N/A';
   const getFeeCategoryName = (feeCategoryId: string) => feeCategories.find(fc => fc.id === feeCategoryId)?.name || 'N/A';
   const getAcademicYearName = (yearId?: string | null) => yearId ? academicYears.find(ay => ay.id === yearId)?.name : undefined;
+  const getClassDisplayName = (classId: string) => {
+    const cls = classes.find(c => c.id === classId);
+    return cls ? `${cls.name} - ${cls.division}` : 'N/A';
+  };
 
   const resetAssignFeeForm = () => {
     setSelectedStudentId(''); setSelectedFeeCategoryId(''); setAssignedAmount('');
@@ -176,13 +184,61 @@ export default function AdminStudentFeesPage() {
 
   const filteredFeePayments = useMemo(() => {
     return feePayments.filter(fp => {
-      const studentName = getStudentName(fp.student_id).toLowerCase();
+      const student = students.find(s => s.id === fp.student_id);
+      if (!student) return false;
+
+      const studentName = student.name.toLowerCase();
       const feeCategoryName = getFeeCategoryName(fp.fee_category_id).toLowerCase();
       const search = searchTerm.toLowerCase();
-      return studentName.includes(search) || feeCategoryName.includes(search) || fp.status.toLowerCase().includes(search);
-    });
-  }, [feePayments, searchTerm, students, feeCategories]);
 
+      const matchesSearch = studentName.includes(search) || feeCategoryName.includes(search);
+      const matchesClass = selectedClassFilter === 'all' || student.class_id === selectedClassFilter;
+      const matchesStatus = selectedStatusFilter === 'all' || 
+                            (selectedStatusFilter === 'Paid' && fp.status === 'Paid') ||
+                            (selectedStatusFilter === 'Unpaid' && (fp.status === 'Pending' || fp.status === 'Partially Paid' || fp.status === 'Overdue'));
+
+      return matchesSearch && matchesClass && matchesStatus;
+    });
+  }, [feePayments, searchTerm, students, feeCategories, selectedClassFilter, selectedStatusFilter]);
+
+  const handleDownloadCsv = () => {
+    if (filteredFeePayments.length === 0) {
+        toast({ title: "No Data", description: "There is no data to download for the current filters.", variant: "destructive"});
+        return;
+    }
+
+    const headers = ["Student Name", "Class", "Fee Category", "Assigned Amount", "Paid Amount", "Due Date", "Status", "Notes"];
+    
+    const csvRows = [
+        headers.join(','),
+        ...filteredFeePayments.map(fp => {
+            const student = students.find(s => s.id === fp.student_id);
+            const className = student && student.class_id ? getClassDisplayName(student.class_id) : 'N/A';
+            
+            const row = [
+                `"${student?.name || 'N/A'}"`,
+                `"${className}"`,
+                `"${getFeeCategoryName(fp.fee_category_id)}"`,
+                fp.assigned_amount,
+                fp.paid_amount,
+                fp.due_date ? format(parseISO(fp.due_date), 'yyyy-MM-dd') : 'N/A',
+                fp.status,
+                `"${fp.notes?.replace(/"/g, '""') || ''}"` // Escape double quotes
+            ];
+            return row.join(',');
+        })
+    ];
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `student_fees_report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -201,14 +257,37 @@ export default function AdminStudentFeesPage() {
           <CardDescription>Manage all student fee assignments and payments.</CardDescription>
         </CardHeader>
         <CardContent>
-           <div className="mb-4">
+           <div className="mb-4 flex flex-col md:flex-row gap-4 items-center">
              <Input
-                placeholder="Search by student, fee category, or status..."
+                placeholder="Search by student or fee category..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="max-w-md"
                 disabled={isLoadingPage}
             />
+            <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter} disabled={isLoadingPage || classes.length === 0}>
+                <SelectTrigger className="md:w-[200px]">
+                    <SelectValue placeholder="Filter by class" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All Classes</SelectItem>
+                    {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}
+                </SelectContent>
+            </Select>
+            <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter} disabled={isLoadingPage}>
+                <SelectTrigger className="md:w-[180px]">
+                    <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="Paid">Paid</SelectItem>
+                    <SelectItem value="Unpaid">Unpaid</SelectItem>
+                </SelectContent>
+            </Select>
+            <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredFeePayments.length === 0} className="md:ml-auto">
+                <FileDown className="mr-2 h-4 w-4" />
+                Download Report
+            </Button>
            </div>
           {isLoadingPage ? (
             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>
@@ -216,7 +295,7 @@ export default function AdminStudentFeesPage() {
              <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>
           ) : filteredFeePayments.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">
-                {searchTerm && feePayments.length > 0 ? "No records match your search." : "No student fee records found for this school."}
+                {searchTerm || selectedClassFilter !== 'all' || selectedStatusFilter !== 'all' ? "No records match your filters." : "No student fee records found for this school."}
             </p>
           ) : (
             <Table>

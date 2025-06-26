@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { StudentFeePayment, PaymentStatus, Student, FeeCategory, AcademicYear } from '@/types';
+import type { StudentFeePayment, PaymentStatus, Student, FeeCategory, AcademicYear, ClassData } from '@/types';
 
 interface AssignFeeInput {
   student_id: string;
@@ -41,6 +41,7 @@ export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<
   students?: Student[];
   feeCategories?: FeeCategory[];
   academicYears?: AcademicYear[];
+  classes?: ClassData[];
   message?: string;
 }> {
   if (!schoolId) {
@@ -48,17 +49,19 @@ export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<
   }
   const supabaseAdmin = createSupabaseServerClient();
   try {
-    const [paymentsRes, studentsRes, categoriesRes, academicYearsRes] = await Promise.all([
+    const [paymentsRes, studentsRes, categoriesRes, academicYearsRes, classesRes] = await Promise.all([
       supabaseAdmin.from('student_fee_payments').select('*').eq('school_id', schoolId).order('due_date', { ascending: false, nullsFirst: false }),
       supabaseAdmin.from('students').select('*').eq('school_id', schoolId).order('name'),
       supabaseAdmin.from('fee_categories').select('*').eq('school_id', schoolId).order('name'),
-      supabaseAdmin.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
+      supabaseAdmin.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false }),
+      supabaseAdmin.from('classes').select('*').eq('school_id', schoolId).order('name')
     ]);
 
     if (paymentsRes.error) throw new Error(`Fetching fee payments failed: ${paymentsRes.error.message}`);
     if (studentsRes.error) throw new Error(`Fetching students failed: ${studentsRes.error.message}`);
     if (categoriesRes.error) throw new Error(`Fetching fee categories failed: ${categoriesRes.error.message}`);
     if (academicYearsRes.error) throw new Error(`Fetching academic years failed: ${academicYearsRes.error.message}`);
+    if (classesRes.error) throw new Error(`Fetching classes failed: ${classesRes.error.message}`);
 
     return {
       ok: true,
@@ -66,6 +69,7 @@ export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<
       students: studentsRes.data || [],
       feeCategories: categoriesRes.data || [],
       academicYears: academicYearsRes.data || [],
+      classes: classesRes.data || [],
     };
   } catch (error: any) {
     console.error("Error in fetchStudentFeesPageDataAction:", error);
@@ -296,4 +300,3 @@ export async function studentPayFeeAction(
 
   return { ok: true, message: "Payment successful! The fee status has been updated." };
 }
-    
