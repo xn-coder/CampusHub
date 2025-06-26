@@ -169,10 +169,9 @@ export default function TeacherIdCardPrintingPage() {
         doc.text(student.name, 35, 20, { maxWidth: 48 });
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
-        doc.text(`ID: ${student.id}`, 35, 25);
-        doc.text(`Class: ${student.className || 'N/A'} - ${student.classDivision || 'N/A'}`, 35, 29);
-        doc.text(`Guardian: ${student.guardian_name || 'N/A'}`, 35, 33);
-        doc.text(`Contact: ${student.contact_number || 'N/A'}`, 35, 37);
+        doc.text(`Class: ${student.className || 'N/A'} - ${student.classDivision || 'N/A'}`, 35, 25);
+        doc.text(`Guardian: ${student.guardian_name || 'N/A'}`, 35, 29);
+        doc.text(`Contact: ${student.contact_number || 'N/A'}`, 35, 33);
 
         doc.setFillColor(49, 46, 129);
         doc.rect(0.5, 49.5, 84.6, 4, 'F');
@@ -300,7 +299,6 @@ export default function TeacherIdCardPrintingPage() {
                     </Avatar>
                     <div>
                       <p className="font-bold text-lg">{previewCardStudent.name}</p>
-                      <p className="text-xs">ID: {previewCardStudent.id}</p>
                       <p className="text-xs">Class: {previewCardStudent.className} - {previewCardStudent.classDivision || 'N/A'}</p>
                       <p className="text-xs">Guardian: {previewCardStudent.guardian_name || 'N/A'}</p>
                     </div>
