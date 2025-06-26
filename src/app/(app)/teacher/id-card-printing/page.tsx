@@ -11,8 +11,9 @@ import { Label } from '@/components/ui/label';
 import type { ClassData, Student, UserRole } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Printer, Aperture, Loader2 } from 'lucide-react';
+import { Printer, Aperture, Loader2, Download } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import jsPDF from 'jspdf';
 
 interface DisplayStudent extends Student {
   className?: string;
@@ -27,6 +28,7 @@ export default function TeacherIdCardPrintingPage() {
   const [selectedStudents, setSelectedStudents] = useState<Record<string, boolean>>({});
   const [previewCardStudent, setPreviewCardStudent] = useState<DisplayStudent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
@@ -103,19 +105,86 @@ export default function TeacherIdCardPrintingPage() {
     }
     setSelectedStudents(newSelection);
   };
-
-  const handlePrintSelectedCards = () => {
-    const studentsToPrint = studentsInSelectedClass.filter(s => selectedStudents[s.id]);
+  
+  const handleDownloadPdf = async (studentsToPrint: DisplayStudent[]) => {
     if (studentsToPrint.length === 0) {
-      toast({ title: "No Students Selected", description: "Please select students to print ID cards for.", variant: "destructive" });
-      return;
+        toast({ title: "No Selection", description: "Please select student(s) to download ID cards for.", variant: "destructive" });
+        return;
     }
-    toast({ title: "Printing ID Cards (Mock)", description: `Generating ID cards for ${studentsToPrint.length} student(s).` });
-    console.log("Printing ID cards for:", studentsToPrint.map(s => s.name));
+
+    toast({ title: "Generating PDF...", description: `Preparing ID cards for ${studentsToPrint.length} student(s). Please wait.` });
+    setIsPrinting(true);
+
+    const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: [85.6, 54] // Standard credit card size
+    });
+
+    const toDataURL = (url: string): Promise<string> =>
+        fetch(url)
+            .then(response => {
+                if (!response.ok) throw new Error(`Network response was not ok, status: ${response.status}`);
+                return response.blob();
+            })
+            .then(blob => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            }));
+
+    for (let i = 0; i < studentsToPrint.length; i++) {
+        const student = studentsToPrint[i];
+        if (i > 0) {
+            doc.addPage();
+        }
+
+        doc.setDrawColor(49, 46, 129);
+        doc.roundedRect(0.5, 0.5, 84.6, 53, 3, 3, 'S');
+        doc.setFillColor(243, 244, 246);
+        doc.rect(0.5, 0.5, 84.6, 12, 'F');
+        doc.setFontSize(8);
+        doc.setTextColor(20, 20, 20);
+        doc.setFont('helvetica', 'bold');
+        doc.text("CampusHub School", 42.8, 8, { align: 'center' });
+
+        const avatarUrl = student.profile_picture_url || `https://placehold.co/100x100.png?text=${student.name.substring(0,1)}`;
+        try {
+            const imgData = await toDataURL(avatarUrl);
+            doc.addImage(imgData, 'PNG', 5, 15, 25, 25);
+        } catch (e) {
+            console.error("Could not add image for student", student.name, e);
+            doc.setFillColor(230, 230, 230);
+            doc.rect(5, 15, 25, 25, 'F');
+            doc.setTextColor(100, 100, 100);
+            doc.text(student.name.substring(0,1), 17.5, 27.5, { align: 'center' });
+        }
+        
+        doc.setDrawColor(49, 46, 129);
+        doc.rect(5, 15, 25, 25, 'S');
+        doc.setTextColor(20, 20, 20);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text(student.name, 35, 20, { maxWidth: 48 });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.text(`ID: ${student.id}`, 35, 25);
+        doc.text(`Class: ${student.className || 'N/A'} - ${student.classDivision || 'N/A'}`, 35, 29);
+        doc.text(`Guardian: ${student.guardian_name || 'N/A'}`, 35, 33);
+        doc.text(`Contact: ${student.contact_number || 'N/A'}`, 35, 37);
+
+        doc.setFillColor(49, 46, 129);
+        doc.rect(0.5, 49.5, 84.6, 4, 'F');
+        doc.setFontSize(6);
+        doc.setTextColor(255, 255, 255);
+        doc.text('If found, please return to school office.', 42.8, 52, { align: 'center'});
+    }
+
+    doc.save(`ID_Cards_${new Date().toISOString().split('T')[0]}.pdf`);
+    setIsPrinting(false);
   };
   
-  const selectedClassDetails = assignedClasses.find(c => c.id === selectedClassId);
-
   if (isLoading && !currentTeacherId) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading teacher data...</span></div>;
   }
@@ -146,7 +215,7 @@ export default function TeacherIdCardPrintingPage() {
             <CardContent className="space-y-4">
               <div>
                 <Label htmlFor="classSelect">Select Your Class</Label>
-                <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading}>
+                <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading || isPrinting}>
                   <SelectTrigger id="classSelect" className="max-w-md">
                     <SelectValue placeholder="Choose a class" />
                   </SelectTrigger>
@@ -161,7 +230,7 @@ export default function TeacherIdCardPrintingPage() {
               {isLoading && selectedClassId && <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading students...</div>}
 
               {!isLoading && selectedClassId && studentsInSelectedClass.length === 0 && (
-                <p className="text-muted-foreground text-center py-4">No students found in {selectedClassDetails?.name} - {selectedClassDetails?.division}.</p>
+                <p className="text-muted-foreground text-center py-4">No students found in {assignedClasses.find(c=>c.id === selectedClassId)?.name || 'this class'}.</p>
               )}
 
               {!isLoading && studentsInSelectedClass.length > 0 && (
@@ -171,7 +240,7 @@ export default function TeacherIdCardPrintingPage() {
                         id="selectAllStudents" 
                         onCheckedChange={(checked) => handleSelectAll(!!checked)}
                         checked={studentsInSelectedClass.length > 0 && studentsInSelectedClass.every(s => selectedStudents[s.id])}
-                        disabled={isLoading}
+                        disabled={isLoading || isPrinting}
                         />
                        <Label htmlFor="selectAllStudents">Select All ({studentsInSelectedClass.filter(s => selectedStudents[s.id]).length} selected)</Label>
                     </div>
@@ -181,7 +250,7 @@ export default function TeacherIdCardPrintingPage() {
                         id={`student-${student.id}`} 
                         checked={!!selectedStudents[student.id]} 
                         onCheckedChange={(checked) => handleStudentSelection(student.id, !!checked)}
-                        disabled={isLoading}
+                        disabled={isLoading || isPrinting}
                       />
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={student.profile_picture_url || undefined} alt={student.name} data-ai-hint="person student" />
@@ -190,7 +259,10 @@ export default function TeacherIdCardPrintingPage() {
                       <Label htmlFor={`student-${student.id}`} className="flex-grow cursor-pointer" onClick={() => setPreviewCardStudent(student)}>
                         {student.name}
                       </Label>
-                       <Button variant="ghost" size="sm" onClick={() => setPreviewCardStudent(student)} disabled={isLoading}>Preview</Button>
+                       <Button variant="ghost" size="sm" onClick={() => setPreviewCardStudent(student)} disabled={isLoading || isPrinting}>Preview</Button>
+                       <Button variant="ghost" size="icon" onClick={() => handleDownloadPdf([student])} disabled={isPrinting} title="Download ID Card">
+                            <Download className="h-4 w-4" />
+                       </Button>
                     </div>
                   ))}
                 </div>
@@ -198,7 +270,10 @@ export default function TeacherIdCardPrintingPage() {
             </CardContent>
             {!isLoading && studentsInSelectedClass.length > 0 && (
               <CardFooter>
-                <Button onClick={handlePrintSelectedCards} disabled={isLoading}><Printer className="mr-2 h-4 w-4" /> Print Selected ID Cards</Button>
+                <Button onClick={() => handleDownloadPdf(studentsInSelectedClass.filter(s => selectedStudents[s.id]))} disabled={isLoading || isPrinting}>
+                  {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4" />} 
+                  Download Selected
+                </Button>
               </CardFooter>
             )}
           </Card>
@@ -207,7 +282,6 @@ export default function TeacherIdCardPrintingPage() {
           <Card>
             <CardHeader>
               <CardTitle>ID Card Preview</CardTitle>
-              <CardDescription>This is a temporary mock-up.</CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center items-center min-h-[250px]">
               {previewCardStudent ? (
@@ -228,7 +302,7 @@ export default function TeacherIdCardPrintingPage() {
                       <p className="font-bold text-lg">{previewCardStudent.name}</p>
                       <p className="text-xs">ID: {previewCardStudent.id}</p>
                       <p className="text-xs">Class: {previewCardStudent.className} - {previewCardStudent.classDivision || 'N/A'}</p>
-                      <p className="text-xs">Email: {previewCardStudent.email}</p>
+                      <p className="text-xs">Guardian: {previewCardStudent.guardian_name || 'N/A'}</p>
                     </div>
                   </div>
                    <p className="text-[0.6rem] text-muted-foreground absolute bottom-2 right-3">Academic Year: 2024-2025 (Mock)</p>

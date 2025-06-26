@@ -4,7 +4,7 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Printer, Users, User, Aperture, Loader2 } from 'lucide-react';
+import { Printer, Users, User, Aperture, Loader2, Download } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import type { Student, ClassData, AppUser, UserRole } from '@/types';
@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { getIdCardPageDataAction } from './actions';
+import jsPDF from 'jspdf';
 
 
 interface DisplayStudent extends Student {
@@ -26,6 +27,7 @@ export default function AdminIdCardPrintingPage() {
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [currentSchoolId, setCurrentSchoolId] = useState<string|null>(null);
   const [isLoadingPage, setIsLoadingPage] = useState(true);
+  const [isPrinting, setIsPrinting] = useState(false);
 
 
   const [selectedUserType, setSelectedUserType] = useState<'student'>('student'); // Staff removed
@@ -94,27 +96,84 @@ export default function AdminIdCardPrintingPage() {
     setPreviewCard(user);
   };
   
-  const handlePrintSelected = () => {
-    let itemsToPrint: any[] = [];
-    let itemType = '';
-
-    if (selectedUserType === 'student') {
-      itemsToPrint = displayStudents.filter(s => selectedStudents[s.id]);
-      itemType = 'student';
+  const handleDownloadPdf = async (studentsToPrint: DisplayStudent[]) => {
+    if (studentsToPrint.length === 0) {
+        toast({ title: "No Selection", description: "Please select student(s) to download ID cards for.", variant: "destructive" });
+        return;
     }
-    // Staff logic removed
 
-    if (itemsToPrint.length === 0) {
-      toast({ title: "No Selection", description: `Please select ${itemType}(s) to print ID cards for.`, variant: "destructive" });
-      return;
+    toast({ title: "Generating PDF...", description: `Preparing ID cards for ${studentsToPrint.length} student(s). Please wait.` });
+    setIsPrinting(true);
+
+    const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: [85.6, 54] // Standard credit card size
+    });
+
+    const toDataURL = (url: string): Promise<string> =>
+        fetch(url)
+            .then(response => {
+                if (!response.ok) throw new Error(`Network response was not ok, status: ${response.status}`);
+                return response.blob();
+            })
+            .then(blob => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            }));
+
+    for (let i = 0; i < studentsToPrint.length; i++) {
+        const student = studentsToPrint[i];
+        if (i > 0) {
+            doc.addPage();
+        }
+
+        doc.setDrawColor(49, 46, 129); 
+        doc.roundedRect(0.5, 0.5, 84.6, 53, 3, 3, 'S');
+        doc.setFillColor(243, 244, 246);
+        doc.rect(0.5, 0.5, 84.6, 12, 'F');
+        doc.setFontSize(8);
+        doc.setTextColor(20, 20, 20);
+        doc.setFont('helvetica', 'bold');
+        doc.text("CampusHub School", 42.8, 8, { align: 'center' });
+
+        const avatarUrl = student.profile_picture_url || `https://placehold.co/100x100.png?text=${student.name.substring(0,1)}`;
+        try {
+            const imgData = await toDataURL(avatarUrl);
+            doc.addImage(imgData, 'PNG', 5, 15, 25, 25);
+        } catch (e) {
+            console.error("Could not add image for student", student.name, e);
+            doc.setFillColor(230, 230, 230);
+            doc.rect(5, 15, 25, 25, 'F');
+            doc.setTextColor(100, 100, 100);
+            doc.text(student.name.substring(0,1), 17.5, 27.5, { align: 'center' });
+        }
+        
+        doc.setDrawColor(49, 46, 129);
+        doc.rect(5, 15, 25, 25, 'S');
+        doc.setTextColor(20, 20, 20);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text(student.name, 35, 20, { maxWidth: 48 });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.text(`ID: ${student.id}`, 35, 25);
+        doc.text(`Class: ${student.className || 'N/A'} - ${student.classDivision || 'N/A'}`, 35, 29);
+        doc.text(`Guardian: ${student.guardian_name || 'N/A'}`, 35, 33);
+        doc.text(`Contact: ${student.contact_number || 'N/A'}`, 35, 37);
+
+        doc.setFillColor(49, 46, 129);
+        doc.rect(0.5, 49.5, 84.6, 4, 'F');
+        doc.setFontSize(6);
+        doc.setTextColor(255, 255, 255);
+        doc.text('If found, please return to school office.', 42.8, 52, { align: 'center'});
     }
-    toast({ title: "Printing ID Cards (Mock)", description: `Generating ID cards for ${itemsToPrint.length} ${itemType}(s).` });
-    console.log(`Printing ID cards for ${itemType}s:`, itemsToPrint.map(item => item.name));
+
+    doc.save(`ID_Cards_${new Date().toISOString().split('T')[0]}.pdf`);
+    setIsPrinting(false);
   };
-  
-  const isStudent = (user: DisplayStudent | AppUser | null): user is DisplayStudent => {
-    return user !== null && 'class_id' in user; // Using class_id to differentiate
-  }
 
   if (isLoadingPage) {
     return (
@@ -155,27 +214,23 @@ export default function AdminIdCardPrintingPage() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Select Users for ID Card</CardTitle>
-                {/* User type selection removed as 'staff' is gone */}
               </div>
-              {selectedUserType === 'student' && (
-                <div className="mt-4">
-                  <Label htmlFor="classFilter">Filter by Class</Label>
-                  <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingPage}>
-                    <SelectTrigger id="classFilter">
-                      <SelectValue placeholder="Select a class" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Classes</SelectItem>
-                      {allClasses.map(cls => (
-                        <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div className="mt-4">
+                <Label htmlFor="classFilter">Filter by Class</Label>
+                <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingPage || isPrinting}>
+                  <SelectTrigger id="classFilter">
+                    <SelectValue placeholder="Select a class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Classes</SelectItem>
+                    {allClasses.map(cls => (
+                      <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent className="max-h-[60vh] overflow-y-auto">
-              {selectedUserType === 'student' && (
                 <>
                   {displayStudents.length > 0 && (
                     <div className="mb-2 flex items-center space-x-2">
@@ -202,15 +257,19 @@ export default function AdminIdCardPrintingPage() {
                         {student.name} <span className="text-xs text-muted-foreground">({student.className} - {student.classDivision || 'N/A'})</span>
                       </Label>
                       <Button variant="ghost" size="sm" onClick={() => handlePreviewCard(student)}>Preview</Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDownloadPdf([student])} disabled={isPrinting} title="Download ID Card">
+                        <Download className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
                   {displayStudents.length === 0 && <p className="text-muted-foreground text-center py-4">No students match filters for this school.</p>}
                 </>
-              )}
-             {/* Staff selection UI removed */}
             </CardContent>
             <CardFooter>
-              <Button onClick={handlePrintSelected}><Printer className="mr-2 h-4 w-4" /> Print Selected ID Cards</Button>
+              <Button onClick={() => handleDownloadPdf(displayStudents.filter(s => selectedStudents[s.id]))} disabled={isPrinting}>
+                {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4" />} 
+                Download Selected
+              </Button>
             </CardFooter>
           </Card>
         </div>
@@ -218,10 +277,9 @@ export default function AdminIdCardPrintingPage() {
           <Card>
             <CardHeader>
               <CardTitle>ID Card Preview</CardTitle>
-              <CardDescription>This is a temporary mock-up.</CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center items-center min-h-[250px]">
-              {previewCard && isStudent(previewCard) ? (
+              {previewCard ? (
                 <div className="w-80 h-48 bg-card border-2 border-primary rounded-lg shadow-xl flex flex-col p-4 relative text-foreground">
                   <div className="flex items-center mb-3">
                      <Aperture className="h-10 w-10 text-primary mr-3" />
@@ -232,14 +290,14 @@ export default function AdminIdCardPrintingPage() {
                   </div>
                   <div className="flex items-center">
                     <Avatar className="w-16 h-16 mr-3 border-2 border-primary">
-                       <AvatarImage src={(previewCard as DisplayStudent).profile_picture_url || undefined} alt={previewCard.name} data-ai-hint="person portrait" />
+                       <AvatarImage src={previewCard.profile_picture_url || undefined} alt={previewCard.name} data-ai-hint="person portrait" />
                        <AvatarFallback>{previewCard.name.substring(0,1)}</AvatarFallback>
                     </Avatar>
                     <div>
                       <p className="font-bold text-lg">{previewCard.name}</p>
                       <p className="text-xs">ID: {previewCard.id}</p>
-                      <p className="text-xs">Class: {(previewCard as DisplayStudent).className} - {(previewCard as DisplayStudent).classDivision || 'N/A'}</p>
-                      <p className="text-xs">Email: {previewCard.email}</p>
+                      <p className="text-xs">Class: {previewCard.className} - {previewCard.classDivision || 'N/A'}</p>
+                      <p className="text-xs">Guardian: {previewCard.guardian_name || 'N/A'}</p>
                     </div>
                   </div>
                    <p className="text-[0.6rem] text-muted-foreground absolute bottom-2 right-3">Academic Year: 2024-2025 (Mock)</p>
