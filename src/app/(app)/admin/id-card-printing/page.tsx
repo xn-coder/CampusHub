@@ -26,6 +26,7 @@ export default function AdminIdCardPrintingPage() {
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [currentSchoolId, setCurrentSchoolId] = useState<string|null>(null);
+  const [currentSchoolName, setCurrentSchoolName] = useState<string>('CampusHub School');
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isPrinting, setIsPrinting] = useState(false);
 
@@ -49,11 +50,13 @@ export default function AdminIdCardPrintingPage() {
       const result = await getIdCardPageDataAction(adminUserId);
       if (result.ok) {
         setCurrentSchoolId(result.schoolId || null);
+        setCurrentSchoolName(result.schoolName || 'CampusHub School');
         setAllStudents(result.students || []);
         setAllClasses(result.classes || []);
       } else {
         toast({ title: "Error loading data", description: result.message, variant: "destructive" });
         setCurrentSchoolId(null);
+        setCurrentSchoolName('CampusHub School');
         setAllStudents([]);
         setAllClasses([]);
       }
@@ -137,7 +140,7 @@ export default function AdminIdCardPrintingPage() {
         doc.setFontSize(8);
         doc.setTextColor(20, 20, 20);
         doc.setFont('helvetica', 'bold');
-        doc.text("CampusHub School", 42.8, 8, { align: 'center' });
+        doc.text(currentSchoolName, 42.8, 8, { align: 'center' });
 
         const avatarUrl = student.profile_picture_url || `https://placehold.co/100x100.png?text=${student.name.substring(0,1)}`;
         try {
@@ -283,7 +286,7 @@ export default function AdminIdCardPrintingPage() {
                   <div className="flex items-center mb-3">
                      <Aperture className="h-10 w-10 text-primary mr-3" />
                      <div>
-                        <p className="text-sm font-bold uppercase text-primary">CampusHub School</p>
+                        <p className="text-sm font-bold uppercase text-primary">{currentSchoolName}</p>
                         <p className="text-xs text-muted-foreground">Student Identification</p>
                      </div>
                   </div>

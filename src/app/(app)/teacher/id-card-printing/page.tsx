@@ -31,6 +31,7 @@ export default function TeacherIdCardPrintingPage() {
   const [isPrinting, setIsPrinting] = useState(false);
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentSchoolName, setCurrentSchoolName] = useState<string>('CampusHub School');
 
 
   useEffect(() => {
@@ -58,9 +59,10 @@ export default function TeacherIdCardPrintingPage() {
       setCurrentSchoolId(teacherProfile.school_id);
 
       if (teacherProfile.id && teacherProfile.school_id) {
-        const [classesRes, studentsRes] = await Promise.all([
+        const [classesRes, studentsRes, schoolRes] = await Promise.all([
           supabase.from('classes').select('*').eq('teacher_id', teacherProfile.id).eq('school_id', teacherProfile.school_id),
-          supabase.from('students').select('*').eq('school_id', teacherProfile.school_id)
+          supabase.from('students').select('*').eq('school_id', teacherProfile.school_id),
+          supabase.from('schools').select('name').eq('id', teacherProfile.school_id).single()
         ]);
 
         if (classesRes.error) toast({ title: "Error fetching classes", variant: "destructive" });
@@ -68,6 +70,10 @@ export default function TeacherIdCardPrintingPage() {
 
         if (studentsRes.error) toast({ title: "Error fetching students", variant: "destructive" });
         else setAllStudentsInSchool(studentsRes.data || []);
+        
+        if (schoolRes.error) toast({ title: "Error fetching school name", variant: "destructive" });
+        else setCurrentSchoolName(schoolRes.data?.name || 'CampusHub School');
+
       }
       setIsLoading(false);
     }
@@ -147,7 +153,7 @@ export default function TeacherIdCardPrintingPage() {
         doc.setFontSize(8);
         doc.setTextColor(20, 20, 20);
         doc.setFont('helvetica', 'bold');
-        doc.text("CampusHub School", 42.8, 8, { align: 'center' });
+        doc.text(currentSchoolName, 42.8, 8, { align: 'center' });
 
         const avatarUrl = student.profile_picture_url || `https://placehold.co/100x100.png?text=${student.name.substring(0,1)}`;
         try {
@@ -288,7 +294,7 @@ export default function TeacherIdCardPrintingPage() {
                   <div className="flex items-center mb-3">
                      <Aperture className="h-10 w-10 text-primary mr-3" />
                      <div>
-                        <p className="text-sm font-bold uppercase text-primary">CampusHub School</p>
+                        <p className="text-sm font-bold uppercase text-primary">{currentSchoolName}</p>
                         <p className="text-xs text-muted-foreground">Student Identification</p>
                      </div>
                   </div>

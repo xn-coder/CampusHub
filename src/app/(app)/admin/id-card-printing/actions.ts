@@ -7,6 +7,7 @@ import type { Student, ClassData } from '@/types';
 export async function getIdCardPageDataAction(adminUserId: string): Promise<{
   ok: boolean;
   schoolId?: string | null;
+  schoolName?: string | null;
   students?: Student[];
   classes?: ClassData[];
   message?: string;
@@ -18,10 +19,10 @@ export async function getIdCardPageDataAction(adminUserId: string): Promise<{
   const supabase = createSupabaseServerClient();
 
   try {
-    // Fetch admin's school ID
+    // Fetch admin's school ID and Name
     const { data: schoolData, error: schoolError } = await supabase
       .from('schools')
-      .select('id')
+      .select('id, name')
       .eq('admin_user_id', adminUserId)
       .single();
 
@@ -30,6 +31,7 @@ export async function getIdCardPageDataAction(adminUserId: string): Promise<{
       return { ok: false, message: "Admin not linked to a school or school not found." };
     }
     const schoolId = schoolData.id;
+    const schoolName = schoolData.name;
 
     // Fetch students for the school
     const { data: studentsData, error: studentsError } = await supabase
@@ -56,6 +58,7 @@ export async function getIdCardPageDataAction(adminUserId: string): Promise<{
     return {
       ok: true,
       schoolId,
+      schoolName,
       students: studentsData || [],
       classes: classesData || [],
     };
