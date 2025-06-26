@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -8,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { ClassData, Student, Exam, Subject, GradebookEntry } from '@/types';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Award, Save, Users, FileText, Loader2, Edit2 } from 'lucide-react';
 import { getTeacherGradebookInitialDataAction, getGradebookDataAction, saveGradebookScoresAction } from './actions';
@@ -148,7 +149,7 @@ export default function TeacherStudentScoresPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><Award className="mr-2 h-5 w-5" /> Score Entry</CardTitle>
-          <CardDescription>Select a class and exam to begin grading. Scores for all subjects registered in the school are listed below for the selected exam.</CardDescription>
+          <CardDescription>Scores for all subjects registered in the school are listed below for the selected exam.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
