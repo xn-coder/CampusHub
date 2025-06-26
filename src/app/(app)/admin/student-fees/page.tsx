@@ -338,11 +338,13 @@ export default function AdminStudentFeesPage() {
         const matchesSearch = studentName.includes(search);
         const matchesClass = selectedClassFilter === 'all' || summary.classId === selectedClassFilter;
         
-        let statusCheck: StudentFeeStatus[] = [];
-        if (selectedStatusFilter === 'Paid') statusCheck = ['Paid'];
-        else if (selectedStatusFilter === 'Unpaid') statusCheck = ['Pending', 'Partially Paid', 'Overdue'];
-
-        const matchesStatus = selectedStatusFilter === 'all' || statusCheck.includes(summary.status);
+        const matchesStatus = (() => {
+            if (selectedStatusFilter === 'all') return true;
+            if (selectedStatusFilter === 'Unpaid') {
+                return ['Pending', 'Partially Paid', 'Overdue'].includes(summary.status);
+            }
+            return summary.status === selectedStatusFilter;
+        })();
 
         return matchesSearch && matchesClass && matchesStatus;
     });
@@ -588,7 +590,7 @@ export default function AdminStudentFeesPage() {
                           {fp.status !== 'Paid' && (
                               <Button variant="outline" size="xs" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}>Record Payment</Button>
                           )}
-                          <Button variant="outline" size="xs" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}>Edit</Button>
+                          <Button variant="outline" size="xs" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting || fp.paid_amount > 0}>Edit</Button>
                           <Button variant="destructive" size="xs" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}>Delete</Button>
                         </TableCell>
                       </TableRow>
@@ -665,4 +667,3 @@ export default function AdminStudentFeesPage() {
     </div>
   );
 }
-
