@@ -203,7 +203,7 @@ export interface Subject {
 export interface Exam {
   id: string;
   name: string;
-  subject_id: string;
+  subject_id: string; // Kept for schema compatibility, but less emphasized now.
   class_id?: string | null;
   academic_year_id?: string | null;
   date: string;
@@ -211,44 +211,9 @@ export interface Exam {
   end_time?: string | null;
   max_marks?: number | null;
   school_id: string;
+  publish_date?: string | null; // NEW: ISO string for result publication
   created_at?: string;
   updated_at?: string;
-}
-
-// Type for displaying exams with student's score information
-export interface ExamWithStudentScore extends Exam {
-  studentScore?: Pick<StudentScore, 'score' | 'max_marks' | 'date_recorded'> | null;
-  subjectName?: string;
-}
-
-
-export interface AssignmentSubmission {
-  id: string;
-  assignment_id: string;
-  student_id: string;
-  school_id: string;
-  submission_date: string; // ISO string
-  file_path: string;
-  file_name: string;
-  notes?: string | null;
-  grade?: string | null;
-  feedback?: string | null;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface Assignment {
-  id: string;
-  title: string;
-  description?: string | null;
-  due_date: string;
-  class_id: string;
-  teacher_id: string;
-  subject_id?: string | null;
-  school_id: string;
-  created_at?: string;
-  updated_at?: string;
-  submission?: AssignmentSubmission | null; // For student view
 }
 
 
@@ -266,6 +231,22 @@ export interface StudentScore {
   school_id: string;
   created_at?: string;
   updated_at?: string;
+}
+
+// Type for displaying exams with student's score information
+export interface ExamWithStudentScore extends Exam {
+  studentScores?: {
+      subject_id: string;
+      subjectName: string;
+      score: string | number;
+      max_marks?: number | null;
+  }[] | null;
+  overallResult?: {
+      totalMarks: number;
+      maxMarks: number;
+      percentage: number;
+      status: 'Pass' | 'Fail';
+  };
 }
 
 export interface AdmissionRecord {
@@ -417,4 +398,33 @@ export interface TeacherCourseEnrollment {
     teacher_id: string; // This is teachers.id (teacher_profile_id)
     course_id: string;
     assigned_at?: string;
+}
+
+export interface AssignmentSubmission {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  school_id: string;
+  submission_date: string; // ISO string
+  file_path: string;
+  file_name: string;
+  notes?: string | null;
+  grade?: string | null;
+  feedback?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Assignment {
+  id: string;
+  title: string;
+  description?: string | null;
+  due_date: string;
+  class_id: string;
+  teacher_id: string;
+  subject_id?: string | null;
+  school_id: string;
+  created_at?: string;
+  updated_at?: string;
+  submission?: AssignmentSubmission | null; // For student view
 }

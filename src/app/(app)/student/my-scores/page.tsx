@@ -2,20 +2,25 @@
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { ExamWithStudentScore } from '@/types';
 import { useState, useEffect } from 'react';
-import { Award, BookOpen, CalendarCheck, FileText, Loader2 } from 'lucide-react';
-import { format, parseISO, isValid } from 'date-fns';
+import { Award, BookOpen, CalendarCheck, FileText, Loader2, TrendingUp, RefreshCcw } from 'lucide-react';
+import { format, parseISO, isValid, isPast } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { getStudentScoresAndExamsAction } from './actions';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 
 export default function StudentMyScoresPage() {
   const { toast } = useToast();
-  const [examsWithScores, setExamsWithScores] = useState<ExamWithStudentScore[]>([]);
+  const [reportCards, setReportCards] = useState<ExamWithStudentScore[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [pageMessage, setPageMessage] = useState<string | null>(null);
+  const [selectedReport, setSelectedReport] = useState<ExamWithStudentScore | null>(null);
+  const [isDetailViewOpen, setIsDetailViewOpen] = useState(false);
 
   useEffect(() => {
     async function fetchScoresAndExamsData() {
@@ -32,19 +37,31 @@ export default function StudentMyScoresPage() {
       const result = await getStudentScoresAndExamsAction(studentUserId);
 
       if (result.ok && result.examsWithScores) {
-        setExamsWithScores(result.examsWithScores);
+        setReportCards(result.examsWithScores);
         if (result.examsWithScores.length === 0 && result.studentProfileId) {
-          setPageMessage("No exams found for your school yet, or no scores recorded.");
+          setPageMessage("No exam results have been published yet.");
         }
       } else {
         toast({ title: "Error Loading Scores & Exams", description: result.message, variant: "destructive" });
-        setExamsWithScores([]);
+        setReportCards([]);
         setPageMessage(result.message || "Failed to load score and exam data.");
       }
       setIsLoading(false);
     }
     fetchScoresAndExamsData();
   }, [toast]);
+
+  const handleOpenReportDetails = (report: ExamWithStudentScore) => {
+    setSelectedReport(report);
+    setIsDetailViewOpen(true);
+  };
+  
+  const handleApplyForReExam = (examName: string) => {
+    toast({
+        title: "Re-exam Request (Mock)",
+        description: `A request to apply for a re-exam for "${examName}" would be sent to the administration. This is a placeholder for a future feature.`,
+    });
+  };
 
   const formatDateSafe = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
@@ -55,57 +72,115 @@ export default function StudentMyScoresPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
-        title="My Scores & Grades" 
-        description="View your academic performance across various exams." 
+        title="My Report Cards" 
+        description="View your academic performance and results for each examination term." 
       />
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center"><Award className="mr-2 h-5 w-5" /> My Examination Results</CardTitle>
-          <CardDescription>A record of your scores and exam participation.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-             <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading your results...</div>
-          ) : pageMessage ? (
-            <p className="text-muted-foreground text-center py-4">{pageMessage}</p>
-          ) : examsWithScores.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No exams or scores are currently available for you.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead><FileText className="inline-block mr-1 h-4 w-4"/>Exam Name</TableHead>
-                  <TableHead><BookOpen className="inline-block mr-1 h-4 w-4"/>Subject</TableHead>
-                  <TableHead>Exam Date</TableHead>
-                  <TableHead>Score / Max Marks</TableHead>
-                  <TableHead><CalendarCheck className="inline-block mr-1 h-4 w-4"/>Date Recorded</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {examsWithScores.map((exam) => (
-                  <TableRow key={exam.id}>
-                    <TableCell className="font-medium">{exam.name}</TableCell>
-                    <TableCell>{exam.subjectName || 'N/A'}</TableCell>
-                    <TableCell>{formatDateSafe(exam.date)}</TableCell>
-                    <TableCell className="font-semibold">
-                      {exam.studentScore && exam.studentScore.score !== null ? (
-                        `${exam.studentScore.score} / ${exam.studentScore.max_marks ?? exam.max_marks ?? 'N/A'}`
-                      ) : (
-                        <span className="text-muted-foreground">Result Not Declared</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {exam.studentScore && exam.studentScore.date_recorded 
-                        ? formatDateSafe(exam.studentScore.date_recorded) 
-                        : 'N/A'}
-                    </TableCell>
+      {isLoading ? (
+         <Card><CardContent className="pt-6 text-center text-muted-foreground flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading your results...</CardContent></Card>
+      ) : pageMessage ? (
+        <Card><CardContent className="pt-6 text-center text-muted-foreground">{pageMessage}</CardContent></Card>
+      ) : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {reportCards.map(report => (
+                <Card key={report.id} className="flex flex-col">
+                    <CardHeader>
+                        <CardTitle>{report.name}</CardTitle>
+                        <CardDescription>Exam Date: {formatDateSafe(report.date)}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex-grow space-y-3">
+                        <div className="text-center">
+                            <p className="text-sm text-muted-foreground">Overall Percentage</p>
+                            <p className="text-4xl font-bold text-primary">{report.overallResult?.percentage.toFixed(2) ?? 'N/A'}%</p>
+                        </div>
+                        <Progress value={report.overallResult?.percentage ?? 0} className="h-2"/>
+                        <div className="text-center font-bold text-lg">
+                           {report.overallResult?.status === 'Pass' ? (
+                                <span className="text-green-600">Pass</span>
+                            ) : (
+                                <span className="text-destructive">Fail</span>
+                            )}
+                        </div>
+                    </CardContent>
+                    <CardFooter>
+                        <Button onClick={() => handleOpenReportDetails(report)} className="w-full">
+                            View Detailed Report
+                        </Button>
+                    </CardFooter>
+                </Card>
+            ))}
+        </div>
+      )}
+
+      {selectedReport && (
+        <Dialog open={isDetailViewOpen} onOpenChange={setIsDetailViewOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Detailed Report: {selectedReport.name}</DialogTitle>
+              <DialogDescription>
+                Exam Date: {formatDateSafe(selectedReport.date)}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[60vh] overflow-y-auto pr-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Subject</TableHead>
+                    <TableHead className="text-right">Score</TableHead>
+                    <TableHead className="text-right">Max Marks</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {selectedReport.studentScores?.map(score => {
+                    const maxMarks = score.max_marks ?? 100;
+                    const isPass = Number(score.score) >= maxMarks * 0.4;
+                    return (
+                        <TableRow key={score.subject_id}>
+                        <TableCell className="font-medium">{score.subjectName}</TableCell>
+                        <TableCell className="text-right">{String(score.score)}</TableCell>
+                        <TableCell className="text-right">{maxMarks}</TableCell>
+                        <TableCell className={`text-right font-semibold ${isPass ? 'text-green-600' : 'text-destructive'}`}>
+                            {isPass ? 'Pass' : 'Fail'}
+                        </TableCell>
+                        </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+              <div className="mt-6 p-4 bg-muted/50 rounded-lg">
+                <h4 className="font-bold text-lg">Overall Summary</h4>
+                <div className="flex justify-between items-center mt-2">
+                    <span>Total Marks:</span>
+                    <span className="font-semibold">{selectedReport.overallResult?.totalMarks} / {selectedReport.overallResult?.maxMarks}</span>
+                </div>
+                <div className="flex justify-between items-center mt-1">
+                    <span>Percentage:</span>
+                    <span className="font-semibold">{selectedReport.overallResult?.percentage.toFixed(2)}%</span>
+                </div>
+                <div className="flex justify-between items-center mt-1 text-xl">
+                    <span>Final Result:</span>
+                     <span className={`font-bold ${selectedReport.overallResult?.status === 'Pass' ? 'text-green-600' : 'text-destructive'}`}>
+                        {selectedReport.overallResult?.status}
+                     </span>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="mt-4">
+              {selectedReport.overallResult?.status === 'Fail' && (
+                <Button variant="secondary" onClick={() => handleApplyForReExam(selectedReport.name)}>
+                    <RefreshCcw className="mr-2 h-4 w-4"/> Apply for Re-exam
+                </Button>
+              )}
+               {selectedReport.overallResult?.status === 'Pass' && (
+                <Button disabled>
+                    <TrendingUp className="mr-2 h-4 w-4"/> Promoted (Placeholder)
+                </Button>
+              )}
+              <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

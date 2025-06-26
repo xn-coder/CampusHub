@@ -96,38 +96,36 @@ export async function getStudentsForClassAction(classId: string, schoolId: strin
   }
 }
 
-export async function getScoresForExamAndClassAction(
+export async function getScoresForExamAndStudentAction(
   examId: string,
-  classId: string,
+  studentId: string,
   schoolId: string,
-  studentIds: string[]
 ): Promise<{
   ok: boolean;
   message?: string;
-  scores?: Record<string, string | number>;
+  scores?: Record<string, string | number>; // subjectId: score
 }> {
-  if (!examId || !classId || !schoolId || studentIds.length === 0) {
+  if (!examId || !studentId || !schoolId) {
     return { ok: true, scores: {} }; 
   }
   const supabase = createSupabaseServerClient();
   try {
     const { data: fetchedScoresData, error } = await supabase
       .from('student_scores')
-      .select('student_id, score')
+      .select('subject_id, score')
       .eq('exam_id', examId)
-      .eq('class_id', classId)
-      .eq('school_id', schoolId)
-      .in('student_id', studentIds);
+      .eq('student_id', studentId)
+      .eq('school_id', schoolId);
 
     if (error) throw error;
 
     const scoresMap: Record<string, string | number> = {};
     (fetchedScoresData || []).forEach(fetchedScore => {
-      scoresMap[fetchedScore.student_id] = fetchedScore.score;
+      scoresMap[fetchedScore.subject_id] = fetchedScore.score;
     });
     return { ok: true, scores: scoresMap };
   } catch (error: any) {
-    console.error("Error in getScoresForExamAndClassAction:", error);
+    console.error("Error in getScoresForExamAndStudentAction:", error);
     return { ok: false, message: error.message || "An unexpected error occurred." };
   }
 }
@@ -139,72 +137,46 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
     return { ok: true, message: 'No scores provided to save.', savedCount: 0 };
   }
 
-  let savedCount = 0;
-  const errors: string[] = [];
+  const upsertData = scoresToSave.map(scoreInput => ({
+    student_id: scoreInput.student_id,
+    exam_id: scoreInput.exam_id,
+    subject_id: scoreInput.subject_id,
+    class_id: scoreInput.class_id,
+    score: String(scoreInput.score),
+    max_marks: scoreInput.max_marks,
+    recorded_by_teacher_id: scoreInput.recorded_by_teacher_id,
+    date_recorded: new Date().toISOString().split('T')[0],
+    school_id: scoreInput.school_id,
+  }));
   
-  for (const scoreInput of scoresToSave) {
-    if (typeof scoreInput.score === 'string' && scoreInput.score.trim() === '') {
-        continue; 
-    }
+  const { error, count } = await supabaseAdmin.from('student_scores').upsert(upsertData, {
+    onConflict: 'student_id,exam_id,subject_id',
+  });
+
+  if (error) {
+    console.error("Error upserting scores:", error);
+    return { ok: false, message: `Error saving scores: ${error.message}`, savedCount: 0 };
+  }
+  
+  const savedCount = count ?? 0;
+
+  if (savedCount > 0) {
+    revalidatePath('/teacher/student-scores');
+    revalidatePath('/admin/student-scores'); 
+    revalidatePath('/student/my-scores'); 
     
-    const { data: existingScore, error: fetchError } = await supabaseAdmin
-      .from('student_scores')
-      .select('id')
-      .eq('student_id', scoreInput.student_id)
-      .eq('exam_id', scoreInput.exam_id)
-      .eq('class_id', scoreInput.class_id) 
-      .eq('school_id', scoreInput.school_id)
-      .single();
-
-    if (fetchError && fetchError.code !== 'PGRST116') { 
-      errors.push(`Error checking existing score for student ${scoreInput.student_id}: ${fetchError.message}`);
-      continue;
-    }
-
-    const recordData = {
-      student_id: scoreInput.student_id,
-      exam_id: scoreInput.exam_id,
-      subject_id: scoreInput.subject_id,
-      class_id: scoreInput.class_id,
-      score: String(scoreInput.score), 
-      max_marks: scoreInput.max_marks,
-      recorded_by_teacher_id: scoreInput.recorded_by_teacher_id,
-      date_recorded: new Date().toISOString().split('T')[0],
-      school_id: scoreInput.school_id,
-    };
-
-    let operationError = null;
-    if (existingScore) { 
-      const { error } = await supabaseAdmin
-        .from('student_scores')
-        .update(recordData)
-        .eq('id', existingScore.id);
-      operationError = error;
-    } else { 
-      const { error } = await supabaseAdmin
-        .from('student_scores')
-        .insert(recordData);
-      operationError = error;
-    }
-
-    if (operationError) {
-      errors.push(`Error saving score for student ${scoreInput.student_id}: ${operationError.message}`);
-    } else {
-      savedCount++;
-      try {
-        const { data: studentEmailData } = await supabaseAdmin.from('students').select('email').eq('id', scoreInput.student_id).single();
-        const { data: examDetails } = await supabaseAdmin.from('exams').select('name, subject_id').eq('id', scoreInput.exam_id).single();
-        const { data: subjectDetails } = examDetails?.subject_id ? await supabaseAdmin.from('subjects').select('name').eq('id', examDetails.subject_id).single() : { data: null };
+    // Send email notification for the first student in the batch as an example
+    const firstScore = scoresToSave[0];
+     try {
+        const { data: studentEmailData } = await supabaseAdmin.from('students').select('email').eq('id', firstScore.student_id).single();
+        const { data: examDetails } = await supabaseAdmin.from('exams').select('name').eq('id', firstScore.exam_id).single();
         
-        if (studentEmailData?.email) {
-          const examName = examDetails?.name || 'Unknown Exam';
-          const subjectNameText = subjectDetails?.name ? ` (Subject: ${subjectDetails.name})` : '';
-          const emailSubject = `Exam Score Declared: ${examName}`;
+        if (studentEmailData?.email && examDetails?.name) {
+          const emailSubject = `Scores Updated for Exam: ${examDetails.name}`;
           const emailBody = `
-            <h1>Exam Score Update</h1>
-            <p>Your score for the exam "<strong>${examName}</strong>"${subjectNameText} has been declared/updated.</p>
-            <p><strong>Score:</strong> ${scoreInput.score}${scoreInput.max_marks ? ` / ${scoreInput.max_marks}` : ''}</p>
-            <p>Please log in to CampusHub to view your detailed results.</p>
+            <h1>Scores Updated</h1>
+            <p>Your scores for the exam "<strong>${examDetails.name}</strong>" have been updated by your teacher.</p>
+            <p>Please log in to CampusHub to view your detailed results once they are published.</p>
           `;
           
           try {
@@ -226,23 +198,8 @@ export async function saveStudentScoresAction(scoresToSave: SaveScoreInput[]): P
           }
         }
       } catch (emailSetupError: any) {
-        console.error(`Failed to prepare data for score notification to student ${scoreInput.student_id}:`, emailSetupError.message);
+        console.error(`Failed to prepare data for score notification to student ${firstScore.student_id}:`, emailSetupError.message);
       }
-    }
-  }
-
-  if (errors.length > 0) {
-    return { 
-      ok: false, 
-      message: `Saved ${savedCount} scores. Encountered errors: ${errors.join('; ')}`,
-      savedCount 
-    };
-  }
-
-  if (savedCount > 0) {
-    revalidatePath('/teacher/student-scores');
-    revalidatePath('/admin/student-scores'); 
-    revalidatePath('/student/my-scores'); 
   }
   
   return { ok: true, message: `Successfully saved/updated ${savedCount} student scores.`, savedCount };

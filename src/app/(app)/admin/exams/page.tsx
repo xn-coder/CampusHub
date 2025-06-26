@@ -32,12 +32,14 @@ export default function ExamsPage() {
   // Form state
   const [examName, setExamName] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
-  const [selectedClassId, setSelectedClassId] = useState<string | undefined>(undefined); // class_id in DB
+  const [selectedClassId, setSelectedClassId] = useState<string | undefined>(undefined);
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string | undefined>(undefined);
   const [examDate, setExamDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [maxMarks, setMaxMarks] = useState<string>('');
+  const [publishDate, setPublishDate] = useState('');
+  const [publishTime, setPublishTime] = useState('');
 
   useEffect(() => {
     const adminUserId = localStorage.getItem('currentUserId');
@@ -69,6 +71,7 @@ export default function ExamsPage() {
     setExamName(''); setSelectedSubjectId(''); setSelectedClassId(undefined);
     setSelectedAcademicYearId(undefined); setExamDate(''); setStartTime('');
     setEndTime(''); setMaxMarks(''); setEditingExam(null);
+    setPublishDate(''); setPublishTime('');
   };
 
   const handleOpenDialog = (exam?: Exam) => {
@@ -82,6 +85,14 @@ export default function ExamsPage() {
       setStartTime(exam.start_time || '');
       setEndTime(exam.end_time || '');
       setMaxMarks(exam.max_marks?.toString() || '');
+      if (exam.publish_date) {
+        const publishDateTime = parseISO(exam.publish_date);
+        setPublishDate(format(publishDateTime, 'yyyy-MM-dd'));
+        setPublishTime(format(publishDateTime, 'HH:mm'));
+      } else {
+        setPublishDate('');
+        setPublishTime('');
+      }
     } else {
       resetForm();
     }
@@ -90,22 +101,25 @@ export default function ExamsPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!examName.trim() || !selectedSubjectId || !examDate || !currentSchoolId) {
-      toast({ title: "Error", description: "Exam Name, Subject, Date, and School context are required.", variant: "destructive" });
+    if (!examName.trim() || !examDate || !currentSchoolId) {
+      toast({ title: "Error", description: "Exam Name, Date, and School context are required.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
 
+    const publishDateTime = publishDate && publishTime ? `${publishDate}T${publishTime}:00` : null;
+
     const examData = {
       name: examName.trim(),
-      subject_id: selectedSubjectId,
-      class_id: selectedClassId === 'none_cs_selection' ? undefined : selectedClassId,
-      academic_year_id: selectedAcademicYearId === 'none_ay_selection' ? undefined : selectedAcademicYearId,
+      subject_id: selectedSubjectId, // Keep for now for compatibility though less emphasized
+      class_id: selectedClassId === 'none_cs_selection' ? null : selectedClassId,
+      academic_year_id: selectedAcademicYearId === 'none_ay_selection' ? null : selectedAcademicYearId,
       date: examDate,
       start_time: startTime || null,
       end_time: endTime || null,
       max_marks: maxMarks !== '' ? Number(maxMarks) : null,
       school_id: currentSchoolId,
+      publish_date: publishDateTime,
     };
 
     let result;
@@ -161,8 +175,14 @@ export default function ExamsPage() {
   const formatDateString = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
     const dateObj = parseISO(dateString);
-    return isValid(dateObj) ? format(dateObj, 'MMM d, yyyy') : 'Invalid Date';
+    return isValid(dateObj) ? format(dateObj, 'PP') : 'Invalid Date';
   };
+  const formatDateTimeString = (dateString?: string | null) => {
+    if (!dateString) return 'N/A';
+    const dateObj = parseISO(dateString);
+    return isValid(dateObj) ? format(dateObj, 'PPpp') : 'Invalid Date';
+  };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -192,11 +212,9 @@ export default function ExamsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Exam Name</TableHead>
-                  <TableHead>Subject</TableHead>
                   <TableHead>Class/Section</TableHead>
-                  <TableHead>Academic Year</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead>Time</TableHead>
+                  <TableHead>Publish Date</TableHead>
                   <TableHead>Max Marks</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -205,11 +223,9 @@ export default function ExamsPage() {
                 {exams.map((exam) => (
                   <TableRow key={exam.id}>
                     <TableCell className="font-medium">{exam.name}</TableCell>
-                    <TableCell>{getSubjectName(exam.subject_id)}</TableCell>
                     <TableCell>{getClassSectionName(exam.class_id)}</TableCell>
-                    <TableCell>{getAcademicYearName(exam.academic_year_id)}</TableCell>
                     <TableCell>{formatDateString(exam.date)}</TableCell>
-                    <TableCell>{exam.start_time && exam.end_time ? `${exam.start_time} - ${exam.end_time}` : 'N/A'}</TableCell>
+                    <TableCell>{formatDateTimeString(exam.publish_date)}</TableCell>
                     <TableCell>{exam.max_marks ?? 'N/A'}</TableCell>
                     <TableCell className="space-x-1 text-right">
                        <Button variant="outline" size="sm" onClick={() => handleMockNotify(exam)} title="Simulate Notification" disabled={isSubmitting}>
@@ -239,16 +255,17 @@ export default function ExamsPage() {
             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
               <div>
                 <Label htmlFor="examName">Exam Name</Label>
-                <Input id="examName" value={examName} onChange={(e) => setExamName(e.target.value)} placeholder="e.g., Midterm, Final" required disabled={isSubmitting} />
+                <Input id="examName" value={examName} onChange={(e) => setExamName(e.target.value)} placeholder="e.g., Midterm, Final Term" required disabled={isSubmitting} />
               </div>
               <div>
-                <Label htmlFor="subjectId">Subject</Label>
+                <Label htmlFor="subjectId">Main Subject (Legacy)</Label>
                 <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId} required disabled={isSubmitting}>
-                  <SelectTrigger id="subjectId"><SelectValue placeholder="Select subject" /></SelectTrigger>
+                  <SelectTrigger id="subjectId"><SelectValue placeholder="Select main subject" /></SelectTrigger>
                   <SelectContent>
                     {subjects.length > 0 ? subjects.map(s => (<SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>)) : <SelectItem value="-" disabled>No subjects defined</SelectItem>}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground mt-1">Grading now occurs per subject in the Gradebook.</p>
               </div>
               <div>
                 <Label htmlFor="classId">Target Class/Section (Optional)</Label>
@@ -271,7 +288,7 @@ export default function ExamsPage() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="examDate">Date</Label>
+                <Label htmlFor="examDate">Exam Date</Label>
                 <Input id="examDate" type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} required disabled={isSubmitting} />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -285,8 +302,18 @@ export default function ExamsPage() {
                 </div>
               </div>
                <div>
-                <Label htmlFor="maxMarks">Max Marks (Optional)</Label>
+                <Label htmlFor="maxMarks">Default Max Marks (per subject)</Label>
                 <Input id="maxMarks" type="number" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} placeholder="e.g., 100" min="0" disabled={isSubmitting} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="publishDate">Result Publish Date</Label>
+                    <Input id="publishDate" type="date" value={publishDate} onChange={(e) => setPublishDate(e.target.value)} disabled={isSubmitting} />
+                  </div>
+                  <div>
+                    <Label htmlFor="publishTime">Result Publish Time</Label>
+                    <Input id="publishTime" type="time" value={publishTime} onChange={(e) => setPublishTime(e.target.value)} disabled={isSubmitting} />
+                  </div>
               </div>
             </div>
             <DialogFooter className="mt-4">
@@ -302,4 +329,3 @@ export default function ExamsPage() {
     </div>
   );
 }
-    

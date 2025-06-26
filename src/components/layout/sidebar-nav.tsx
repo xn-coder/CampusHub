@@ -88,7 +88,7 @@ const teacherNavItems: NavItem[] = [
   { href: '/teacher/my-students', label: 'My Students', icon: Users },
   { href: '/teacher/register-student', label: 'Register Student', icon: UserPlus },
   { href: '/teacher/attendance', label: 'Class Attendance', icon: ClipboardCheck },
-  { href: '/teacher/student-scores', label: 'Gradebook (Exams)', icon: Award }, 
+  { href: '/teacher/student-scores', label: 'Gradebook', icon: Award }, 
   { href: '/teacher/post-assignments', label: 'Post Assignments', icon: ClipboardList }, 
   { href: '/teacher/grade-assignments', label: 'Grade Assignments', icon: BookOpenCheck },
   { href: '/teacher/assignment-history', label: 'Assignment History', icon: ScrollText },
