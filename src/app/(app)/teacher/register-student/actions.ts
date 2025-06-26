@@ -113,16 +113,19 @@ export async function registerStudentAction(
             id: feePaymentId,
             student_id: newStudentProfileId,
             fee_category_id: admissionFeeCategory.id,
+            class_id: classId,
             assigned_amount: admissionFeeCategory.amount,
             paid_amount: 0,
             status: 'Pending' as PaymentStatus,
+            payment_date: null,
+            due_date: new Date().toISOString().split('T')[0],
             school_id: schoolId,
           });
 
         if (feeInsertError) {
-          console.warn(`Failed to assign Admission Fee to student ${newStudentProfileId}: ${feeInsertError.message}`);
+          console.warn(`Failed to assign PENDING Admission Fee to student ${newStudentProfileId}: ${feeInsertError.message}`);
         } else {
-          console.log(`Successfully assigned Admission Fee to student ${newStudentProfileId}.`);
+          console.log(`Successfully assigned PENDING Admission Fee to student ${newStudentProfileId}.`);
           revalidatePath('/admin/student-fees');
           revalidatePath('/student/payment-history');
         }
