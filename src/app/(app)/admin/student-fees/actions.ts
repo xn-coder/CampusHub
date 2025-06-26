@@ -254,4 +254,46 @@ export async function getStudentPendingFeeCountAction(
     return { ok: false, count: 0, message: `Unexpected error: ${e.message}` };
   }
 }
+
+export async function studentPayFeeAction(
+  feePaymentId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+
+  // First, get the full details of the fee assignment to ensure it exists and get assigned amount
+  const { data: feePayment, error: fetchError } = await supabaseAdmin
+    .from('student_fee_payments')
+    .select('assigned_amount')
+    .eq('id', feePaymentId)
+    .eq('school_id', schoolId)
+    .single();
+
+  if (fetchError || !feePayment) {
+    console.error("Error fetching fee payment for student payment:", fetchError);
+    return { ok: false, message: "Fee assignment not found or could not be verified." };
+  }
+
+  // Update the record to be fully paid
+  const { error: updateError } = await supabaseAdmin
+    .from('student_fee_payments')
+    .update({
+      paid_amount: feePayment.assigned_amount, // Mark as fully paid
+      status: 'Paid',
+      payment_date: new Date().toISOString(),
+    })
+    .eq('id', feePaymentId);
+
+  if (updateError) {
+    console.error("Error updating fee status during student payment:", updateError);
+    return { ok: false, message: `Failed to process payment: ${updateError.message}` };
+  }
+
+  // Revalidate paths to refresh data on relevant pages
+  revalidatePath('/student/payment-history');
+  revalidatePath('/admin/student-fees');
+  revalidatePath('/dashboard'); // To update the pending fee count
+
+  return { ok: true, message: "Payment successful! The fee status has been updated." };
+}
     

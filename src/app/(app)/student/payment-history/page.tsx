@@ -6,12 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, FeeCategory, User } from '@/types';
-import { DollarSign, CalendarDays, FileText, Loader2 } from 'lucide-react';
+import { DollarSign, CalendarDays, FileText, Loader2, CreditCard } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { getStudentPaymentHistoryAction } from '@/app/(app)/admin/student-fees/actions'; // Re-use if appropriate or create student specific
+import { getStudentPaymentHistoryAction, studentPayFeeAction } from '@/app/(app)/admin/student-fees/actions';
 import { format, parseISO, isValid } from 'date-fns';
+import { Button } from '@/components/ui/button';
 
 
 export default function StudentPaymentHistoryPage() {
@@ -19,12 +20,31 @@ export default function StudentPaymentHistoryPage() {
     const [payments, setPayments] = useState<StudentFeePayment[]>([]);
     const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isPaying, setIsPaying] = useState<string | null>(null);
     const [currentStudentProfileId, setCurrentStudentProfileId] = useState<string | null>(null);
     const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
+    async function loadPaymentData() {
+        const studentUserId = localStorage.getItem('currentUserId');
+        if (!studentUserId) {
+            toast({ title: "Error", description: "Student not identified.", variant: "destructive" });
+            setIsLoading(false);
+            return;
+        }
 
+        if (currentStudentProfileId && currentSchoolId) {
+            const result = await getStudentPaymentHistoryAction(currentStudentProfileId, currentSchoolId);
+            if (result.ok) {
+                setPayments(result.payments || []);
+                setFeeCategories(result.feeCategories || []);
+            } else {
+                toast({ title: "Error fetching payment history", description: result.message, variant: "destructive"});
+            }
+        }
+    }
+    
     useEffect(() => {
-        async function loadPaymentData() {
+        async function fetchInitialData() {
             setIsLoading(true);
             const studentUserId = localStorage.getItem('currentUserId');
             if (!studentUserId) {
@@ -35,10 +55,10 @@ export default function StudentPaymentHistoryPage() {
 
             const { data: studentProfile, error: profileError } = await supabase
                 .from('students')
-                .select('id, school_id') // students.id is the student_profile_id
+                .select('id, school_id')
                 .eq('user_id', studentUserId)
                 .single();
-
+            
             if (profileError || !studentProfile || !studentProfile.id || !studentProfile.school_id) {
                 toast({ title: "Error", description: "Could not fetch student profile or school information.", variant: "destructive"});
                 setIsLoading(false);
@@ -56,8 +76,24 @@ export default function StudentPaymentHistoryPage() {
             }
             setIsLoading(false);
         }
-        loadPaymentData();
+        fetchInitialData();
     }, [toast]);
+
+    const handlePayNow = async (paymentId: string) => {
+        if (!currentSchoolId) {
+            toast({ title: "Error", description: "School context is missing.", variant: "destructive" });
+            return;
+        }
+        setIsPaying(paymentId);
+        const result = await studentPayFeeAction(paymentId, currentSchoolId);
+        if (result.ok) {
+            toast({ title: "Payment Successful", description: result.message });
+            await loadPaymentData(); // Reload data to show updated status
+        } else {
+            toast({ title: "Payment Failed", description: result.message, variant: "destructive" });
+        }
+        setIsPaying(null);
+    };
 
     const getFeeCategoryName = (categoryId: string) => {
         return feeCategories.find(fc => fc.id === categoryId)?.name || 'N/A';
@@ -99,6 +135,7 @@ export default function StudentPaymentHistoryPage() {
                   <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4" />Payment Date</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -120,6 +157,22 @@ export default function StudentPaymentHistoryPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs truncate max-w-xs">{payment.notes || 'N/A'}</TableCell>
+                    <TableCell className="text-right">
+                      {payment.status !== 'Paid' && (
+                          <Button
+                              size="sm"
+                              onClick={() => handlePayNow(payment.id)}
+                              disabled={isPaying === payment.id}
+                          >
+                              {isPaying === payment.id ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                  <CreditCard className="mr-2 h-4 w-4" />
+                              )}
+                              {isPaying === payment.id ? 'Processing...' : 'Pay Now'}
+                          </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
