@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button';
 import type { AdmissionRecord, ClassData, StudentFeePayment, FeeCategory } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { ListChecks, CheckSquare, Loader2 } from 'lucide-react';
+import { ListChecks, CheckSquare, Loader2, UserPlus } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { updateAdmissionStatusAction, fetchAdminSchoolIdForAdmissions, fetchAdmissionPageDataAction } from './actions';
+import Link from 'next/link';
 
 export default function AdmissionsPage() {
   const { toast } = useToast();
@@ -98,6 +99,13 @@ export default function AdmissionsPage() {
       <PageHeader
         title="View Admission Records"
         description="Review submitted student admission applications and their enrollment status."
+        actions={
+          <Button asChild>
+            <Link href="/admin/admissions/new">
+              <UserPlus className="mr-2 h-4 w-4" /> New Admission
+            </Link>
+          </Button>
+        }
       />
         <Card>
           <CardHeader>

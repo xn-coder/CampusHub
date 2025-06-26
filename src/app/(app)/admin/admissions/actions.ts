@@ -3,7 +3,11 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { AdmissionStatus, AdmissionRecord, ClassData, StudentFeePayment, FeeCategory } from '@/types';
+import type { AdmissionStatus, AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, PaymentStatus, UserRole, Student } from '@/types';
+import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
+
+const SALT_ROUNDS = 10;
 
 export async function fetchAdminSchoolIdForAdmissions(adminUserId: string): Promise<string | null> {
   if (!adminUserId) {
@@ -82,4 +86,194 @@ export async function updateAdmissionStatusAction(
 
   revalidatePath('/admin/admissions');
   return { ok: true, message: `Admission status updated to ${newStatus}.` };
+}
+
+// --- New Admission Actions ---
+
+export async function getNewAdmissionPageDataAction(schoolId: string): Promise<{
+  ok: boolean;
+  classes?: ClassData[];
+  message?: string;
+}> {
+  if (!schoolId) {
+    return { ok: false, message: "School ID is required." };
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data: classesData, error: classesError } = await supabase
+      .from('classes')
+      .select('id, name, division')
+      .eq('school_id', schoolId)
+      .order('name');
+
+    if (classesError) throw new Error(`Failed to fetch classes: ${classesError.message}`);
+    
+    return { 
+        ok: true, 
+        classes: classesData || [],
+    };
+  } catch (error: any) {
+    console.error("Error in getNewAdmissionPageDataAction:", error);
+    return { ok: false, message: `An unexpected error occurred: ${error.message}` };
+  }
+}
+
+
+interface AdmitStudentInput {
+  name: string;
+  email: string;
+  dateOfBirth?: string; 
+  guardianName?: string;
+  contactNumber?: string;
+  address?: string;
+  classId: string; 
+  schoolId: string;
+  profilePictureUrl?: string;
+}
+
+export async function admitNewStudentAction(
+  input: AdmitStudentInput
+): Promise<{ ok: boolean; message: string; studentId?: string; userId?: string; admissionRecordId?: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  const { 
+    name, email, dateOfBirth, guardianName, contactNumber, address, classId, schoolId, profilePictureUrl 
+  } = input;
+  const defaultPassword = "password";
+
+  try {
+    const { data: existingUser, error: userFetchError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('email', email.trim())
+      .single();
+
+    if (userFetchError && userFetchError.code !== 'PGRST116') {
+      console.error('Error checking existing user:', userFetchError);
+      return { ok: false, message: 'Database error while checking user email.' };
+    }
+    if (existingUser) {
+      return { ok: false, message: `A user with email ${email.trim()} already exists.` };
+    }
+
+    const newUserId = uuidv4();
+    const hashedPassword = await bcrypt.hash(defaultPassword, SALT_ROUNDS);
+    const { data: newUser, error: userInsertError } = await supabaseAdmin
+      .from('users')
+      .insert({
+        id: newUserId,
+        email: email.trim(),
+        name: name.trim(),
+        role: 'student',
+        password_hash: hashedPassword,
+        school_id: schoolId,
+      })
+      .select('id')
+      .single();
+
+    if (userInsertError || !newUser) {
+      console.error('Error creating user account:', userInsertError);
+      return { ok: false, message: `Failed to create student login: ${userInsertError?.message || 'No user data returned'}` };
+    }
+
+    const newStudentProfileId = uuidv4();
+    const { error: studentInsertError } = await supabaseAdmin
+      .from('students')
+      .insert({
+        id: newStudentProfileId,
+        user_id: newUser.id,
+        name: name.trim(),
+        email: email.trim(),
+        class_id: classId,
+        date_of_birth: dateOfBirth || null,
+        guardian_name: guardianName || null,
+        contact_number: contactNumber || null,
+        address: address || null,
+        admission_date: new Date().toISOString().split('T')[0],
+        profile_picture_url: profilePictureUrl?.trim() || `https://placehold.co/100x100.png?text=${name.substring(0,1)}`,
+        school_id: schoolId,
+      });
+
+    if (studentInsertError) {
+      console.error('Error creating student profile:', studentInsertError);
+      await supabaseAdmin.from('users').delete().eq('id', newUser.id);
+      return { ok: false, message: `Failed to create student profile: ${studentInsertError.message}` };
+    }
+
+    try {
+      const { data: admissionFeeCategory, error: feeCategoryError } = await supabaseAdmin
+        .from('fee_categories')
+        .select('id, amount')
+        .ilike('name', 'Admission Fee')
+        .eq('school_id', schoolId)
+        .limit(1)
+        .single();
+
+      if (feeCategoryError && feeCategoryError.code !== 'PGRST116') {
+        console.warn(`Could not check for Admission Fee category: ${feeCategoryError.message}`);
+      }
+
+      if (admissionFeeCategory && admissionFeeCategory.amount && admissionFeeCategory.amount > 0) {
+        const feePaymentId = uuidv4();
+        const { error: feeInsertError } = await supabaseAdmin
+          .from('student_fee_payments')
+          .insert({
+            id: feePaymentId,
+            student_id: newStudentProfileId,
+            fee_category_id: admissionFeeCategory.id,
+            assigned_amount: admissionFeeCategory.amount,
+            paid_amount: admissionFeeCategory.amount,
+            status: 'Paid' as PaymentStatus,
+            payment_date: new Date().toISOString(),
+            due_date: new Date().toISOString().split('T')[0],
+            school_id: schoolId,
+          });
+
+        if (feeInsertError) {
+          console.warn(`Failed to assign PAID Admission Fee to student ${newStudentProfileId}: ${feeInsertError.message}`);
+        } else {
+          console.log(`Successfully assigned PAID Admission Fee to student ${newStudentProfileId}.`);
+          revalidatePath('/admin/student-fees');
+        }
+      }
+    } catch (feeError: any) {
+      console.warn(`An error occurred during automatic fee assignment: ${feeError.message}`);
+    }
+
+    const newAdmissionId = uuidv4();
+    const { error: admissionInsertError } = await supabaseAdmin
+        .from('admission_records')
+        .insert({
+            id: newAdmissionId,
+            name: name.trim(),
+            email: email.trim(),
+            date_of_birth: dateOfBirth || null,
+            guardian_name: guardianName || null,
+            contact_number: contactNumber || null,
+            address: address || null,
+            admission_date: new Date().toISOString().split('T')[0],
+            status: 'Enrolled' as AdmissionStatus, 
+            class_id: classId,
+            student_profile_id: newStudentProfileId,
+            school_id: schoolId,
+        });
+    
+    if (admissionInsertError) {
+        console.warn('Error creating admission record:', admissionInsertError);
+    }
+
+    revalidatePath('/admin/admissions'); 
+    revalidatePath('/admin/manage-students');
+    
+    return { 
+      ok: true, 
+      message: `Student ${name} admitted and account created. Admission fee marked as paid. Default password is "password".`,
+      studentId: newStudentProfileId,
+      userId: newUser.id,
+      admissionRecordId: newAdmissionId,
+    };
+
+  } catch (error: any) {
+    console.error('Unexpected error during student admission:', error);
+    return { ok: false, message: `An unexpected error occurred: ${error.message}` };
+  }
 }
