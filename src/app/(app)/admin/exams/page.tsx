@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import type { Exam, Subject, ClassData, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, FileTextIcon, BellRing, Loader2 } from 'lucide-react';
@@ -32,7 +31,6 @@ export default function ExamsPage() {
 
   // Form state
   const [examName, setExamName] = useState('');
-  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string | undefined>(undefined);
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string | undefined>(undefined);
   const [examDate, setExamDate] = useState('');
@@ -69,7 +67,7 @@ export default function ExamsPage() {
   }
 
   const resetForm = () => {
-    setExamName(''); setSelectedSubjectIds([]); setSelectedClassId(undefined);
+    setExamName(''); setSelectedClassId(undefined);
     setSelectedAcademicYearId(undefined); setExamDate(''); setStartTime('');
     setEndTime(''); setMaxMarks(''); setEditingExam(null);
     setPublishDate(''); setPublishTime('');
@@ -79,7 +77,6 @@ export default function ExamsPage() {
     if (exam) {
       setEditingExam(exam);
       setExamName(exam.name);
-      setSelectedSubjectIds([exam.subject_id]);
       setSelectedClassId(exam.class_id || undefined);
       setSelectedAcademicYearId(exam.academic_year_id || undefined);
       setExamDate(exam.date ? format(parseISO(exam.date), 'yyyy-MM-dd') : '');
@@ -110,98 +107,41 @@ export default function ExamsPage() {
 
     const publishDateTime = publishDate && publishTime ? `${publishDate}T${publishTime}:00` : null;
 
+    const examData = {
+        name: examName.trim(),
+        class_id: selectedClassId === 'none_cs_selection' ? null : selectedClassId,
+        academic_year_id: selectedAcademicYearId === 'none_ay_selection' ? null : selectedAcademicYearId,
+        date: examDate,
+        start_time: startTime || null,
+        end_time: endTime || null,
+        max_marks: maxMarks !== '' ? Number(maxMarks) : null,
+        school_id: currentSchoolId,
+        publish_date: publishDateTime,
+    };
+
+    let result;
     if (editingExam) {
-        // Handle single record update
-        const examData = {
-            name: examName.trim(),
-            subject_id: editingExam.subject_id, // Subject cannot be changed on edit
-            class_id: selectedClassId === 'none_cs_selection' ? null : selectedClassId,
-            academic_year_id: selectedAcademicYearId === 'none_ay_selection' ? null : selectedAcademicYearId,
-            date: examDate,
-            start_time: startTime || null,
-            end_time: endTime || null,
-            max_marks: maxMarks !== '' ? Number(maxMarks) : null,
-            school_id: currentSchoolId,
-            publish_date: publishDateTime,
-        };
-        const result = await updateExamAction(editingExam.id, examData);
-        if (result.ok) {
-            toast({ title: "Exam Updated", description: result.message });
-            resetForm();
-            setIsDialogOpen(false);
-            const adminUserId = localStorage.getItem('currentUserId');
-            if (adminUserId) loadInitialData(adminUserId);
-        } else {
-            toast({ title: "Error", description: result.message, variant: "destructive" });
-        }
+        result = await updateExamAction(editingExam.id, examData);
     } else {
-        // Handle bulk creation
-        if (selectedSubjectIds.length === 0) {
-            toast({ title: "Error", description: "Please select at least one subject.", variant: "destructive" });
-            setIsSubmitting(false);
-            return;
-        }
+        result = await addExamAction(examData);
+    }
 
-        const promises = selectedSubjectIds.map(subjectId => {
-            const subject = subjects.find(s => s.id === subjectId);
-            const subjectIdentifier = subject ? ` - ${subject.name}` : ``;
-            
-            const examData = {
-                name: `${examName.trim()}${subjectIdentifier}`,
-                subject_id: subjectId,
-                class_id: selectedClassId === 'none_cs_selection' ? null : selectedClassId,
-                academic_year_id: selectedAcademicYearId === 'none_ay_selection' ? null : selectedAcademicYearId,
-                date: examDate,
-                start_time: startTime || null,
-                end_time: endTime || null,
-                max_marks: maxMarks !== '' ? Number(maxMarks) : null,
-                school_id: currentSchoolId,
-                publish_date: publishDateTime,
-            };
-            return addExamAction(examData);
-        });
-
-        const results = await Promise.allSettled(promises);
-        let successCount = 0;
-        let errorCount = 0;
-        const failedMessages: string[] = [];
-        
-        results.forEach(result => {
-            if (result.status === 'fulfilled' && result.value.ok) {
-                successCount++;
-            } else {
-                errorCount++;
-                if (result.status === 'rejected') {
-                    failedMessages.push(result.reason?.message || 'An unknown server error occurred.');
-                    console.error("Exam creation promise rejected:", result.reason);
-                } else {
-                    failedMessages.push(result.value.message);
-                }
-            }
-        });
-
-        if (errorCount > 0) {
-            toast({
-                title: "Partial Success or Failure",
-                description: `Successfully created ${successCount} exam(s). ${errorCount} failed. Errors: ${failedMessages.join('; ')}`,
-                variant: "destructive",
-                duration: 9000,
-            });
-        } else {
-            toast({ title: "Success", description: `Successfully created ${successCount} exam entries.` });
-        }
-        
+    if (result.ok) {
+        toast({ title: editingExam ? "Exam Updated" : "Exam Scheduled", description: result.message });
         resetForm();
         setIsDialogOpen(false);
         const adminUserId = localStorage.getItem('currentUserId');
         if (adminUserId) loadInitialData(adminUserId);
+    } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
     }
+    
     setIsSubmitting(false);
   };
   
   const handleDeleteExam = async (examId: string) => {
     if (!currentSchoolId) return;
-    if (confirm("Are you sure you want to delete this exam?")) {
+    if (confirm("Are you sure you want to delete this exam schedule? This will also remove any scores entered for it.")) {
       setIsSubmitting(true);
       const result = await deleteExamAction(examId, currentSchoolId);
       toast({ title: result.ok ? "Exam Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
@@ -220,7 +160,6 @@ export default function ExamsPage() {
     });
   };
 
-  const getSubjectName = (subjectId: string) => subjects.find(s => s.id === subjectId)?.name || 'N/A';
   const getClassSectionName = (csId?: string | null) => {
     if (!csId) return 'All Classes';
     const cs = activeClasses.find(c => c.id === csId);
@@ -246,7 +185,7 @@ export default function ExamsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Exams Management" 
-        description="Schedule and manage school examinations."
+        description="Schedule and manage school examination events."
         actions={
           <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isLoading || isSubmitting}>
             <PlusCircle className="mr-2 h-4 w-4" /> Schedule Exam
@@ -256,7 +195,7 @@ export default function ExamsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><FileTextIcon className="mr-2 h-5 w-5" />Examination Schedule</CardTitle>
-          <CardDescription>Oversee all examination-related activities.</CardDescription>
+          <CardDescription>Oversee all examination-related activities. Scores for each subject are entered by teachers in the Gradebook.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -270,7 +209,6 @@ export default function ExamsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Exam Name</TableHead>
-                  <TableHead>Subject</TableHead>
                   <TableHead>Class/Section</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Publish Date</TableHead>
@@ -282,7 +220,6 @@ export default function ExamsPage() {
                 {exams.map((exam) => (
                   <TableRow key={exam.id}>
                     <TableCell className="font-medium">{exam.name}</TableCell>
-                    <TableCell>{getSubjectName(exam.subject_id)}</TableCell>
                     <TableCell>{getClassSectionName(exam.class_id)}</TableCell>
                     <TableCell>{formatDateString(exam.date)}</TableCell>
                     <TableCell>{formatDateTimeString(exam.publish_date)}</TableCell>
@@ -317,31 +254,7 @@ export default function ExamsPage() {
                 <Label htmlFor="examName">Exam Name</Label>
                 <Input id="examName" value={examName} onChange={(e) => setExamName(e.target.value)} placeholder="e.g., Midterm, Final Term" required disabled={isSubmitting} />
               </div>
-              <div>
-                <Label>Subjects</Label>
-                <Card className="max-h-48 overflow-y-auto p-2 border">
-                  <div className="space-y-2">
-                    {subjects.length > 0 ? subjects.map(subject => (
-                      <div key={subject.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`subject-${subject.id}`}
-                          checked={selectedSubjectIds.includes(subject.id)}
-                          onCheckedChange={(checked) => {
-                            setSelectedSubjectIds(prev => 
-                              checked ? [...prev, subject.id] : prev.filter(id => id !== subject.id)
-                            );
-                          }}
-                          disabled={isSubmitting || !!editingExam}
-                        />
-                        <Label htmlFor={`subject-${subject.id}`} className="font-normal w-full cursor-pointer">
-                          {subject.name} ({subject.code})
-                        </Label>
-                      </div>
-                    )) : <p className="text-xs text-muted-foreground text-center">No subjects defined</p>}
-                  </div>
-                </Card>
-                {editingExam && <p className="text-xs text-muted-foreground mt-1">Subject selection cannot be changed when editing an existing exam entry.</p>}
-              </div>
+              
               <div>
                 <Label htmlFor="classId">Target Class/Section (Optional)</Label>
                 <Select value={selectedClassId || 'none_cs_selection'} onValueChange={setSelectedClassId} disabled={isSubmitting}>
@@ -404,5 +317,3 @@ export default function ExamsPage() {
     </div>
   );
 }
-
-    

@@ -203,7 +203,7 @@ export interface Subject {
 export interface Exam {
   id: string;
   name: string;
-  subject_id: string; // Kept for schema compatibility, but less emphasized now.
+  subject_id?: string | null;
   class_id?: string | null;
   academic_year_id?: string | null;
   date: string;
@@ -214,6 +214,8 @@ export interface Exam {
   publish_date?: string | null; // NEW: ISO string for result publication
   created_at?: string;
   updated_at?: string;
+  // For joined data
+  class?: { name: string; division: string };
 }
 
 

@@ -44,7 +44,7 @@ export async function getExamsPageDataAction(adminUserId: string): Promise<{
   const supabaseAdmin = createSupabaseServerClient();
   try {
     const [examsRes, subjectsRes, classesRes, academicYearsRes] = await Promise.all([
-      supabaseAdmin.from('exams').select('*, subject:subject_id(name), class:class_id(name,division)').eq('school_id', schoolId).order('date', { ascending: false }),
+      supabaseAdmin.from('exams').select('*, class:class_id(name,division)').eq('school_id', schoolId).order('date', { ascending: false }),
       supabaseAdmin.from('subjects').select('*').eq('school_id', schoolId).order('name'),
       supabaseAdmin.from('classes').select('*').eq('school_id', schoolId).order('name'),
       supabaseAdmin.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
@@ -71,7 +71,6 @@ export async function getExamsPageDataAction(adminUserId: string): Promise<{
 
 interface ExamInput {
   name: string;
-  subject_id: string;
   class_id?: string | null; 
   academic_year_id?: string | null;
   date: string; // YYYY-MM-DD
@@ -87,22 +86,21 @@ export async function addExamAction(
 ): Promise<{ ok: boolean; message: string; exam?: Exam }> {
   const supabaseAdmin = createSupabaseServerClient();
   
-  // The input from the client component (`page.tsx`) is already processed.
-  // We can trust it and simplify this part.
   const examData = {
     ...input,
     id: uuidv4(),
+    subject_id: null,
   };
 
   const { error, data } = await supabaseAdmin
     .from('exams')
     .insert(examData)
-    .select('*, subject:subject_id(name), class:class_id(name,division)')
+    .select('*, class:class_id(name,division)')
     .single();
 
   if (error) {
-    if (error.code === '23505') { // Handle unique constraint violation
-      return { ok: false, message: `Failed to add exam for subject: An exam with these details (name, subject, class) likely already exists.` };
+    if (error.code === '23505') { 
+      return { ok: false, message: `An exam with this name and configuration likely already exists.` };
     }
     console.error("Error adding exam:", error);
     return { ok: false, message: `Failed to add exam: ${error.message}` };
@@ -111,21 +109,19 @@ export async function addExamAction(
   revalidatePath('/admin/exams');
 
   if (data) {
-    const exam = data as Exam & { subject?: { name: string }, class?: { name: string, division: string } };
-    const subjectName = exam.subject?.name || 'N/A';
+    const exam = data as Exam & { class?: { name: string, division: string } };
     const className = exam.class ? `${exam.class.name} - ${exam.class.division}` : 'All Classes';
     
-    const emailSubject = `New Exam Scheduled: ${exam.name} for ${subjectName}`;
+    const emailSubject = `New Exam Scheduled: ${exam.name}`;
     const emailBody = `
       <h1>New Exam Scheduled</h1>
       <p>An exam has been scheduled:</p>
       <ul>
         <li><strong>Exam Name:</strong> ${exam.name}</li>
-        <li><strong>Subject:</strong> ${subjectName}</li>
         <li><strong>Class:</strong> ${className}</li>
         <li><strong>Date:</strong> ${new Date(exam.date).toLocaleDateString()}</li>
         ${exam.start_time ? `<li><strong>Time:</strong> ${exam.start_time}${exam.end_time ? ` - ${exam.end_time}` : ''}</li>` : ''}
-        ${exam.max_marks ? `<li><strong>Max Marks:</strong> ${exam.max_marks}</li>` : ''}
+        ${exam.max_marks ? `<li><strong>Max Marks:</strong> ${exam.max_marks} per subject</li>` : ''}
         ${exam.publish_date ? `<li><strong>Results will be published on:</strong> ${new Date(exam.publish_date).toLocaleString()}</li>` : ''}
       </ul>
       <p>Please prepare accordingly.</p>
@@ -170,7 +166,6 @@ export async function updateExamAction(
   
   const updatePayload = {
     name: input.name,
-    // Do not update subject_id
     class_id: input.class_id === 'none_cs_selection' ? null : input.class_id,
     academic_year_id: input.academic_year_id === 'none_ay_selection' ? null : input.academic_year_id,
     date: input.date,
@@ -185,7 +180,7 @@ export async function updateExamAction(
     .update(updatePayload)
     .eq('id', id)
     .eq('school_id', input.school_id)
-    .select('*, subject:subject_id(name), class:class_id(name,division)')
+    .select('*, class:class_id(name,division)')
     .single();
 
   if (error) {
@@ -193,9 +188,6 @@ export async function updateExamAction(
     return { ok: false, message: `Failed to update exam: ${error.message}` };
   }
   revalidatePath('/admin/exams');
-
-  // Email notification logic can be added here similar to addExamAction if needed
-
   return { ok: true, message: 'Exam updated successfully.', exam: data as Exam };
 }
 
