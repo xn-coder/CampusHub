@@ -7,12 +7,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { ExamWithStudentScore } from '@/types';
 import { useState, useEffect } from 'react';
-import { Award, BookOpen, CalendarCheck, FileText, Loader2, TrendingUp, RefreshCcw } from 'lucide-react';
-import { format, parseISO, isValid, isPast } from 'date-fns';
+import { Award, BookOpen, CalendarCheck, FileText, Loader2, TrendingUp, RefreshCcw, Download } from 'lucide-react';
+import { format, parseISO, isValid } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { getStudentScoresAndExamsAction } from './actions';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function StudentMyScoresPage() {
   const { toast } = useToast();
@@ -21,12 +23,17 @@ export default function StudentMyScoresPage() {
   const [pageMessage, setPageMessage] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<ExamWithStudentScore | null>(null);
   const [isDetailViewOpen, setIsDetailViewOpen] = useState(false);
+  const [currentStudentName, setCurrentStudentName] = useState<string>('');
+
 
   useEffect(() => {
     async function fetchScoresAndExamsData() {
       setIsLoading(true);
       setPageMessage(null);
       const studentUserId = localStorage.getItem('currentUserId');
+      const studentName = localStorage.getItem('currentUserName');
+      if (studentName) setCurrentStudentName(studentName);
+
       if (!studentUserId) {
         toast({ title: "Error", description: "User not identified.", variant: "destructive"});
         setPageMessage("User not identified. Please log in again.");
@@ -61,6 +68,65 @@ export default function StudentMyScoresPage() {
         title: "Re-exam Request (Mock)",
         description: `A request to apply for a re-exam for "${examName}" would be sent to the administration. This is a placeholder for a future feature.`,
     });
+  };
+  
+  const handleDownloadReport = () => {
+    if (!selectedReport) return;
+    
+    const doc = new jsPDF();
+    const schoolName = "CampusHub High School"; // Mock data
+    
+    doc.setFontSize(20);
+    doc.text(schoolName, doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
+    doc.setFontSize(14);
+    doc.text("Student Report Card", doc.internal.pageSize.getWidth() / 2, 28, { align: 'center' });
+    
+    doc.setFontSize(11);
+    doc.text(`Student: ${currentStudentName}`, 14, 40);
+    doc.text(`Exam: ${selectedReport.name}`, 14, 46);
+    doc.text(`Date: ${formatDateSafe(selectedReport.date)}`, doc.internal.pageSize.getWidth() - 14, 46, { align: 'right' });
+    
+    const tableColumn = ["Subject", "Score", "Max Marks", "Result"];
+    const tableRows = (selectedReport.studentScores || []).map(score => {
+        const maxMarks = score.max_marks ?? 100;
+        const isPass = Number(score.score) >= maxMarks * 0.4;
+        return [
+            score.subjectName,
+            String(score.score),
+            maxMarks,
+            isPass ? 'Pass' : 'Fail'
+        ];
+    });
+
+    autoTable(doc, {
+        startY: 52,
+        head: [tableColumn],
+        body: tableRows,
+        theme: 'striped',
+        headStyles: { fillColor: [34, 197, 94] }
+    });
+    
+    const finalY = (doc as any).lastAutoTable.finalY || 100;
+    
+    doc.setFontSize(12);
+    doc.text("Overall Summary", 14, finalY + 15);
+    doc.setFontSize(10);
+    doc.line(14, finalY + 16, doc.internal.pageSize.getWidth() - 14, finalY + 16);
+    
+    const summaryX = 16;
+    let summaryY = finalY + 22;
+    doc.text(`Total Marks Obtained: ${selectedReport.overallResult?.totalMarks} / ${selectedReport.overallResult?.maxMarks}`, summaryX, summaryY);
+    summaryY += 6;
+    doc.text(`Percentage: ${selectedReport.overallResult?.percentage.toFixed(2)}%`, summaryX, summaryY);
+    summaryY += 6;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Final Result: ${selectedReport.overallResult?.status}`, summaryX, summaryY);
+
+    const signatureY = doc.internal.pageSize.getHeight() - 30;
+    doc.line(14, signatureY, 70, signatureY);
+    doc.text("Principal's Signature", 14, signatureY + 5);
+
+    doc.save(`Report_Card_${selectedReport.name.replace(/\s+/g, '_')}_${currentStudentName.replace(/\s+/g, '_')}.pdf`);
   };
 
   const formatDateSafe = (dateString?: string | null) => {
@@ -165,18 +231,16 @@ export default function StudentMyScoresPage() {
                 </div>
               </div>
             </div>
-            <DialogFooter className="mt-4">
+            <DialogFooter className="mt-4 gap-2">
+              <Button variant="secondary" onClick={handleDownloadReport}>
+                <Download className="mr-2 h-4 w-4"/> Download Report
+              </Button>
               {selectedReport.overallResult?.status === 'Fail' && (
-                <Button variant="secondary" onClick={() => handleApplyForReExam(selectedReport.name)}>
+                <Button variant="outline" onClick={() => handleApplyForReExam(selectedReport.name)}>
                     <RefreshCcw className="mr-2 h-4 w-4"/> Apply for Re-exam
                 </Button>
               )}
-               {selectedReport.overallResult?.status === 'Pass' && (
-                <Button disabled>
-                    <TrendingUp className="mr-2 h-4 w-4"/> Promoted (Placeholder)
-                </Button>
-              )}
-              <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
+              <DialogClose asChild><Button>Close</Button></DialogClose>
             </DialogFooter>
           </DialogContent>
         </Dialog>

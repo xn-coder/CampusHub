@@ -37,7 +37,6 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
 
     const { id: studentProfileId, school_id: studentSchoolId } = studentData;
 
-    // Fetch all exams for the school
     const { data: examsData, error: examsError } = await supabase
       .from('exams')
       .select('*')
@@ -53,7 +52,6 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
 
     const examIds = examsData.map(e => e.id);
 
-    // Fetch all scores for this student for the exams
     const { data: scoresData, error: scoresError } = await supabase
       .from('student_scores')
       .select('exam_id, subject_id, score, max_marks')
@@ -64,7 +62,6 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
       console.warn("Failed to fetch student scores:", scoresError.message);
     }
     
-    // Fetch all subjects for the school to enrich exam data
     const { data: subjectsData, error: subjectsError } = await supabase
         .from('subjects')
         .select('id, name')
@@ -74,36 +71,62 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
         console.warn("Failed to fetch subjects:", subjectsError.message);
     }
 
-    const enrichedExams: ExamWithStudentScore[] = examsData.map(exam => {
-      const scoresForThisExam = (scoresData || []).filter(score => score.exam_id === exam.id);
-      
-      const studentScores = scoresForThisExam.map(score => ({
-          subject_id: score.subject_id,
-          subjectName: subjectsData?.find(sub => sub.id === score.subject_id)?.name || 'Unknown Subject',
-          score: score.score,
-          max_marks: score.max_marks ?? exam.max_marks ?? 100,
-      }));
+    const examGroups: Record<string, Exam[]> = {};
 
-      let overallResult: ExamWithStudentScore['overallResult'] | undefined = undefined;
-      if (studentScores.length > 0) {
-        const totalMarks = studentScores.reduce((acc, s) => acc + Number(s.score || 0), 0);
-        const maxMarks = studentScores.reduce((acc, s) => acc + (s.max_marks ?? 100), 0);
-        const percentage = maxMarks > 0 ? (totalMarks / maxMarks) * 100 : 0;
-        const status = percentage >= PASS_PERCENTAGE ? 'Pass' : 'Fail';
-        
-        overallResult = { totalMarks, maxMarks, percentage, status };
-      }
+    examsData.forEach(exam => {
+        const groupName = exam.name.split(' - ')[0];
+        const groupKey = `${groupName}_${exam.date}_${exam.class_id || 'global'}`;
+        if (!examGroups[groupKey]) {
+            examGroups[groupKey] = [];
+        }
+        examGroups[groupKey].push(exam);
+    });
 
-      return {
-        ...exam,
-        studentScores: studentScores.length > 0 ? studentScores : null,
-        overallResult,
-      };
-    }).filter(exam => exam.studentScores !== null); // Only return exams where the student has at least one score
+    const reportCards: ExamWithStudentScore[] = Object.values(examGroups).map(group => {
+        const representativeExam = group[0];
+        const groupName = representativeExam.name.split(' - ')[0];
+
+        const studentScoresForGroup = group.map(examInGroup => {
+            const score = scoresData?.find(s => s.exam_id === examInGroup.id);
+            if (!score) return null;
+
+            return {
+                subject_id: examInGroup.subject_id,
+                subjectName: subjectsData?.find(sub => sub.id === examInGroup.subject_id)?.name || 'Unknown Subject',
+                score: score.score,
+                max_marks: score.max_marks ?? examInGroup.max_marks ?? 100,
+            };
+        }).filter(s => s !== null) as Exclude<ExamWithStudentScore['studentScores'], null | undefined>;
+
+        if (studentScoresForGroup.length === 0) {
+            return null;
+        }
+
+        const totalMarks = studentScoresForGroup.reduce((acc, s) => acc + Number(s!.score || 0), 0);
+        const maxMarksTotal = studentScoresForGroup.reduce((acc, s) => acc + (s!.max_marks ?? 100), 0);
+        const percentage = maxMarksTotal > 0 ? (totalMarks / maxMarksTotal) * 100 : 0;
+        const status: 'Pass' | 'Fail' = percentage >= PASS_PERCENTAGE ? 'Pass' : 'Fail';
+
+        const reportCard: ExamWithStudentScore = {
+            ...representativeExam,
+            id: groupName + '_' + representativeExam.date, // Stable ID for the group
+            name: groupName,
+            studentScores: studentScoresForGroup,
+            overallResult: {
+                totalMarks,
+                maxMarks: maxMarksTotal,
+                percentage,
+                status,
+            },
+        };
+        return reportCard;
+    }).filter(rc => rc !== null) as ExamWithStudentScore[];
+    
+    reportCards.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return {
       ok: true,
-      examsWithScores: enrichedExams,
+      examsWithScores: reportCards,
       studentProfileId,
       studentSchoolId,
     };
