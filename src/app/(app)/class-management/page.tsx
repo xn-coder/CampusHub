@@ -373,6 +373,11 @@ export default function ClassManagementPage() {
     setIsSubmitting(false);
   };
 
+  const destinationClassesForPromotion = useMemo(() => {
+    if (!classToPromote) return [];
+    return activeClasses.filter(ac => ac.id !== classToPromote.id);
+  }, [activeClasses, classToPromote]);
+
 
   if (isLoading && !currentSchoolId) {
      return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading school data...</span></div>;
@@ -543,9 +548,13 @@ export default function ClassManagementPage() {
                 <SelectValue placeholder="Choose the new class" />
               </SelectTrigger>
               <SelectContent>
-                {activeClasses.filter(ac => ac.id !== classToPromote?.id).map(cls => (
-                  <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
-                ))}
+                {destinationClassesForPromotion.length > 0 ? (
+                  destinationClassesForPromotion.map(cls => (
+                    <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="no-options" disabled>No other classes available</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
