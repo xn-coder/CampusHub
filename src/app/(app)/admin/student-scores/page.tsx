@@ -212,9 +212,34 @@ export default function AdminStudentScoresPage() {
                 {filteredScores.map((score) => {
                     const studentName = getStudentName(score.student_id);
                     const maxMarks = score.max_marks ?? allExams.find(e => e.id === score.exam_id)?.max_marks ?? 100;
-                    const isPass = score.score !== null && score.score !== undefined && !isNaN(Number(score.score)) && Number(score.score) >= (maxMarks * 0.4);
+                    
+                    let studentPassed = false;
+                    if (score.score !== null && score.score !== undefined) {
+                        const numericScore = Number(score.score);
+                        if (!isNaN(numericScore)) {
+                            studentPassed = numericScore >= (maxMarks * 0.4);
+                        }
+                    }
+
                     const examName = getExamName(score.exam_id);
-                    const isEndTerm = examName.toLowerCase().includes('end term');
+                    const isEndTermExam = examName.toLowerCase().includes('end term');
+                    
+                    let actionButton = null;
+                    if (isEndTermExam) {
+                        if (studentPassed) {
+                            actionButton = (
+                                <Button variant="outline" size="sm" onClick={() => handleMockAction('Promote', studentName)} title="Promotion is handled at end of academic year via Class Management.">
+                                    <TrendingUp className="h-3 w-3 mr-1" /> Promote
+                                </Button>
+                            );
+                        } else {
+                            actionButton = (
+                                <Button variant="secondary" size="sm" onClick={() => handleMockAction('Re-exam', studentName)}>
+                                    <RefreshCcw className="h-3 w-3 mr-1" /> Schedule Re-exam
+                                </Button>
+                            );
+                        }
+                    }
 
                     return (
                         <TableRow key={score.id}>
@@ -224,20 +249,12 @@ export default function AdminStudentScoresPage() {
                             <TableCell>{getSubjectName(score.subject_id)}</TableCell>
                             <TableCell className="font-semibold">{String(score.score)} / {maxMarks}</TableCell>
                             <TableCell>
-                                <Badge variant={isPass ? 'default' : 'destructive'}>
-                                    {isPass ? 'Pass' : 'Fail'}
+                                <Badge variant={studentPassed ? 'default' : 'destructive'}>
+                                    {studentPassed ? 'Pass' : 'Fail'}
                                 </Badge>
                             </TableCell>
                             <TableCell className="text-right space-x-1">
-                                {isEndTerm && !isPass ? (
-                                    <Button variant="secondary" size="xs" onClick={() => handleMockAction('Re-exam', studentName)}>
-                                        <RefreshCcw className="h-3 w-3 mr-1" /> Schedule Re-exam
-                                    </Button>
-                                ) : isEndTerm && isPass ? (
-                                    <Button variant="outline" size="xs" onClick={() => handleMockAction('Promote', studentName)} title="Promotion is handled at end of academic year via Class Management.">
-                                        <TrendingUp className="h-3 w-3 mr-1" /> Promote
-                                    </Button>
-                                ) : null}
+                                {actionButton}
                             </TableCell>
                         </TableRow>
                     );
