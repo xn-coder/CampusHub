@@ -323,9 +323,19 @@ export default function ExamsPage() {
           <form onSubmit={handleSubmit}>
             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
               <div>
-                <Label htmlFor="examName">Exam Name</Label>
-                <Input id="examName" value={examName} onChange={(e) => setExamName(e.target.value)} placeholder="e.g., Midterm, Final Term" required disabled={isSubmitting} />
-                {editingExam && <p className="text-xs text-muted-foreground mt-1">Editing base name. Subject will be appended.</p>}
+                <Label htmlFor="examName">Exam Type</Label>
+                <Select value={examName} onValueChange={setExamName} required disabled={isSubmitting || !!editingExam}>
+                    <SelectTrigger id="examName">
+                        <SelectValue placeholder="Select an exam type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="Class Test">Class Test</SelectItem>
+                        <SelectItem value="Mid Term">Mid Term</SelectItem>
+                        <SelectItem value="End Term">End Term</SelectItem>
+                        <SelectItem value="Re-exam">Re-exam</SelectItem>
+                    </SelectContent>
+                </Select>
+                {editingExam && <p className="text-xs text-muted-foreground mt-1">Exam type cannot be changed during an edit.</p>}
               </div>
 
               {editingExam ? (

@@ -213,11 +213,14 @@ export default function AdminStudentScoresPage() {
                     const studentName = getStudentName(score.student_id);
                     const maxMarks = score.max_marks ?? allExams.find(e => e.id === score.exam_id)?.max_marks ?? 100;
                     const isPass = typeof score.score === 'number' && score.score >= maxMarks * 0.4;
+                    const examName = getExamName(score.exam_id);
+                    const isEndTerm = examName.toLowerCase().includes('end term');
+
                     return (
                         <TableRow key={score.id}>
                             <TableCell className="font-medium">{studentName}</TableCell>
                             <TableCell>{getClassName(score.class_id)}</TableCell>
-                            <TableCell>{getExamName(score.exam_id)}</TableCell>
+                            <TableCell>{examName}</TableCell>
                             <TableCell>{getSubjectName(score.subject_id)}</TableCell>
                             <TableCell className="font-semibold">{String(score.score)} / {maxMarks}</TableCell>
                             <TableCell>
@@ -226,15 +229,15 @@ export default function AdminStudentScoresPage() {
                                 </Badge>
                             </TableCell>
                             <TableCell className="text-right space-x-1">
-                                {isPass ? (
-                                    <Button variant="outline" size="xs" onClick={() => handleMockAction('Promote', studentName)} title="Promotion is handled at end of academic year via Class Management.">
-                                        <TrendingUp className="h-3 w-3 mr-1" /> Promote
-                                    </Button>
-                                ) : (
+                                {isEndTerm && !isPass ? (
                                     <Button variant="secondary" size="xs" onClick={() => handleMockAction('Re-exam', studentName)}>
                                         <RefreshCcw className="h-3 w-3 mr-1" /> Schedule Re-exam
                                     </Button>
-                                )}
+                                ) : isPass ? (
+                                    <Button variant="outline" size="xs" onClick={() => handleMockAction('Promote', studentName)} title="Promotion is handled at end of academic year via Class Management.">
+                                        <TrendingUp className="h-3 w-3 mr-1" /> Promote
+                                    </Button>
+                                ) : null}
                             </TableCell>
                         </TableRow>
                     );
