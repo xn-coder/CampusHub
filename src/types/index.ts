@@ -337,7 +337,6 @@ export interface StudentFeePayment {
   student_id: string;
   fee_category_id: string;
   academic_year_id?: string | null;
-  class_id?: string | null;
   assigned_amount: number;
   paid_amount: number;
   due_date?: string | null;

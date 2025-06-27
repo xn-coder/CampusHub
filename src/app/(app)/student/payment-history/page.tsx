@@ -21,7 +21,6 @@ export default function StudentPaymentHistoryPage() {
     const { toast } = useToast();
     const [payments, setPayments] = useState<StudentFeePayment[]>([]);
     const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
-    const [allClasses, setAllClasses] = useState<ClassData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isBulkPaying, setIsBulkPaying] = useState(false);
     const [currentStudentProfileId, setCurrentStudentProfileId] = useState<string | null>(null);
@@ -65,22 +64,13 @@ export default function StudentPaymentHistoryPage() {
             setCurrentSchoolId(studentProfile.school_id);
             setCurrentStudentName(studentProfile.name);
             
-            const [paymentResult, classesResult] = await Promise.all([
-                getStudentPaymentHistoryAction(studentProfile.id, studentProfile.school_id),
-                supabase.from('classes').select('*').eq('school_id', studentProfile.school_id)
-            ]);
+            const paymentResult = await getStudentPaymentHistoryAction(studentProfile.id, studentProfile.school_id);
 
             if (paymentResult.ok) {
                 setPayments(paymentResult.payments || []);
                 setFeeCategories(paymentResult.feeCategories || []);
             } else {
                 toast({ title: "Error fetching payment history", description: paymentResult.message, variant: "destructive"});
-            }
-
-            if (classesResult.error) {
-                toast({ title: "Error fetching class data", description: classesResult.error.message, variant: "destructive" });
-            } else {
-                setAllClasses(classesResult.data || []);
             }
 
             setIsLoading(false);
@@ -94,26 +84,6 @@ export default function StudentPaymentHistoryPage() {
           .reduce((acc, p) => acc + (p.assigned_amount - p.paid_amount), 0);
     }, [payments]);
 
-    const groupedPayments = useMemo(() => {
-        const groups: Record<string, { name: string, payments: StudentFeePayment[] }> = {};
-        
-        payments.forEach(payment => {
-            const classId = payment.class_id || 'general';
-            if (!groups[classId]) {
-                const className = classId === 'general' 
-                    ? 'General Fees' 
-                    : allClasses.find(c => c.id === classId)?.name || 'Unknown Class';
-                const division = classId === 'general' ? '' : allClasses.find(c => c.id === classId)?.division;
-                groups[classId] = { 
-                    name: division ? `${className} - ${division}` : className,
-                    payments: []
-                };
-            }
-            groups[classId].payments.push(payment);
-        });
-
-        return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
-    }, [payments, allClasses]);
 
     const handlePayTotal = async () => {
         if (!currentStudentProfileId || !currentSchoolId) {
@@ -156,42 +126,28 @@ export default function StudentPaymentHistoryPage() {
         doc.text(`Student: ${currentStudentName || 'N/A'}`, 14, 29);
         doc.text(`Date Generated: ${format(new Date(), 'PP')}`, 14, 34);
 
-        let startY = 40;
+        const tableColumn = ["Fee Category", "Due Date", "Assigned ($)", "Paid ($)", "Payment Date", "Status"];
+        const tableRows: (string | number)[][] = [];
 
-        groupedPayments.forEach(group => {
-            doc.setFontSize(12);
-            doc.setFont('helvetica', 'bold');
-            doc.text(`Fees for: ${group.name}`, 14, startY);
-            startY += 7;
-
-            const tableColumn = ["Fee Category", "Due Date", "Assigned ($)", "Paid ($)", "Payment Date", "Status"];
-            const tableRows: (string | number)[][] = [];
-
-            group.payments.forEach(payment => {
-                const paymentData = [
-                    getFeeCategoryName(payment.fee_category_id),
-                    formatDateSafe(payment.due_date),
-                    payment.assigned_amount.toFixed(2),
-                    payment.paid_amount.toFixed(2),
-                    formatDateSafe(payment.payment_date),
-                    payment.status
-                ];
-                tableRows.push(paymentData);
-            });
-            
-            autoTable(doc, {
-                startY: startY,
-                head: [tableColumn],
-                body: tableRows,
-                theme: 'striped',
-                headStyles: { fillColor: [34, 197, 94] },
-                didDrawPage: (data) => {
-                    startY = data.cursor?.y ?? startY;
-                }
-            });
-            startY = (doc as any).lastAutoTable.finalY + 10;
+        payments.forEach(payment => {
+            const paymentData = [
+                getFeeCategoryName(payment.fee_category_id),
+                formatDateSafe(payment.due_date),
+                payment.assigned_amount.toFixed(2),
+                payment.paid_amount.toFixed(2),
+                formatDateSafe(payment.payment_date),
+                payment.status
+            ];
+            tableRows.push(paymentData);
         });
-
+        
+        autoTable(doc, {
+            startY: 40,
+            head: [tableColumn],
+            body: tableRows,
+            theme: 'striped',
+            headStyles: { fillColor: [34, 197, 94] },
+        });
 
         const finalY = (doc as any).lastAutoTable.finalY;
         doc.setFontSize(12);
@@ -234,44 +190,39 @@ export default function StudentPaymentHistoryPage() {
             <p className="text-muted-foreground text-center py-4">No payment records found for you.</p>
           ) : (
             <div className="space-y-6">
-              {groupedPayments.map((group, index) => (
-                <div key={index}>
-                    <h3 className="text-lg font-semibold flex items-center mb-2"><School className="mr-2 h-5 w-5 text-primary"/>{group.name}</h3>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                            <TableHead><FileText className="inline-block mr-1 h-4 w-4" />Fee Category</TableHead>
-                            <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4" />Due Date</TableHead>
-                            <TableHead className="text-right">Assigned ($)</TableHead>
-                            <TableHead className="text-right">Paid ($)</TableHead>
-                            <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4" />Payment Date</TableHead>
-                            <TableHead className="text-center">Status</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {group.payments.map((payment) => (
-                            <TableRow key={payment.id}>
-                                <TableCell className="font-medium">{getFeeCategoryName(payment.fee_category_id)}</TableCell>
-                                <TableCell>{formatDateSafe(payment.due_date)}</TableCell>
-                                <TableCell className="text-right">${payment.assigned_amount.toFixed(2)}</TableCell>
-                                <TableCell className="text-right">${payment.paid_amount.toFixed(2)}</TableCell>
-                                <TableCell>{formatDateSafe(payment.payment_date)}</TableCell>
-                                <TableCell className="text-center">
-                                <Badge variant={
-                                    payment.status === 'Paid' ? 'default' :
-                                    payment.status === 'Partially Paid' ? 'secondary' :
-                                    payment.status === 'Overdue' ? 'destructive' : 
-                                    'outline'
-                                }>
-                                    {payment.status}
-                                </Badge>
-                                </TableCell>
-                            </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-              ))}
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                        <TableHead><FileText className="inline-block mr-1 h-4 w-4" />Fee Category</TableHead>
+                        <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4" />Due Date</TableHead>
+                        <TableHead className="text-right">Assigned ($)</TableHead>
+                        <TableHead className="text-right">Paid ($)</TableHead>
+                        <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4" />Payment Date</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {payments.map((payment) => (
+                        <TableRow key={payment.id}>
+                            <TableCell className="font-medium">{getFeeCategoryName(payment.fee_category_id)}</TableCell>
+                            <TableCell>{formatDateSafe(payment.due_date)}</TableCell>
+                            <TableCell className="text-right">${payment.assigned_amount.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">${payment.paid_amount.toFixed(2)}</TableCell>
+                            <TableCell>{formatDateSafe(payment.payment_date)}</TableCell>
+                            <TableCell className="text-center">
+                            <Badge variant={
+                                payment.status === 'Paid' ? 'default' :
+                                payment.status === 'Partially Paid' ? 'secondary' :
+                                payment.status === 'Overdue' ? 'destructive' : 
+                                'outline'
+                            }>
+                                {payment.status}
+                            </Badge>
+                            </TableCell>
+                        </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
             </div>
           )}
         </CardContent>
@@ -297,4 +248,3 @@ export default function StudentPaymentHistoryPage() {
     </div>
   );
 }
-    
