@@ -233,7 +233,7 @@ export default function AdminStudentScoresPage() {
                                     <Button variant="secondary" size="xs" onClick={() => handleMockAction('Re-exam', studentName)}>
                                         <RefreshCcw className="h-3 w-3 mr-1" /> Schedule Re-exam
                                     </Button>
-                                ) : isPass ? (
+                                ) : isEndTerm && isPass ? (
                                     <Button variant="outline" size="xs" onClick={() => handleMockAction('Promote', studentName)} title="Promotion is handled at end of academic year via Class Management.">
                                         <TrendingUp className="h-3 w-3 mr-1" /> Promote
                                     </Button>
