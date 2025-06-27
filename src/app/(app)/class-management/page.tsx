@@ -22,8 +22,10 @@ import {
   activateClassSectionAction, deleteActiveClassAction,
   assignStudentsToClassAction, assignTeacherToClassAction,
   getClassNamesAction, getSectionNamesAction, getActiveClassesAction,
-  promoteStudentsToNewClassAction
+  promoteStudentsToNewClassAction,
+  getStudentsWithStatusForPromotionAction
 } from './actions';
+import { Badge } from '@/components/ui/badge';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -37,6 +39,9 @@ async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   }
   return school.id;
 }
+
+type PromotionStatus = 'Pass' | 'Fail' | 'Incomplete';
+type StudentWithStatus = Student & { promotionStatus: PromotionStatus };
 
 export default function ClassManagementPage() {
   const { toast } = useToast();
@@ -76,8 +81,14 @@ export default function ClassManagementPage() {
   const [selectedStudentIdsForDialog, setSelectedStudentIdsForDialog] = useState<string[]>([]);
   const [classToAssignTeacher, setClassToAssignTeacher] = useState<ClassData | null>(null);
   const [selectedTeacherIdForDialog, setSelectedTeacherIdForDialog] = useState<string | undefined | null>(undefined);
+  
+  // Promotion Dialog State
   const [classToPromote, setClassToPromote] = useState<ClassData | null>(null);
   const [destinationClassId, setDestinationClassId] = useState<string>('');
+  const [studentsForPromotion, setStudentsForPromotion] = useState<StudentWithStatus[]>([]);
+  const [selectedStudentsForPromotion, setSelectedStudentsForPromotion] = useState<string[]>([]);
+  const [promotionFilter, setPromotionFilter] = useState<PromotionStatus | 'all'>('all');
+  const [isFetchingPromotionData, setIsFetchingPromotionData] = useState(false);
 
 
   const fetchAllData = useCallback(async (schoolId: string) => {
@@ -352,19 +363,31 @@ export default function ClassManagementPage() {
     setIsSubmitting(false);
   };
   
-  const handleOpenPromoteDialog = (cls: ClassData) => {
+  const handleOpenPromoteDialog = async (cls: ClassData) => {
+    if (!currentSchoolId) return;
     setClassToPromote(cls);
     setDestinationClassId('');
+    setSelectedStudentsForPromotion([]);
+    setPromotionFilter('all');
     setIsPromoteDialogOpen(true);
+    setIsFetchingPromotionData(true);
+    const result = await getStudentsWithStatusForPromotionAction(cls.id, currentSchoolId);
+    if (result.ok && result.studentsWithStatus) {
+        setStudentsForPromotion(result.studentsWithStatus);
+    } else {
+        toast({ title: "Error", description: result.message || "Could not fetch student promotion status.", variant: "destructive" });
+        setStudentsForPromotion([]);
+    }
+    setIsFetchingPromotionData(false);
   };
 
   const handleConfirmPromotion = async () => {
-    if (!classToPromote || !destinationClassId || !currentSchoolId) {
-        toast({ title: "Error", description: "Source class, destination class, and school context are required.", variant: "destructive"});
+    if (!classToPromote || !destinationClassId || !currentSchoolId || selectedStudentsForPromotion.length === 0) {
+        toast({ title: "Error", description: "Destination class and at least one student must be selected.", variant: "destructive"});
         return;
     }
     setIsSubmitting(true);
-    const result = await promoteStudentsToNewClassAction(classToPromote.id, destinationClassId, currentSchoolId);
+    const result = await promoteStudentsToNewClassAction(selectedStudentsForPromotion, destinationClassId, currentSchoolId);
     toast({ title: result.ok ? "Promotion Successful" : "Promotion Failed", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
         setIsPromoteDialogOpen(false);
@@ -377,6 +400,25 @@ export default function ClassManagementPage() {
     if (!classToPromote) return [];
     return activeClasses.filter(ac => ac.id !== classToPromote.id);
   }, [activeClasses, classToPromote]);
+  
+  const filteredStudentsForPromotion = useMemo(() => {
+      if (promotionFilter === 'all') return studentsForPromotion;
+      return studentsForPromotion.filter(s => s.promotionStatus.toLowerCase() === promotionFilter);
+  }, [studentsForPromotion, promotionFilter]);
+
+  const handleSelectAllForPromotion = (checked: boolean) => {
+    if(checked) {
+        setSelectedStudentsForPromotion(filteredStudentsForPromotion.map(s => s.id));
+    } else {
+        setSelectedStudentsForPromotion([]);
+    }
+  };
+  
+  const handleSingleStudentPromotionSelection = (studentId: string, checked: boolean) => {
+    setSelectedStudentsForPromotion(prev => 
+      checked ? [...prev, studentId] : prev.filter(id => id !== studentId)
+    );
+  };
 
 
   if (isLoading && !currentSchoolId) {
@@ -534,36 +576,86 @@ export default function ClassManagementPage() {
 
       {/* DIALOGS */}
       <Dialog open={isPromoteDialogOpen} onOpenChange={setIsPromoteDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Promote Students</DialogTitle>
+            <DialogTitle>Promote Students from {classToPromote?.name} - {classToPromote?.division}</DialogTitle>
             <CardDescription>
-              Promote all students from <strong>{classToPromote?.name} - {classToPromote?.division}</strong> to a new class. This action will update the class for all currently enrolled students.
+              Select students to promote based on their 'End Term' exam status.
             </CardDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="destinationClassSelect">Select Destination Class</Label>
-            <Select value={destinationClassId} onValueChange={setDestinationClassId} disabled={isSubmitting}>
-              <SelectTrigger id="destinationClassSelect">
-                <SelectValue placeholder="Choose the new class" />
-              </SelectTrigger>
-              <SelectContent>
-                {destinationClassesForPromotion.length > 0 ? (
-                  destinationClassesForPromotion.map(cls => (
-                    <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="no-options" disabled>No other classes available</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-            <Button onClick={handleConfirmPromotion} disabled={isSubmitting || !destinationClassId}>
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />} Confirm Promotion
-            </Button>
-          </DialogFooter>
+          {isFetchingPromotionData ? (
+            <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <span className="ml-2">Fetching exam results...</span>
+            </div>
+          ) : (
+          <>
+            <div className="grid gap-4 py-4">
+                <div>
+                  <Label>Filter Students by Status</Label>
+                  <Select value={promotionFilter} onValueChange={(val) => setPromotionFilter(val as any)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Students ({studentsForPromotion.length})</SelectItem>
+                      <SelectItem value="Pass">Passed ({studentsForPromotion.filter(s => s.promotionStatus === 'Pass').length})</SelectItem>
+                      <SelectItem value="Fail">Failed ({studentsForPromotion.filter(s => s.promotionStatus === 'Fail').length})</SelectItem>
+                      <SelectItem value="Incomplete">Incomplete ({studentsForPromotion.filter(s => s.promotionStatus === 'Incomplete').length})</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="max-h-60 overflow-y-auto space-y-2 border p-2 rounded-md">
+                   <div className="flex items-center space-x-2 p-2 border-b">
+                      <Checkbox
+                        id="select-all-promotion"
+                        onCheckedChange={handleSelectAllForPromotion}
+                        checked={filteredStudentsForPromotion.length > 0 && selectedStudentsForPromotion.length === filteredStudentsForPromotion.length}
+                      />
+                      <Label htmlFor="select-all-promotion" className="font-semibold">Select All Visible ({selectedStudentsForPromotion.length} selected)</Label>
+                    </div>
+                    {filteredStudentsForPromotion.length > 0 ? filteredStudentsForPromotion.map(student => (
+                      <div key={student.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted">
+                         <Checkbox
+                          id={`promo-student-${student.id}`}
+                          checked={selectedStudentsForPromotion.includes(student.id)}
+                          onCheckedChange={(checked) => handleSingleStudentPromotionSelection(student.id, !!checked)}
+                        />
+                        <Label htmlFor={`promo-student-${student.id}`} className="flex-grow cursor-pointer flex justify-between items-center">
+                          {student.name}
+                           <Badge variant={student.promotionStatus === 'Pass' ? 'default' : student.promotionStatus === 'Fail' ? 'destructive' : 'secondary'}>
+                                {student.promotionStatus}
+                           </Badge>
+                        </Label>
+                      </div>
+                    )) : <p className="text-sm text-muted-foreground text-center py-4">No students match the filter.</p>}
+                </div>
+                <div>
+                  <Label htmlFor="destinationClassSelect">Promote Selected Students to</Label>
+                  <Select value={destinationClassId} onValueChange={setDestinationClassId}>
+                    <SelectTrigger id="destinationClassSelect">
+                      <SelectValue placeholder="Choose the destination class" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {destinationClassesForPromotion.length > 0 ? (
+                        destinationClassesForPromotion.map(cls => (
+                          <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division} ({getAcademicYearName(cls.academic_year_id)})</SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="no-options" disabled>No other classes available for promotion</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              <Button onClick={handleConfirmPromotion} disabled={isSubmitting || !destinationClassId || selectedStudentsForPromotion.length === 0}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />} Promote {selectedStudentsForPromotion.length} Student(s)
+              </Button>
+            </DialogFooter>
+          </>
+          )}
         </DialogContent>
       </Dialog>
 

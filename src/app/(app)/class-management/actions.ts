@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { ClassNameRecord, SectionRecord, ClassData } from '@/types';
+import type { ClassNameRecord, SectionRecord, ClassData, Student } from '@/types';
 
 // --- Class Name (Standard) Management ---
 
@@ -520,37 +520,102 @@ export async function assignTeacherToClassAction(classId: string, teacherId: str
   return { ok: true, message: 'Teacher assignment updated.' };
 }
 
-export async function promoteStudentsToNewClassAction(sourceClassId: string, destinationClassId: string, schoolId: string) {
+export async function promoteStudentsToNewClassAction(studentIds: string[], destinationClassId: string, schoolId: string): Promise<{ ok: boolean; message: string; promotedCount: number }> {
+    if (!studentIds || studentIds.length === 0) {
+        return { ok: true, message: "No students selected for promotion.", promotedCount: 0 };
+    }
     const supabaseAdmin = createSupabaseServerClient();
-
-    // 1. Get all students from the source class
-    const { data: studentsToPromote, error: fetchError } = await supabaseAdmin
-        .from('students')
-        .select('id')
-        .eq('class_id', sourceClassId)
-        .eq('school_id', schoolId);
     
-    if (fetchError) {
-        return { ok: false, message: `Failed to fetch students from the source class: ${fetchError.message}` };
-    }
-    if (!studentsToPromote || studentsToPromote.length === 0) {
-        return { ok: false, message: "No students found in the source class to promote." };
-    }
-    const studentIds = studentsToPromote.map(s => s.id);
-
-    // 2. Update their class_id to the destination class
-    const { error: updateError, count } = await supabaseAdmin
+    const { error, count } = await supabaseAdmin
         .from('students')
         .update({ class_id: destinationClassId })
         .in('id', studentIds)
         .eq('school_id', schoolId);
 
-    if (updateError) {
-        return { ok: false, message: `Failed to promote students: ${updateError.message}` };
+    if (error) {
+        return { ok: false, message: `Failed to promote students: ${error.message}`, promotedCount: 0 };
     }
 
     revalidatePath('/class-management');
     revalidatePath('/admin/manage-students');
-    return { ok: true, message: `Successfully promoted ${count} student(s) to the new class.` };
+    return { ok: true, message: `Successfully promoted ${count || 0} student(s) to the new class.`, promotedCount: count || 0 };
+}
+
+export async function getStudentsWithStatusForPromotionAction(classId: string, schoolId: string): Promise<{
+    ok: boolean;
+    studentsWithStatus?: (Student & { promotionStatus: 'Pass' | 'Fail' | 'Incomplete' })[];
+    message?: string;
+}> {
+    const supabase = createSupabaseServerClient();
+
+    try {
+        // 1. Get all students in the class
+        const { data: students, error: studentsError } = await supabase
+            .from('students')
+            .select('*')
+            .eq('class_id', classId)
+            .eq('school_id', schoolId);
+        if (studentsError) throw new Error(`Failed to fetch students: ${studentsError.message}`);
+        if (!students || students.length === 0) return { ok: true, studentsWithStatus: [] };
+
+        // 2. Find the most recent "End Term" exam relevant to this class
+        const { data: endTermExams, error: examsError } = await supabase
+            .from('exams')
+            .select('*')
+            .eq('school_id', schoolId)
+            .like('name', '%End Term%')
+            .or(`class_id.eq.${classId},class_id.is.null`)
+            .order('date', { ascending: false });
+
+        if (examsError) throw new Error(`Failed to fetch exams: ${examsError.message}`);
+        if (!endTermExams || endTermExams.length === 0) {
+            const studentsWithStatus = students.map(s => ({ ...s, promotionStatus: 'Incomplete' as const }));
+            return { ok: true, studentsWithStatus, message: "No 'End Term' exam found to determine promotion status." };
+        }
+
+        // 3. Group the exams by date to find the latest exam event
+        const latestExamDate = endTermExams[0].date;
+        const latestExamGroup = endTermExams.filter(e => e.date === latestExamDate);
+        const latestExamIds = latestExamGroup.map(e => e.id);
+        const subjectsInExam = latestExamGroup.map(e => e.subject_id);
+
+        // 4. Fetch scores for these students for the latest end term exam
+        const studentIds = students.map(s => s.id);
+        const { data: scores, error: scoresError } = await supabase
+            .from('student_scores')
+            .select('student_id, score, max_marks, subject_id')
+            .in('student_id', studentIds)
+            .in('exam_id', latestExamIds);
+
+        if (scoresError) throw new Error(`Failed to fetch scores: ${scoresError.message}`);
+
+        // 5. Determine promotion status for each student
+        const studentsWithStatus = students.map(student => {
+            const studentScores = scores?.filter(s => s.student_id === student.id) || [];
+            
+            // Check if student has scores for all subjects in the exam
+            const hasAllScores = subjectsInExam.every(subjId => studentScores.some(s => s.subject_id === subjId));
+            if (!hasAllScores) {
+                return { ...student, promotionStatus: 'Incomplete' as const };
+            }
+
+            // Check if any score is failing
+            const hasFailed = studentScores.some(s => {
+                const maxMarks = s.max_marks || 100;
+                const passMarks = maxMarks * 0.4; // 40% passing
+                return Number(s.score) < passMarks;
+            });
+
+            return {
+                ...student,
+                promotionStatus: hasFailed ? ('Fail' as const) : ('Pass' as const)
+            };
+        });
+
+        return { ok: true, studentsWithStatus };
+
+    } catch (error: any) {
+        return { ok: false, message: error.message };
+    }
 }
     
