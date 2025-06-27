@@ -263,7 +263,7 @@ export async function admitNewStudentAction(
             contact_number: contactNumber || null,
             address: address || null,
             admission_date: new Date().toISOString().split('T')[0],
-            status: 'Enrolled' as AdmissionStatus, 
+            status: 'Admitted' as AdmissionStatus, 
             class_id: classId,
             student_profile_id: newStudentProfileId,
             school_id: schoolId,

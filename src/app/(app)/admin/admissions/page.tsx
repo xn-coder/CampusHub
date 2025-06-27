@@ -168,7 +168,7 @@ export default function AdmissionsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="View Admission Records"
-        description="Review submitted student admission applications and their enrollment status."
+        description="Review admitted students. After fee payment is confirmed, mark the student as 'Enrolled' to finalize their admission."
         actions={
           <Button asChild>
             <Link href="/admin/admissions/new">
@@ -180,7 +180,7 @@ export default function AdmissionsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center"><ListChecks className="mr-2 h-5 w-5" />Admission Records</CardTitle>
-            <CardDescription>List of submitted student admission applications. New students are registered by teachers or admins.</CardDescription>
+            <CardDescription>List of all admissions. Once a student is 'Admitted', you can finalize the process by marking them as 'Enrolled'.</CardDescription>
           </CardHeader>
           <CardContent>
              <div className="mb-4 flex flex-col md:flex-row gap-4">
