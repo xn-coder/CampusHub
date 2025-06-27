@@ -128,6 +128,7 @@ export async function registerStudentAction(
           console.log(`Successfully assigned PENDING Admission Fee to student ${newStudentProfileId}.`);
           revalidatePath('/admin/student-fees');
           revalidatePath('/student/payment-history');
+          revalidatePath('/dashboard');
         }
       }
     } catch (feeError: any) {

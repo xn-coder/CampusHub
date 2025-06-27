@@ -241,6 +241,8 @@ export async function admitNewStudentAction(
               feesAssignedCount = feePaymentsToInsert.length;
               console.log(`Successfully assigned ${feesAssignedCount} PENDING fees to student ${newStudentProfileId}.`);
               revalidatePath('/admin/student-fees');
+              revalidatePath('/student/payment-history');
+              revalidatePath('/dashboard');
             }
           }
         }
