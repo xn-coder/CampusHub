@@ -334,33 +334,6 @@ export async function getStudentPaymentHistoryAction(
   }
 }
 
-export async function getStudentPendingFeeCountAction(
-  studentProfileId: string,
-  schoolId: string
-): Promise<{ ok: boolean; count: number; message?: string }> {
-  if (!studentProfileId || !schoolId) {
-    return { ok: false, count: 0, message: "Student and School IDs are required." };
-  }
-  const supabase = createSupabaseServerClient();
-  try {
-    const { count, error } = await supabase
-      .from('student_fee_payments')
-      .select('id', { count: 'exact', head: true })
-      .eq('student_id', studentProfileId)
-      .eq('school_id', schoolId)
-      .in('status', ['Pending', 'Partially Paid', 'Overdue']);
-
-    if (error) {
-      console.error("Error fetching pending fee count:", error);
-      return { ok: false, count: 0, message: `Database error: ${error.message}` };
-    }
-    return { ok: true, count: count || 0 };
-  } catch (e: any) {
-    console.error("Unexpected error fetching pending fee count:", e);
-    return { ok: false, count: 0, message: `Unexpected error: ${e.message}` };
-  }
-}
-
 export async function studentPayAllFeesAction(
   studentProfileId: string,
   schoolId: string
@@ -420,6 +393,66 @@ export async function studentPayAllFeesAction(
 }
 
 
+interface UpdateStudentFeeInput {
+  assigned_amount?: number;
+  due_date?: string;
+  notes?: string;
+}
+
+export async function updateStudentFeeAction(
+  id: string,
+  schoolId: string,
+  updates: UpdateStudentFeeInput
+): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  
+  if (!id || !schoolId) {
+    return { ok: false, message: "Fee Payment ID and School ID are required." };
+  }
+  
+  const { error } = await supabaseAdmin
+    .from('student_fee_payments')
+    .update(updates)
+    .eq('id', id)
+    .eq('school_id', schoolId);
+
+  if (error) {
+    console.error("Error updating student fee assignment:", error);
+    return { ok: false, message: `Failed to update fee assignment: ${error.message}` };
+  }
+
+  revalidatePath('/admin/student-fees');
+  revalidatePath('/student/payment-history');
+  return { ok: true, message: 'Fee assignment updated successfully.' };
+}
+
+export async function getStudentPendingFeeCountAction(
+  studentProfileId: string,
+  schoolId: string
+): Promise<{ ok: boolean; count: number; message?: string }> {
+  if (!studentProfileId || !schoolId) {
+    return { ok: false, count: 0, message: "Student and School IDs are required." };
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { count, error } = await supabase
+      .from('student_fee_payments')
+      .select('id', { count: 'exact', head: true })
+      .eq('student_id', studentProfileId)
+      .eq('school_id', schoolId)
+      .in('status', ['Pending', 'Partially Paid', 'Overdue']);
+
+    if (error) {
+      console.error("Error fetching pending fee count:", error);
+      return { ok: false, count: 0, message: `Database error: ${error.message}` };
+    }
+    return { ok: true, count: count || 0 };
+  } catch (e: any) {
+    console.error("Unexpected error fetching pending fee count:", e);
+    return { ok: false, count: 0, message: `Unexpected error: ${e.message}` };
+  }
+}
+
 export async function checkStudentFeeStatusAction(
   studentProfileId: string,
   schoolId: string
@@ -456,37 +489,4 @@ export async function checkStudentFeeStatusAction(
     console.error("Unexpected error checking fee status:", e);
     return { ok: false, isDefaulter: false, message: `Unexpected error: ${e.message}` };
   }
-}
-
-interface UpdateStudentFeeInput {
-  assigned_amount?: number;
-  due_date?: string;
-  notes?: string;
-}
-
-export async function updateStudentFeeAction(
-  id: string,
-  schoolId: string,
-  updates: UpdateStudentFeeInput
-): Promise<{ ok: boolean; message: string }> {
-  const supabaseAdmin = createSupabaseServerClient();
-  
-  if (!id || !schoolId) {
-    return { ok: false, message: "Fee Payment ID and School ID are required." };
-  }
-  
-  const { error } = await supabaseAdmin
-    .from('student_fee_payments')
-    .update(updates)
-    .eq('id', id)
-    .eq('school_id', schoolId);
-
-  if (error) {
-    console.error("Error updating student fee assignment:", error);
-    return { ok: false, message: `Failed to update fee assignment: ${error.message}` };
-  }
-
-  revalidatePath('/admin/student-fees');
-  revalidatePath('/student/payment-history');
-  return { ok: true, message: 'Fee assignment updated successfully.' };
 }
