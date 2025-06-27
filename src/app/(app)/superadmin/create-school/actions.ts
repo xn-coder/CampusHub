@@ -52,7 +52,7 @@ export async function createSchoolAndAdminAction(
 
     const newAdminUserId = uuidv4();
     const hashedPassword = await bcrypt.hash(adminPassword, SALT_ROUNDS);
-    const { error: adminInsertError } = await supabaseAdmin
+    const { data: newUser, error: adminInsertError } = await supabaseAdmin
       .from('users')
       .insert({
         id: newAdminUserId, 
@@ -60,11 +60,13 @@ export async function createSchoolAndAdminAction(
         name: adminName,
         password_hash: hashedPassword,
         role: 'admin',
-      });
+      })
+      .select('id')
+      .single();
 
-    if (adminInsertError) {
+    if (adminInsertError || !newUser) {
       console.error('Error creating admin user:', adminInsertError);
-      return { ok: false, message: `Failed to create admin user account: ${adminInsertError.message}` };
+      return { ok: false, message: `Failed to create admin user account: ${adminInsertError?.message || 'No user data returned'}` };
     }
 
     const newSchoolId = uuidv4();
@@ -85,6 +87,20 @@ export async function createSchoolAndAdminAction(
        await supabaseAdmin.from('users').delete().eq('id', newAdminUserId);
        console.log(`Cleaned up user ${adminEmail} due to school creation failure.`);
       return { ok: false, message: `Failed to create school record: ${schoolInsertError.message}` };
+    }
+    
+    // After creating the school, link it to the admin user record.
+    const { error: updateUserError } = await supabaseAdmin
+      .from('users')
+      .update({ school_id: newSchoolId })
+      .eq('id', newAdminUserId);
+    
+    if (updateUserError) {
+      console.error(`CRITICAL: School ${newSchoolId} created, but failed to link admin user ${newAdminUserId}:`, updateUserError);
+      // Rollback school and user creation for data consistency
+      await supabaseAdmin.from('schools').delete().eq('id', newSchoolId);
+      await supabaseAdmin.from('users').delete().eq('id', newAdminUserId);
+      return { ok: false, message: `Failed to link admin to the new school. The creation process has been rolled back.` };
     }
 
     return {
