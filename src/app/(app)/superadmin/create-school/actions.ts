@@ -4,6 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { revalidatePath } from 'next/cache';
 
 const SALT_ROUNDS = 10;
 
@@ -49,9 +50,12 @@ export async function createSchoolAndAdminAction(
     if (existingSchoolByAdminEmail) {
         return { ok: false, message: `A school is already associated with admin email ${adminEmail}.` };
     }
-
+    
+    const newSchoolId = uuidv4();
     const newAdminUserId = uuidv4();
     const hashedPassword = await bcrypt.hash(adminPassword, SALT_ROUNDS);
+
+    // Create the admin user first, but without a school_id yet
     const { data: newUser, error: adminInsertError } = await supabaseAdmin
       .from('users')
       .insert({
@@ -60,6 +64,7 @@ export async function createSchoolAndAdminAction(
         name: adminName,
         password_hash: hashedPassword,
         role: 'admin',
+        // school_id is set in the next step
       })
       .select('id')
       .single();
@@ -69,7 +74,7 @@ export async function createSchoolAndAdminAction(
       return { ok: false, message: `Failed to create admin user account: ${adminInsertError?.message || 'No user data returned'}` };
     }
 
-    const newSchoolId = uuidv4();
+    // Now, create the school, linking it to the newly created admin user
     const { error: schoolInsertError } = await supabaseAdmin
       .from('schools')
       .insert({
@@ -84,12 +89,13 @@ export async function createSchoolAndAdminAction(
 
     if (schoolInsertError) {
       console.error('Error creating school:', schoolInsertError);
-       await supabaseAdmin.from('users').delete().eq('id', newAdminUserId);
-       console.log(`Cleaned up user ${adminEmail} due to school creation failure.`);
+      // Rollback user creation if school creation fails
+      await supabaseAdmin.from('users').delete().eq('id', newAdminUserId);
+      console.log(`Cleaned up user ${adminEmail} due to school creation failure.`);
       return { ok: false, message: `Failed to create school record: ${schoolInsertError.message}` };
     }
     
-    // After creating the school, link it to the admin user record.
+    // Finally, update the user record to link it to the newly created school
     const { error: updateUserError } = await supabaseAdmin
       .from('users')
       .update({ school_id: newSchoolId })
@@ -102,6 +108,8 @@ export async function createSchoolAndAdminAction(
       await supabaseAdmin.from('users').delete().eq('id', newAdminUserId);
       return { ok: false, message: `Failed to link admin to the new school. The creation process has been rolled back.` };
     }
+    
+    revalidatePath('/superadmin/manage-school');
 
     return {
       ok: true,

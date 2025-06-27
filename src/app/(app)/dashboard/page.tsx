@@ -16,12 +16,10 @@ import type { UserRole, NavItem } from '@/types';
 import { getDashboardDataAction } from './actions';
 import { format, parseISO, isValid } from 'date-fns';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { checkStudentFeeStatusAction } from '@/app/(app)/admin/student-fees/actions';
-import { supabase } from '@/lib/supabaseClient';
-
 
 interface DashboardStats {
   upcomingAssignmentsCount?: number;
+  feeStatus?: { isDefaulter: boolean; message: string };
   assignedClassesCount?: number;
   totalStudentsInClasses?: number;
   pendingLeaveRequestsCount?: number;
@@ -43,8 +41,6 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
-  const [feeStatus, setFeeStatus] = useState<{ isDefaulter: boolean; message: string }>({ isDefaulter: false, message: '' });
-
 
   useEffect(() => {
     const role = localStorage.getItem('currentUserRole') as UserRole | null;
@@ -57,40 +53,17 @@ export default function DashboardPage() {
     async function loadData() {
       if (userId && role) {
         setIsLoading(true);
-        const [dashboardResult, feeResult] = await Promise.all([
-          getDashboardDataAction(userId, role),
-          role === 'student' ? getFeeStatus(userId) : Promise.resolve(null)
-        ]);
+        const result = await getDashboardDataAction(userId, role);
 
-        if (dashboardResult.ok && dashboardResult.data) {
-          setDashboardData(dashboardResult.data);
+        if (result.ok && result.data) {
+          setDashboardData(result.data);
         } else {
-          toast({ title: "Error loading dashboard", description: dashboardResult.message, variant: "destructive" });
+          toast({ title: "Error loading dashboard", description: result.message, variant: "destructive" });
         }
-        
-        if (feeResult) {
-            setFeeStatus(feeResult);
-        }
-
         setIsLoading(false);
       } else {
         setIsLoading(false); // No user, no loading
       }
-    }
-    
-    async function getFeeStatus(studentUserId: string) {
-        const { data: studentProfile } = await supabase
-            .from('students')
-            .select('id, school_id')
-            .eq('user_id', studentUserId)
-            .single();
-        if (studentProfile?.id && studentProfile.school_id) {
-            const result = await checkStudentFeeStatusAction(studentProfile.id, studentProfile.school_id);
-            if (result.ok) {
-                return { isDefaulter: result.isDefaulter, message: result.message };
-            }
-        }
-        return { isDefaulter: false, message: '' };
     }
     
     loadData();
@@ -123,7 +96,7 @@ export default function DashboardPage() {
         return [
           { label: 'Create School', href: '/superadmin/create-school', icon: Building },
           { label: 'Manage Schools', href: '/superadmin/manage-school', icon: Settings },
-          { label: 'Global Announcements', href: '/communication', icon: Megaphone },
+          { label: 'Global Announcements', href: '/communication', icon: Megaphone }, 
         ];
       default:
         return [];
@@ -205,12 +178,12 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Dashboard" description={`Welcome back, ${currentUserName || 'User'}! Here's your overview.`} />
       
-      {currentUserRole === 'student' && feeStatus.isDefaulter && (
+      {currentUserRole === 'student' && dashboardData?.feeStatus?.isDefaulter && (
           <Alert variant="destructive" className="border-2">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Action Required: Overdue Fees</AlertTitle>
               <AlertDescription>
-                  {feeStatus.message} Access to some features is temporarily restricted.
+                  {dashboardData.feeStatus.message} Access to some features may be restricted.
                   <Button asChild variant="link" className="p-0 pl-1 h-auto text-destructive-foreground font-bold">
                     <Link href="/student/payment-history">Go to Payments</Link>
                   </Button>

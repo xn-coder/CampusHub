@@ -462,22 +462,22 @@ export async function checkStudentFeeStatusAction(
   }
   const supabase = createSupabaseServerClient();
   try {
+    // A student is a defaulter if they have any fee that is not 'Paid' AND its due_date is in the past.
     const { data: overdueFees, error } = await supabase
       .from('student_fee_payments')
       .select('id, due_date')
       .eq('student_id', studentProfileId)
       .eq('school_id', schoolId)
-      .in('status', ['Pending', 'Partially Paid', 'Overdue']);
+      .in('status', ['Pending', 'Partially Paid', 'Overdue'])
+      .lt('due_date', new Date().toISOString()) // Check if due date is less than today
+      .limit(1); // We only need to know if at least one exists
 
     if (error) {
       console.error("Error fetching student fee status:", error);
       return { ok: false, isDefaulter: false, message: `Database error: ${error.message}` };
     }
 
-    const today = startOfDay(new Date());
-    const isDefaulter = (overdueFees || []).some(fee => 
-        fee.due_date && isPast(new Date(fee.due_date))
-    );
+    const isDefaulter = (overdueFees || []).length > 0;
 
     const message = isDefaulter
       ? "You have overdue fees. Please clear your dues to access all features."

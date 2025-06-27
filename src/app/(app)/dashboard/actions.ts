@@ -4,11 +4,13 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { UserRole, AnnouncementDB, CalendarEventDB, Student, Teacher, SchoolEntry as School, ClassData, Assignment, LeaveRequestStatus } from '@/types';
 import { subDays, startOfDay, endOfDay, addDays, formatISO } from 'date-fns';
+import { checkStudentFeeStatusAction } from '@/app/(app)/admin/student-fees/actions';
 
 
 interface DashboardData {
   // Student specific
   upcomingAssignmentsCount?: number;
+  feeStatus?: { isDefaulter: boolean; message: string };
   // Teacher specific
   assignedClassesCount?: number;
   totalStudentsInClasses?: number;
@@ -102,15 +104,23 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
         .eq('user_id', userId)
         .single();
 
-      if (studentProfile && studentProfile.class_id) {
-        const { count, error: assignmentError } = await supabase
-          .from('assignments')
-          .select('id', { count: 'exact', head: true })
-          .eq('class_id', studentProfile.class_id)
-          .eq('school_id', effectiveSchoolId)
-          .gte('due_date', formatISO(new Date(), { representation: 'date' }));
-        if (assignmentError) console.error("Error fetching student assignments count:", assignmentError.message);
-        else dashboardData.upcomingAssignmentsCount = count ?? 0;
+      if (studentProfile) {
+        if (studentProfile.class_id) {
+            const { count, error: assignmentError } = await supabase
+            .from('assignments')
+            .select('id', { count: 'exact', head: true })
+            .eq('class_id', studentProfile.class_id)
+            .eq('school_id', effectiveSchoolId)
+            .gte('due_date', formatISO(new Date(), { representation: 'date' }));
+            if (assignmentError) console.error("Error fetching student assignments count:", assignmentError.message);
+            else dashboardData.upcomingAssignmentsCount = count ?? 0;
+        }
+
+        // Check fee status
+        const feeStatusResult = await checkStudentFeeStatusAction(studentProfile.id, effectiveSchoolId);
+        if (feeStatusResult.ok) {
+            dashboardData.feeStatus = { isDefaulter: feeStatusResult.isDefaulter, message: feeStatusResult.message };
+        }
       }
     } else if (userRole === 'teacher' && effectiveSchoolId) {
       const { data: teacherProfile, error: teacherError } = await supabase
