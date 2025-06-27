@@ -94,7 +94,7 @@ export default function AdminStudentScoresPage() {
         headers.join(','),
         ...filteredScores.map(score => {
             const maxMarks = score.max_marks ?? allExams.find(e => e.id === score.exam_id)?.max_marks ?? 100;
-            const isPass = typeof score.score === 'number' && score.score >= maxMarks * 0.4;
+            const isPass = score.score !== null && score.score !== undefined && !isNaN(Number(score.score)) && Number(score.score) >= (maxMarks * 0.4);
             const row = [
                 `"${getStudentName(score.student_id).replace(/"/g, '""')}"`,
                 `"${getClassName(score.class_id).replace(/"/g, '""')}"`,
@@ -212,7 +212,7 @@ export default function AdminStudentScoresPage() {
                 {filteredScores.map((score) => {
                     const studentName = getStudentName(score.student_id);
                     const maxMarks = score.max_marks ?? allExams.find(e => e.id === score.exam_id)?.max_marks ?? 100;
-                    const isPass = typeof score.score === 'number' && score.score >= maxMarks * 0.4;
+                    const isPass = score.score !== null && score.score !== undefined && !isNaN(Number(score.score)) && Number(score.score) >= (maxMarks * 0.4);
                     const examName = getExamName(score.exam_id);
                     const isEndTerm = examName.toLowerCase().includes('end term');
 
