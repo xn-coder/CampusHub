@@ -113,7 +113,7 @@ export async function registerStudentAction(
             id: feePaymentId,
             student_id: newStudentProfileId,
             fee_category_id: admissionFeeCategory.id,
-            class_id: classId,
+            class_id: classId, // Store class context at time of fee assignment
             assigned_amount: admissionFeeCategory.amount,
             paid_amount: 0,
             status: 'Pending' as PaymentStatus,

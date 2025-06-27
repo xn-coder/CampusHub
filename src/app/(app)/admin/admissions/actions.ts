@@ -221,7 +221,7 @@ export async function admitNewStudentAction(
               id: uuidv4(),
               student_id: newStudentProfileId,
               fee_category_id: category.id,
-              class_id: classId,
+              class_id: classId, // Store class context at time of fee assignment
               assigned_amount: category.amount,
               paid_amount: 0,
               status: 'Pending' as PaymentStatus,

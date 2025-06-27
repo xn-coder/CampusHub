@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
-import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2, ArrowRight } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import {
@@ -21,7 +21,8 @@ import {
   addSectionNameAction, updateSectionNameAction, deleteSectionNameAction,
   activateClassSectionAction, deleteActiveClassAction,
   assignStudentsToClassAction, assignTeacherToClassAction,
-  getClassNamesAction, getSectionNamesAction, getActiveClassesAction
+  getClassNamesAction, getSectionNamesAction, getActiveClassesAction,
+  promoteStudentsToNewClassAction
 } from './actions';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
@@ -51,27 +52,32 @@ export default function ClassManagementPage() {
   const [allTeachersInSchool, setAllTeachersInSchool] = useState<Teacher[]>([]);
   const [allAcademicYears, setAllAcademicYears] = useState<AcademicYear[]>([]);
 
+  // Dialog states
   const [isActivateClassSectionDialogOpen, setIsActivateClassSectionDialogOpen] = useState(false);
   const [isManageStudentsDialogOpen, setIsManageStudentsDialogOpen] = useState(false);
   const [isAssignTeacherDialogOpen, setIsAssignTeacherDialogOpen] = useState(false);
   const [isEditClassNameDialogOpen, setIsEditClassNameDialogOpen] = useState(false);
   const [isEditSectionNameDialogOpen, setIsEditSectionNameDialogOpen] = useState(false);
+  const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
 
+
+  // Form input states
   const [newClassNameInput, setNewClassNameInput] = useState('');
   const [newSectionNameInput, setNewSectionNameInput] = useState('');
-  const [editNameInput, setEditNameInput] = useState(''); // For edit dialogs
+  const [editNameInput, setEditNameInput] = useState('');
 
+  // Dialog-specific states
   const [editingClassNameRecord, setEditingClassNameRecord] = useState<ClassNameRecord | null>(null);
   const [editingSectionNameRecord, setEditingSectionNameRecord] = useState<SectionRecord | null>(null);
-
   const [selectedClassNameIdForActivation, setSelectedClassNameIdForActivation] = useState<string>('');
   const [selectedSectionNameIdForActivation, setSelectedSectionNameIdForActivation] = useState<string>('');
   const [selectedAcademicYearIdForActivation, setSelectedAcademicYearIdForActivation] = useState<string | undefined>(undefined);
-
   const [classToManageStudents, setClassToManageStudents] = useState<ClassData | null>(null);
   const [selectedStudentIdsForDialog, setSelectedStudentIdsForDialog] = useState<string[]>([]);
   const [classToAssignTeacher, setClassToAssignTeacher] = useState<ClassData | null>(null);
   const [selectedTeacherIdForDialog, setSelectedTeacherIdForDialog] = useState<string | undefined | null>(undefined);
+  const [classToPromote, setClassToPromote] = useState<ClassData | null>(null);
+  const [destinationClassId, setDestinationClassId] = useState<string>('');
 
 
   const fetchAllData = useCallback(async (schoolId: string) => {
@@ -345,6 +351,28 @@ export default function ClassManagementPage() {
     }
     setIsSubmitting(false);
   };
+  
+  const handleOpenPromoteDialog = (cls: ClassData) => {
+    setClassToPromote(cls);
+    setDestinationClassId('');
+    setIsPromoteDialogOpen(true);
+  };
+
+  const handleConfirmPromotion = async () => {
+    if (!classToPromote || !destinationClassId || !currentSchoolId) {
+        toast({ title: "Error", description: "Source class, destination class, and school context are required.", variant: "destructive"});
+        return;
+    }
+    setIsSubmitting(true);
+    const result = await promoteStudentsToNewClassAction(classToPromote.id, destinationClassId, currentSchoolId);
+    toast({ title: result.ok ? "Promotion Successful" : "Promotion Failed", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if (result.ok) {
+        setIsPromoteDialogOpen(false);
+        if (currentSchoolId) fetchAllData(currentSchoolId);
+    }
+    setIsSubmitting(false);
+  };
+
 
   if (isLoading && !currentSchoolId) {
      return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading school data...</span></div>;
@@ -485,6 +513,7 @@ export default function ClassManagementPage() {
                         <TableCell className="space-x-1 text-right">
                           <Button variant="outline" size="sm" onClick={() => handleOpenManageStudentsDialog(cls)} disabled={isSubmitting}><Users className="mr-1 h-3 w-3" /> Students</Button>
                           <Button variant="outline" size="sm" onClick={() => handleOpenAssignTeacherDialog(cls)} disabled={isSubmitting}><UserCog className="mr-1 h-3 w-3" /> Teacher</Button>
+                           <Button variant="outline" size="sm" onClick={() => handleOpenPromoteDialog(cls)} disabled={isSubmitting || studentCount === 0}><ArrowRight className="mr-1 h-3 w-3" /> Promote</Button>
                           <Button variant="destructive" size="icon" onClick={() => handleDeleteActiveClass(cls.id)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
@@ -497,6 +526,38 @@ export default function ClassManagementPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* DIALOGS */}
+      <Dialog open={isPromoteDialogOpen} onOpenChange={setIsPromoteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Promote Students</DialogTitle>
+            <CardDescription>
+              Promote all students from <strong>{classToPromote?.name} - {classToPromote?.division}</strong> to a new class. This action will update the class for all currently enrolled students.
+            </CardDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="destinationClassSelect">Select Destination Class</Label>
+            <Select value={destinationClassId} onValueChange={setDestinationClassId} disabled={isSubmitting}>
+              <SelectTrigger id="destinationClassSelect">
+                <SelectValue placeholder="Choose the new class" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeClasses.filter(ac => ac.id !== classToPromote?.id).map(cls => (
+                  <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+            <Button onClick={handleConfirmPromotion} disabled={isSubmitting || !destinationClassId}>
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />} Confirm Promotion
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Dialog for Activating Class Section */}
       <Dialog open={isActivateClassSectionDialogOpen} onOpenChange={setIsActivateClassSectionDialogOpen}>

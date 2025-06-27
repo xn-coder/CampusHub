@@ -519,4 +519,38 @@ export async function assignTeacherToClassAction(classId: string, teacherId: str
   revalidatePath('/class-management');
   return { ok: true, message: 'Teacher assignment updated.' };
 }
+
+export async function promoteStudentsToNewClassAction(sourceClassId: string, destinationClassId: string, schoolId: string) {
+    const supabaseAdmin = createSupabaseServerClient();
+
+    // 1. Get all students from the source class
+    const { data: studentsToPromote, error: fetchError } = await supabaseAdmin
+        .from('students')
+        .select('id')
+        .eq('class_id', sourceClassId)
+        .eq('school_id', schoolId);
+    
+    if (fetchError) {
+        return { ok: false, message: `Failed to fetch students from the source class: ${fetchError.message}` };
+    }
+    if (!studentsToPromote || studentsToPromote.length === 0) {
+        return { ok: false, message: "No students found in the source class to promote." };
+    }
+    const studentIds = studentsToPromote.map(s => s.id);
+
+    // 2. Update their class_id to the destination class
+    const { error: updateError, count } = await supabaseAdmin
+        .from('students')
+        .update({ class_id: destinationClassId })
+        .in('id', studentIds)
+        .eq('school_id', schoolId);
+
+    if (updateError) {
+        return { ok: false, message: `Failed to promote students: ${updateError.message}` };
+    }
+
+    revalidatePath('/class-management');
+    revalidatePath('/admin/manage-students');
+    return { ok: true, message: `Successfully promoted ${count} student(s) to the new class.` };
+}
     

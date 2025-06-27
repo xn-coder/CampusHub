@@ -112,7 +112,7 @@ export default function StudentPaymentHistoryPage() {
             groups[classId].payments.push(payment);
         });
 
-        return Object.values(groups);
+        return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
     }, [payments, allClasses]);
 
     const handlePayTotal = async () => {
