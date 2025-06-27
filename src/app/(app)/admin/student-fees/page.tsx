@@ -26,11 +26,12 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 
 type StudentFeeStatus = 'Paid' | 'Partially Paid' | 'Pending' | 'Overdue';
+
 interface StudentFeeSummary {
   studentId: string;
   studentName: string;
-  classId?: string | null;
-  className?: string;
+  academicYearId?: string | null;
+  academicYearName?: string;
   totalAssigned: number;
   totalPaid: number;
   totalDue: number;
@@ -61,7 +62,7 @@ export default function AdminStudentFeesPage() {
   const [selectedStudentSummary, setSelectedStudentSummary] = useState<StudentFeeSummary | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
+  const [selectedAcademicYearFilter, setSelectedAcademicYearFilter] = useState<string>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
 
   const [selectedClassIdForFee, setSelectedClassIdForFee] = useState<string>('');
@@ -120,12 +121,8 @@ export default function AdminStudentFeesPage() {
 
   const getStudentName = (studentId: string) => students.find(s => s.id === studentId)?.name || 'N/A';
   const getFeeCategoryName = (feeCategoryId: string) => feeCategories.find(fc => fc.id === feeCategoryId)?.name || 'N/A';
-  const getAcademicYearName = (yearId?: string | null) => yearId ? academicYears.find(ay => ay.id === yearId)?.name : undefined;
-  const getClassDisplayName = (classId?: string | null) => {
-    if (!classId) return 'N/A';
-    const cls = classes.find(c => c.id === classId);
-    return cls ? `${cls.name} - ${cls.division}` : 'N/A';
-  };
+  const getAcademicYearName = (yearId?: string | null) => yearId ? academicYears.find(ay => ay.id === yearId)?.name : 'General';
+  
 
   const resetAssignFeeForm = () => {
     setSelectedClassIdForFee('');
@@ -269,36 +266,37 @@ export default function AdminStudentFeesPage() {
   };
 
   const studentFeeSummaries: StudentFeeSummary[] = useMemo(() => {
-    const studentDataMap: Record<string, StudentFeeSummary> = {};
-    const today = new Date();
+    const summaryMap: Record<string, StudentFeeSummary> = {};
 
     feePayments.forEach(fp => {
-      const student = students.find(s => s.id === fp.student_id);
-      if (!student) return;
+        const student = students.find(s => s.id === fp.student_id);
+        if (!student) return;
 
-      if (!studentDataMap[student.id]) {
-        studentDataMap[student.id] = {
-          studentId: student.id,
-          studentName: student.name,
-          classId: student.class_id,
-          className: student.class_id ? getClassDisplayName(student.class_id) : 'N/A',
-          totalAssigned: 0,
-          totalPaid: 0,
-          totalDue: 0,
-          status: 'Paid',
-          payments: []
-        };
-      }
-      
-      const summary = studentDataMap[student.id];
-      summary.totalAssigned += fp.assigned_amount;
-      summary.totalPaid += fp.paid_amount;
-      summary.payments.push(fp);
+        const academicYearId = fp.academic_year_id || 'general';
+        const key = `${student.id}-${academicYearId}`;
+
+        if (!summaryMap[key]) {
+            summaryMap[key] = {
+                studentId: student.id,
+                studentName: student.name,
+                academicYearId: fp.academic_year_id,
+                academicYearName: getAcademicYearName(fp.academic_year_id),
+                totalAssigned: 0,
+                totalPaid: 0,
+                totalDue: 0,
+                status: 'Paid',
+                payments: []
+            };
+        }
+        
+        const summary = summaryMap[key];
+        summary.totalAssigned += fp.assigned_amount;
+        summary.totalPaid += fp.paid_amount;
+        summary.payments.push(fp);
     });
 
-    return Object.values(studentDataMap).map(summary => {
+    return Object.values(summaryMap).map(summary => {
       let hasPending = false;
-      let hasPaid = false;
       let isOverdue = false;
       
       for (const payment of summary.payments) {
@@ -306,10 +304,8 @@ export default function AdminStudentFeesPage() {
               hasPending = true;
               if (payment.due_date && isPast(parseISO(payment.due_date)) && !isToday(parseISO(payment.due_date))) {
                   isOverdue = true;
-                  break; // Overdue is the highest priority status
+                  break;
               }
-          } else {
-              hasPaid = true;
           }
       }
       
@@ -326,9 +322,9 @@ export default function AdminStudentFeesPage() {
       }
       
       return summary;
-    });
+    }).sort((a,b) => a.studentName.localeCompare(b.studentName));
+  }, [feePayments, students, academicYears]);
 
-  }, [feePayments, students, classes]);
 
   const filteredSummaries = useMemo(() => {
     return studentFeeSummaries.filter(summary => {
@@ -336,7 +332,7 @@ export default function AdminStudentFeesPage() {
         const search = searchTerm.toLowerCase();
 
         const matchesSearch = studentName.includes(search);
-        const matchesClass = selectedClassFilter === 'all' || summary.classId === selectedClassFilter;
+        const matchesAcademicYear = selectedAcademicYearFilter === 'all' || summary.academicYearId === selectedAcademicYearFilter || (!summary.academicYearId && selectedAcademicYearFilter === 'general');
         
         const matchesStatus = (() => {
             if (selectedStatusFilter === 'all') return true;
@@ -346,9 +342,9 @@ export default function AdminStudentFeesPage() {
             return summary.status === selectedStatusFilter;
         })();
 
-        return matchesSearch && matchesClass && matchesStatus;
+        return matchesSearch && matchesAcademicYear && matchesStatus;
     });
-  }, [studentFeeSummaries, searchTerm, selectedClassFilter, selectedStatusFilter]);
+  }, [studentFeeSummaries, searchTerm, selectedAcademicYearFilter, selectedStatusFilter]);
 
   const handleDownloadCsv = () => {
     if (filteredSummaries.length === 0) {
@@ -356,14 +352,14 @@ export default function AdminStudentFeesPage() {
         return;
     }
 
-    const headers = ["Student Name", "Class", "Total Assigned ($)", "Total Paid ($)", "Total Due ($)", "Overall Status"];
+    const headers = ["Student Name", "Academic Year", "Total Assigned ($)", "Total Paid ($)", "Total Due ($)", "Overall Status"];
     
     const csvRows = [
         headers.join(','),
         ...filteredSummaries.map(summary => {
             const row = [
                 `"${summary.studentName.replace(/"/g, '""')}"`,
-                `"${summary.className}"`,
+                `"${summary.academicYearName}"`,
                 summary.totalAssigned.toFixed(2),
                 summary.totalPaid.toFixed(2),
                 summary.totalDue.toFixed(2),
@@ -398,7 +394,7 @@ export default function AdminStudentFeesPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Student Fee Records</CardTitle>
-          <CardDescription>A summarized overview of each student's fee status. Click "View & Manage" for details.</CardDescription>
+          <CardDescription>A summarized overview of each student's fee status, grouped by academic year. Click "View & Manage" for details.</CardDescription>
         </CardHeader>
         <CardContent>
            <div className="mb-4 flex flex-col md:flex-row gap-4 items-center">
@@ -409,13 +405,14 @@ export default function AdminStudentFeesPage() {
                 className="max-w-md"
                 disabled={isLoadingPage}
             />
-            <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter} disabled={isLoadingPage || classes.length === 0}>
+            <Select value={selectedAcademicYearFilter} onValueChange={setSelectedAcademicYearFilter} disabled={isLoadingPage || academicYears.length === 0}>
                 <SelectTrigger className="md:w-[200px]">
-                    <SelectValue placeholder="Filter by class" />
+                    <SelectValue placeholder="Filter by year" />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="all">All Classes</SelectItem>
-                    {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}
+                    <SelectItem value="all">All Years</SelectItem>
+                    <SelectItem value="general">General</SelectItem>
+                    {academicYears.map(ay => <SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)}
                 </SelectContent>
             </Select>
             <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter} disabled={isLoadingPage}>
@@ -442,14 +439,14 @@ export default function AdminStudentFeesPage() {
              <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>
           ) : filteredSummaries.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">
-                {searchTerm || selectedClassFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}
+                {searchTerm || selectedAcademicYearFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Student</TableHead>
-                  <TableHead>Class</TableHead>
+                  <TableHead>Academic Year</TableHead>
                   <TableHead className="text-right">Total Assigned ($)</TableHead>
                   <TableHead className="text-right">Total Paid ($)</TableHead>
                   <TableHead className="text-right">Total Due ($)</TableHead>
@@ -459,9 +456,9 @@ export default function AdminStudentFeesPage() {
               </TableHeader>
               <TableBody>
                 {filteredSummaries.map((summary) => (
-                  <TableRow key={summary.studentId}>
+                  <TableRow key={summary.studentId + (summary.academicYearId || 'general')}>
                     <TableCell className="font-medium">{summary.studentName}</TableCell>
-                    <TableCell>{summary.className}</TableCell>
+                    <TableCell>{summary.academicYearName}</TableCell>
                     <TableCell className="text-right">{summary.totalAssigned.toFixed(2)}</TableCell>
                     <TableCell className="text-right">{summary.totalPaid.toFixed(2)}</TableCell>
                      <TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}>{summary.totalDue.toFixed(2)}</TableCell>
@@ -540,7 +537,7 @@ export default function AdminStudentFeesPage() {
                 <Select value={selectedAcademicYearId} onValueChange={(val) => setSelectedAcademicYearId(val === 'none' ? undefined : val)} disabled={isSubmitting}>
                   <SelectTrigger><SelectValue placeholder="Select academic year" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="none">None (General)</SelectItem>
                     {academicYears.map(ay => (<SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>))}
                   </SelectContent>
                 </Select>
@@ -565,7 +562,7 @@ export default function AdminStudentFeesPage() {
            <DialogHeader>
             <DialogTitle>Fee Details for: {selectedStudentSummary?.studentName}</DialogTitle>
              <CardDescription>
-                Class: {selectedStudentSummary?.className} | Total Due: ${selectedStudentSummary?.totalDue.toFixed(2)}
+                Academic Year: {selectedStudentSummary?.academicYearName} | Total Due: ${selectedStudentSummary?.totalDue.toFixed(2)}
             </CardDescription>
           </DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto">
