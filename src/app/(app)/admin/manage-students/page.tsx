@@ -12,10 +12,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Student, User, ClassData } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
-import { Edit2, Trash2, Search, Users, Activity, Save, Loader2, FileDown } from 'lucide-react';
+import { useState, useEffect, type FormEvent, useCallback } from 'react';
+import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
+import { terminateStudentAction } from './actions';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -45,6 +48,32 @@ export default function ManageStudentsPage() {
   const [editStudentName, setEditStudentName] = useState('');
   const [editStudentEmail, setEditStudentEmail] = useState('');
   const [editStudentClassId, setEditStudentClassId] = useState<string | undefined>(undefined);
+  
+  const [showTerminated, setShowTerminated] = useState(false);
+
+
+  const fetchStudents = useCallback(async (schoolId: string) => {
+    setIsLoading(true);
+    let query = supabase
+      .from('students')
+      .select('id, name, email, class_id, profile_picture_url, user_id, school_id, status')
+      .eq('school_id', schoolId);
+
+    if (!showTerminated) {
+      query = query.eq('status', 'Active');
+    }
+
+    const { data, error } = await query.order('name');
+
+    if (error) {
+      console.error("Error fetching students:", error);
+      toast({ title: "Error", description: "Failed to fetch student data.", variant: "destructive" });
+      setStudents([]);
+    } else {
+      setStudents(data || []);
+    }
+    setIsLoading(false);
+  }, [showTerminated, toast]);
 
 
   useEffect(() => {
@@ -65,7 +94,14 @@ export default function ManageStudentsPage() {
       setIsLoading(false);
       toast({ title: "Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
     }
-  }, [toast]);
+  }, [toast, fetchStudents]);
+  
+   useEffect(() => {
+    if (currentSchoolId) {
+      fetchStudents(currentSchoolId);
+    }
+  }, [currentSchoolId, showTerminated, fetchStudents]);
+
 
   async function fetchClasses(schoolId: string) {
      const { data, error } = await supabase
@@ -78,32 +114,6 @@ export default function ManageStudentsPage() {
     } else {
       setAllClassesInSchool(data || []);
     }
-  }
-
-  async function fetchStudents(schoolId: string) {
-    setIsLoading(true);
-    const { data, error } = await supabase
-      .from('students')
-      .select('id, name, email, class_id, profile_picture_url, user_id, school_id') 
-      .eq('school_id', schoolId);
-
-    if (error) {
-      console.error("Error fetching students:", error);
-      toast({ title: "Error", description: "Failed to fetch student data.", variant: "destructive" });
-      setStudents([]);
-    } else {
-      const formattedStudents = data?.map(s => ({
-        id: s.id,
-        name: s.name,
-        email: s.email || 'N/A',
-        classId: s.class_id || '', 
-        profilePictureUrl: s.profile_picture_url,
-        userId: s.user_id, 
-        school_id: s.school_id 
-      })) || [];
-      setStudents(formattedStudents);
-    }
-    setIsLoading(false);
   }
 
   const getClassDisplayName = (classId?: string | null): string => {
@@ -189,48 +199,28 @@ export default function ManageStudentsPage() {
     setIsLoading(false);
   };
   
-  const handleDeleteStudent = async (student: Student) => { 
+  const handleTerminateStudent = async (student: Student) => { 
     if (!currentSchoolId) return;
-    if (confirm(`Are you sure you want to delete ${student.name}? This will also remove their login access.`)) {
+    if (confirm(`Are you sure you want to terminate ${student.name}? This will prevent them from logging in and unassign them from their class.`)) {
       setIsLoading(true);
-      const { error: studentDeleteError } = await supabase
-        .from('students')
-        .delete()
-        .eq('id', student.id)
-        .eq('school_id', currentSchoolId);
-
-      if (studentDeleteError) {
-        toast({ title: "Error", description: `Failed to delete student profile: ${studentDeleteError.message}`, variant: "destructive" });
-        setIsLoading(false);
-        return;
+      const result = await terminateStudentAction(student.id, currentSchoolId);
+      if (result.ok) {
+        toast({ title: "Student Terminated", description: result.message });
+        if(currentSchoolId) fetchStudents(currentSchoolId);
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
-
-      if (student.user_id) {
-        const { error: userDeleteError } = await supabase
-          .from('users')
-          .delete()
-          .eq('id', student.user_id);
-        if (userDeleteError) {
-          toast({ title: "Warning", description: `Student profile deleted, but failed to delete user login: ${userDeleteError.message}`, variant: "default" });
-        }
-      }
-      
-      toast({
-        title: "Student Deleted",
-        description: `${student.name} has been removed.`,
-        variant: "destructive"
-      });
-      if(currentSchoolId) fetchStudents(currentSchoolId); 
       setIsLoading(false);
     }
   };
+
 
   const handleDownloadCsv = () => {
     if (filteredStudents.length === 0) {
         toast({ title: "No Data", description: "There are no students to download for the current filter.", variant: "destructive"});
         return;
     }
-    const headers = ["Name", "Email", "Class"];
+    const headers = ["Name", "Email", "Class", "Status"];
     const csvRows = [
         headers.join(','),
         ...filteredStudents.map(student => {
@@ -238,7 +228,8 @@ export default function ManageStudentsPage() {
             const row = [
                 `"${student.name.replace(/"/g, '""')}"`,
                 `"${(student.email || 'N/A').replace(/"/g, '""')}"`,
-                `"${className.replace(/"/g, '""')}"`
+                `"${className.replace(/"/g, '""')}"`,
+                `"${student.status || 'Active'}"`
             ];
             return row.join(',');
         })
@@ -281,10 +272,10 @@ export default function ManageStudentsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Student Roster</CardTitle>
-              <CardDescription>View, search, and manage enrolled student profiles. New students are registered by teachers via their portal.</CardDescription>
+              <CardDescription>View, search, and manage enrolled student profiles. New students are registered by teachers or admins.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 flex flex-wrap items-center gap-2">
+              <div className="mb-4 flex flex-wrap items-center gap-4">
                 <div className="flex-grow flex items-center gap-2">
                     <Search className="h-5 w-5 text-muted-foreground" />
                     <Input 
@@ -295,7 +286,11 @@ export default function ManageStudentsPage() {
                     disabled={isLoading}
                     />
                 </div>
-                <Button onClick={handleDownloadCsv} disabled={isLoading || filteredStudents.length === 0}>
+                 <div className="flex items-center space-x-2">
+                    <Checkbox id="showTerminated" checked={showTerminated} onCheckedChange={(checked) => setShowTerminated(!!checked)} />
+                    <Label htmlFor="showTerminated">Show Terminated Students</Label>
+                </div>
+                <Button onClick={handleDownloadCsv} disabled={isLoading || filteredStudents.length === 0} className="ml-auto">
                     <FileDown className="mr-2 h-4 w-4"/>
                     Download Report
                 </Button>
@@ -311,13 +306,13 @@ export default function ManageStudentsPage() {
                       <TableHead>Avatar</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead>Class</TableHead>
+                      <TableHead>Class / Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredStudents.map((student) => (
-                      <TableRow key={student.id}>
+                      <TableRow key={student.id} className={student.status !== 'Active' ? 'bg-muted/50' : ''}>
                         <TableCell>
                           <Avatar>
                             <AvatarImage src={student.profile_picture_url || `https://placehold.co/40x40.png?text=${student.name.substring(0,2).toUpperCase()}`} alt={student.name} data-ai-hint="person portrait" />
@@ -326,14 +321,25 @@ export default function ManageStudentsPage() {
                         </TableCell>
                         <TableCell className="font-medium">{student.name}</TableCell>
                         <TableCell>{student.email}</TableCell>
-                        <TableCell>{getClassDisplayName(student.class_id)}</TableCell>
+                        <TableCell>
+                            {student.status !== 'Active' ? 
+                                <Badge variant="destructive">{student.status}</Badge> 
+                                : getClassDisplayName(student.class_id)
+                            }
+                        </TableCell>
                         <TableCell className="space-x-1 text-right">
-                          <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isLoading}>
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteStudent(student)} disabled={isLoading}>
-                            {isLoading && editingStudent?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                          </Button>
+                          {student.status === 'Active' ? (
+                            <>
+                                <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isLoading}>
+                                    <Edit2 className="h-4 w-4" />
+                                </Button>
+                                <Button variant="destructive" size="icon" onClick={() => handleTerminateStudent(student)} disabled={isLoading} title="Terminate Student">
+                                    <UserX className="h-4 w-4" />
+                                </Button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No actions available</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -342,7 +348,7 @@ export default function ManageStudentsPage() {
               )}
               {!isLoading && filteredStudents.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">
-                  {searchTerm ? "No students match your search." : "No students found for this school. Teachers can register new students."}
+                  {searchTerm ? "No students match your search." : (showTerminated ? "No terminated students found." : "No active students found for this school.")}
                 </p>
               )}
             </CardContent>

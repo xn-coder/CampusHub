@@ -88,6 +88,7 @@ export interface Student {
   contact_number?: string | null;
   address?: string | null;
   admission_date?: string | null;
+  status?: 'Active' | 'Terminated' | 'Graduated';
   school_id: string;
 
   lastLogin?: string;

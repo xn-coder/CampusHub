@@ -67,13 +67,17 @@ export async function attemptLogin(
   try {
     const { data: userRecord, error: fetchError } = await supabaseAdmin
       .from('users')
-      .select('id, email, name, role, password_hash')
+      .select('id, email, name, role, password_hash, school_id')
       .eq('email', email)
       .single();
 
     if (fetchError && fetchError.code !== 'PGRST116') {
       console.error('Error fetching user during login:', fetchError);
-      return { ok: false, message: 'Error during login process.' };
+      const dbError = (fetchError as any);
+      if (dbError?.message?.includes('failed to fetch')) {
+        return { ok: false, message: 'Database connection failed. Please check your .env configuration and network connection.'};
+      }
+      return { ok: false, message: `Database query failed: ${dbError.message}. Please check your Supabase credentials and network connection.` };
     }
 
     if (!userRecord) {
@@ -92,6 +96,24 @@ export async function attemptLogin(
 
     if (userRecord.role !== role) {
       return { ok: false, message: `Incorrect role selected. Expected ${userRecord.role}.` };
+    }
+
+    // Check student status if user is a student
+    if (userRecord.role === 'student' && userRecord.school_id) {
+        const { data: studentProfile, error: studentError } = await supabaseAdmin
+            .from('students')
+            .select('id, status')
+            .eq('user_id', userRecord.id)
+            .eq('school_id', userRecord.school_id)
+            .single();
+        
+        if (studentError && studentError.code !== 'PGRST116') {
+            return { ok: false, message: 'Error fetching student profile during login.' };
+        }
+
+        if (studentProfile?.status && studentProfile.status !== 'Active') {
+            return { ok: false, message: `Your account status is "${studentProfile.status}". Please contact administration.` };
+        }
     }
     
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
