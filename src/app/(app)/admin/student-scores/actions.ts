@@ -110,8 +110,9 @@ export async function notifyStudentForReExamAction(
 
     const result = await apiResponse.json();
     if (!apiResponse.ok || !result.success) {
-      console.error(`Failed to send re-exam notification email via API: ${result.message || apiResponse.statusText}`);
-      return { ok: false, message: 'Failed to dispatch notification email.' };
+      const errorMessage = result.message || apiResponse.statusText || "An unknown error occurred.";
+      console.error(`Failed to send re-exam notification email via API: ${errorMessage}`);
+      return { ok: false, message: `Failed to dispatch notification email. Reason: ${errorMessage}` };
     }
 
     console.log(`Re-exam notification email successfully dispatched via API for student ${studentId}.`);

@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
-      console.error('[LOG API /api/send-email] Resend error:', error);
-      return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+      console.error('[LOG API /api/send-email] Resend error:', JSON.stringify(error, null, 2));
+      return NextResponse.json({ success: false, message: `Resend API Error: ${(error as Error).message}` }, { status: 500 });
     }
 
     console.log('[LOG API /api/send-email] Email sent successfully via Resend:', data);
