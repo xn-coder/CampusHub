@@ -6,6 +6,7 @@ console.log('[LOG] Loading src/app/(app)/teacher/grade-assignments/actions.ts');
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { Assignment, AssignmentSubmission, Student } from '@/types';
 import { revalidatePath } from 'next/cache';
+import { sendEmail } from '@/services/emailService';
 
 interface EnrichedSubmission extends AssignmentSubmission {
   student_name: string;
@@ -145,21 +146,15 @@ export async function saveSingleGradeAndFeedbackAction(input: SaveGradeInput): P
         `;
         
         try {
-          console.log(`[saveSingleGradeAndFeedbackAction] Attempting to send grade notification via API to: ${submission.student.email}`);
-          const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
-          const apiResponse = await fetch(emailApiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: submission.student.email, subject: emailSubject, html: emailBody }),
-          });
-          const result = await apiResponse.json();
-           if (!apiResponse.ok || !result.success) {
-            console.error(`[saveSingleGradeAndFeedbackAction] Failed to send email via API: ${result.message || apiResponse.statusText}`);
+          console.log(`[saveSingleGradeAndFeedbackAction] Attempting to send grade notification via email service to: ${submission.student.email}`);
+          const result = await sendEmail({ to: submission.student.email, subject: emailSubject, html: emailBody });
+          if (!result.ok) {
+            console.error(`[saveSingleGradeAndFeedbackAction] Failed to send email via service: ${result.message}`);
           } else {
-            console.log(`[saveSingleGradeAndFeedbackAction] Email successfully dispatched via API: ${result.message}`);
+            console.log(`[saveSingleGradeAndFeedbackAction] Email successfully dispatched via service: ${result.message}`);
           }
         } catch (apiError: any) {
-          console.error(`[saveSingleGradeAndFeedbackAction] Error calling email API: ${apiError.message}`);
+          console.error(`[saveSingleGradeAndFeedbackAction] Error calling email service: ${apiError.message}`);
         }
       }
     }

@@ -7,7 +7,7 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { Assignment, UserRole } from '@/types';
-import { getStudentEmailsByClassId } from '@/services/emailService';
+import { getStudentEmailsByClassId, sendEmail } from '@/services/emailService';
 
 const NO_SUBJECT_VALUE_INTERNAL = "__NO_SUBJECT__";
 
@@ -66,21 +66,15 @@ export async function postAssignmentAction(
       `;
       
       try {
-        console.log(`[postAssignmentAction] Attempting to send assignment notification via API to: ${studentEmails.join(', ')}`);
-        const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
-        const apiResponse = await fetch(emailApiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: studentEmails, subject: emailSubject, html: emailBody }),
-        });
-        const result = await apiResponse.json();
-        if (!apiResponse.ok || !result.success) {
-          console.error(`[postAssignmentAction] Failed to send email via API: ${result.message || apiResponse.statusText}`);
+        console.log(`[postAssignmentAction] Attempting to send assignment notification via email service to: ${studentEmails.join(', ')}`);
+        const result = await sendEmail({ to: studentEmails, subject: emailSubject, html: emailBody });
+        if (!result.ok) {
+          console.error(`[postAssignmentAction] Failed to send email via service: ${result.message}`);
         } else {
-          console.log(`[postAssignmentAction] Email successfully dispatched via API: ${result.message}`);
+          console.log(`[postAssignmentAction] Email successfully dispatched via service: ${result.message}`);
         }
       } catch (apiError: any) {
-        console.error(`[postAssignmentAction] Error calling email API: ${apiError.message}`);
+        console.error(`[postAssignmentAction] Error calling email service: ${apiError.message}`);
       }
     }
   }

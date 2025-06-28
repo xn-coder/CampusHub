@@ -1,12 +1,76 @@
-
 // src/services/emailService.ts
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { UserRole } from '@/types';
+import { Resend } from 'resend';
 
-// EmailJS configuration and the sendEmail function have been moved to /api/send-email/route.ts
-// This file now only contains helper functions for fetching email addresses.
+
+// --- Email Sending Logic ---
+
+const resendApiKey = process.env.RESEND_API_KEY;
+
+let resend: Resend | null = null;
+if (resendApiKey && resendApiKey.startsWith('re_')) {
+  try {
+    resend = new Resend(resendApiKey);
+    console.log("[LOG emailService] Resend IS CONFIGURED.");
+  } catch(e) {
+     console.error("[LOG emailService] Error initializing Resend client:", e);
+     resend = null;
+  }
+} else {
+  console.warn(
+    "[LOG emailService] RESEND_API_KEY is missing or invalid. Emails will be mocked in the server logs."
+  );
+}
+
+interface EmailPayload {
+  to: string | string[];
+  subject: string;
+  html: string;
+}
+
+export async function sendEmail(payload: EmailPayload): Promise<{ ok: boolean; message: string }> {
+  const { to, subject, html } = payload;
+  
+  if (!resend) {
+    console.log(`--- [LOG emailService] MOCK EMAIL SEND REQUEST ---`);
+    console.log("To:", Array.isArray(to) ? to.join(', ') : to);
+    console.log("Subject:", subject);
+    console.log("HTML Body (first 200 chars):", html.substring(0, 200) + (html.length > 200 ? "..." : ""));
+    console.log("--- [LOG emailService] END MOCK EMAIL ---");
+    return { ok: true, message: "Email sending is mocked due to missing or invalid Resend configuration. Check server logs." };
+  }
+
+  // NOTE: Resend requires a verified sending domain. 'onboarding@resend.dev' is for testing/development.
+  // In production, you would replace this with a from address on your own verified domain.
+  const fromAddress = 'CampusHub <onboarding@resend.dev>';
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: fromAddress,
+      to: to,
+      subject: subject,
+      html: html,
+    });
+
+    if (error) {
+      console.error('[LOG emailService] Resend error:', JSON.stringify(error, null, 2));
+      return { ok: false, message: `Resend API Error: ${(error as Error).message}` };
+    }
+
+    console.log('[LOG emailService] Email sent successfully via Resend:', data);
+    return { ok: true, message: 'Email sent successfully via Resend.' };
+
+  } catch (error: any) {
+    console.error('[LOG emailService] Error processing request:', error);
+    return { ok: false, message: error.message || 'Internal Server Error' };
+  }
+}
+
+
+// --- Email Address Fetching Logic ---
 
 export async function getStudentEmailsByClassId(classId: string, schoolId: string): Promise<string[]> {
   if (!classId || !schoolId) return [];

@@ -4,57 +4,59 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl) {
-  throw new Error(
-    "CRITICAL: Missing environment variable NEXT_PUBLIC_SUPABASE_URL. Please set it in your .env file."
-  );
-}
-if (!supabaseUrl.startsWith('http://') && !supabaseUrl.startsWith('https://')) {
-  throw new Error(
-    `CRITICAL: Invalid format for NEXT_PUBLIC_SUPABASE_URL: "${supabaseUrl}". It must start with http:// or https://.`
-  );
-}
+// A utility to create a mock Supabase client that throws an informative error when used.
+// This prevents the app from crashing on startup if credentials are not yet configured.
+const createThrowingClient = (message: string): SupabaseClient => {
+  const handler = {
+    get(target: any, prop: string) {
+      // Allow checks like `if (supabase)` to work, but throw for any method call.
+      if (prop === 'then') {
+        return null;
+      }
+      throw new Error(message);
+    },
+  };
+  return new Proxy({}, handler) as SupabaseClient;
+};
 
-if (!supabaseAnonKey) {
-  throw new Error(
-    "CRITICAL: Missing environment variable NEXT_PUBLIC_SUPABASE_ANON_KEY. Please set it in your .env file."
-  );
-}
+// Function to initialize the client-side Supabase instance
+const initializeSupabaseClient = (url?: string, key?: string): SupabaseClient => {
+  if (!url || url.includes("YOUR_SUPABASE_URL_HERE") || !key || key.includes("YOUR_SUPABASE_ANON_KEY_HERE")) {
+    const errorMessage = "Supabase client is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env file.";
+    console.error(`[Supabase Client] ${errorMessage}`);
+    return createThrowingClient(errorMessage);
+  }
 
-// Client for client-side operations (uses anon key)
-let supabaseInstance: SupabaseClient;
-try {
-  supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);
-} catch (error: any) {
-  console.error("Error initializing Supabase client (anon key):", error);
-  throw new Error(
-    `Failed to initialize Supabase client with URL "${supabaseUrl}". Check console for details. Ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are correct in your .env file.`
-  );
-}
-export const supabase = supabaseInstance;
+  try {
+    // This will still throw if the URL format is fundamentally wrong, which is intended.
+    new URL(url); 
+    return createClient(url, key);
+  } catch (error) {
+    const errorMessage = `Failed to initialize Supabase client. Please check if the URL is correct. Error: ${(error as Error).message}`;
+    console.error(`[Supabase Client] ${errorMessage}`);
+    return createThrowingClient(errorMessage);
+  }
+};
+
+export const supabase = initializeSupabaseClient(supabaseUrl, supabaseAnonKey);
 
 
-// Function to create a Supabase client for server-side operations (uses service_role key)
+// Function to create a Supabase client for server-side operations
 export const createSupabaseServerClient = (): SupabaseClient => {
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  // serverSupabaseUrl is already validated and available as supabaseUrl from the top scope
+
+  if (!supabaseUrl || supabaseUrl.includes("YOUR_SUPABASE_URL_HERE")) {
+    const errorMessage = "Server-side Supabase URL is not configured. Please set NEXT_PUBLIC_SUPABASE_URL in your .env file.";
+    console.error(`[Supabase Server Client] ${errorMessage}`);
+    return createThrowingClient(errorMessage);
+  }
   
   if (!supabaseServiceKey) {
-    // This is a critical warning for developers, as it indicates a less secure fallback.
-    console.warn(
-      "SECURITY WARNING: SUPABASE_SERVICE_ROLE_KEY is not set. Server client will use the public anon key. " +
-      "Row Level Security (RLS) will NOT be bypassed for server-side operations as intended. " +
-      "Set SUPABASE_SERVICE_ROLE_KEY for proper admin privileges on the backend."
+     console.warn(
+      "[Supabase Server Client] WARNING: SUPABASE_SERVICE_ROLE_KEY is not set. Falling back to the public anon key. RLS will not be bypassed."
     );
-    try {
-      // supabaseUrl and supabaseAnonKey are guaranteed to be defined and valid here
-      return createClient(supabaseUrl, supabaseAnonKey); 
-    } catch (error: any) {
-      console.error("Error initializing Supabase server client (fallback to anon key):", error);
-      throw new Error(
-        `Failed to initialize Supabase server client (fallback to anon) with URL "${supabaseUrl}". Check console for details.`
-      );
-    }
+    // Reuse the client-side instance if the service key is missing
+    return supabase;
   }
   
   try {
@@ -62,13 +64,11 @@ export const createSupabaseServerClient = (): SupabaseClient => {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
-        detectSessionInUrl: false,
       },
     });
-  } catch (error: any) {
-      console.error("Error initializing Supabase server client (with service key):", error);
-      throw new Error(
-        `Failed to initialize Supabase server client (with service key) and URL "${supabaseUrl}". Check console for details.`
-      );
+  } catch (error) {
+    const errorMessage = `Failed to initialize Supabase server client. Error: ${(error as Error).message}`;
+    console.error(`[Supabase Server Client] ${errorMessage}`);
+    return createThrowingClient(errorMessage);
   }
 };

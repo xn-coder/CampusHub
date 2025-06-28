@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { revalidatePath } from 'next/cache';
 import type { AdmissionRecord, Student, User, AdmissionStatus, UserRole, PaymentStatus } from '@/types';
+import { sendEmail } from '@/services/emailService';
 
 const SALT_ROUNDS = 10;
 
@@ -171,21 +172,15 @@ export async function registerStudentAction(
     `;
     
     try {
-      console.log(`[registerStudentAction] Attempting to send welcome email via API to: ${email.trim()}`);
-      const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
-      const apiResponse = await fetch(emailApiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: email.trim(), subject: emailSubject, html: emailBody }),
-      });
-      const result = await apiResponse.json();
-      if (!apiResponse.ok || !result.success) {
-        console.error(`[registerStudentAction] Failed to send email via API: ${result.message || apiResponse.statusText}`);
+      console.log(`[registerStudentAction] Attempting to send welcome email via email service to: ${email.trim()}`);
+      const result = await sendEmail({ to: email.trim(), subject: emailSubject, html: emailBody });
+      if (!result.ok) {
+        console.error(`[registerStudentAction] Failed to send email via service: ${result.message}`);
       } else {
-        console.log(`[registerStudentAction] Email successfully dispatched via API: ${result.message}`);
+        console.log(`[registerStudentAction] Email successfully dispatched via service: ${result.message}`);
       }
     } catch (apiError: any) {
-      console.error(`[registerStudentAction] Error calling email API: ${apiError.message}`);
+      console.error(`[registerStudentAction] Error calling email service: ${apiError.message}`);
     }
 
     revalidatePath('/teacher/register-student');

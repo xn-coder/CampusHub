@@ -6,7 +6,7 @@ console.log('[LOG] Loading src/app/(app)/admin/class-schedule/actions.ts');
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import type { ClassScheduleDB, ClassData, Subject, Teacher, UserRole } from '@/types'; // Use DB types
-import { getStudentEmailsByClassId, getTeacherEmailByTeacherProfileId } from '@/services/emailService';
+import { getStudentEmailsByClassId, getTeacherEmailByTeacherProfileId, sendEmail } from '@/services/emailService';
 
 interface ClassScheduleInput {
   school_id: string;
@@ -104,21 +104,15 @@ export async function addClassScheduleAction(
 
       if (recipientEmails.length > 0) {
         try {
-          console.log(`[addClassScheduleAction] Attempting to send schedule notification via API to: ${recipientEmails.join(', ')}`);
-          const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
-          const apiResponse = await fetch(emailApiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: recipientEmails, subject: emailSubject, html: emailBody }),
-          });
-          const result = await apiResponse.json();
-          if (!apiResponse.ok || !result.success) {
-            console.error(`[addClassScheduleAction] Failed to send email via API: ${result.message || apiResponse.statusText}`);
+          console.log(`[addClassScheduleAction] Attempting to send schedule notification via email service to: ${recipientEmails.join(', ')}`);
+          const result = await sendEmail({ to: recipientEmails, subject: emailSubject, html: emailBody });
+          if (!result.ok) {
+            console.error(`[addClassScheduleAction] Failed to send email via service: ${result.message}`);
           } else {
-            console.log(`[addClassScheduleAction] Email successfully dispatched via API: ${result.message}`);
+            console.log(`[addClassScheduleAction] Email successfully dispatched via service: ${result.message}`);
           }
         } catch (apiError: any) {
-          console.error(`[addClassScheduleAction] Error calling email API: ${apiError.message}`);
+          console.error(`[addClassScheduleAction] Error calling email service: ${apiError.message}`);
         }
       }
     }

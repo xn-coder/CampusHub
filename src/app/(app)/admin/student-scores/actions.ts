@@ -5,6 +5,7 @@ console.log('[LOG] Loading src/app/(app)/admin/student-scores/actions.ts');
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { StudentScore, Student, Exam, ClassData, Subject, Teacher } from '@/types';
+import { sendEmail } from '@/services/emailService';
 
 async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
   if (!adminUserId) {
@@ -101,24 +102,21 @@ export async function notifyStudentForReExamAction(
   `;
 
   try {
-    const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
-    const apiResponse = await fetch(emailApiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: student.email, subject: emailSubject, html: emailBody }),
+    const result = await sendEmail({
+      to: student.email,
+      subject: emailSubject,
+      html: emailBody,
     });
 
-    const result = await apiResponse.json();
-    if (!apiResponse.ok || !result.success) {
-      const errorMessage = result.message || apiResponse.statusText || "An unknown error occurred.";
-      console.error(`Failed to send re-exam notification email via API: ${errorMessage}`);
-      return { ok: false, message: `Failed to dispatch notification email. Reason: ${errorMessage}` };
+    if (!result.ok) {
+      console.error(`Failed to send re-exam notification email: ${result.message}`);
+      return { ok: false, message: `Failed to dispatch notification email. Reason: ${result.message}` };
     }
 
-    console.log(`Re-exam notification email successfully dispatched via API for student ${studentId}.`);
+    console.log(`Re-exam notification email successfully dispatched for student ${studentId}.`);
     return { ok: true, message: `Notification for re-exam sent to ${student.name}.` };
   } catch (apiError: any) {
-    console.error(`Error calling email API for re-exam notification: ${apiError.message}`);
+    console.error(`Error calling email service for re-exam notification: ${apiError.message}`);
     return { ok: false, message: 'An error occurred while sending the notification.' };
   }
 }

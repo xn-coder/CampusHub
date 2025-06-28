@@ -6,7 +6,7 @@ console.log('[LOG] Loading src/app/(app)/communication/actions.ts');
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import type { AnnouncementDB, UserRole, ClassData, Exam } from '@/types';
-import { getStudentEmailsByClassId, getAllUserEmailsInSchool, getTeacherEmailByTeacherProfileId } from '@/services/emailService';
+import { getStudentEmailsByClassId, getAllUserEmailsInSchool, getTeacherEmailByTeacherProfileId, sendEmail } from '@/services/emailService';
 
 interface PostAnnouncementInput {
   title: string;
@@ -114,21 +114,15 @@ export async function postAnnouncementAction(
 
       if (recipientEmails.length > 0) {
         try {
-          console.log(`[postAnnouncementAction] Attempting to send announcement notification via API to: ${recipientEmails.join(', ')}`);
-          const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
-          const apiResponse = await fetch(emailApiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: recipientEmails, subject: subject, html: fullEmailBody }),
-          });
-          const result = await apiResponse.json();
-           if (!apiResponse.ok || !result.success) {
-            console.error(`[postAnnouncementAction] Failed to send email via API: ${result.message || apiResponse.statusText}`);
+          console.log(`[postAnnouncementAction] Attempting to send announcement notification via email service to: ${recipientEmails.join(', ')}`);
+          const result = await sendEmail({ to: recipientEmails, subject: subject, html: fullEmailBody });
+          if (!result.ok) {
+            console.error(`[postAnnouncementAction] Failed to send email via service: ${result.message}`);
           } else {
-            console.log(`[postAnnouncementAction] Email successfully dispatched via API: ${result.message}`);
+            console.log(`[postAnnouncementAction] Email successfully dispatched via service: ${result.message}`);
           }
         } catch (apiError: any) {
-          console.error(`[postAnnouncementAction] Error calling email API: ${apiError.message}`);
+          console.error(`[postAnnouncementAction] Error calling email service: ${apiError.message}`);
         }
       }
     }
