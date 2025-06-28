@@ -443,3 +443,9 @@ export interface Assignment {
   updated_at?: string;
   submission?: AssignmentSubmission | null; // For student view
 }
+
+declare global {
+  interface Window {
+    Razorpay: new (options: any) => any;
+  }
+}

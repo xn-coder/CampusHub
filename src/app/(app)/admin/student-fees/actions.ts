@@ -6,6 +6,8 @@ import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { StudentFeePayment, PaymentStatus, Student, FeeCategory, AcademicYear, ClassData } from '@/types';
 import { isPast, startOfDay } from 'date-fns';
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
 
 
 interface AssignFeeInput {
@@ -487,5 +489,102 @@ export async function checkStudentFeeStatusAction(
   } catch (e: any) {
     console.error("Unexpected error checking fee status:", e);
     return { ok: false, isDefaulter: false, message: `Unexpected error: ${e.message}` };
+  }
+}
+
+// --- Razorpay Actions ---
+let razorpayInstance: Razorpay | null = null;
+if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+    razorpayInstance = new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+} else {
+    console.warn("Razorpay credentials not found in .env. Payment gateway will not function.");
+}
+
+export async function createRazorpayOrderAction(
+  amountInPaisa: number,
+  feePaymentIds: string[]
+): Promise<{ ok: boolean, message: string, order?: any }> {
+  if (!razorpayInstance) {
+    return { ok: false, message: "Razorpay is not configured on the server." };
+  }
+  if (amountInPaisa <= 0) {
+    return { ok: false, message: "Payment amount must be positive." };
+  }
+  if (feePaymentIds.length === 0) {
+    return { ok: false, message: "At least one fee record must be selected for payment." };
+  }
+
+  const options = {
+    amount: amountInPaisa,
+    currency: "INR",
+    receipt: `receipt_fee_${uuidv4()}`,
+    notes: {
+      fee_payment_ids: JSON.stringify(feePaymentIds), // Store fee IDs in notes
+    },
+  };
+
+  try {
+    const order = await razorpayInstance.orders.create(options);
+    return { ok: true, message: "Order created successfully.", order };
+  } catch (error: any) {
+    console.error("Razorpay order creation error:", error);
+    return { ok: false, message: `Failed to create Razorpay order: ${error.message}` };
+  }
+}
+
+export async function verifyRazorpayPaymentAction(
+  razorpay_payment_id: string,
+  razorpay_order_id: string,
+  razorpay_signature: string,
+  schoolId: string
+): Promise<{ ok: boolean, message: string }> {
+  const secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!secret) {
+    return { ok: false, message: "Razorpay secret key is not configured on the server." };
+  }
+
+  const body = razorpay_order_id + "|" + razorpay_payment_id;
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(body.toString())
+    .digest("hex");
+
+  if (expectedSignature !== razorpay_signature) {
+    return { ok: false, message: "Payment verification failed: Invalid signature." };
+  }
+
+  // Signature is valid, now fetch the order to get the fee IDs and amount.
+  if (!razorpayInstance) {
+    return { ok: false, message: "Razorpay is not configured on the server." };
+  }
+  
+  try {
+    const orderDetails = await razorpayInstance.orders.fetch(razorpay_order_id);
+    const paidAmount = orderDetails.amount_paid / 100; // Convert from paisa to rupees
+    const feePaymentIds: string[] = JSON.parse(orderDetails.notes?.fee_payment_ids || '[]');
+    
+    if (feePaymentIds.length === 0) {
+      return { ok: false, message: "No fee records found in the payment order." };
+    }
+    
+    // For simplicity, we assume the full due amount for the selected fees was paid.
+    // A more complex system might distribute the paidAmount across the fees.
+    for (const feeId of feePaymentIds) {
+      await recordStudentFeePaymentAction({
+        fee_payment_id: feeId,
+        payment_amount: paidAmount / feePaymentIds.length, // Distribute payment equally for this simple case
+        payment_date: new Date().toISOString(),
+        school_id: schoolId
+      });
+    }
+
+    revalidatePath('/student/payment-history');
+    return { ok: true, message: "Payment verified and recorded successfully!" };
+  } catch (error: any) {
+    console.error("Error during payment verification process:", error);
+    return { ok: false, message: `Payment recorded but verification step failed: ${error.message}` };
   }
 }

@@ -10,14 +10,11 @@ import { DollarSign, CalendarDays, FileText, Loader2, CreditCard, Download, Scho
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { getStudentPaymentHistoryAction, recordStudentFeePaymentAction, studentPayAllFeesAction } from '@/app/(app)/admin/student-fees/actions';
+import { getStudentPaymentHistoryAction, createRazorpayOrderAction, verifyRazorpayPaymentAction } from '@/app/(app)/admin/student-fees/actions';
 import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 
 export default function StudentPaymentHistoryPage() {
     const { toast } = useToast();
@@ -29,13 +26,10 @@ export default function StudentPaymentHistoryPage() {
     const [currentStudentProfileId, setCurrentStudentProfileId] = useState<string | null>(null);
     const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
     const [currentStudentName, setCurrentStudentName] = useState<string | null>(null);
-
-    const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
-    const [paymentForAction, setPaymentForAction] = useState<StudentFeePayment | null>(null);
-    const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
+    const [currentStudentEmail, setCurrentStudentEmail] = useState<string | null>(null);
 
 
-    async function loadPaymentData() {
+    const loadPaymentData = async () => {
         if (currentStudentProfileId && currentSchoolId) {
             setIsLoading(true);
             const result = await getStudentPaymentHistoryAction(currentStudentProfileId, currentSchoolId);
@@ -61,7 +55,7 @@ export default function StudentPaymentHistoryPage() {
 
             const { data: studentProfile, error: profileError } = await supabase
                 .from('students')
-                .select('id, school_id, name')
+                .select('id, school_id, name, email')
                 .eq('user_id', studentUserId)
                 .single();
             
@@ -73,6 +67,7 @@ export default function StudentPaymentHistoryPage() {
             setCurrentStudentProfileId(studentProfile.id);
             setCurrentSchoolId(studentProfile.school_id);
             setCurrentStudentName(studentProfile.name);
+            setCurrentStudentEmail(studentProfile.email);
             
             const paymentResult = await getStudentPaymentHistoryAction(studentProfile.id, studentProfile.school_id);
 
@@ -86,6 +81,7 @@ export default function StudentPaymentHistoryPage() {
             setIsLoading(false);
         }
         fetchInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [toast]);
     
     const totalDue = useMemo(() => {
@@ -94,68 +90,84 @@ export default function StudentPaymentHistoryPage() {
           .reduce((acc, p) => acc + (p.assigned_amount - p.paid_amount), 0);
     }, [payments]);
 
-    const handleOpenPaymentDialog = (payment: StudentFeePayment) => {
-        setPaymentForAction(payment);
-        setPaymentAmount('');
-        setIsPaymentDialogOpen(true);
-    };
-
-    const handlePayFeeSubmit = async (e: FormEvent) => {
-        e.preventDefault();
-        if (!paymentForAction || !currentSchoolId || paymentAmount === '' || paymentAmount <= 0) {
-            toast({ title: "Invalid Input", description: "Please enter a valid payment amount.", variant: "destructive" });
-            return;
-        }
-
-        const amountDueForFee = paymentForAction.assigned_amount - paymentForAction.paid_amount;
-        if (paymentAmount > amountDueForFee) {
-            toast({ title: "Invalid Amount", description: `Payment cannot be more than the due amount of $${amountDueForFee.toFixed(2)}.`, variant: "destructive" });
+    const initiatePayment = async (amountToPay: number, feeIds: string[], description: string) => {
+        if (!currentSchoolId || !currentStudentName || !currentStudentEmail) {
+            toast({ title: 'Error', description: 'User context is missing.', variant: 'destructive' });
             return;
         }
 
         setIsPaying(true);
-        const result = await recordStudentFeePaymentAction({
-            fee_payment_id: paymentForAction.id,
-            payment_amount: Number(paymentAmount),
-            payment_date: format(new Date(), 'yyyy-MM-dd'),
-            school_id: currentSchoolId,
+        const amountInPaisa = Math.round(amountToPay * 100);
+
+        const orderResult = await createRazorpayOrderAction(amountInPaisa, feeIds);
+
+        if (!orderResult.ok || !orderResult.order) {
+            toast({ title: 'Payment Error', description: orderResult.message || 'Could not create payment order.', variant: 'destructive' });
+            setIsPaying(false);
+            return;
+        }
+
+        const options = {
+            key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+            amount: orderResult.order.amount,
+            currency: "INR",
+            name: "CampusHub Fee Payment",
+            description: description,
+            order_id: orderResult.order.id,
+            handler: async (response: any) => {
+                const verifyResult = await verifyRazorpayPaymentAction(
+                    response.razorpay_payment_id,
+                    response.razorpay_order_id,
+                    response.razorpay_signature,
+                    currentSchoolId
+                );
+                if (verifyResult.ok) {
+                    toast({ title: 'Payment Successful', description: verifyResult.message });
+                    await loadPaymentData();
+                } else {
+                    toast({ title: 'Payment Failed', description: verifyResult.message, variant: 'destructive' });
+                }
+            },
+            prefill: {
+                name: currentStudentName,
+                email: currentStudentEmail,
+            },
+            notes: {
+                student_id: currentStudentProfileId,
+            },
+            theme: {
+                color: "#3399cc"
+            }
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', function (response: any){
+            console.error(response);
+            toast({
+                title: 'Payment Failed',
+                description: `Code: ${response.error.code}, Reason: ${response.error.reason}`,
+                variant: 'destructive',
+            });
         });
-
-        if (result.ok) {
-            toast({ title: "Payment Recorded", description: "Your payment has been successfully recorded." });
-            await loadPaymentData();
-            setIsPaymentDialogOpen(false);
-        } else {
-            toast({ title: "Payment Failed", description: result.message, variant: "destructive" });
-        }
+        
+        rzp.open();
         setIsPaying(false);
     };
 
-    const handlePayAllFees = async () => {
-        if (!currentStudentProfileId || !currentSchoolId) {
-            toast({ title: "Error", description: "Cannot process payment without student context.", variant: "destructive" });
-            return;
+    const handlePayFee = (payment: StudentFeePayment) => {
+        const dueAmount = payment.assigned_amount - payment.paid_amount;
+        if (dueAmount > 0) {
+            initiatePayment(dueAmount, [payment.id], `Payment for ${getFeeCategoryName(payment.fee_category_id)}`);
         }
-        if (totalDue <= 0) {
-            toast({ title: "No Dues", description: "You have no outstanding fees to pay.", variant: "default" });
-            return;
-        }
-        if (!confirm(`This will simulate paying the total due amount of $${totalDue.toFixed(2)}. Do you want to proceed?`)) {
-            return;
-        }
-
-        setIsPaying(true);
-        const result = await studentPayAllFeesAction(currentStudentProfileId, currentSchoolId);
-
-        if (result.ok) {
-            toast({ title: "Payment Successful", description: result.message });
-            await loadPaymentData(); // Refresh data on success
-        } else {
-            toast({ title: "Payment Failed", description: result.message, variant: "destructive" });
-        }
-        setIsPaying(false);
     };
-
+    
+    const handlePayAllFees = () => {
+        if (totalDue <= 0) return;
+        const feeIdsToPay = payments
+            .filter(p => p.status !== 'Paid')
+            .map(p => p.id);
+        initiatePayment(totalDue, feeIdsToPay, 'Payment for all outstanding fees');
+    };
 
     const getFeeCategoryName = (categoryId: string) => {
         return feeCategories.find(fc => fc.id === categoryId)?.name || 'N/A';
@@ -280,7 +292,7 @@ export default function StudentPaymentHistoryPage() {
                                     </TableCell>
                                     <TableCell className="text-right">
                                         {payment.status !== 'Paid' && (
-                                            <Button variant="outline" size="sm" onClick={() => handleOpenPaymentDialog(payment)} disabled={isPaying}>
+                                            <Button variant="outline" size="sm" onClick={() => handlePayFee(payment)} disabled={isPaying}>
                                                 <CreditCard className="mr-1 h-3 w-3" /> Pay
                                             </Button>
                                         )}
@@ -316,48 +328,6 @@ export default function StudentPaymentHistoryPage() {
          )}
       </Card>
 
-      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Make a Payment</DialogTitle>
-            {paymentForAction && (
-                <DialogDescription>
-                    Fee: {getFeeCategoryName(paymentForAction.fee_category_id)} <br/>
-                    Amount Due: ${(paymentForAction.assigned_amount - paymentForAction.paid_amount).toFixed(2)}
-                </DialogDescription>
-            )}
-          </DialogHeader>
-          <form onSubmit={handlePayFeeSubmit}>
-            <div className="grid gap-4 py-4">
-                <div>
-                    <Label htmlFor="paymentAmount">Payment Amount ($)</Label>
-                    <Input
-                        id="paymentAmount"
-                        type="number"
-                        value={paymentAmount}
-                        onChange={(e) => setPaymentAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                        placeholder="Enter amount to pay"
-                        required
-                        step="0.01"
-                        min="0.01"
-                        max={(paymentForAction?.assigned_amount || 0) - (paymentForAction?.paid_amount || 0)}
-                        disabled={isPaying}
-                    />
-                </div>
-                <p className="text-xs text-muted-foreground">This simulates a real payment gateway for now. Enter a partial or full amount.</p>
-            </div>
-            <DialogFooter>
-                <DialogClose asChild>
-                    <Button variant="outline" disabled={isPaying}>Cancel</Button>
-                </DialogClose>
-                <Button type="submit" disabled={isPaying || !paymentAmount}>
-                    {isPaying ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4"/>}
-                    {isPaying ? 'Processing...' : 'Submit Payment'}
-                </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
