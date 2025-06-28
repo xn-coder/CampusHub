@@ -66,8 +66,15 @@ export default function ManageStudentsPage() {
     const { data, error } = await query.order('name');
 
     if (error) {
-      console.error("Error fetching students:", error);
-      toast({ title: "Error", description: "Failed to fetch student data.", variant: "destructive" });
+      console.error("Error fetching students:", JSON.stringify(error, null, 2));
+      let description = "Failed to fetch student data.";
+      if (error.message) {
+          description = `Database Error: ${error.message}.`;
+          if (error.message.includes('column "status" does not exist')) {
+              description += ' It seems the `status` column is missing from the `students` table. Please apply the database migration from the previous step.';
+          }
+      }
+      toast({ title: "Error Fetching Students", description, variant: "destructive", duration: 10000 });
       setStudents([]);
     } else {
       setStudents(data || []);
