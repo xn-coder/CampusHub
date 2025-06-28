@@ -335,32 +335,37 @@ export async function getStudentPaymentHistoryAction(
   }
 }
 
-export async function studentPayAllFeesAction(
+export async function mockPayFeesAction(
   studentProfileId: string,
-  schoolId: string
+  schoolId: string,
+  feePaymentIds: string[]
 ): Promise<{ ok: boolean; message: string; paidCount: number }> {
   const supabaseAdmin = createSupabaseServerClient();
 
-  const { data: unpaidFees, error: fetchError } = await supabaseAdmin
+  if (!feePaymentIds || feePaymentIds.length === 0) {
+    return { ok: false, message: "No fee records specified for payment.", paidCount: 0 };
+  }
+
+  const { data: feesToPay, error: fetchError } = await supabaseAdmin
     .from('student_fee_payments')
     .select('id, assigned_amount')
+    .in('id', feePaymentIds)
     .eq('student_id', studentProfileId)
-    .eq('school_id', schoolId)
-    .in('status', ['Pending', 'Partially Paid', 'Overdue']);
+    .eq('school_id', schoolId);
 
   if (fetchError) {
-    console.error("Error fetching unpaid fees:", fetchError);
+    console.error("Error fetching fees for mock payment:", fetchError);
     return { ok: false, message: "Could not retrieve fee records to process payment.", paidCount: 0 };
   }
 
-  if (!unpaidFees || unpaidFees.length === 0) {
-    return { ok: true, message: "No pending fees to pay.", paidCount: 0 };
+  if (!feesToPay || feesToPay.length === 0) {
+    return { ok: true, message: "Selected fees were not found or are already paid.", paidCount: 0 };
   }
 
   let paidCount = 0;
   const errors = [];
   
-  for (const fee of unpaidFees) {
+  for (const fee of feesToPay) {
     const { error: updateError } = await supabaseAdmin
       .from('student_fee_payments')
       .update({
@@ -390,7 +395,7 @@ export async function studentPayAllFeesAction(
   revalidatePath('/admin/student-fees');
   revalidatePath('/dashboard');
 
-  return { ok: true, message: `Payment successful! ${paidCount} fee record(s) have been updated. A receipt would be generated here.`, paidCount };
+  return { ok: true, message: `Mock payment successful! ${paidCount} fee record(s) have been updated.`, paidCount };
 }
 
 

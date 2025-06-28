@@ -10,7 +10,7 @@ import { DollarSign, CalendarDays, FileText, Loader2, CreditCard, Download, Scho
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { getStudentPaymentHistoryAction, createRazorpayOrderAction, verifyRazorpayPaymentAction } from '@/app/(app)/admin/student-fees/actions';
+import { getStudentPaymentHistoryAction, createRazorpayOrderAction, verifyRazorpayPaymentAction, mockPayFeesAction } from '@/app/(app)/admin/student-fees/actions';
 import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import jsPDF from 'jspdf';
@@ -91,12 +91,32 @@ export default function StudentPaymentHistoryPage() {
     }, [payments]);
 
     const initiatePayment = async (amountToPay: number, feeIds: string[], description: string) => {
-        if (!currentSchoolId || !currentStudentName || !currentStudentEmail) {
+        if (!currentStudentProfileId || !currentSchoolId || !currentStudentName || !currentStudentEmail) {
             toast({ title: 'Error', description: 'User context is missing.', variant: 'destructive' });
             return;
         }
 
         setIsPaying(true);
+
+        // Check if Razorpay is configured
+        if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) {
+            console.warn("Razorpay KEY_ID not found, using mock payment flow.");
+            toast({
+                title: "Mock Payment Mode",
+                description: "Razorpay is not configured. Simulating a successful payment."
+            });
+            const mockResult = await mockPayFeesAction(currentStudentProfileId, currentSchoolId, feeIds);
+            if (mockResult.ok) {
+                toast({ title: "Mock Payment Successful", description: mockResult.message });
+                await loadPaymentData();
+            } else {
+                toast({ title: "Mock Payment Failed", description: mockResult.message, variant: 'destructive' });
+            }
+            setIsPaying(false);
+            return;
+        }
+
+        // --- Real Razorpay Logic ---
         const amountInPaisa = Math.round(amountToPay * 100);
 
         const orderResult = await createRazorpayOrderAction(amountInPaisa, feeIds);
