@@ -274,29 +274,26 @@ export default function AdminStudentScoresPage() {
                     }
 
                     const examName = getExamName(score.exam_id);
-                    const isEndTermExam = examName.toLowerCase().includes('end term');
                     
                     let actionButton = null;
-                    if (isEndTermExam) {
-                        if (studentPassed) {
-                            actionButton = (
-                                <Button variant="outline" size="sm" onClick={() => handlePrintResult(score)}>
-                                    <Download className="h-3 w-3 mr-1" /> Print Result
-                                </Button>
-                            );
-                        } else {
-                            actionButton = (
-                                <Button 
-                                  variant="secondary" 
-                                  size="sm" 
-                                  onClick={() => handleNotifyForReExam(studentId, examName)}
-                                  disabled={isNotifying[studentId]}
-                                >
-                                    {isNotifying[studentId] ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCcw className="h-3 w-3 mr-1" />} 
-                                    Notify for Re-exam
-                                </Button>
-                            );
-                        }
+                    if (studentPassed) {
+                        actionButton = (
+                            <Button variant="outline" size="sm" onClick={() => handlePrintResult(score)}>
+                                <Download className="h-3 w-3 mr-1" /> Print Result
+                            </Button>
+                        );
+                    } else {
+                        actionButton = (
+                            <Button 
+                              variant="secondary" 
+                              size="sm" 
+                              onClick={() => handleNotifyForReExam(studentId, examName)}
+                              disabled={isNotifying[studentId]}
+                            >
+                                {isNotifying[studentId] ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCcw className="h-3 w-3 mr-1" />} 
+                                Notify for Re-exam
+                            </Button>
+                        );
                     }
 
                     return (
