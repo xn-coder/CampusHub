@@ -10,7 +10,7 @@ import { DollarSign, CalendarDays, FileText, Loader2, CreditCard, Download, Scho
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { getStudentPaymentHistoryAction, recordStudentFeePaymentAction } from '@/app/(app)/admin/student-fees/actions';
+import { getStudentPaymentHistoryAction, recordStudentFeePaymentAction, studentPayAllFeesAction } from '@/app/(app)/admin/student-fees/actions';
 import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import jsPDF from 'jspdf';
@@ -130,6 +130,32 @@ export default function StudentPaymentHistoryPage() {
         }
         setIsPaying(false);
     };
+
+    const handlePayAllFees = async () => {
+        if (!currentStudentProfileId || !currentSchoolId) {
+            toast({ title: "Error", description: "Cannot process payment without student context.", variant: "destructive" });
+            return;
+        }
+        if (totalDue <= 0) {
+            toast({ title: "No Dues", description: "You have no outstanding fees to pay.", variant: "default" });
+            return;
+        }
+        if (!confirm(`This will simulate paying the total due amount of $${totalDue.toFixed(2)}. Do you want to proceed?`)) {
+            return;
+        }
+
+        setIsPaying(true);
+        const result = await studentPayAllFeesAction(currentStudentProfileId, currentSchoolId);
+
+        if (result.ok) {
+            toast({ title: "Payment Successful", description: result.message });
+            await loadPaymentData(); // Refresh data on success
+        } else {
+            toast({ title: "Payment Failed", description: result.message, variant: "destructive" });
+        }
+        setIsPaying(false);
+    };
+
 
     const getFeeCategoryName = (categoryId: string) => {
         return feeCategories.find(fc => fc.id === categoryId)?.name || 'N/A';
@@ -269,15 +295,22 @@ export default function StudentPaymentHistoryPage() {
         </CardContent>
          {payments.length > 0 && !isLoading && (
             <CardFooter>
-                <div className="flex flex-col sm:flex-row justify-end items-center w-full gap-4 pt-4 border-t">
-                    <Button variant="outline" onClick={handleDownloadHistory} disabled={isLoading}>
+                <div className="flex w-full items-center gap-4 pt-4 border-t flex-wrap justify-end">
+                    <Button variant="outline" onClick={handleDownloadHistory} disabled={isLoading || isPaying}>
                         <Download className="mr-2 h-4 w-4" />
                         Download History
                     </Button>
+                    <div className="flex-grow sm:flex-grow-0" />
                     <div className="text-right">
                         <p className="text-muted-foreground">Total Amount Due</p>
                         <p className="text-2xl font-bold">${totalDue.toFixed(2)}</p>
                     </div>
+                    {totalDue > 0 && (
+                        <Button onClick={handlePayAllFees} disabled={isPaying || isLoading}>
+                            {isPaying ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4"/>}
+                            Pay All Due Fees
+                        </Button>
+                    )}
                 </div>
             </CardFooter>
          )}
