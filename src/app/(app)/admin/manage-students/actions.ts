@@ -15,7 +15,7 @@ export async function terminateStudentAction(
 
   const supabase = createSupabaseServerClient();
   try {
-    // We set status to 'Terminated' and unassign them from their class.
+    // Step 1: Update student profile
     const { error: studentUpdateError } = await supabase
       .from('students')
       .update({ status: 'Terminated', class_id: null })
@@ -24,10 +24,16 @@ export async function terminateStudentAction(
 
     if (studentUpdateError) {
       console.error('Error terminating student profile:', studentUpdateError);
+      if (studentUpdateError.message.includes('column "status" does not exist')) {
+        return {
+          ok: false,
+          message: "Database migration needed: 'status' column is missing from the 'students' table. Please run the required SQL migration.",
+        };
+      }
       return { ok: false, message: `Database error on student profile: ${studentUpdateError.message}` };
     }
 
-    // Deactivate the user account to prevent login
+    // Step 2: Deactivate user account
     const { error: userUpdateError } = await supabase
       .from('users')
       .update({ status: 'Inactive' })
@@ -35,12 +41,10 @@ export async function terminateStudentAction(
 
     if (userUpdateError) {
       console.error('Error deactivating user account:', userUpdateError);
-      // Check for specific "column does not exist" error
       if (userUpdateError.message.includes('column "status" does not exist')) {
         return {
           ok: false,
-          message:
-            "Database migration needed. Could not deactivate user account because the 'status' column is missing from the 'users' table. Please run the required SQL migration.",
+          message: "Database migration needed: 'status' column is missing from the 'users' table. Please run the required SQL migration.",
         };
       }
       return {
@@ -49,8 +53,8 @@ export async function terminateStudentAction(
       };
     }
 
+    // Step 3: Revalidate paths and return success
     revalidatePath('/admin/manage-students');
-    // Also revalidate other pages where student lists might appear
     revalidatePath('/class-management');
     revalidatePath('/admin/attendance');
 
