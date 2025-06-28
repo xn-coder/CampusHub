@@ -12,10 +12,7 @@ interface CourseInput {
   description?: string;
   is_paid: boolean;
   price?: number;
-  school_id?: string | null;
-  target_audience?: 'student' | 'teacher' | 'both' | null;
-  target_class_id?: string | null;
-  created_by_user_id: string;
+  school_id?: string; // Optional: for school-specific courses
 }
 
 export async function createCourseAction(
@@ -27,10 +24,7 @@ export async function createCourseAction(
   const insertData = {
     ...input,
     id: courseId,
-    price: input.is_paid ? input.price : null,
-    school_id: input.school_id || null,
-    target_audience: input.target_audience || null,
-    target_class_id: (input.target_audience === 'student' || input.target_audience === 'both') ? (input.target_class_id || null) : null,
+    price: input.is_paid ? input.price : null, 
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -55,43 +49,14 @@ export async function updateCourseAction(
   input: Partial<CourseInput>
 ): Promise<{ ok: boolean; message: string; course?: Course }> {
   const supabaseAdmin = createSupabaseServerClient();
-   const updateData: Partial<Course> = { // Use Partial<Course> for type safety
-    title: input.title,
-    description: input.description,
-    is_paid: input.is_paid,
-    school_id: input.school_id === undefined ? undefined : (input.school_id || null), // Handle undefined vs null
-    target_audience: input.target_audience === undefined ? undefined : (input.target_audience || null),
+   const updateData = {
+    ...input,
+    price: input.is_paid ? input.price : null,
     updated_at: new Date().toISOString(),
   };
-
-  if (input.is_paid !== undefined) {
-    updateData.price = input.is_paid ? input.price : null;
-  }
-
-  // Logic to handle target_class_id based on target_audience
-  // This assumes client sends consistent data for audience and class.
-  if (input.target_audience) {
-      if (input.target_audience === 'student' || input.target_audience === 'both') {
-          updateData.target_class_id = input.target_class_id || null;
-      } else {
-          // for 'teacher'
-          updateData.target_class_id = null;
-      }
-  } else if (input.target_audience === null) {
-      // for "Both" or "General" if implemented that way
-      updateData.target_class_id = input.target_class_id || null;
-  } else if(input.target_class_id !== undefined) {
-      // if only class_id is sent, preserve it
-      updateData.target_class_id = input.target_class_id || null;
-  }
-
-  // Filter out undefined properties to avoid sending them in the update
-  const filteredUpdateData = Object.fromEntries(Object.entries(updateData).filter(([_, v]) => v !== undefined));
-
-
   const { error, data } = await supabaseAdmin
     .from('lms_courses')
-    .update(filteredUpdateData)
+    .update(updateData)
     .eq('id', id)
     .select()
     .single();
@@ -291,6 +256,7 @@ export async function enrollUserInCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
+  revalidatePath('/student/study-material');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} enrolled successfully.` };
 }
 
@@ -316,6 +282,7 @@ export async function unenrollUserFromCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
+  revalidatePath('/student/study-material');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} unenrolled successfully.` };
 }
 
@@ -408,7 +375,7 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
   const { userProfileId, userRole, userSchoolId } = input;
 
   try {
-    let courseQuery = supabase.from('lms_courses').select('*, target_class:target_class_id(name,division)');
+    let courseQuery = supabase.from('lms_courses').select('*');
     if (userSchoolId && userRole !== 'superadmin') {
       courseQuery = courseQuery.or(`school_id.eq.${userSchoolId},school_id.is.null`);
     } else if (userRole !== 'superadmin') { 
@@ -424,22 +391,6 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
     if (!coursesData) {
       return { ok: true, courses: [] };
     }
-    
-    // Filter courses based on user role and course target audience
-    const filteredByAudienceCourses = coursesData.filter(course => {
-      if (userRole === 'admin' || userRole === 'superadmin') {
-        return true; // Admins see all courses they have access to (school/global)
-      }
-      if (!course.target_audience) {
-        return true; // No specific audience, show to all roles (student, teacher)
-      }
-      if (course.target_audience === 'both') {
-        return userRole === 'student' || userRole === 'teacher';
-      }
-      // Direct match for 'student' or 'teacher' roles
-      return userRole === course.target_audience;
-    });
-
 
     let enrolledCourseIds: string[] = [];
     if (userProfileId && (userRole === 'student' || userRole === 'teacher')) {
@@ -458,7 +409,7 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       }
     }
 
-    const coursesWithStatus: CourseWithEnrollmentStatus[] = filteredByAudienceCourses.map(course => ({
+    const coursesWithStatus: CourseWithEnrollmentStatus[] = coursesData.map(course => ({
       ...course,
       isEnrolled: (userRole === 'admin' || userRole === 'superadmin') ? true : enrolledCourseIds.includes(course.id),
     }));
@@ -618,7 +569,6 @@ export async function activateCourseWithCodeAction(
     revalidatePath('/lms/available-courses');
     revalidatePath(`/lms/courses/${codeToActivate.course_id}`);
 
-
     return { 
       ok: true, 
       message: `Successfully activated and enrolled in: ${courseDetails.title || 'the course'}.`, 
@@ -696,3 +646,10 @@ export async function addCourseFileResourceAction(
   revalidatePath(`/lms/courses/${courseId}`);
   return { ok: true, message: 'File resource added successfully.', resource: resourceData as CourseResource };
 }
+    
+    
+    
+
+    
+
+
