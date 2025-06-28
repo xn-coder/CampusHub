@@ -67,14 +67,14 @@ export async function attemptLogin(
   try {
     const { data: userRecord, error: fetchError } = await supabaseAdmin
       .from('users')
-      .select('id, email, name, role, password_hash, school_id')
+      .select('id, email, name, role, password_hash, school_id, status')
       .eq('email', email)
       .single();
 
     if (fetchError && fetchError.code !== 'PGRST116') {
       console.error('Error fetching user during login:', fetchError);
       const dbError = (fetchError as any);
-      if (dbError?.message?.includes('failed to fetch')) {
+      if (dbError?.message?.includes('fetch failed')) {
         return { ok: false, message: 'Database connection failed. Please check your .env configuration and network connection.'};
       }
       return { ok: false, message: `Database query failed: ${dbError.message}. Please check your Supabase credentials and network connection.` };
@@ -82,6 +82,10 @@ export async function attemptLogin(
 
     if (!userRecord) {
       return { ok: false, message: 'User not found.' };
+    }
+
+    if (userRecord.status !== 'Active') {
+        return { ok: false, message: 'Your user account is inactive. Please contact administration.' };
     }
 
     if (!userRecord.password_hash) {

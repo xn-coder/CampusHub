@@ -20,6 +20,7 @@ export interface User {
   role: UserRole;
   password_hash?: string;
   school_id?: string | null;
+  status?: 'Active' | 'Inactive';
   created_at?: string;
   updated_at?: string;
 }

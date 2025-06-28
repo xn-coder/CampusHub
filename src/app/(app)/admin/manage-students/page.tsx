@@ -212,10 +212,13 @@ export default function ManageStudentsPage() {
   };
   
   const handleTerminateStudent = async (student: Student) => { 
-    if (!currentSchoolId) return;
+    if (!currentSchoolId || !student.user_id) {
+        toast({ title: "Error", description: "Cannot terminate student without a valid user ID.", variant: "destructive" });
+        return;
+    };
     if (confirm(`Are you sure you want to terminate ${student.name}? This will prevent them from logging in and unassign them from their class.`)) {
       setIsLoading(true);
-      const result = await terminateStudentAction(student.id, currentSchoolId);
+      const result = await terminateStudentAction(student.id, student.user_id, currentSchoolId);
       if (result.ok) {
         toast({ title: "Student Terminated", description: result.message });
         if(currentSchoolId) fetchStudents(currentSchoolId);
@@ -434,5 +437,3 @@ export default function ManageStudentsPage() {
     </div>
   );
 }
-
-    
