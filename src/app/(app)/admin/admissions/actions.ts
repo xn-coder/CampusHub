@@ -131,7 +131,7 @@ interface AdmitStudentInput {
   classId: string; 
   schoolId: string;
   profilePictureUrl?: string;
-  feeCategoryIds?: string[];
+  feesToAssign?: { categoryId: string; amount: number }[];
 }
 
 export async function admitNewStudentAction(
@@ -139,7 +139,7 @@ export async function admitNewStudentAction(
 ): Promise<{ ok: boolean; message: string; studentId?: string; userId?: string; admissionRecordId?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   const { 
-    name, email, dateOfBirth, guardianName, contactNumber, address, classId, schoolId, profilePictureUrl, feeCategoryIds 
+    name, email, dateOfBirth, guardianName, contactNumber, address, classId, schoolId, profilePictureUrl, feesToAssign 
   } = input;
   const defaultPassword = "password";
 
@@ -203,47 +203,34 @@ export async function admitNewStudentAction(
     }
 
     let feesAssignedCount = 0;
-    if (feeCategoryIds && feeCategoryIds.length > 0) {
+    if (feesToAssign && feesToAssign.length > 0) {
       try {
-        const { data: selectedFeeCategories, error: feeCategoryError } = await supabaseAdmin
-          .from('fee_categories')
-          .select('id, amount')
-          .in('id', feeCategoryIds)
-          .eq('school_id', schoolId);
-
-        if (feeCategoryError) {
-          console.warn(`Could not fetch selected Fee categories: ${feeCategoryError.message}`);
-        } else if (selectedFeeCategories && selectedFeeCategories.length > 0) {
-          
-          const feePaymentsToInsert = selectedFeeCategories
-            .filter(category => category.amount !== null && category.amount >= 0)
-            .map(category => ({
-              id: uuidv4(),
-              student_id: newStudentProfileId,
-              fee_category_id: category.id,
-              assigned_amount: category.amount,
-              paid_amount: 0,
-              status: 'Pending' as PaymentStatus,
-              payment_date: null,
-              due_date: new Date().toISOString().split('T')[0],
-              school_id: schoolId,
-          }));
-
-          if (feePaymentsToInsert.length > 0) {
+        const feePaymentsToInsert = feesToAssign.map(fee => ({
+          id: uuidv4(),
+          student_id: newStudentProfileId,
+          fee_category_id: fee.categoryId,
+          assigned_amount: fee.amount,
+          paid_amount: 0,
+          status: 'Pending' as PaymentStatus,
+          payment_date: null,
+          due_date: new Date().toISOString().split('T')[0],
+          school_id: schoolId,
+        }));
+        
+        if (feePaymentsToInsert.length > 0) {
             const { error: feeInsertError } = await supabaseAdmin
-              .from('student_fee_payments')
-              .insert(feePaymentsToInsert);
+                .from('student_fee_payments')
+                .insert(feePaymentsToInsert);
 
             if (feeInsertError) {
-              console.warn(`Failed to assign selected fees to student ${newStudentProfileId}: ${feeInsertError.message}`);
+                console.warn(`Failed to assign selected fees to student ${newStudentProfileId}: ${feeInsertError.message}`);
             } else {
-              feesAssignedCount = feePaymentsToInsert.length;
-              console.log(`Successfully assigned ${feesAssignedCount} PENDING fees to student ${newStudentProfileId}.`);
-              revalidatePath('/admin/student-fees');
-              revalidatePath('/student/payment-history');
-              revalidatePath('/dashboard');
+                feesAssignedCount = feePaymentsToInsert.length;
+                console.log(`Successfully assigned ${feesAssignedCount} PENDING fees to student ${newStudentProfileId}.`);
+                revalidatePath('/admin/student-fees');
+                revalidatePath('/student/payment-history');
+                revalidatePath('/dashboard');
             }
-          }
         }
       } catch (feeError: any) {
         console.warn(`An error occurred during fee assignment: ${feeError.message}`);

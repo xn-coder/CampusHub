@@ -36,7 +36,7 @@ export default function AdminNewAdmissionPage() {
   
   // New state for fee assignment
   const [shouldAssignFee, setShouldAssignFee] = useState(false);
-  const [selectedFeeCategoryIds, setSelectedFeeCategoryIds] = useState<string[]>([]);
+  const [selectedFees, setSelectedFees] = useState<Record<string, { selected: boolean; amount: string }>>({});
 
   useEffect(() => {
     async function loadContext() {
@@ -54,6 +54,13 @@ export default function AdminNewAdmissionPage() {
         if (result.ok) {
           setAllClasses(result.classes || []);
           setAllFeeCategories(result.feeCategories || []);
+          // Initialize selectedFees state
+          const initialFeesState = (result.feeCategories || []).reduce((acc, cat) => {
+            acc[cat.id] = { selected: false, amount: cat.amount?.toString() || '' };
+            return acc;
+          }, {} as Record<string, { selected: boolean; amount: string }>);
+          setSelectedFees(initialFeesState);
+
         } else {
           toast({ title: "Error", description: result.message || "Failed to load class list or fee categories.", variant: "destructive" });
         }
@@ -65,12 +72,25 @@ export default function AdminNewAdmissionPage() {
     loadContext();
   }, [toast]);
 
-  // New useEffect to manage fee category selection based on checkbox state
-  useEffect(() => {
-    if (!shouldAssignFee) {
-      setSelectedFeeCategoryIds([]);
-    }
-  }, [shouldAssignFee]);
+  const handleFeeSelectionChange = (categoryId: string, isSelected: boolean) => {
+    setSelectedFees(prev => ({
+        ...prev,
+        [categoryId]: {
+            ...prev[categoryId],
+            selected: isSelected,
+        }
+    }));
+  };
+
+  const handleAmountChange = (categoryId: string, amount: string) => {
+    setSelectedFees(prev => ({
+        ...prev,
+        [categoryId]: {
+            ...(prev[categoryId] || { selected: true }),
+            amount: amount
+        }
+    }));
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -79,8 +99,15 @@ export default function AdminNewAdmissionPage() {
       return;
     }
     
-    if (shouldAssignFee && selectedFeeCategoryIds.length === 0) {
-      toast({ title: "Error", description: "Please select at least one fee category to assign.", variant: "destructive" });
+    const feesToAssign = Object.entries(selectedFees)
+        .filter(([, val]) => val.selected && val.amount && Number(val.amount) > 0)
+        .map(([categoryId, val]) => ({
+            categoryId,
+            amount: Number(val.amount)
+        }));
+
+    if (shouldAssignFee && feesToAssign.length === 0) {
+      toast({ title: "Error", description: "Please select at least one fee category and enter a valid amount.", variant: "destructive" });
       return;
     }
     setIsLoading(true);
@@ -92,7 +119,7 @@ export default function AdminNewAdmissionPage() {
       contactNumber: contactNumber || undefined,
       address: address || undefined,
       profilePictureUrl: profilePictureUrl || undefined,
-      feeCategoryIds: shouldAssignFee ? selectedFeeCategoryIds : undefined,
+      feesToAssign: shouldAssignFee ? feesToAssign : undefined,
     });
 
     if (result.ok) {
@@ -100,7 +127,11 @@ export default function AdminNewAdmissionPage() {
       // Reset form
       setName(''); setEmail(''); setDateOfBirth(''); setGuardianName(''); 
       setContactNumber(''); setAddress(''); setSelectedClassId(''); setProfilePictureUrl('');
-      setSelectedFeeCategoryIds([]);
+      const resetFees = Object.keys(selectedFees).reduce((acc, key) => {
+        acc[key] = { ...selectedFees[key], selected: false };
+        return acc;
+      }, {} as typeof selectedFees);
+      setSelectedFees(resetFees);
       setShouldAssignFee(false);
     } else {
       toast({ title: "Admission Failed", description: result.message, variant: "destructive" });
@@ -180,29 +211,34 @@ export default function AdminNewAdmissionPage() {
 
               {shouldAssignFee && (
                 <div className="pl-6 pt-2">
-                  <Label className="text-sm text-muted-foreground">Fee Categories</Label>
-                  <Card className="max-h-48 overflow-y-auto p-2 border mt-1">
-                    <div className="space-y-2">
-                      {allFeeCategories.map(cat => (
-                        <div key={cat.id} className="flex items-center space-x-2">
-                          <Checkbox
+                  <Label className="text-sm text-muted-foreground">Fee Categories &amp; Amounts</Label>
+                  <div className="max-h-60 overflow-y-auto space-y-3 p-2 border mt-1 rounded-md">
+                    {allFeeCategories.map(cat => (
+                      <div key={cat.id} className="flex items-center space-x-3 rounded-md">
+                        <Checkbox
                             id={`fee-cat-${cat.id}`}
-                            checked={selectedFeeCategoryIds.includes(cat.id)}
-                            onCheckedChange={(checked) => {
-                              setSelectedFeeCategoryIds(prev => 
-                                checked ? [...prev, cat.id] : prev.filter(id => id !== cat.id)
-                              );
-                            }}
+                            checked={selectedFees[cat.id]?.selected || false}
+                            onCheckedChange={(checked) => handleFeeSelectionChange(cat.id, !!checked)}
                             disabled={isLoading}
-                          />
-                          <Label htmlFor={`fee-cat-${cat.id}`} className="font-normal w-full cursor-pointer">
-                            {cat.name} {cat.amount ? `($${cat.amount.toFixed(2)})` : ''}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                  <p className="text-xs text-muted-foreground mt-1">Select one or more fees to automatically assign as 'Pending' to the student's account.</p>
+                        />
+                        <Label htmlFor={`fee-cat-${cat.id}`} className="font-normal w-full cursor-pointer">
+                          {cat.name}
+                        </Label>
+                        <Input
+                            type="number"
+                            placeholder="Amount"
+                            className="w-32"
+                            value={selectedFees[cat.id]?.amount || ''}
+                            onChange={(e) => handleAmountChange(cat.id, e.target.value)}
+                            disabled={isLoading || !selectedFees[cat.id]?.selected}
+                            required={selectedFees[cat.id]?.selected}
+                            step="0.01"
+                            min="0.01"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Select fees and specify the amount to be assigned as 'Pending' to the student's account.</p>
                 </div>
               )}
                {allFeeCategories.length === 0 && (
