@@ -101,7 +101,7 @@ export default function AdmissionsPage() {
     setIsSubmitting(false);
   };
 
-  const admissionFeeCategory = feeCategories.find(fc => fc.name.toLowerCase() === 'admission fee');
+  const admissionFeeCategory = feeCategories.find(fc => fc.name.toLowerCase().includes('admission'));
 
   const getFeeStatusText = (record: AdmissionRecord) => {
     if (admissionFeeCategory && record.student_profile_id) {

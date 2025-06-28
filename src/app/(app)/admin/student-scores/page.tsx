@@ -178,7 +178,7 @@ export default function AdminStudentScoresPage() {
                 <SelectTrigger id="examFilter"><SelectValue placeholder="All Exams" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Exams</SelectItem>
-                  {allExams.map(exam => <SelectItem key={exam.id} value={exam.id}>{exam.name} ({getSubjectName(exam.subject_id)})</SelectItem>)}
+                  {allExams.map(exam => <SelectItem key={exam.id} value={exam.id}>{exam.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

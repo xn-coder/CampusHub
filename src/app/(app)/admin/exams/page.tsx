@@ -324,7 +324,7 @@ export default function ExamsPage() {
             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
               <div>
                 <Label htmlFor="examName">Exam Type</Label>
-                <Select value={examName} onValueChange={setExamName} required disabled={isSubmitting || !!editingExam}>
+                <Select value={examName} onValueChange={setExamName} required disabled={isSubmitting}>
                     <SelectTrigger id="examName">
                         <SelectValue placeholder="Select an exam type" />
                     </SelectTrigger>
@@ -335,7 +335,6 @@ export default function ExamsPage() {
                         <SelectItem value="Re-exam">Re-exam</SelectItem>
                     </SelectContent>
                 </Select>
-                {editingExam && <p className="text-xs text-muted-foreground mt-1">Exam type cannot be changed during an edit.</p>}
               </div>
 
               {editingExam ? (
