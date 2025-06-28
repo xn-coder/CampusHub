@@ -13,12 +13,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Student, User, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX } from 'lucide-react';
+import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
 import { terminateStudentAction } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -50,10 +51,12 @@ export default function ManageStudentsPage() {
   const [editStudentClassId, setEditStudentClassId] = useState<string | undefined>(undefined);
   
   const [showTerminated, setShowTerminated] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
 
 
   const fetchStudents = useCallback(async (schoolId: string) => {
     setIsLoading(true);
+    setPageError(null);
     let query = supabase
       .from('students')
       .select('id, name, email, class_id, profile_picture_url, user_id, school_id, status')
@@ -67,14 +70,16 @@ export default function ManageStudentsPage() {
 
     if (error) {
       console.error("Error fetching students:", JSON.stringify(error, null, 2));
-      let description = "Failed to fetch student data.";
-      if (error.message) {
-          description = `Database Error: ${error.message}.`;
-          if (error.message.includes('column "status" does not exist')) {
-              description += ' It seems the `status` column is missing from the `students` table. Please apply the database migration from the previous step.';
-          }
+      let description = `Database Error: ${error.message}.`;
+      
+      if (error.message.includes('column "status" does not exist')) {
+          const detailedError = "Database schema is out of date. The 'status' column is missing from the 'students' table. Please run the required SQL migration to enable the terminate student feature.";
+          setPageError(detailedError);
+          toast({ title: "Database Schema Error", description: detailedError, variant: "destructive", duration: 15000 });
+      } else {
+           toast({ title: "Error Fetching Students", description, variant: "destructive", duration: 10000 });
+           setPageError(description);
       }
-      toast({ title: "Error Fetching Students", description, variant: "destructive", duration: 10000 });
       setStudents([]);
     } else {
       setStudents(data || []);
@@ -302,61 +307,71 @@ export default function ManageStudentsPage() {
                     Download Report
                 </Button>
               </div>
-              {isLoading && !currentSchoolId ? (
-                 <p className="text-center text-muted-foreground py-4">Identifying admin school...</p>
-              ) : isLoading ? (
-                <p className="text-center text-muted-foreground py-4">Loading students...</p>
+              {isLoading ? (
+                 <p className="text-center text-muted-foreground py-4">Loading students...</p>
+              ) : pageError ? (
+                <Alert variant="destructive" className="my-4">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Error Loading Student Data</AlertTitle>
+                  <AlertDescription>
+                    <p>{pageError}</p>
+                    <p className="mt-2 text-xs">This page cannot function correctly until the database schema is updated. Please refer to the instructions provided.</p>
+                  </AlertDescription>
+                </Alert>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Avatar</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Class / Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredStudents.map((student) => (
-                      <TableRow key={student.id} className={student.status !== 'Active' ? 'bg-muted/50' : ''}>
-                        <TableCell>
-                          <Avatar>
-                            <AvatarImage src={student.profile_picture_url || `https://placehold.co/40x40.png?text=${student.name.substring(0,2).toUpperCase()}`} alt={student.name} data-ai-hint="person portrait" />
-                            <AvatarFallback>{student.name.substring(0,2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                        </TableCell>
-                        <TableCell className="font-medium">{student.name}</TableCell>
-                        <TableCell>{student.email}</TableCell>
-                        <TableCell>
-                            {student.status !== 'Active' ? 
-                                <Badge variant="destructive">{student.status}</Badge> 
-                                : getClassDisplayName(student.class_id)
-                            }
-                        </TableCell>
-                        <TableCell className="space-x-1 text-right">
-                          {student.status === 'Active' ? (
-                            <>
-                                <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isLoading}>
-                                    <Edit2 className="h-4 w-4" />
-                                </Button>
-                                <Button variant="destructive" size="icon" onClick={() => handleTerminateStudent(student)} disabled={isLoading} title="Terminate Student">
-                                    <UserX className="h-4 w-4" />
-                                </Button>
-                            </>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">No actions available</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-              {!isLoading && filteredStudents.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">
-                  {searchTerm ? "No students match your search." : (showTerminated ? "No terminated students found." : "No active students found for this school.")}
-                </p>
+                <>
+                  {filteredStudents.length > 0 ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Avatar</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Class / Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredStudents.map((student) => (
+                          <TableRow key={student.id} className={student.status !== 'Active' ? 'bg-muted/50' : ''}>
+                            <TableCell>
+                              <Avatar>
+                                <AvatarImage src={student.profile_picture_url || `https://placehold.co/40x40.png?text=${student.name.substring(0,2).toUpperCase()}`} alt={student.name} data-ai-hint="person portrait" />
+                                <AvatarFallback>{student.name.substring(0,2).toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                            </TableCell>
+                            <TableCell className="font-medium">{student.name}</TableCell>
+                            <TableCell>{student.email}</TableCell>
+                            <TableCell>
+                                {student.status !== 'Active' ? 
+                                    <Badge variant="destructive">{student.status}</Badge> 
+                                    : getClassDisplayName(student.class_id)
+                                }
+                            </TableCell>
+                            <TableCell className="space-x-1 text-right">
+                              {student.status === 'Active' ? (
+                                <>
+                                    <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isLoading}>
+                                        <Edit2 className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="destructive" size="icon" onClick={() => handleTerminateStudent(student)} disabled={isLoading} title="Terminate Student">
+                                        <UserX className="h-4 w-4" />
+                                    </Button>
+                                </>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">No actions available</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-4">
+                      {searchTerm ? "No students match your search." : (showTerminated ? "No terminated students found." : "No active students found for this school.")}
+                    </p>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
@@ -419,3 +434,5 @@ export default function ManageStudentsPage() {
     </div>
   );
 }
+
+    
