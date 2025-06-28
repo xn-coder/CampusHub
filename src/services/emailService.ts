@@ -31,40 +31,66 @@ interface EmailPayload {
   html: string;
 }
 
+const BATCH_SIZE = 50; // Resend's limit is 50 per call
+
 export async function sendEmail(payload: EmailPayload): Promise<{ ok: boolean; message: string }> {
-  let { to, subject, html } = payload;
-  
   if (!resend) {
+    const recipients = Array.isArray(payload.to) ? payload.to : [payload.to];
     console.log(`--- [LOG emailService] MOCK EMAIL SEND REQUEST ---`);
-    console.log("To:", Array.isArray(to) ? to.join(', ') : to);
-    console.log("Subject:", subject);
-    console.log("HTML Body (first 200 chars):", html.substring(0, 200) + (html.length > 200 ? "..." : ""));
+    console.log(`To: ${recipients.length} recipient(s)`);
+    if (recipients.length < 10) {
+      console.log(`(${recipients.join(', ')})`);
+    }
+    console.log("Subject:", payload.subject);
+    console.log("HTML Body (first 200 chars):", payload.html.substring(0, 200) + (payload.html.length > 200 ? "..." : ""));
     console.log("--- [LOG emailService] END MOCK EMAIL ---");
     return { ok: true, message: "Email sending is mocked due to missing or invalid Resend configuration. Check server logs." };
   }
 
-  // NOTE: Resend requires a verified sending domain for production. 
-  // 'onboarding@resend.dev' is for testing/development.
   const fromAddress = 'CampusHub <onboarding@resend.dev>';
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  const allRecipients = Array.isArray(payload.to) ? payload.to : [payload.to];
+  
+  // In development, send a single test email. In production, send to the actual list.
+  const finalRecipients = isProduction ? allRecipients : ['delivered@resend.dev'];
+  
+  if (!isProduction && allRecipients.length > 1) {
+    console.log(`[LOG emailService] In development, redirecting batch email for ${allRecipients.length} recipients to the single test address.`);
+  }
 
-  // Use Resend's test address in development to avoid domain verification issues.
-  const recipient = process.env.NODE_ENV === 'production' ? to : 'delivered@resend.dev';
+  // Chunk the recipients into batches of BATCH_SIZE
+  const emailBatches: string[][] = [];
+  for (let i = 0; i < finalRecipients.length; i += BATCH_SIZE) {
+    emailBatches.push(finalRecipients.slice(i, i + BATCH_SIZE));
+  }
+  
+  if (!isProduction && emailBatches.length > 1) {
+    console.log(`[LOG emailService] Development mode: sending only one test batch instead of ${emailBatches.length}.`);
+    emailBatches.splice(1); // Only send one batch in dev
+  }
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: fromAddress,
-      to: recipient,
-      subject: subject,
-      html: html,
-    });
+    const results = await Promise.all(
+      emailBatches.map(batch => 
+        resend!.emails.send({
+          from: fromAddress,
+          to: batch,
+          subject: payload.subject,
+          html: payload.html,
+        })
+      )
+    );
 
-    if (error) {
-      console.error('[LOG emailService] Resend error:', JSON.stringify(error, null, 2));
-      return { ok: false, message: `Resend API Error: ${(error as Error).message}` };
+    const errors = results.filter(result => result.error);
+    if (errors.length > 0) {
+      console.error('[LOG emailService] Resend errors:', JSON.stringify(errors, null, 2));
+      return { ok: false, message: `Resend API Error: ${errors.map(e => e.error?.message).join('; ')}` };
     }
 
-    console.log('[LOG emailService] Email sent successfully via Resend:', data);
-    return { ok: true, message: 'Email sent successfully via Resend.' };
+    const totalSent = allRecipients.length;
+    console.log(`[LOG emailService] Email(s) sent successfully via Resend to ${isProduction ? totalSent : 1} recipient(s).`);
+    return { ok: true, message: 'Email(s) sent successfully via Resend.' };
 
   } catch (error: any) {
     console.error('[LOG emailService] Error processing request:', error);
