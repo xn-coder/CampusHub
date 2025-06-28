@@ -63,7 +63,7 @@ export default function ManageStudentsPage() {
       .eq('school_id', schoolId);
 
     if (!showTerminated) {
-      query = query.eq('status', 'Active');
+      query = query.or('status.eq.Active,status.is.null');
     }
 
     const { data, error } = await query.order('name');
@@ -235,13 +235,14 @@ export default function ManageStudentsPage() {
         toast({ title: "No Data", description: "There are no students to download for the current filter.", variant: "destructive"});
         return;
     }
-    const headers = ["Name", "Email", "Class", "Status"];
+    const headers = ["Name", "Student ID", "Email", "Class", "Status"];
     const csvRows = [
         headers.join(','),
         ...filteredStudents.map(student => {
             const className = getClassDisplayName(student.class_id);
             const row = [
                 `"${student.name.replace(/"/g, '""')}"`,
+                `"${student.id}"`,
                 `"${(student.email || 'N/A').replace(/"/g, '""')}"`,
                 `"${className.replace(/"/g, '""')}"`,
                 `"${student.status || 'Active'}"`
@@ -329,6 +330,7 @@ export default function ManageStudentsPage() {
                         <TableRow>
                           <TableHead>Avatar</TableHead>
                           <TableHead>Name</TableHead>
+                          <TableHead>Student ID</TableHead>
                           <TableHead>Email</TableHead>
                           <TableHead>Class / Status</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
@@ -344,6 +346,9 @@ export default function ManageStudentsPage() {
                               </Avatar>
                             </TableCell>
                             <TableCell className="font-medium">{student.name}</TableCell>
+                            <TableCell>
+                                <span className="font-mono text-xs">{student.id.substring(0, 8)}</span>
+                            </TableCell>
                             <TableCell>{student.email}</TableCell>
                             <TableCell>
                                 {student.status !== 'Active' ? 
