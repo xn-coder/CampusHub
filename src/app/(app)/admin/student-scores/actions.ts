@@ -1,6 +1,8 @@
 
 'use server';
 
+console.log('[LOG] Loading src/app/(app)/admin/student-scores/actions.ts');
+
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { StudentScore, Student, Exam, ClassData, Subject, Teacher } from '@/types';
 
@@ -69,6 +71,54 @@ export async function getStudentScoresPageDataAction(adminUserId: string): Promi
   } catch (error: any) {
     console.error("Error in getStudentScoresPageDataAction:", error);
     return { ok: false, schoolId, message: error.message || "An unexpected error occurred." };
+  }
+}
+
+export async function notifyStudentForReExamAction(
+  studentId: string, 
+  examName: string
+): Promise<{ ok: boolean; message: string }> {
+  const supabase = createSupabaseServerClient();
+
+  const { data: student, error: studentError } = await supabase
+    .from('students')
+    .select('email, name')
+    .eq('id', studentId)
+    .single();
+
+  if (studentError || !student || !student.email) {
+    console.error('Error fetching student for re-exam notification:', studentError);
+    return { ok: false, message: 'Could not find student email to send notification.' };
+  }
+
+  const emailSubject = `Important: Re-exam for ${examName}`;
+  const emailBody = `
+    <h1>Re-exam Notification</h1>
+    <p>Dear ${student.name},</p>
+    <p>This is to inform you that you are eligible for a re-exam for the subject/exam: <strong>${examName}</strong>.</p>
+    <p>Please contact the school administration or your class teacher for further details regarding the schedule and registration process for the re-exam.</p>
+    <p>Best regards,<br/>CampusHub School Administration</p>
+  `;
+
+  try {
+    const emailApiUrl = new URL('/api/send-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002').toString();
+    const apiResponse = await fetch(emailApiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: student.email, subject: emailSubject, html: emailBody }),
+    });
+
+    const result = await apiResponse.json();
+    if (!apiResponse.ok || !result.success) {
+      console.error(`Failed to send re-exam notification email via API: ${result.message || apiResponse.statusText}`);
+      return { ok: false, message: 'Failed to dispatch notification email.' };
+    }
+
+    console.log(`Re-exam notification email successfully dispatched via API for student ${studentId}.`);
+    return { ok: true, message: `Notification for re-exam sent to ${student.name}.` };
+  } catch (apiError: any) {
+    console.error(`Error calling email API for re-exam notification: ${apiError.message}`);
+    return { ok: false, message: 'An error occurred while sending the notification.' };
   }
 }
     

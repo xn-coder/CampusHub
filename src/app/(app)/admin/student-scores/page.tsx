@@ -12,7 +12,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Award, Filter, Search, User, BookOpen, CalendarCheck, UserCogIcon, FileText, Loader2, FileDown, TrendingUp, RefreshCcw } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
-import { getStudentScoresPageDataAction } from './actions';
+import { getStudentScoresPageDataAction, notifyStudentForReExamAction } from './actions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -33,6 +33,8 @@ export default function AdminStudentScoresPage() {
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
   const [selectedExamFilter, setSelectedExamFilter] = useState<string>('all');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
+
+  const [isNotifying, setIsNotifying] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const adminUserId = localStorage.getItem('currentUserId');
@@ -127,6 +129,24 @@ export default function AdminStudentScoresPage() {
         description: `This would trigger the '${action}' workflow for student ${studentName}. This is a placeholder for a future feature.`
     });
   };
+  
+  const handleNotifyForReExam = async (studentId: string, examName: string) => {
+    setIsNotifying(prev => ({ ...prev, [studentId]: true }));
+    const result = await notifyStudentForReExamAction(studentId, examName);
+    if (result.ok) {
+      toast({
+        title: "Notification Sent",
+        description: result.message,
+      });
+    } else {
+      toast({
+        title: "Error Sending Notification",
+        description: result.message,
+        variant: "destructive",
+      });
+    }
+    setIsNotifying(prev => ({ ...prev, [studentId]: false }));
+  };
 
 
   return (
@@ -210,6 +230,7 @@ export default function AdminStudentScoresPage() {
               </TableHeader>
               <TableBody>
                 {filteredScores.map((score) => {
+                    const studentId = score.student_id;
                     const studentName = getStudentName(score.student_id);
                     const maxMarks = score.max_marks ?? allExams.find(e => e.id === score.exam_id)?.max_marks ?? 100;
                     
@@ -234,8 +255,14 @@ export default function AdminStudentScoresPage() {
                             );
                         } else {
                             actionButton = (
-                                <Button variant="secondary" size="sm" onClick={() => handleMockAction('Re-exam', studentName)}>
-                                    <RefreshCcw className="h-3 w-3 mr-1" /> Schedule Re-exam
+                                <Button 
+                                  variant="secondary" 
+                                  size="sm" 
+                                  onClick={() => handleNotifyForReExam(studentId, examName)}
+                                  disabled={isNotifying[studentId]}
+                                >
+                                    {isNotifying[studentId] ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCcw className="h-3 w-3 mr-1" />} 
+                                    Notify for Re-exam
                                 </Button>
                             );
                         }
