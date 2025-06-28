@@ -32,7 +32,7 @@ interface EmailPayload {
 }
 
 export async function sendEmail(payload: EmailPayload): Promise<{ ok: boolean; message: string }> {
-  const { to, subject, html } = payload;
+  let { to, subject, html } = payload;
   
   if (!resend) {
     console.log(`--- [LOG emailService] MOCK EMAIL SEND REQUEST ---`);
@@ -41,6 +41,20 @@ export async function sendEmail(payload: EmailPayload): Promise<{ ok: boolean; m
     console.log("HTML Body (first 200 chars):", html.substring(0, 200) + (html.length > 200 ? "..." : ""));
     console.log("--- [LOG emailService] END MOCK EMAIL ---");
     return { ok: true, message: "Email sending is mocked due to missing or invalid Resend configuration. Check server logs." };
+  }
+
+  const sandboxEmail = process.env.RESEND_SANDBOX_EMAIL;
+  if (sandboxEmail) {
+    const originalRecipients = Array.isArray(to) ? to.join(', ') : to;
+    html = `
+      <div style="background-color: #f0f0f0; border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; border-radius: 5px;">
+        <p style="margin: 0; font-size: 12px; color: #555;">
+          <strong>SANDBOX MODE:</strong> This email was originally intended for <strong>${originalRecipients}</strong> and was redirected to your sandbox email for testing.
+        </p>
+      </div>
+      ${html}
+    `;
+    to = sandboxEmail;
   }
 
   // NOTE: Resend requires a verified sending domain. 'onboarding@resend.dev' is for testing/development.
