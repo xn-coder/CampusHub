@@ -43,28 +43,17 @@ export async function sendEmail(payload: EmailPayload): Promise<{ ok: boolean; m
     return { ok: true, message: "Email sending is mocked due to missing or invalid Resend configuration. Check server logs." };
   }
 
-  const sandboxEmail = process.env.RESEND_SANDBOX_EMAIL;
-  if (sandboxEmail) {
-    const originalRecipients = Array.isArray(to) ? to.join(', ') : to;
-    html = `
-      <div style="background-color: #f0f0f0; border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; border-radius: 5px;">
-        <p style="margin: 0; font-size: 12px; color: #555;">
-          <strong>SANDBOX MODE:</strong> This email was originally intended for <strong>${originalRecipients}</strong> and was redirected to your sandbox email for testing.
-        </p>
-      </div>
-      ${html}
-    `;
-    to = sandboxEmail;
-  }
-
-  // NOTE: Resend requires a verified sending domain. 'onboarding@resend.dev' is for testing/development.
-  // In production, you would replace this with a from address on your own verified domain.
+  // NOTE: Resend requires a verified sending domain for production. 
+  // 'onboarding@resend.dev' is for testing/development.
   const fromAddress = 'CampusHub <onboarding@resend.dev>';
+
+  // Use Resend's test address in development to avoid domain verification issues.
+  const recipient = process.env.NODE_ENV === 'production' ? to : 'delivered@resend.dev';
 
   try {
     const { data, error } = await resend.emails.send({
       from: fromAddress,
-      to: to,
+      to: recipient,
       subject: subject,
       html: html,
     });
