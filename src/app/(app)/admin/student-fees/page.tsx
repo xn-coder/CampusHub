@@ -352,13 +352,14 @@ export default function AdminStudentFeesPage() {
         return;
     }
 
-    const headers = ["Student Name", "Academic Year", "Total Assigned ($)", "Total Paid ($)", "Total Due ($)", "Overall Status"];
+    const headers = ["Student Name", "Student ID", "Academic Year", "Total Assigned ($)", "Total Paid ($)", "Total Due ($)", "Overall Status"];
     
     const csvRows = [
         headers.join(','),
         ...filteredSummaries.map(summary => {
             const row = [
                 `"${summary.studentName.replace(/"/g, '""')}"`,
+                `"${summary.studentId}"`,
                 `"${summary.academicYearName}"`,
                 summary.totalAssigned.toFixed(2),
                 summary.totalPaid.toFixed(2),
@@ -446,6 +447,7 @@ export default function AdminStudentFeesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Student</TableHead>
+                  <TableHead>Student ID</TableHead>
                   <TableHead>Academic Year</TableHead>
                   <TableHead className="text-right">Total Assigned ($)</TableHead>
                   <TableHead className="text-right">Total Paid ($)</TableHead>
@@ -458,6 +460,9 @@ export default function AdminStudentFeesPage() {
                 {filteredSummaries.map((summary) => (
                   <TableRow key={summary.studentId + (summary.academicYearId || 'general')}>
                     <TableCell className="font-medium">{summary.studentName}</TableCell>
+                    <TableCell>
+                      <span className="font-mono text-xs">{summary.studentId.substring(0, 8)}</span>
+                    </TableCell>
                     <TableCell>{summary.academicYearName}</TableCell>
                     <TableCell className="text-right">{summary.totalAssigned.toFixed(2)}</TableCell>
                     <TableCell className="text-right">{summary.totalPaid.toFixed(2)}</TableCell>

@@ -93,7 +93,7 @@ export default function AdminStudentScoresPage() {
         toast({ title: "No Data", description: "There is no data to download for the current filters.", variant: "destructive"});
         return;
     }
-    const headers = ["Student", "Class", "Exam", "Subject", "Score", "Max Marks", "Result", "Recorded By", "Date Recorded"];
+    const headers = ["Student", "Student ID", "Class", "Exam", "Subject", "Score", "Max Marks", "Result", "Recorded By", "Date Recorded"];
     const csvRows = [
         headers.join(','),
         ...filteredScores.map(score => {
@@ -101,11 +101,11 @@ export default function AdminStudentScoresPage() {
             const isPass = score.score !== null && score.score !== undefined && !isNaN(Number(score.score)) && Number(score.score) >= (maxMarks * 0.4);
             const row = [
                 `"${getStudentName(score.student_id).replace(/"/g, '""')}"`,
+                `"${score.student_id}"`,
                 `"${getClassName(score.class_id).replace(/"/g, '""')}"`,
                 `"${getExamName(score.exam_id).replace(/"/g, '""')}"`,
                 `"${getSubjectName(score.subject_id).replace(/"/g, '""')}"`,
-                `"${String(score.score)}"`
-                ,
+                `"${String(score.score)}"`,
                 score.max_marks ?? 'N/A',
                 isPass ? 'Pass' : 'Fail',
                 `"${getTeacherName(score.recorded_by_teacher_id).replace(/"/g, '""')}"`,
@@ -251,6 +251,7 @@ export default function AdminStudentScoresPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead><User className="inline-block mr-1 h-4 w-4"/>Student</TableHead>
+                  <TableHead>Student ID</TableHead>
                   <TableHead>Class</TableHead>
                   <TableHead>Exam</TableHead>
                   <TableHead>Subject</TableHead>
@@ -299,6 +300,9 @@ export default function AdminStudentScoresPage() {
                     return (
                         <TableRow key={score.id}>
                             <TableCell className="font-medium">{studentName}</TableCell>
+                             <TableCell>
+                                <span className="font-mono text-xs">{score.student_id.substring(0, 8)}</span>
+                            </TableCell>
                             <TableCell>{getClassName(score.class_id)}</TableCell>
                             <TableCell>{examName}</TableCell>
                             <TableCell>{getSubjectName(score.subject_id)}</TableCell>
