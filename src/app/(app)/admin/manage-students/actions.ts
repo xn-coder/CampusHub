@@ -64,3 +64,50 @@ export async function terminateStudentAction(
     return { ok: false, message: e.message || 'An unexpected error occurred.' };
   }
 }
+
+export async function reactivateStudentAction(
+  studentId: string,
+  userId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+  if (!studentId || !userId || !schoolId) {
+    return { ok: false, message: 'Student ID, User ID, and School ID are required.' };
+  }
+
+  const supabase = createSupabaseServerClient();
+  try {
+    // Step 1: Reactivate student profile
+    const { error: studentUpdateError } = await supabase
+      .from('students')
+      .update({ status: 'Active' })
+      .eq('id', studentId)
+      .eq('school_id', schoolId);
+
+    if (studentUpdateError) {
+      console.error('Error reactivating student profile:', studentUpdateError);
+      return { ok: false, message: `Database error on student profile: ${studentUpdateError.message}` };
+    }
+
+    // Step 2: Reactivate user account
+    const { error: userUpdateError } = await supabase
+      .from('users')
+      .update({ status: 'Active' })
+      .eq('id', userId);
+
+    if (userUpdateError) {
+      console.error('Error reactivating user account:', userUpdateError);
+      return {
+        ok: false,
+        message: `Student profile reactivated, but failed to reactivate user login: ${userUpdateError.message}`,
+      };
+    }
+
+    // Step 3: Revalidate paths and return success
+    revalidatePath('/admin/manage-students');
+
+    return { ok: true, message: 'Student reactivated and account enabled successfully.' };
+  } catch (e: any) {
+    console.error('Unexpected error reactivating student:', e);
+    return { ok: false, message: e.message || 'An unexpected error occurred.' };
+  }
+}

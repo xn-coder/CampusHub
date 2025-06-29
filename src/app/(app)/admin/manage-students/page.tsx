@@ -13,10 +13,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Student, User, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle } from 'lucide-react';
+import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
-import { terminateStudentAction } from './actions';
+import { terminateStudentAction, reactivateStudentAction } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -239,6 +239,23 @@ export default function ManageStudentsPage() {
     setIsLoading(false);
   };
 
+  const handleReactivateStudent = async (student: Student) => { 
+    if (!currentSchoolId || !student.user_id) {
+        toast({ title: "Error", description: "Cannot reactivate student without a valid user ID.", variant: "destructive" });
+        return;
+    };
+    
+    setIsLoading(true);
+    const result = await reactivateStudentAction(student.id, student.user_id, currentSchoolId);
+    if (result.ok) {
+      toast({ title: "Student Reactivated", description: result.message });
+      if(currentSchoolId) fetchStudents(currentSchoolId);
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsLoading(false);
+  };
+
 
   const handleDownloadCsv = () => {
     if (filteredStudents.length === 0) {
@@ -395,6 +412,28 @@ export default function ManageStudentsPage() {
                                       </AlertDialogContent>
                                     </AlertDialog>
                                 </>
+                              ) : student.status === 'Terminated' ? (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="outline" size="icon" disabled={isLoading} title="Reactivate Student">
+                                      <UserCheck className="h-4 w-4 text-green-600" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Reactivate Student: {student.name}?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        This will mark the student's status as 'Active' and re-enable their login. They will not be automatically re-assigned to a class.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleReactivateStudent(student)} disabled={isLoading} className="bg-green-600 text-white hover:bg-green-700">
+                                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : "Reactivate"}
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
                               ) : (
                                 <span className="text-xs text-muted-foreground">No actions available</span>
                               )}
