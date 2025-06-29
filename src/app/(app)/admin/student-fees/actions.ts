@@ -535,8 +535,9 @@ export async function createRazorpayOrderAction(
     const order = await razorpayInstance.orders.create(options);
     return { ok: true, message: "Order created successfully.", order };
   } catch (error: any) {
-    console.error("Razorpay order creation error:", error);
-    return { ok: false, message: `Failed to create Razorpay order: ${error.message}` };
+    console.error("Razorpay order creation error:", JSON.stringify(error, null, 2));
+    const errorMessage = error?.error?.description || error?.message || "An unknown error occurred.";
+    return { ok: false, message: `Failed to create Razorpay order: ${errorMessage}` };
   }
 }
 
