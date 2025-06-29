@@ -49,14 +49,21 @@ export async function sendEmail(payload: EmailPayload): Promise<{ ok: boolean; m
 
   const fromAddress = 'CampusHub <onboarding@resend.dev>';
   const isProduction = process.env.NODE_ENV === 'production';
+  const sandboxEmail = process.env.RESEND_SANDBOX_EMAIL;
   
   const allRecipients = Array.isArray(payload.to) ? payload.to : [payload.to];
-  
-  // In development, send a single test email. In production, send to the actual list.
-  const finalRecipients = isProduction ? allRecipients : ['delivered@resend.dev'];
-  
-  if (!isProduction && allRecipients.length > 1) {
-    console.log(`[LOG emailService] In development, redirecting batch email for ${allRecipients.length} recipients to the single test address.`);
+  let finalRecipients: string[];
+
+  if (isProduction) {
+    finalRecipients = allRecipients;
+  } else {
+    if (sandboxEmail) {
+      console.log(`[LOG emailService] Development/Sandbox mode: Redirecting all emails to ${sandboxEmail}`);
+      finalRecipients = [sandboxEmail];
+    } else {
+      console.log(`[LOG emailService] Development mode: Redirecting all emails to delivered@resend.dev. Set RESEND_SANDBOX_EMAIL in .env to use your own test address.`);
+      finalRecipients = ['delivered@resend.dev'];
+    }
   }
 
   // Chunk the recipients into batches of BATCH_SIZE
