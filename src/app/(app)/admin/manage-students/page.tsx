@@ -20,6 +20,17 @@ import { terminateStudentAction } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -216,17 +227,16 @@ export default function ManageStudentsPage() {
         toast({ title: "Error", description: "Cannot terminate student without a valid user ID.", variant: "destructive" });
         return;
     };
-    if (confirm(`Are you sure you want to terminate ${student.name}? This will prevent them from logging in and unassign them from their class.`)) {
-      setIsLoading(true);
-      const result = await terminateStudentAction(student.id, student.user_id, currentSchoolId);
-      if (result.ok) {
-        toast({ title: "Student Terminated", description: result.message });
-        if(currentSchoolId) fetchStudents(currentSchoolId);
-      } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
-      }
-      setIsLoading(false);
+    
+    setIsLoading(true);
+    const result = await terminateStudentAction(student.id, student.user_id, currentSchoolId);
+    if (result.ok) {
+      toast({ title: "Student Terminated", description: result.message });
+      if(currentSchoolId) fetchStudents(currentSchoolId);
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
+    setIsLoading(false);
   };
 
 
@@ -338,7 +348,7 @@ export default function ManageStudentsPage() {
                       </TableHeader>
                       <TableBody>
                         {filteredStudents.map((student) => (
-                          <TableRow key={student.id} className={student.status !== 'Active' ? 'bg-muted/50' : ''}>
+                          <TableRow key={student.id} className={student.status !== 'Active' && student.status ? 'bg-muted/50' : ''}>
                             <TableCell>
                               <Avatar>
                                 <AvatarImage src={student.profile_picture_url || `https://placehold.co/40x40.png?text=${student.name.substring(0,2).toUpperCase()}`} alt={student.name} data-ai-hint="person portrait" />
@@ -351,20 +361,39 @@ export default function ManageStudentsPage() {
                             </TableCell>
                             <TableCell>{student.email}</TableCell>
                             <TableCell>
-                                {student.status !== 'Active' ? 
+                                {student.status && student.status !== 'Active' ? 
                                     <Badge variant="destructive">{student.status}</Badge> 
                                     : getClassDisplayName(student.class_id)
                                 }
                             </TableCell>
                             <TableCell className="space-x-1 text-right">
-                              {student.status === 'Active' ? (
+                              {student.status === 'Active' || !student.status ? (
                                 <>
                                     <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isLoading}>
                                         <Edit2 className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="destructive" size="icon" onClick={() => handleTerminateStudent(student)} disabled={isLoading} title="Terminate Student">
-                                        <UserX className="h-4 w-4" />
-                                    </Button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button variant="destructive" size="icon" disabled={isLoading} title="Terminate Student">
+                                            <UserX className="h-4 w-4" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                              <AlertDialogTitle>Are you sure you want to terminate {student.name}?</AlertDialogTitle>
+                                              <AlertDialogDescription>
+                                                  This will mark the student as 'Terminated', unassign them from their class, and deactivate their login. This action is reversible by an administrator.
+                                              </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                              <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
+                                              <AlertDialogAction onClick={() => handleTerminateStudent(student)} disabled={isLoading} className="bg-destructive hover:bg-destructive/90">
+                                                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : null}
+                                                  Terminate
+                                              </AlertDialogAction>
+                                          </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
                                 </>
                               ) : (
                                 <span className="text-xs text-muted-foreground">No actions available</span>
