@@ -590,9 +590,9 @@ export default function AdminStudentFeesPage() {
                         <TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell>
                         <TableCell className="space-x-1 text-right">
                           {fp.status !== 'Paid' && (
-                              <Button variant="outline" size="xs" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}>Record Payment</Button>
+                              <Button variant="outline" size="xs" onClick={() => { setIsDetailsDialogOpen(false); handleOpenRecordPaymentDialog(fp); }} disabled={isSubmitting}>Record Payment</Button>
                           )}
-                          <Button variant="outline" size="xs" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting || fp.paid_amount > 0}>Edit</Button>
+                          <Button variant="outline" size="xs" onClick={() => { setIsDetailsDialogOpen(false); handleOpenEditFeeDialog(fp); }} disabled={isSubmitting || fp.paid_amount > 0}>Edit</Button>
                           <Button variant="destructive" size="xs" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}>Delete</Button>
                         </TableCell>
                       </TableRow>

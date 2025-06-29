@@ -88,6 +88,7 @@ export interface Student {
   guardian_name?: string | null;
   contact_number?: string | null;
   address?: string | null;
+  blood_group?: string | null;
   admission_date?: string | null;
   status?: 'Active' | 'Terminated' | 'Graduated';
   school_id: string;

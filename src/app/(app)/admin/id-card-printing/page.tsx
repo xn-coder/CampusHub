@@ -159,12 +159,16 @@ export default function AdminIdCardPrintingPage() {
         doc.setTextColor(20, 20, 20);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
-        doc.text(student.name, 35, 20, { maxWidth: 48 });
+        doc.text(student.name, 35, 18, { maxWidth: 48 });
+        
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
-        doc.text(`Class: ${student.className || 'N/A'} - ${student.classDivision || 'N/A'}`, 35, 25);
-        doc.text(`Guardian: ${student.guardian_name || 'N/A'}`, 35, 29);
-        doc.text(`Contact: ${student.contact_number || 'N/A'}`, 35, 33);
+        doc.text(`Class: ${student.className || 'N/A'} - ${student.classDivision || 'N/A'}`, 35, 23);
+        doc.text(`Blood Group: ${student.blood_group || 'N/A'}`, 35, 27);
+        doc.text(`Guardian: ${student.guardian_name || 'N/A'}`, 35, 31);
+        doc.text(`Contact: ${student.contact_number || 'N/A'}`, 35, 35);
+        doc.text(`Address: ${student.address || 'N/A'}`, 35, 39, { maxWidth: 48 });
+
 
         doc.setFillColor(49, 46, 129);
         doc.rect(0.5, 49.5, 84.6, 4, 'F');
@@ -290,15 +294,17 @@ export default function AdminIdCardPrintingPage() {
                         <p className="text-xs text-muted-foreground">Student Identification</p>
                      </div>
                   </div>
-                  <div className="flex items-center">
-                    <Avatar className="w-16 h-16 mr-3 border-2 border-primary">
+                  <div className="flex items-start">
+                    <Avatar className="w-16 h-16 mr-3 border-2 border-primary shrink-0">
                        <AvatarImage src={previewCard.profile_picture_url || undefined} alt={previewCard.name} data-ai-hint="person portrait" />
                        <AvatarFallback>{previewCard.name.substring(0,1)}</AvatarFallback>
                     </Avatar>
-                    <div>
-                      <p className="font-bold text-lg">{previewCard.name}</p>
-                      <p className="text-xs">Class: {previewCard.className} - {previewCard.classDivision || 'N/A'}</p>
-                      <p className="text-xs">Guardian: {previewCard.guardian_name || 'N/A'}</p>
+                    <div className="space-y-0.5 text-xs">
+                      <p className="font-bold text-lg leading-tight">{previewCard.name}</p>
+                      <p>Class: {previewCard.className} - {previewCard.classDivision || 'N/A'}</p>
+                      <p>Blood Group: {previewCard.blood_group || 'N/A'}</p>
+                      <p>Guardian: {previewCard.guardian_name || 'N/A'}</p>
+                      <p className="truncate" title={previewCard.address || ''}>Address: {previewCard.address || 'N/A'}</p>
                     </div>
                   </div>
                    <p className="text-[0.6rem] text-muted-foreground absolute bottom-2 right-3">Academic Year: 2024-2025 (Mock)</p>
