@@ -59,6 +59,7 @@ export default function ManageStudentsPage() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [editStudentName, setEditStudentName] = useState('');
   const [editStudentEmail, setEditStudentEmail] = useState('');
+  const [editStudentRollNumber, setEditStudentRollNumber] = useState<string | undefined>(undefined);
   const [editStudentClassId, setEditStudentClassId] = useState<string | undefined>(undefined);
   
   const [showTerminated, setShowTerminated] = useState(false);
@@ -154,6 +155,7 @@ export default function ManageStudentsPage() {
     setEditingStudent(student);
     setEditStudentName(student.name);
     setEditStudentEmail(student.email);
+    setEditStudentRollNumber(student.roll_number || undefined);
     setEditStudentClassId(student.class_id || undefined);
     setIsEditDialogOpen(true);
   };
@@ -193,6 +195,7 @@ export default function ManageStudentsPage() {
       .update({ 
         name: editStudentName.trim(), 
         email: editStudentEmail.trim(),
+        roll_number: editStudentRollNumber || null,
         class_id: editStudentClassId === 'unassign' ? null : editStudentClassId 
       })
       .eq('id', editingStudent.id)
@@ -481,6 +484,10 @@ export default function ManageStudentsPage() {
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editStudentEmail" className="text-right">Email</Label>
                 <Input id="editStudentEmail" type="email" value={editStudentEmail} onChange={(e) => setEditStudentEmail(e.target.value)} className="col-span-3" required disabled={isLoading} />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="editStudentRollNumber" className="text-right">Roll Number</Label>
+                <Input id="editStudentRollNumber" value={editStudentRollNumber || ''} onChange={(e) => setEditStudentRollNumber(e.target.value)} className="col-span-3" placeholder="Optional" disabled={isLoading} />
               </div>
                <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editStudentClassId" className="text-right">Assign Class</Label>

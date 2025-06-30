@@ -8,10 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import type { ClassData, Student, AttendanceRecord, AttendanceStatus, UserRole } from '@/types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Save, ListChecks, Loader2 } from 'lucide-react';
+import { Save, ListChecks, Loader2, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { saveAttendanceAction } from './actions';
@@ -27,6 +28,7 @@ export default function TeacherAttendancePage() {
   const [isFetchingInitialData, setIsFetchingInitialData] = useState(true);
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID (teachers.id)
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     async function loadInitialTeacherData() {
@@ -88,7 +90,8 @@ export default function TeacherAttendancePage() {
         .from('students')
         .select('*')
         .eq('class_id', selectedClassId)
-        .eq('school_id', currentSchoolId);
+        .eq('school_id', currentSchoolId)
+        .order('name');
 
       if (studentsError) {
         toast({ title: "Error", description: "Failed to fetch students for the class.", variant: "destructive" });
@@ -166,6 +169,14 @@ export default function TeacherAttendancePage() {
   
   const selectedClassDetails = assignedClasses.find(c => c.id === selectedClassId);
   
+  const filteredStudents = useMemo(() => {
+    if (!searchTerm) return studentsInSelectedClass;
+    return studentsInSelectedClass.filter(student =>
+      student.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [studentsInSelectedClass, searchTerm]);
+
+
   if (isFetchingInitialData) {
     return (
       <div className="flex flex-col gap-6">
@@ -195,7 +206,7 @@ export default function TeacherAttendancePage() {
           <CardDescription>Select your class and date to mark attendance.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid md:grid-cols-2 gap-4 items-end">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
             <div>
               <Label htmlFor="classSelect">Select Class</Label>
               <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading || isFetchingInitialData}>
@@ -220,6 +231,22 @@ export default function TeacherAttendancePage() {
                 disabled={isLoading || isFetchingInitialData}
               />
             </div>
+             {selectedClassId && (
+                <div className="lg:col-span-1">
+                    <Label htmlFor="studentSearch">Search Student</Label>
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            id="studentSearch"
+                            placeholder="Filter students..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            disabled={isLoading || studentsInSelectedClass.length === 0}
+                            className="pl-8"
+                        />
+                    </div>
+                </div>
+             )}
           </div>
 
           {isLoading && selectedClassId && <p className="text-muted-foreground text-center py-4">Loading students and attendance...</p>}
@@ -238,7 +265,7 @@ export default function TeacherAttendancePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {studentsInSelectedClass.map(student => (
+                  {filteredStudents.map(student => (
                     <TableRow key={student.id}>
                       <TableCell className="font-medium">{student.name}</TableCell>
                       <TableCell>
