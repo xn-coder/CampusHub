@@ -157,6 +157,7 @@ export interface AnnouncementDB {
   posted_by_user_id: string;
   posted_by_role: UserRole;
   target_class_id?: string | null;
+  target_audience?: 'all' | 'student' | 'teacher' | null;
   school_id: string;
   linked_exam_id?: string | null;
   created_at?: string;

@@ -16,6 +16,7 @@ import { postAnnouncementAction, getAnnouncementsAction, getExamDetailsForLinkin
 import { supabase } from '@/lib/supabaseClient';
 import { format, parseISO } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
+import { Badge } from '@/components/ui/badge';
 
 interface GetAnnouncementsParams {
   school_id?: string | null;
@@ -30,7 +31,7 @@ function CommunicationPageForm() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>([]);
-  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '', linkedExamId: '' });
+  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '', linkedExamId: '', targetAudience: 'all' });
   const [showForm, setShowForm] = useState(false);
   const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false); 
@@ -177,7 +178,7 @@ function CommunicationPageForm() {
     setNewAnnouncement(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (name: 'targetClassId') => (value: string) => {
+  const handleSelectChange = (name: keyof typeof newAnnouncement) => (value: string) => {
     setNewAnnouncement(prev => ({ ...prev, [name]: value === "none" ? "" : value }));
   };
 
@@ -202,6 +203,7 @@ function CommunicationPageForm() {
       target_class_id: newAnnouncement.targetClassId || undefined,
       school_id: currentSchoolId,
       linked_exam_id: newAnnouncement.linkedExamId || undefined,
+      target_audience: newAnnouncement.targetAudience as 'all' | 'student' | 'teacher',
     });
     setIsSubmitting(false);
 
@@ -220,7 +222,7 @@ function CommunicationPageForm() {
         if (fetchResult.ok && fetchResult.announcements) setAllAnnouncements(fetchResult.announcements);
       }
 
-      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', linkedExamId: '' })); 
+      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', linkedExamId: '', targetAudience: 'all' })); 
       setShowForm(false);
     } else {
       toast({ title: "Error", description: result.message || "Failed to post announcement.", variant: "destructive" });
@@ -262,23 +264,36 @@ function CommunicationPageForm() {
                 <Input id="authorName" name="authorName" value={newAnnouncement.authorName} onChange={handleInputChange} placeholder="e.g., Principal's Office, Your Name" required disabled={isSubmitting}/>
               </div>
               
-              {(currentUserRole === 'teacher' || currentUserRole === 'admin') && (
+              <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
-                  <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
-                    <SelectTrigger id="targetClassId">
-                      <SelectValue placeholder="General Announcement" />
+                  <Label htmlFor="targetAudience">Target Audience</Label>
+                  <Select value={newAnnouncement.targetAudience} onValueChange={handleSelectChange('targetAudience')} disabled={isSubmitting}>
+                    <SelectTrigger id="targetAudience">
+                      <SelectValue placeholder="Select Audience"/>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">General Announcement</SelectItem>
-                      {availableClassesForTargeting.map(cls => (
-                        <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
-                      ))}
+                      <SelectItem value="all">All (Students & Teachers)</SelectItem>
+                      <SelectItem value="student">Students Only</SelectItem>
+                      <SelectItem value="teacher">Teachers Only</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground mt-1">If not specified, this will be a school-wide announcement.</p>
                 </div>
-              )}
+                 <div>
+                    <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
+                    <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
+                      <SelectTrigger id="targetClassId">
+                        <SelectValue placeholder="General Announcement" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">General Announcement (School-wide)</SelectItem>
+                        {availableClassesForTargeting.map(cls => (
+                          <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+              </div>
+
 
               <div>
                 <Label htmlFor="content">Content</Label>
@@ -307,12 +322,16 @@ function CommunicationPageForm() {
             <Card key={announcement.id}>
               <CardHeader>
                 <CardTitle>{announcement.title}</CardTitle>
-                <CardDescription>
-                  Posted by {announcement.author_name || announcement.posted_by?.name || 'System'} ({announcement.posted_by_role}) on {format(parseISO(announcement.date), 'PPpp')}
-                </CardDescription>
-                {announcement.target_class && (
-                      <span className="text-xs font-semibold text-blue-600 dark:text-blue-400"> (For Class: {announcement.target_class.name} - {announcement.target_class.division})</span>
-                )}
+                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>Posted by {announcement.author_name || announcement.posted_by?.name || 'System'} ({announcement.posted_by_role})</span>
+                    <span>{format(parseISO(announcement.date), 'PPpp')}</span>
+                    {announcement.target_class && (
+                        <Badge variant="outline">For Class: {announcement.target_class.name} - {announcement.target_class.division}</Badge>
+                    )}
+                    {announcement.target_audience && announcement.target_audience !== 'all' && (
+                        <Badge variant="secondary">For: {announcement.target_audience}s</Badge>
+                    )}
+                </div>
               </CardHeader>
               <CardContent>
                 <p className="whitespace-pre-wrap">{announcement.content}</p>
@@ -333,7 +352,9 @@ function CommunicationPageForm() {
 
 
 export default function CommunicationPage() {
-  <Suspense>
-    <CommunicationPageForm/>
-  </Suspense>
+  return (
+    <Suspense>
+      <CommunicationPageForm/>
+    </Suspense>
+  );
 }
