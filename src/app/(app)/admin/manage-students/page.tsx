@@ -16,7 +16,7 @@ import { useState, useEffect, type FormEvent, useCallback } from 'react';
 import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
-import { terminateStudentAction, reactivateStudentAction } from './actions';
+import { terminateStudentAction, reactivateStudentAction, updateStudentAction } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -163,65 +163,31 @@ export default function ManageStudentsPage() {
 
   const handleEditStudentSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!editingStudent || !editStudentName.trim() || !editStudentEmail.trim() || !currentSchoolId) {
-      toast({ title: "Error", description: "Name, Email, and School context are required.", variant: "destructive" });
+    if (!editingStudent || !editingStudent.user_id || !editStudentName.trim() || !editStudentEmail.trim() || !currentSchoolId) {
+      toast({ title: "Error", description: "Name, Email, and necessary context are required.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
     
-    if (editStudentEmail.trim() !== editingStudent.email) {
-      const { data: existingUser, error: fetchError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', editStudentEmail.trim())
-        .eq('school_id', currentSchoolId) 
-        .neq('id', editingStudent.user_id) 
-        .single();
-
-      if (fetchError && fetchError.code !== 'PGRST116') { 
-        toast({ title: "Error", description: "Database error checking email.", variant: "destructive" });
-        setIsSubmitting(false);
-        return;
-      }
-      if (existingUser) {
-        toast({ title: "Error", description: "Another user with this email already exists in this school.", variant: "destructive" });
-        setIsSubmitting(false);
-        return;
-      }
-    }
-
-    const { error: studentUpdateError } = await supabase
-      .from('students')
-      .update({ 
-        name: editStudentName.trim(), 
+    const result = await updateStudentAction({
+        studentId: editingStudent.id,
+        userId: editingStudent.user_id,
+        schoolId: currentSchoolId,
+        name: editStudentName.trim(),
         email: editStudentEmail.trim(),
         roll_number: editStudentRollNumber.trim() || null,
-        class_id: editStudentClassId === 'unassign' ? null : editStudentClassId 
-      })
-      .eq('id', editingStudent.id)
-      .eq('school_id', currentSchoolId);
+        class_id: editStudentClassId === 'unassign' ? null : (editStudentClassId || null),
+    });
 
-    if (studentUpdateError) {
-      toast({ title: "Error", description: `Failed to update student profile: ${studentUpdateError.message}`, variant: "destructive" });
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (editingStudent.user_id) {
-      const { error: userUpdateError } = await supabase
-        .from('users')
-        .update({ name: editStudentName.trim(), email: editStudentEmail.trim() })
-        .eq('id', editingStudent.user_id); 
-      
-      if (userUpdateError) {
-        toast({ title: "Warning", description: `Student profile updated, but failed to update user login details: ${userUpdateError.message}`, variant: "default" });
-      }
+    if (result.ok) {
+      toast({ title: "Student Updated", description: result.message });
+      setIsEditDialogOpen(false);
+      setEditingStudent(null);
+      if(currentSchoolId) fetchStudents(currentSchoolId); 
+    } else {
+       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
     
-    toast({ title: "Student Updated", description: `${editStudentName.trim()}'s details updated.` });
-    setIsEditDialogOpen(false);
-    setEditingStudent(null);
-    if(currentSchoolId) fetchStudents(currentSchoolId); 
     setIsSubmitting(false);
   };
   

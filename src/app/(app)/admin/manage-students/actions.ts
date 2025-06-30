@@ -111,3 +111,77 @@ export async function reactivateStudentAction(
     return { ok: false, message: e.message || 'An unexpected error occurred.' };
   }
 }
+
+interface UpdateStudentInput {
+  studentId: string;
+  userId: string;
+  schoolId: string;
+  name: string;
+  email: string;
+  roll_number: string | null;
+  class_id: string | null;
+}
+
+export async function updateStudentAction(
+  input: UpdateStudentInput
+): Promise<{ ok: boolean; message: string }> {
+  const supabase = createSupabaseServerClient();
+  const { studentId, userId, schoolId, name, email, roll_number, class_id } = input;
+
+  try {
+    // 1. Check if the new email is already taken by another user in the same school
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email.trim())
+      .eq('school_id', schoolId)
+      .neq('id', userId)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Error checking for existing user by email:', fetchError);
+      return { ok: false, message: 'Database error checking email uniqueness.' };
+    }
+    if (existingUser) {
+      return { ok: false, message: `Another user with the email ${email.trim()} already exists in this school.` };
+    }
+
+    // 2. Update the student's profile in the 'students' table
+    const { error: studentUpdateError } = await supabase
+      .from('students')
+      .update({
+        name: name.trim(),
+        email: email.trim(),
+        roll_number: roll_number || null,
+        class_id: class_id,
+      })
+      .eq('id', studentId)
+      .eq('school_id', schoolId);
+
+    if (studentUpdateError) {
+      console.error('Error updating student profile:', studentUpdateError);
+      return { ok: false, message: `Failed to update student profile: ${studentUpdateError.message}` };
+    }
+
+    // 3. Update the corresponding user record in the 'users' table
+    const { error: userUpdateError } = await supabase
+      .from('users')
+      .update({
+        name: name.trim(),
+        email: email.trim(),
+      })
+      .eq('id', userId);
+
+    if (userUpdateError) {
+      // This is not a critical failure; the main student profile was updated. Log a warning.
+      console.warn(`Student profile ${studentId} updated, but failed to update associated user login ${userId}: ${userUpdateError.message}`);
+    }
+
+    revalidatePath('/admin/manage-students');
+    return { ok: true, message: 'Student details updated successfully.' };
+
+  } catch (e: any) {
+    console.error('Unexpected error updating student:', e);
+    return { ok: false, message: e.message || 'An unexpected error occurred.' };
+  }
+}
