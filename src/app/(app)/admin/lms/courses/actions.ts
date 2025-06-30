@@ -161,7 +161,7 @@ export async function addCourseFileResourceAction(
   }
 
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-  const filePath = `courses/${courseId}/resources/${uuidv4()}-${sanitizedFileName}`;
+  const filePath = `public/courses/${courseId}/resources/${uuidv4()}-${sanitizedFileName}`;
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from('lms-course-resources')
