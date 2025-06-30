@@ -41,7 +41,7 @@ export async function getStudentDataExportPageDataAction(adminUserId: string): P
 
     if (studentsError) {
       console.error("Error fetching students for data export:", studentsError);
-      return { ok: false, message: `Failed to fetch students: ${studentsError.message}`, schoolId };
+      return { ok: false, message: `Failed to fetch students: ${studentsError.message}`, schoolId, schoolName };
     }
 
     // Fetch classes for the school
@@ -52,7 +52,7 @@ export async function getStudentDataExportPageDataAction(adminUserId: string): P
 
     if (classesError) {
       console.error("Error fetching classes for data export:", classesError);
-      return { ok: false, message: `Failed to fetch classes: ${classesError.message}`, schoolId, students: studentsData || [] };
+      return { ok: false, message: `Failed to fetch classes: ${classesError.message}`, schoolId, schoolName, students: studentsData || [] };
     }
 
     return {

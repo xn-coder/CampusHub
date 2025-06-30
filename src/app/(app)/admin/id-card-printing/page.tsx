@@ -14,7 +14,7 @@ import { getStudentDataExportPageDataAction } from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 
-export default function AdminStudentDataExportPage() {
+export default function AdminIdCardPrintingPage() {
   const { toast } = useToast();
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
@@ -65,7 +65,7 @@ export default function AdminStudentDataExportPage() {
     
     toast({ title: "Generating CSV...", description: `Preparing data for ${studentsToExport.length} student(s).` });
     
-    const headers = ["Student ID", "Name", "Email", "Roll Number", "Class", "Guardian Name", "Contact Number", "Address", "Blood Group", "Date of Birth"];
+    const headers = ["Student ID", "Name", "Email", "Roll Number", "Class", "Guardian Name", "Contact Number", "Address", "Blood Group", "Date of Birth", "Admission Date"];
     const csvRows = [
         headers.join(','),
         ...studentsToExport.map(student => {
@@ -81,6 +81,7 @@ export default function AdminStudentDataExportPage() {
                 `"${(student.address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`, // Remove newlines
                 `"${student.blood_group || ''}"`,
                 `"${student.date_of_birth || ''}"`,
+                `"${student.admission_date || ''}"`,
             ];
             return row.join(',');
         })
@@ -90,7 +91,7 @@ export default function AdminStudentDataExportPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `student_data_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `student_id_card_data_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -99,7 +100,7 @@ export default function AdminStudentDataExportPage() {
   if (isLoadingPage) {
     return (
         <div className="flex flex-col gap-6">
-            <PageHeader title="Student Data Export" />
+            <PageHeader title="ID Card Printing" />
             <Card>
                 <CardContent className="pt-6 text-center">
                     <Loader2 className="h-8 w-8 animate-spin inline-block mr-2"/> Loading page data...
@@ -112,7 +113,7 @@ export default function AdminStudentDataExportPage() {
   if (!currentSchoolId && !isLoadingPage) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Student Data Export" />
+        <PageHeader title="ID Card Printing" />
         <Card>
             <CardContent className="pt-6 text-center text-destructive">
                 Admin not associated with a school or school data could not be loaded.
@@ -126,8 +127,8 @@ export default function AdminStudentDataExportPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
-        title="Student Data Export" 
-        description="Download detailed student information in a tabular format (CSV)." 
+        title="ID Card Printing" 
+        description="Download detailed student information in a tabular format (CSV), ideal for printing ID cards or other records." 
       />
       <Card>
         <CardHeader>

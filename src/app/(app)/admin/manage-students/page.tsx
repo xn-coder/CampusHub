@@ -51,6 +51,7 @@ export default function ManageStudentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-students");
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [allClassesInSchool, setAllClassesInSchool] = useState<ClassData[]>([]);
@@ -59,7 +60,7 @@ export default function ManageStudentsPage() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [editStudentName, setEditStudentName] = useState('');
   const [editStudentEmail, setEditStudentEmail] = useState('');
-  const [editStudentRollNumber, setEditStudentRollNumber] = useState<string | undefined>(undefined);
+  const [editStudentRollNumber, setEditStudentRollNumber] = useState<string>('');
   const [editStudentClassId, setEditStudentClassId] = useState<string | undefined>(undefined);
   
   const [showTerminated, setShowTerminated] = useState(false);
@@ -155,7 +156,7 @@ export default function ManageStudentsPage() {
     setEditingStudent(student);
     setEditStudentName(student.name);
     setEditStudentEmail(student.email);
-    setEditStudentRollNumber(student.roll_number || undefined);
+    setEditStudentRollNumber(student.roll_number || '');
     setEditStudentClassId(student.class_id || undefined);
     setIsEditDialogOpen(true);
   };
@@ -166,8 +167,7 @@ export default function ManageStudentsPage() {
       toast({ title: "Error", description: "Name, Email, and School context are required.", variant: "destructive" });
       return;
     }
-    setIsLoading(true);
-    
+    setIsSubmitting(true);
     
     if (editStudentEmail.trim() !== editingStudent.email) {
       const { data: existingUser, error: fetchError } = await supabase
@@ -180,12 +180,12 @@ export default function ManageStudentsPage() {
 
       if (fetchError && fetchError.code !== 'PGRST116') { 
         toast({ title: "Error", description: "Database error checking email.", variant: "destructive" });
-        setIsLoading(false);
+        setIsSubmitting(false);
         return;
       }
       if (existingUser) {
         toast({ title: "Error", description: "Another user with this email already exists in this school.", variant: "destructive" });
-        setIsLoading(false);
+        setIsSubmitting(false);
         return;
       }
     }
@@ -195,7 +195,7 @@ export default function ManageStudentsPage() {
       .update({ 
         name: editStudentName.trim(), 
         email: editStudentEmail.trim(),
-        roll_number: editStudentRollNumber || null,
+        roll_number: editStudentRollNumber.trim() || null,
         class_id: editStudentClassId === 'unassign' ? null : editStudentClassId 
       })
       .eq('id', editingStudent.id)
@@ -203,7 +203,7 @@ export default function ManageStudentsPage() {
 
     if (studentUpdateError) {
       toast({ title: "Error", description: `Failed to update student profile: ${studentUpdateError.message}`, variant: "destructive" });
-      setIsLoading(false);
+      setIsSubmitting(false);
       return;
     }
 
@@ -222,7 +222,7 @@ export default function ManageStudentsPage() {
     setIsEditDialogOpen(false);
     setEditingStudent(null);
     if(currentSchoolId) fetchStudents(currentSchoolId); 
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
   
   const handleTerminateStudent = async (student: Student) => { 
@@ -231,7 +231,7 @@ export default function ManageStudentsPage() {
         return;
     };
     
-    setIsLoading(true);
+    setIsSubmitting(true);
     const result = await terminateStudentAction(student.id, student.user_id, currentSchoolId);
     if (result.ok) {
       toast({ title: "Student Terminated", description: result.message });
@@ -239,7 +239,7 @@ export default function ManageStudentsPage() {
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
   const handleReactivateStudent = async (student: Student) => { 
@@ -248,7 +248,7 @@ export default function ManageStudentsPage() {
         return;
     };
     
-    setIsLoading(true);
+    setIsSubmitting(true);
     const result = await reactivateStudentAction(student.id, student.user_id, currentSchoolId);
     if (result.ok) {
       toast({ title: "Student Reactivated", description: result.message });
@@ -256,7 +256,7 @@ export default function ManageStudentsPage() {
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
 
@@ -390,12 +390,12 @@ export default function ManageStudentsPage() {
                             <TableCell className="space-x-1 text-right">
                               {student.status === 'Active' || !student.status ? (
                                 <>
-                                    <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isLoading}>
+                                    <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isSubmitting}>
                                         <Edit2 className="h-4 w-4" />
                                     </Button>
                                     <AlertDialog>
                                       <AlertDialogTrigger asChild>
-                                        <Button variant="destructive" size="icon" disabled={isLoading} title="Terminate Student">
+                                        <Button variant="destructive" size="icon" disabled={isSubmitting} title="Terminate Student">
                                             <UserX className="h-4 w-4" />
                                         </Button>
                                       </AlertDialogTrigger>
@@ -407,9 +407,9 @@ export default function ManageStudentsPage() {
                                               </AlertDialogDescription>
                                           </AlertDialogHeader>
                                           <AlertDialogFooter>
-                                              <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
-                                              <AlertDialogAction onClick={() => handleTerminateStudent(student)} disabled={isLoading} className="bg-destructive hover:bg-destructive/90">
-                                                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : null}
+                                              <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                                              <AlertDialogAction onClick={() => handleTerminateStudent(student)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
+                                                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : null}
                                                   Terminate
                                               </AlertDialogAction>
                                           </AlertDialogFooter>
@@ -419,7 +419,7 @@ export default function ManageStudentsPage() {
                               ) : student.status === 'Terminated' ? (
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button variant="outline" size="icon" disabled={isLoading} title="Reactivate Student">
+                                    <Button variant="outline" size="icon" disabled={isSubmitting} title="Reactivate Student">
                                       <UserCheck className="h-4 w-4 text-green-600" />
                                     </Button>
                                   </AlertDialogTrigger>
@@ -431,9 +431,9 @@ export default function ManageStudentsPage() {
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
-                                      <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleReactivateStudent(student)} disabled={isLoading} className="bg-green-600 text-white hover:bg-green-700">
-                                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : "Reactivate"}
+                                      <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleReactivateStudent(student)} disabled={isSubmitting} className="bg-green-600 text-white hover:bg-green-700">
+                                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : "Reactivate"}
                                       </AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
@@ -479,19 +479,19 @@ export default function ManageStudentsPage() {
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editStudentName" className="text-right">Name</Label>
-                <Input id="editStudentName" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="col-span-3" required disabled={isLoading} />
+                <Input id="editStudentName" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="col-span-3" required disabled={isSubmitting} />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editStudentEmail" className="text-right">Email</Label>
-                <Input id="editStudentEmail" type="email" value={editStudentEmail} onChange={(e) => setEditStudentEmail(e.target.value)} className="col-span-3" required disabled={isLoading} />
+                <Input id="editStudentEmail" type="email" value={editStudentEmail} onChange={(e) => setEditStudentEmail(e.target.value)} className="col-span-3" required disabled={isSubmitting} />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editStudentRollNumber" className="text-right">Roll Number</Label>
-                <Input id="editStudentRollNumber" value={editStudentRollNumber || ''} onChange={(e) => setEditStudentRollNumber(e.target.value)} className="col-span-3" placeholder="Optional" disabled={isLoading} />
+                <Input id="editStudentRollNumber" value={editStudentRollNumber || ''} onChange={(e) => setEditStudentRollNumber(e.target.value)} className="col-span-3" placeholder="Optional" disabled={isSubmitting} />
               </div>
                <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editStudentClassId" className="text-right">Assign Class</Label>
-                 <Select value={editStudentClassId} onValueChange={(value) => setEditStudentClassId(value === 'unassign' ? undefined : value)} disabled={isLoading}>
+                 <Select value={editStudentClassId} onValueChange={(value) => setEditStudentClassId(value === 'unassign' ? undefined : value)} disabled={isSubmitting}>
                     <SelectTrigger className="col-span-3">
                         <SelectValue placeholder="Select a class" />
                     </SelectTrigger>
@@ -506,9 +506,9 @@ export default function ManageStudentsPage() {
               </div>
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
+              <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
                 Save Changes
               </Button>
             </DialogFooter>

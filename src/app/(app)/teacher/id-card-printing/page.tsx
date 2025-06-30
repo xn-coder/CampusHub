@@ -76,7 +76,7 @@ export default function TeacherDataExportPage() {
 
     toast({ title: "Generating CSV...", description: `Preparing data for ${studentsToExport.length} student(s).` });
     
-    const headers = ["Student ID", "Name", "Email", "Roll Number", "Class", "Guardian Name", "Contact Number", "Address", "Blood Group", "Date of Birth"];
+    const headers = ["Student ID", "Name", "Email", "Roll Number", "Class", "Guardian Name", "Contact Number", "Address", "Blood Group", "Date of Birth", "Admission Date"];
     const csvRows = [
         headers.join(','),
         ...studentsToExport.map(student => {
@@ -92,6 +92,7 @@ export default function TeacherDataExportPage() {
                 `"${(student.address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
                 `"${student.blood_group || ''}"`,
                 `"${student.date_of_birth || ''}"`,
+                `"${student.admission_date || ''}"`,
             ];
             return row.join(',');
         })
@@ -101,7 +102,7 @@ export default function TeacherDataExportPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `student_data_${selectedClassId}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `student_id_card_data_${selectedClassId}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -113,7 +114,7 @@ export default function TeacherDataExportPage() {
   if (!currentTeacherId || !currentSchoolId) {
      return (
         <div className="flex flex-col gap-6">
-        <PageHeader title="Student Data Export" />
+        <PageHeader title="ID Card Printing" />
         <Card><CardContent className="pt-6 text-center text-destructive">
             Could not load teacher profile or school association.
         </CardContent></Card>
@@ -124,8 +125,8 @@ export default function TeacherDataExportPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
-        title="Student Data Export" 
-        description="Download detailed information for students in your classes as a CSV file." 
+        title="ID Card Printing" 
+        description="Download detailed student information for your classes, ideal for creating ID cards." 
       />
       <Card>
         <CardHeader>

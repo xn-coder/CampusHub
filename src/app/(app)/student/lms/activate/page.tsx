@@ -10,8 +10,13 @@ import type { Course, UserRole } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback, Suspense } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { useSearchParams, useRouter } from 'next/navigation';
-import { KeyRound, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { getCourseActivationPageInitialDataAction, activateCourseWithCodeAction } from '@/app/(app)/admin/lms/courses/actions';
+import { KeyRound, CheckCircle, XCircle, Loader2, CreditCard } from 'lucide-react';
+import { 
+  getCourseActivationPageInitialDataAction, 
+  activateCourseWithCodeAction,
+  createCoursePaymentOrderAction,
+  verifyCoursePaymentAndEnrollAction
+} from '@/app/(app)/admin/lms/courses/actions';
 
 function ActivateLmsForm() {
   const { toast } = useToast();
@@ -28,11 +33,15 @@ function ActivateLmsForm() {
   const [currentUserProfileId, setCurrentUserProfileId] = useState<string | null>(null); 
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
   const fetchInitialPageData = useCallback(async () => {
     setIsPageLoading(true);
     const courseIdFromQuery = searchParams.get('courseId');
     const userIdFromStorage = localStorage.getItem('currentUserId');
+    const userNameFromStorage = localStorage.getItem('currentUserName');
+    const userEmailFromStorage = localStorage.getItem('currentUserEmail'); // Assuming email is stored
 
     if (!userIdFromStorage) {
       toast({ title: "Error", description: "User not identified. Please log in.", variant: "destructive"});
@@ -40,6 +49,9 @@ function ActivateLmsForm() {
       return;
     }
     setCurrentUserId(userIdFromStorage);
+    setCurrentUserName(userNameFromStorage);
+    // You might need to fetch email if not in local storage
+    if (userEmailFromStorage) setCurrentUserEmail(userEmailFromStorage);
 
     const result = await getCourseActivationPageInitialDataAction(courseIdFromQuery, userIdFromStorage);
 
@@ -58,7 +70,7 @@ function ActivateLmsForm() {
     fetchInitialPageData();
   }, [fetchInitialPageData]);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmitCode = async (e: FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setMessage(null);
@@ -97,6 +109,69 @@ function ActivateLmsForm() {
     }
     setIsLoading(false);
   };
+  
+  const handlePayment = async () => {
+    if (!targetCourse?.id || !currentUserId) {
+        toast({ title: "Error", description: "Course or User ID is missing.", variant: "destructive"});
+        return;
+    }
+    setIsLoading(true);
+    const orderResult = await createCoursePaymentOrderAction(targetCourse.id, currentUserId);
+    if(!orderResult.ok || !orderResult.order) {
+        toast({ title: "Payment Error", description: orderResult.message || "Could not create payment order.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+    }
+
+    const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: orderResult.order.amount,
+        currency: "INR",
+        name: targetCourse.title,
+        description: `Course Enrollment: ${targetCourse.description || ''}`.substring(0, 255),
+        order_id: orderResult.order.id,
+        handler: async (response: any) => {
+            const verifyResult = await verifyCoursePaymentAndEnrollAction(
+                response.razorpay_payment_id,
+                response.razorpay_order_id,
+                response.razorpay_signature
+            );
+            if (verifyResult.ok) {
+                toast({ title: 'Payment Successful', description: verifyResult.message });
+                setMessage({type: 'success', text: verifyResult.message});
+                setTimeout(() => {
+                    if (verifyResult.courseId) router.push(`/lms/courses/${verifyResult.courseId}`);
+                }, 2000);
+            } else {
+                toast({ title: 'Payment Failed', description: verifyResult.message, variant: 'destructive' });
+                 setMessage({type: 'error', text: verifyResult.message});
+            }
+        },
+        prefill: {
+            name: currentUserName || "Student",
+            email: currentUserEmail || undefined,
+        },
+        notes: {
+            course_id: targetCourse.id,
+        },
+        theme: {
+            color: "#3399cc"
+        }
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.on('payment.failed', function (response: any){
+        console.error("Razorpay payment failed:", response.error);
+        toast({
+            title: 'Payment Failed',
+            description: `Code: ${response.error.code}. Reason: ${response.error.reason}`,
+            variant: 'destructive',
+        });
+        setMessage({type: 'error', text: `Payment failed: ${response.error.reason}`});
+    });
+    rzp.open();
+    setIsLoading(false);
+  };
 
   if (isPageLoading) {
     return (
@@ -116,15 +191,14 @@ function ActivateLmsForm() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Activate LMS Course" 
-        description="Enter your activation code to get access to a paid course." 
+        description="Enter your activation code or pay to get access to a paid course." 
       />
       <Card className="max-w-lg mx-auto w-full">
         <CardHeader>
-          <CardTitle className="flex items-center"><KeyRound className="mr-2 h-5 w-5" /> Enter Activation Code</CardTitle>
-          {targetCourse && <CardDescription>You are attempting to activate: <strong>{targetCourse.title}</strong></CardDescription>}
-          {!targetCourse && <CardDescription>Enter the code provided to you after purchase.</CardDescription>}
+          <CardTitle className="flex items-center"><KeyRound className="mr-2 h-5 w-5" /> Course Activation</CardTitle>
+          {targetCourse && <CardDescription>You are activating: <strong>{targetCourse.title}</strong></CardDescription>}
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmitCode}>
           <CardContent className="space-y-4">
             <div>
               <Label htmlFor="activationCode">Activation Code</Label>
@@ -132,25 +206,39 @@ function ActivateLmsForm() {
                 id="activationCode" 
                 value={activationCode} 
                 onChange={(e) => setActivationCode(e.target.value.toUpperCase())} 
-                placeholder="XXXX-XXXX-XXXX-XXXX" 
-                required 
+                placeholder="Enter code from vendor..." 
                 disabled={isLoading || isPageLoading}
               />
             </div>
+          </CardContent>
+          <CardFooter className="flex flex-col gap-3">
+             <Button type="submit" className="w-full" disabled={isLoading || isPageLoading || !activationCode.trim()}>
+              {isLoading && activationCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+              {isLoading && activationCode ? 'Activating...' : 'Activate with Code'}
+            </Button>
+            {targetCourse?.is_paid && (
+                <>
+                    <div className="relative flex py-2 items-center w-full">
+                        <div className="flex-grow border-t border-muted"></div>
+                        <span className="flex-shrink mx-4 text-muted-foreground text-xs">OR</span>
+                        <div className="flex-grow border-t border-muted"></div>
+                    </div>
+                    <Button type="button" onClick={handlePayment} className="w-full" disabled={isLoading || isPageLoading || !targetCourse}>
+                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+                        Pay ${targetCourse?.price?.toFixed(2)} and Enroll
+                    </Button>
+                </>
+            )}
+          </CardFooter>
+        </form>
+         <CardContent>
              {message && (
               <div className={`p-3 rounded-md text-sm ${message.type === 'success' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'}`}>
                 {message.type === 'success' ? <CheckCircle className="inline mr-1 h-4 w-4"/> : <XCircle className="inline mr-1 h-4 w-4"/>}
                 {message.text}
               </div>
             )}
-          </CardContent>
-          <CardFooter>
-            <Button type="submit" className="w-full" disabled={isLoading || isPageLoading || !currentUserProfileId || !currentSchoolId}>
-              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-              {isLoading ? 'Activating...' : 'Activate Course'}
-            </Button>
-          </CardFooter>
-        </form>
+        </CardContent>
       </Card>
     </div>
   );

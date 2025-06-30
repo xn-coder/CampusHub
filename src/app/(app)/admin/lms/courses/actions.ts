@@ -5,6 +5,19 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus } from '@/types';
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
+
+let razorpayInstance: Razorpay | null = null;
+if (process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+    razorpayInstance = new Razorpay({
+        key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+} else {
+    console.warn("Razorpay credentials not found for LMS. Payment gateway will not function.");
+}
+
 
 // --- Course Management ---
 interface CourseInput {
@@ -173,12 +186,12 @@ export async function addCourseFileResourceAction(
   }
   
   const { data: publicUrlData } = supabaseAdmin.storage
-      .from('lms-course-resources')
+      .from('campushub')
       .getPublicUrl(filePath);
 
   if (!publicUrlData) {
       // Clean up orphaned file
-      await supabaseAdmin.storage.from('lms-course-resources').remove([filePath]);
+      await supabaseAdmin.storage.from('campushub').remove([filePath]);
       return { ok: false, message: 'Could not retrieve public URL for the uploaded file.' };
   }
 
@@ -202,7 +215,7 @@ export async function addCourseFileResourceAction(
   if (dbError) {
     console.error('Error adding file course resource to DB:', dbError);
     // Clean up orphaned file
-    await supabaseAdmin.storage.from('lms-course-resources').remove([filePath]);
+    await supabaseAdmin.storage.from('campushub').remove([filePath]);
     return { ok: false, message: `Failed to add resource record: ${dbError.message}` };
   }
 
@@ -238,7 +251,7 @@ export async function deleteCourseResourceAction(id: string, courseId: string): 
   // If the DB record was deleted and there was a file path, try to delete the file from storage
   if (resourceToDelete?.file_path) {
     const { error: storageError } = await supabaseAdmin.storage
-      .from('lms-course-resources')
+      .from('campushub')
       .remove([resourceToDelete.file_path]);
     
     if (storageError) {
@@ -681,8 +694,93 @@ export async function activateCourseWithCodeAction(
   }
 }
 
-    
-    
-    
+// --- Razorpay Payment Actions for Courses ---
 
+export async function createCoursePaymentOrderAction(courseId: string, userId: string): Promise<{
+    ok: boolean;
+    message: string;
+    order?: any;
+}> {
+    if (!razorpayInstance) return { ok: false, message: "Payment gateway is not configured." };
     
+    const supabase = createSupabaseServerClient();
+    const { data: course, error: courseError } = await supabase.from('lms_courses').select('price').eq('id', courseId).single();
+    if (courseError || !course || !course.price || course.price <= 0) {
+        return { ok: false, message: "Course not found or has no price." };
+    }
+
+    const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
+    if(userError || !user) return { ok: false, message: "User not found." };
+    
+    const amountInPaisa = Math.round(course.price * 100);
+    const options = {
+        amount: amountInPaisa,
+        currency: "INR",
+        receipt: `crs_${courseId}_${uuidv4().substring(0, 8)}`,
+        notes: {
+            course_id: courseId,
+            user_id: userId,
+        },
+    };
+
+    try {
+        const order = await razorpayInstance.orders.create(options);
+        return { ok: true, message: "Order created.", order };
+    } catch (error: any) {
+        console.error("Razorpay course order creation error:", error);
+        return { ok: false, message: `Failed to create payment order: ${error.message || 'Unknown error'}` };
+    }
+}
+
+export async function verifyCoursePaymentAndEnrollAction(
+    razorpay_payment_id: string,
+    razorpay_order_id: string,
+    razorpay_signature: string
+): Promise<{ ok: boolean, message: string, courseId?: string }> {
+    const secret = process.env.RAZORPAY_KEY_SECRET;
+    if (!secret || !razorpayInstance) {
+        return { ok: false, message: "Payment gateway is not configured on the server." };
+    }
+
+    const body = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSignature = crypto.createHmac("sha256", secret).update(body).digest("hex");
+
+    if (expectedSignature !== razorpay_signature) {
+        return { ok: false, message: "Payment verification failed: Invalid signature." };
+    }
+
+    try {
+        const orderDetails = await razorpayInstance.orders.fetch(razorpay_order_id);
+        const courseId = orderDetails.notes?.course_id;
+        const userId = orderDetails.notes?.user_id;
+
+        if (!courseId || !userId) {
+            return { ok: false, message: "Order details are missing required information." };
+        }
+        
+        const supabase = createSupabaseServerClient();
+        const { data: user, error: userError } = await supabase.from('users').select('id, role').eq('id', userId).single();
+        if (userError || !user) return { ok: false, message: "User associated with payment not found." };
+
+        const userRole = user.role as UserRole;
+        const profileTable = userRole === 'student' ? 'students' : 'teachers';
+        const { data: profile, error: profileError } = await supabase.from(profileTable).select('id').eq('user_id', userId).single();
+        if(profileError || !profile) return {ok: false, message: "User profile for enrollment not found."};
+        
+        const enrollmentResult = await enrollUserInCourseAction({
+            course_id: courseId,
+            user_profile_id: profile.id,
+            user_type: userRole,
+        });
+
+        if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
+            return { ok: false, message: `Payment verified, but enrollment failed: ${enrollmentResult.message}` };
+        }
+
+        revalidatePath('/lms/available-courses');
+        return { ok: true, message: "Payment successful and you are now enrolled!", courseId };
+    } catch (error: any) {
+        console.error("Error during course payment verification:", error);
+        return { ok: false, message: `An unexpected error occurred during verification: ${error.message}` };
+    }
+}
