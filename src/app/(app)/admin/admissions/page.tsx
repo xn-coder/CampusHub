@@ -7,13 +7,14 @@ import { Button } from '@/components/ui/button';
 import type { AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, AdmissionStatus } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { ListChecks, CheckSquare, Loader2, UserPlus, FileDown, Search } from 'lucide-react';
+import { ListChecks, CheckSquare, Loader2, UserPlus, FileDown, Search, Receipt } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { updateAdmissionStatusAction, fetchAdminSchoolIdForAdmissions, fetchAdmissionPageDataAction } from './actions';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, parseISO } from 'date-fns';
 
 
@@ -100,23 +101,6 @@ export default function AdmissionsPage() {
     }
     setIsSubmitting(false);
   };
-
-  const admissionFeeCategory = feeCategories.find(fc => fc.name.toLowerCase().includes('admission'));
-
-  const getFeeStatusText = (record: AdmissionRecord) => {
-    if (admissionFeeCategory && record.student_profile_id) {
-        const payment = feePayments.find(p => 
-            p.student_id === record.student_profile_id && 
-            p.fee_category_id === admissionFeeCategory.id
-        );
-        if (payment) {
-            return payment.status;
-        } else {
-            return "Not Assigned";
-        }
-    }
-    return "N/A";
-  };
   
   const filteredAdmissionRecords = useMemo(() => {
     return admissionRecords.filter(record => {
@@ -132,13 +116,12 @@ export default function AdmissionsPage() {
         toast({ title: "No Data", description: "There is no data to download for the current filters.", variant: "destructive" });
         return;
     }
-    const headers = ["Name", "Email", "Class Assigned", "Status", "Admission Fee Status", "Admission Date"];
+    const headers = ["Name", "Email", "Class Assigned", "Status", "Admission Date"];
     const csvRows = [
         headers.join(','),
         ...filteredAdmissionRecords.map(record => {
             const assignedClassDetails = activeClasses.find(c => c.id === record.class_id);
             const classText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'N/A';
-            const feeStatusText = getFeeStatusText(record);
             const admissionDate = record.admission_date ? format(parseISO(record.admission_date), 'yyyy-MM-dd') : 'N/A';
             
             const row = [
@@ -146,7 +129,6 @@ export default function AdmissionsPage() {
                 `"${record.email.replace(/"/g, '""')}"`,
                 `"${classText.replace(/"/g, '""')}"`,
                 `"${record.status}"`,
-                `"${feeStatusText}"`,
                 `"${admissionDate}"`
             ];
             return row.join(',');
@@ -162,6 +144,8 @@ export default function AdmissionsPage() {
     link.click();
     document.body.removeChild(link);
   };
+
+  const getFeeCategoryName = (categoryId: string) => feeCategories.find(fc => fc.id === categoryId)?.name || 'N/A';
 
 
   return (
@@ -225,7 +209,7 @@ export default function AdmissionsPage() {
                     <TableHead>Email</TableHead>
                     <TableHead>Class Assigned</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Admission Fee</TableHead>
+                    <TableHead>Fees Status</TableHead>
                     <TableHead>Action</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -234,23 +218,8 @@ export default function AdmissionsPage() {
                     const assignedClassDetails = activeClasses.find(c => c.id === record.class_id);
                     const classText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'N/A';
                     
-                    let feeStatus: React.ReactNode = <span className="text-xs text-muted-foreground">N/A</span>;
-                    if (admissionFeeCategory && record.student_profile_id) {
-                        const payment = feePayments.find(p => 
-                            p.student_id === record.student_profile_id && 
-                            p.fee_category_id === admissionFeeCategory.id
-                        );
-
-                        if (payment) {
-                            feeStatus = (
-                                <Badge variant={payment.status === 'Paid' ? 'default' : payment.status === 'Partially Paid' ? 'secondary' : 'destructive'}>
-                                    {payment.status}
-                                </Badge>
-                            );
-                        } else {
-                            feeStatus = <span className="text-xs text-muted-foreground">Not Assigned</span>;
-                        }
-                    }
+                    const studentFees = record.student_profile_id ? feePayments.filter(p => p.student_id === record.student_profile_id) : [];
+                    const pendingFeeCount = studentFees.filter(p => p.status !== 'Paid').length;
 
                     return (
                     <TableRow key={record.id}>
@@ -267,7 +236,34 @@ export default function AdmissionsPage() {
                           {record.status}
                         </span>
                       </TableCell>
-                      <TableCell>{feeStatus}</TableCell>
+                      <TableCell>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="ghost" size="sm" disabled={studentFees.length === 0}>
+                              <Receipt className="mr-1 h-3 w-3" /> 
+                              {pendingFeeCount > 0 ? `${pendingFeeCount} Pending` : studentFees.length > 0 ? 'All Paid' : 'N/A'}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-80">
+                            <div className="grid gap-4">
+                              <div className="space-y-2">
+                                <h4 className="font-medium leading-none">Assigned Fees</h4>
+                                <p className="text-sm text-muted-foreground">Status of fees for {record.name}.</p>
+                              </div>
+                              <ul className="space-y-1 text-sm">
+                                {studentFees.map(fee => (
+                                  <li key={fee.id} className="flex justify-between">
+                                    <span>{getFeeCategoryName(fee.fee_category_id)}</span>
+                                    <Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>
+                                      {fee.status}
+                                    </Badge>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </TableCell>
                       <TableCell>
                         {record.status === 'Admitted' && (
                            <Button variant="outline" size="sm" onClick={() => handleEnrollStudent(record.id)} disabled={isSubmitting}>
