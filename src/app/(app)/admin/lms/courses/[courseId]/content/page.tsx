@@ -275,7 +275,8 @@ export default function ManageCourseContentPage() {
                             </div>
                         </RadioGroup>
                         {videoUploadMethod === 'url' ? (
-                             <Input 
+                             <Input
+                                key="video-url-input" 
                                 id={`${tabKey}-content`} 
                                 type="url"
                                 value={resourceUrlOrContent} 
@@ -286,6 +287,7 @@ export default function ManageCourseContentPage() {
                             />
                         ) : (
                              <Input
+                                key="video-file-input"
                                 id={`${tabKey}-content-file-input`}
                                 type="file"
                                 accept="video/*"
