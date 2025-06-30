@@ -136,50 +136,53 @@ export default function ManageCourseContentPage() {
     }
     setIsSubmitting(true);
     
-    let result;
-    const isFileUpload = (activeTab === 'ebooks') || (activeTab === 'videos' && videoUploadMethod === 'file');
+    try {
+      let result;
+      const isFileUpload = (activeTab === 'ebooks') || (activeTab === 'videos' && videoUploadMethod === 'file');
 
-    if (isFileUpload) {
-        if (!resourceFile) {
-            toast({ title: "Error", description: `A file is required for this upload method.`, variant: "destructive" });
-            setIsSubmitting(false);
-            return;
-        }
-        const formData = new FormData();
-        formData.append('resourceFile', resourceFile);
-        formData.append('courseId', course.id);
-        formData.append('title', resourceTitle.trim());
-        formData.append('type', resourceTypeMapping[activeTab]);
+      if (isFileUpload) {
+          if (!resourceFile) {
+              toast({ title: "Error", description: `A file is required for this upload method.`, variant: "destructive" });
+              return;
+          }
+          const formData = new FormData();
+          formData.append('resourceFile', resourceFile);
+          formData.append('courseId', course.id);
+          formData.append('title', resourceTitle.trim());
+          formData.append('type', resourceTypeMapping[activeTab]);
 
-        result = await addCourseFileResourceAction(formData);
+          result = await addCourseFileResourceAction(formData);
 
-    } else {
-        if (!resourceUrlOrContent.trim()) {
-            toast({ title: "Error", description: "URL/Content is required for this resource type.", variant: "destructive" });
-            setIsSubmitting(false);
-            return;
-        }
-        result = await addCourseResourceAction({
-            course_id: course.id,
-            title: resourceTitle.trim(),
-            type: resourceTypeMapping[activeTab],
-            url_or_content: resourceUrlOrContent.trim(),
-        });
+      } else {
+          if (!resourceUrlOrContent.trim()) {
+              toast({ title: "Error", description: "URL/Content is required for this resource type.", variant: "destructive" });
+              return;
+          }
+          result = await addCourseResourceAction({
+              course_id: course.id,
+              title: resourceTitle.trim(),
+              type: resourceTypeMapping[activeTab],
+              url_or_content: resourceUrlOrContent.trim(),
+          });
+      }
+
+      if (result.ok) {
+        toast({ title: "Resource Added", description: result.message });
+        setResourceTitle('');
+        setResourceUrlOrContent('');
+        setResourceFile(null);
+        const fileInput = document.getElementById(`${activeTab}-content-file-input`) as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+
+        fetchCourseResources(); 
+      } else {
+        toast({ title: "Error Adding Resource", description: result.message, variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Unexpected Error", description: "An unexpected error occurred during the upload.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (result.ok) {
-      toast({ title: "Resource Added", description: result.message });
-      setResourceTitle('');
-      setResourceUrlOrContent('');
-      setResourceFile(null);
-      const fileInput = document.getElementById(`${activeTab}-content-file-input`) as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
-
-      fetchCourseResources(); 
-    } else {
-      toast({ title: "Error Adding Resource", description: result.message, variant: "destructive" });
-    }
-    setIsSubmitting(false);
   };
 
   const handleDeleteResource = async (resourceId: string) => {
