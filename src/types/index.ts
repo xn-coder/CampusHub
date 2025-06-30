@@ -117,6 +117,9 @@ export interface Teacher {
 
   pastAssignmentsCount?: number;
   pastClassesTaught?: string[];
+  lastLogin?: string;
+  assignmentsPosted?: number;
+  classesTaught?: number;
 }
 
 

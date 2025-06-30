@@ -11,7 +11,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2, Users, Briefcase } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getTeacherStudentsAndClassesAction } from './actions';
-import { supabase } from '@/lib/supabaseClient'; 
+import { supabase } from '@/lib/supabaseClient';
+import { format, parseISO, isValid } from 'date-fns';
 
 export default function TeacherReportsPage() {
   const { toast } = useToast();
@@ -23,7 +24,7 @@ export default function TeacherReportsPage() {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<keyof Student | ''>('name'); // Default sort by name
+  const [sortBy, setSortBy] = useState<keyof Student | ''>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
@@ -80,6 +81,12 @@ export default function TeacherReportsPage() {
     const classInfo = teacherClasses.find(c => c.id === classId);
     return classInfo ? `${classInfo.name} - ${classInfo.division}` : 'N/A';
   };
+  
+  const formatDateSafe = (dateInput?: string | Date): string => {
+    if (!dateInput) return 'N/A';
+    const dateObj = typeof dateInput === 'string' ? parseISO(dateInput) : dateInput;
+    return isValid(dateObj) ? format(dateObj, 'PP') : 'N/A';
+  };
 
   const filteredAndSortedStudents = useMemo(() => {
     let students = [...teacherStudents];
@@ -94,30 +101,27 @@ export default function TeacherReportsPage() {
     }
     if (sortBy) {
       students.sort((a, b) => {
-        let valA = a[sortBy as keyof Student]; // Type assertion
-        let valB = b[sortBy as keyof Student]; // Type assertion
+        let valA = a[sortBy as keyof Student];
+        let valB = b[sortBy as keyof Student];
         
-        // Handle undefined or null values, pushing them to the end for sorting
         if (valA === undefined || valA === null) valA = '' as any;
         if (valB === undefined || valB === null) valB = '' as any;
 
         if (typeof valA === 'string' && typeof valB === 'string') {
-          valA = valA.toLowerCase();
-          valB = valB.toLowerCase();
+          return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
         }
-
-        if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-        if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return sortOrder === 'asc' ? valA - valB : valB - valA;
+        }
         return 0;
       });
     }
     return students;
   }, [teacherStudents, searchTerm, selectedClassFilter, sortBy, sortOrder]);
 
-  const SortableHeader = ({ column, label, icon: Icon }: { column: keyof Student; label: string, icon?: React.ElementType }) => (
-    <TableHead onClick={() => handleSort(column)} className="cursor-pointer hover:bg-muted/50">
-      <div className="flex items-center gap-1">
-        {Icon && <Icon className="h-4 w-4" />}
+  const SortableHeader = ({ column, label, align = 'left' }: { column: keyof Student; label: string, align?: 'left' | 'right' }) => (
+    <TableHead onClick={() => handleSort(column)} className={`cursor-pointer hover:bg-muted/50 text-${align}`}>
+      <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
         {label}
         {sortBy === column && <ArrowDownUp className="h-3 w-3" />}
       </div>
@@ -130,7 +134,7 @@ export default function TeacherReportsPage() {
   if (!currentTeacherProfileId || !currentSchoolId) {
     return (
         <div className="flex flex-col gap-6">
-        <PageHeader title="Student Activity Reports (Teacher)" />
+        <PageHeader title="Student Activity Reports" />
         <Card><CardContent className="pt-6 text-center text-destructive">Could not load teacher profile. Cannot view reports.</CardContent></Card>
         </div>
     );
@@ -139,13 +143,13 @@ export default function TeacherReportsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
-        title="Student Reports (Teacher)" 
-        description="View student information for your assigned classes." 
+        title="Student Activity Reports" 
+        description="View student information and mock activity for your assigned classes." 
       />
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-5 w-5" />Student Roster</CardTitle>
-          <CardDescription>Student details for the classes you teach.</CardDescription>
+          <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-5 w-5" />Student Roster & Activity</CardTitle>
+          <CardDescription>An overview of students you teach. Activity data is illustrative.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4">
@@ -183,10 +187,12 @@ export default function TeacherReportsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortableHeader column="name" label="Student Name" icon={Users} />
+                  <SortableHeader column="name" label="Student Name" />
                   <SortableHeader column="email" label="Email" />
-                  <SortableHeader column="class_id" label="Class" icon={Briefcase} />
-                  {/* Add more sortable headers for actual student data if needed */}
+                  <SortableHeader column="class_id" label="Class" />
+                  <SortableHeader column="lastLogin" label="Last Login (Mock)" />
+                  <SortableHeader column="assignmentsSubmitted" label="Assignments Submitted (Mock)" align="right" />
+                  <SortableHeader column="attendancePercentage" label="Attendance % (Mock)" align="right" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -195,7 +201,9 @@ export default function TeacherReportsPage() {
                     <TableCell className="font-medium">{student.name}</TableCell>
                     <TableCell>{student.email}</TableCell>
                     <TableCell>{getClassDisplayName(student.class_id)}</TableCell>
-                    {/* Add more cells for actual student data if needed */}
+                    <TableCell>{formatDateSafe(student.lastLogin)}</TableCell>
+                    <TableCell className="text-right">{student.assignmentsSubmitted ?? 'N/A'}</TableCell>
+                    <TableCell className="text-right">{student.attendancePercentage !== undefined && student.attendancePercentage !== null ? `${student.attendancePercentage}%` : 'N/A'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
