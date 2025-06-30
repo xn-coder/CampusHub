@@ -12,6 +12,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Download, Table as TableIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { format, parseISO } from 'date-fns';
 
 export default function TeacherDataExportPage() {
   const { toast } = useToast();
@@ -81,6 +82,9 @@ export default function TeacherDataExportPage() {
         headers.join(','),
         ...studentsToExport.map(student => {
             const className = assignedClasses.find(c => c.id === student.class_id)?.name || 'N/A';
+            const dob = student.date_of_birth ? format(parseISO(student.date_of_birth), 'yyyy-MM-dd') : '';
+            const admissionDate = student.admission_date ? format(parseISO(student.admission_date), 'yyyy-MM-dd') : '';
+            
             const row = [
                 `"${student.id}"`,
                 `"${student.name.replace(/"/g, '""')}"`,
@@ -91,8 +95,8 @@ export default function TeacherDataExportPage() {
                 `"${student.contact_number || ''}"`,
                 `"${(student.address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
                 `"${student.blood_group || ''}"`,
-                `"${student.date_of_birth || ''}"`,
-                `"${student.admission_date || ''}"`,
+                `"${dob}"`,
+                `"${admissionDate}"`,
             ];
             return row.join(',');
         })

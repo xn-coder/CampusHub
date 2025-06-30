@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Download, Table as TableIcon } from 'lucide-react';
 import { getStudentDataExportPageDataAction } from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { format, parseISO } from 'date-fns';
 
 
 export default function AdminIdCardPrintingPage() {
@@ -70,6 +71,9 @@ export default function AdminIdCardPrintingPage() {
         headers.join(','),
         ...studentsToExport.map(student => {
             const className = allClasses.find(c => c.id === student.class_id)?.name || 'N/A';
+            const dob = student.date_of_birth ? format(parseISO(student.date_of_birth), 'yyyy-MM-dd') : '';
+            const admissionDate = student.admission_date ? format(parseISO(student.admission_date), 'yyyy-MM-dd') : '';
+            
             const row = [
                 `"${student.id}"`,
                 `"${student.name.replace(/"/g, '""')}"`,
@@ -78,10 +82,10 @@ export default function AdminIdCardPrintingPage() {
                 `"${className}"`,
                 `"${student.guardian_name || ''}"`,
                 `"${student.contact_number || ''}"`,
-                `"${(student.address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`, // Remove newlines
+                `"${(student.address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
                 `"${student.blood_group || ''}"`,
-                `"${student.date_of_birth || ''}"`,
-                `"${student.admission_date || ''}"`,
+                `"${dob}"`,
+                `"${admissionDate}"`,
             ];
             return row.join(',');
         })
