@@ -121,30 +121,50 @@ export async function getNewAdmissionPageDataAction(schoolId: string): Promise<{
 }
 
 
-interface AdmitStudentInput {
-  name: string;
-  email: string;
-  rollNumber?: string;
-  dateOfBirth?: string; 
-  guardianName?: string;
-  contactNumber?: string;
-  address?: string;
-  classId: string; 
-  schoolId: string;
-  profilePictureUrl?: string;
-  feesToAssign?: { categoryId: string; amount: number }[];
-}
-
 export async function admitNewStudentAction(
-  input: AdmitStudentInput
+  formData: FormData
 ): Promise<{ ok: boolean; message: string; studentId?: string; userId?: string; admissionRecordId?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { 
-    name, email, rollNumber, dateOfBirth, guardianName, contactNumber, address, classId, schoolId, profilePictureUrl, feesToAssign 
-  } = input;
+  
+  const name = formData.get('name') as string;
+  const email = formData.get('email') as string;
+  const rollNumber = formData.get('rollNumber') as string | null;
+  const dateOfBirth = formData.get('dateOfBirth') as string | null;
+  const guardianName = formData.get('guardianName') as string | null;
+  const contactNumber = formData.get('contactNumber') as string | null;
+  const address = formData.get('address') as string | null;
+  const classId = formData.get('classId') as string;
+  const schoolId = formData.get('schoolId') as string;
+  const feesToAssignJSON = formData.get('feesToAssign') as string | null;
+  const feesToAssign: { categoryId: string; amount: number }[] | undefined = feesToAssignJSON ? JSON.parse(feesToAssignJSON) : undefined;
+  const profilePictureFile = formData.get('profilePictureFile') as File | null;
+  
   const defaultPassword = "password";
+  let profilePictureUrl: string | undefined = undefined;
 
   try {
+    // --- Profile Picture Upload ---
+    if (profilePictureFile && profilePictureFile.size > 0) {
+      const sanitizedFileName = profilePictureFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const filePath = `public/student-profiles/${schoolId}/${uuidv4()}-${sanitizedFileName}`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('campushub')
+        .upload(filePath, profilePictureFile);
+
+      if (uploadError) {
+        throw new Error(`Failed to upload profile picture: ${uploadError.message}`);
+      }
+
+      const { data: publicUrlData } = supabaseAdmin.storage
+        .from('campushub')
+        .getPublicUrl(filePath);
+      
+      profilePictureUrl = publicUrlData?.publicUrl;
+    }
+    // --- End Profile Picture Upload ---
+
+
     const { data: existingUser, error: userFetchError } = await supabaseAdmin
       .from('users')
       .select('id')

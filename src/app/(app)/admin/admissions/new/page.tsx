@@ -32,7 +32,7 @@ export default function AdminNewAdmissionPage() {
   const [guardianName, setGuardianName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [address, setAddress] = useState('');
-  const [profilePictureUrl, setProfilePictureUrl] = useState('');
+  const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   
   // New state for fee assignment
@@ -93,6 +93,17 @@ export default function AdminNewAdmissionPage() {
     }));
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file && file.size > 2 * 1024 * 1024) { // 2MB limit
+      toast({ title: "File too large", description: "Profile picture should be less than 2MB.", variant: "destructive" });
+      setProfilePictureFile(null);
+      e.target.value = '';
+      return;
+    }
+    setProfilePictureFile(file);
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!name || !email || !selectedClassId || !currentSchoolId) {
@@ -113,22 +124,28 @@ export default function AdminNewAdmissionPage() {
     }
     setIsLoading(true);
 
-    const result = await admitNewStudentAction({
-      name, email, classId: selectedClassId, schoolId: currentSchoolId,
-      rollNumber: rollNumber || undefined,
-      dateOfBirth: dateOfBirth || undefined,
-      guardianName: guardianName || undefined,
-      contactNumber: contactNumber || undefined,
-      address: address || undefined,
-      profilePictureUrl: profilePictureUrl || undefined,
-      feesToAssign: shouldAssignFee ? feesToAssign : undefined,
-    });
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('email', email);
+    formData.append('classId', selectedClassId);
+    formData.append('schoolId', currentSchoolId);
+    if(rollNumber) formData.append('rollNumber', rollNumber);
+    if(dateOfBirth) formData.append('dateOfBirth', dateOfBirth);
+    if(guardianName) formData.append('guardianName', guardianName);
+    if(contactNumber) formData.append('contactNumber', contactNumber);
+    if(address) formData.append('address', address);
+    if(shouldAssignFee) formData.append('feesToAssign', JSON.stringify(feesToAssign));
+    if(profilePictureFile) formData.append('profilePictureFile', profilePictureFile);
+
+    const result = await admitNewStudentAction(formData);
 
     if (result.ok) {
       toast({ title: "Student Admitted", description: result.message });
       // Reset form
       setName(''); setEmail(''); setDateOfBirth(''); setGuardianName(''); 
-      setContactNumber(''); setAddress(''); setSelectedClassId(''); setProfilePictureUrl('');
+      setContactNumber(''); setAddress(''); setSelectedClassId('');
+      setProfilePictureFile(null);
+      (document.getElementById('profilePictureFile') as HTMLInputElement).value = ''; // Reset file input
       setRollNumber('');
       const resetFees = Object.keys(selectedFees).reduce((acc, key) => {
         acc[key] = { ...selectedFees[key], selected: false };
@@ -271,8 +288,8 @@ export default function AdminNewAdmissionPage() {
               <Textarea id="address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, City, State, Zip Code" disabled={isLoading}/>
             </div>
              <div>
-              <Label htmlFor="profilePictureUrl">Profile Picture URL</Label>
-              <Input id="profilePictureUrl" value={profilePictureUrl} onChange={(e) => setProfilePictureUrl(e.target.value)} placeholder="https://example.com/image.png" disabled={isLoading}/>
+              <Label htmlFor="profilePictureFile">Profile Picture (Optional, &lt;2MB)</Label>
+              <Input id="profilePictureFile" type="file" onChange={handleFileChange} accept="image/png, image/jpeg" disabled={isLoading}/>
             </div>
           </CardContent>
           <CardFooter>

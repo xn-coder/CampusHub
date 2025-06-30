@@ -9,10 +9,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Student, ClassData, Teacher } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2, Users, Briefcase } from 'lucide-react';
+import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2, Users, Briefcase, FileDown } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { getAdminSchoolIdForReports, getAdminReportsDataAction } from './actions';
+import { Button } from '@/components/ui/button';
 
 export default function AdminReportsPage() {
   const { toast } = useToast();
@@ -117,6 +118,55 @@ export default function AdminReportsPage() {
     return genericMemoizedSort(teachers, sortBy, sortOrder);
   }, [allTeachers, searchTerm, sortBy, sortOrder]);
 
+  const handleDownloadCsv = () => {
+    const isStudentTab = activeTab === 'student-activity';
+    const records = isStudentTab ? filteredAndSortedStudents : filteredAndSortedTeachers;
+    
+    if (records.length === 0) {
+        toast({ title: "No Data", description: "There is no data to download for the current filters.", variant: "destructive" });
+        return;
+    }
+
+    const headers = isStudentTab ?
+      ["Name", "Email", "Last Login", "Assignments Submitted", "Attendance %"] :
+      ["Name", "Email", "Subject", "Last Login", "Assignments Posted", "Classes Taught"];
+
+    const csvRows = [
+        headers.join(','),
+        ...records.map(record => {
+            if (isStudentTab) {
+                const r = record as Student; // Type assertion
+                return [
+                    `"${r.name.replace(/"/g, '""')}"`,
+                    `"${r.email || ''}"`,
+                    `"${formatDateSafe(r.lastLogin)}"`,
+                    r.assignmentsSubmitted ?? 'N/A',
+                    r.attendancePercentage ?? 'N/A'
+                ].join(',');
+            } else {
+                const r = record as Teacher;
+                return [
+                    `"${r.name.replace(/"/g, '""')}"`,
+                    `"${r.email || ''}"`,
+                    `"${r.subject || 'N/A'}"`,
+                    `"${formatDateSafe(r.lastLogin)}"`,
+                    r.assignmentsPosted ?? 'N/A',
+                    r.classesTaught ?? 'N/A'
+                ].join(',');
+            }
+        })
+    ];
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `admin_report_${activeTab}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const SortableHeader = ({ column, label, align = 'left' }: { column: keyof Student | keyof Teacher; label: string, align?: 'left' | 'right' }) => (
     <TableHead onClick={() => handleSort(column)} className={`cursor-pointer hover:bg-muted/50 text-${align}`}>
@@ -242,6 +292,12 @@ export default function AdminReportsPage() {
       <PageHeader 
         title="Activity Reports (Admin)" 
         description="View overall student and teacher activity. All activity data is currently illustrative mock data." 
+        actions={
+          <Button onClick={handleDownloadCsv} disabled={isLoading}>
+            <FileDown className="mr-2 h-4 w-4" />
+            Download Report
+          </Button>
+        }
       />
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
          <TabsList className="grid w-full grid-cols-2">
