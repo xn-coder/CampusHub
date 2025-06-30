@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { AnnouncementDB as Announcement, UserRole, ClassData, Student, Exam } from '@/types';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { PlusCircle, Send, Loader2, Link as LinkIcon, FileText } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { postAnnouncementAction, getAnnouncementsAction, getExamDetailsForLinkingAction } from './actions';
@@ -26,7 +26,7 @@ interface GetAnnouncementsParams {
 }
 
 
-export default function CommunicationPage() {
+function CommunicationPageForm() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>([]);
@@ -329,4 +329,11 @@ export default function CommunicationPage() {
       )}
     </div>
   );
+}
+
+
+export default function CommunicationPage() {
+  <Suspense>
+    <CommunicationPageForm/>
+  </Suspense>
 }
