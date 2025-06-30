@@ -94,6 +94,23 @@ export default function ManageCourseContentPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const MAX_FILE_SIZE_MB = 4.5;
+      const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        const message = activeTab === 'videos'
+          ? `The maximum file size is ${MAX_FILE_SIZE_MB} MB. For larger videos, please use the URL option.`
+          : `The maximum file size is ${MAX_FILE_SIZE_MB} MB.`;
+        toast({
+          title: "File is too large",
+          description: message,
+          variant: "destructive",
+        });
+        setResourceFile(null);
+        e.target.value = '';
+        return;
+      }
+
       const allowedTypes = {
         ebooks: ['application/pdf'],
         videos: ['video/mp4', 'video/webm', 'video/ogg'],
@@ -260,6 +277,9 @@ export default function ManageCourseContentPage() {
                           required
                           disabled={isSubmitting}
                         />
+                         <p className="text-xs text-muted-foreground mt-1">
+                            Max file size: 4.5 MB.
+                         </p>
                       </>
                     ) : tabKey === 'videos' ? (
                         <>
@@ -286,15 +306,20 @@ export default function ManageCourseContentPage() {
                                 disabled={isSubmitting}
                             />
                         ) : (
-                             <Input
-                                key="video-file-input"
-                                id={`${tabKey}-content-file-input`}
-                                type="file"
-                                accept="video/*"
-                                onChange={handleFileChange}
-                                required
-                                disabled={isSubmitting}
-                            />
+                             <>
+                                <Input
+                                    key="video-file-input"
+                                    id={`${tabKey}-content-file-input`}
+                                    type="file"
+                                    accept="video/*"
+                                    onChange={handleFileChange}
+                                    required
+                                    disabled={isSubmitting}
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Max file size: 4.5 MB. For larger videos, please use the "URL" option.
+                                </p>
+                             </>
                         )}
                         </>
                     ) : (
