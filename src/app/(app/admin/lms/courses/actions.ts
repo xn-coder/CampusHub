@@ -12,7 +12,10 @@ interface CourseInput {
   description?: string;
   is_paid: boolean;
   price?: number;
-  school_id?: string; // Optional: for school-specific courses
+  school_id?: string | null;
+  target_audience: 'student' | 'teacher' | 'both';
+  target_class_id?: string | null;
+  created_by_user_id: string;
 }
 
 export async function createCourseAction(
@@ -139,14 +142,111 @@ export async function addCourseResourceAction(
   return { ok: true, message: 'Resource added successfully.', resource: data as CourseResource };
 }
 
+export async function addCourseFileResourceAction(
+  formData: FormData
+): Promise<{ ok: boolean; message: string; resource?: CourseResource }> {
+  const supabaseAdmin = createSupabaseServerClient();
+
+  const file = formData.get('resourceFile') as File | null;
+  const courseId = formData.get('courseId') as string | null;
+  const title = formData.get('title') as string | null;
+  const type = formData.get('type') as CourseResourceType | null;
+
+  if (!file || !courseId || !title || !type) {
+    return { ok: false, message: 'Missing required data for file resource.' };
+  }
+  
+  if (!['ebook', 'video'].includes(type)) {
+      return { ok: false, message: `File uploads are not supported for the '${type}' resource type.`};
+  }
+
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+  const filePath = `public/courses/${courseId}/resources/${uuidv4()}-${sanitizedFileName}`;
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from('lms-course-resources')
+    .upload(filePath, file);
+
+  if (uploadError) {
+    console.error('Supabase storage upload error for course resource:', uploadError);
+    return { ok: false, message: `Failed to upload file: ${uploadError.message}` };
+  }
+  
+  const { data: publicUrlData } = supabaseAdmin.storage
+      .from('lms-course-resources')
+      .getPublicUrl(filePath);
+
+  if (!publicUrlData) {
+      // Clean up orphaned file
+      await supabaseAdmin.storage.from('lms-course-resources').remove([filePath]);
+      return { ok: false, message: 'Could not retrieve public URL for the uploaded file.' };
+  }
+
+  const resourceId = uuidv4();
+  const { error: dbError, data: resourceData } = await supabaseAdmin
+    .from('lms_course_resources')
+    .insert({ 
+        id: resourceId,
+        course_id: courseId, 
+        title: title, 
+        type: type, 
+        url_or_content: publicUrlData.publicUrl,
+        file_name: sanitizedFileName,
+        file_path: filePath, // Store the path for deletion
+        created_at: new Date().toISOString(), 
+        updated_at: new Date().toISOString() 
+    })
+    .select()
+    .single();
+
+  if (dbError) {
+    console.error('Error adding file course resource to DB:', dbError);
+    // Clean up orphaned file
+    await supabaseAdmin.storage.from('lms-course-resources').remove([filePath]);
+    return { ok: false, message: `Failed to add resource record: ${dbError.message}` };
+  }
+
+  revalidatePath(`/admin/lms/courses/${courseId}/content`);
+  revalidatePath(`/lms/courses/${courseId}`);
+  return { ok: true, message: 'File resource added successfully.', resource: resourceData as CourseResource };
+}
+
+
 export async function deleteCourseResourceAction(id: string, courseId: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
+  
+  // First, get the resource to check if there's a file to delete from storage
+  const { data: resourceToDelete, error: fetchError } = await supabaseAdmin
+    .from('lms_course_resources')
+    .select('file_path')
+    .eq('id', id)
+    .single();
+
+  if (fetchError && fetchError.code !== 'PGRST116') { // Ignore "no rows found"
+    console.error("Error fetching resource for deletion:", fetchError);
+    return { ok: false, message: 'Could not retrieve resource to delete.' };
+  }
+  
+  // Then, delete the resource from the database regardless of storage outcome
   const { error } = await supabaseAdmin.from('lms_course_resources').delete().eq('id', id);
 
   if (error) {
     console.error("Error deleting course resource:", error);
-    return { ok: false, message: `Failed to delete resource: ${error.message}` };
+    return { ok: false, message: `Failed to delete resource record: ${error.message}` };
   }
+  
+  // If the DB record was deleted and there was a file path, try to delete the file from storage
+  if (resourceToDelete?.file_path) {
+    const { error: storageError } = await supabaseAdmin.storage
+      .from('lms-course-resources')
+      .remove([resourceToDelete.file_path]);
+    
+    if (storageError) {
+        // Log a warning but don't fail the whole operation since the DB record is gone.
+        console.warn(`Could not delete file from storage: ${storageError.message}. The database record was deleted successfully.`);
+    }
+  }
+  
   revalidatePath(`/admin/lms/courses/${courseId}/content`);
   revalidatePath(`/lms/courses/${courseId}`);
   return { ok: true, message: 'Resource deleted successfully.' };
@@ -580,10 +680,3 @@ export async function activateCourseWithCodeAction(
     return { ok: false, message: error.message || "An unexpected error occurred during course activation." };
   }
 }
-
-    
-    
-    
-
-    
-

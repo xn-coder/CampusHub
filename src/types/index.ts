@@ -6,7 +6,7 @@ import type { LucideIcon } from 'lucide-react';
 export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student';
 export type SchoolStatus = 'Active' | 'Inactive';
 export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
-export type LeaveRequestStatus = 'Pending AI Review' | 'Approved' | 'Rejected';
+export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
 export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar';
@@ -63,7 +63,9 @@ export interface StoredLeaveApplicationDB {
   student_profile_id?: string | null;
   student_name: string;
   reason: string;
-  medical_notes_data_uri?: string | null;
+  medical_notes_url?: string | null;
+  medical_notes_file_name?: string | null;
+  medical_notes_file_path?: string | null;
   submission_date: string; // ISO string
   status: LeaveRequestStatus;
   ai_reasoning?: string | null;

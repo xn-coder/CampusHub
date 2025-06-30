@@ -88,7 +88,7 @@ export default function DashboardPage() {
       case 'admin':
         return [
           { label: 'Manage Students', href: '/admin/manage-students', icon: Users },
-          { label: 'Manage Teachers', href: '/admin/manage-teachers', icon: Briefcase },
+          { label: 'Manage Teachers', href: '/admin/manage-teachers', icon: Briefcase }, 
           { label: 'Class Management', href: '/class-management', icon: School },
           { label: 'Student Fees', href: '/admin/student-fees', icon: Receipt },
         ];
@@ -176,7 +176,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Dashboard" description={`Welcome back, ${currentUserName || 'User'}! Here's your overview.`} />
+      <PageHeader title={`Welcome back, ${currentUserName || 'User'}!`} description="Here's your overview." />
       
       {currentUserRole === 'student' && dashboardData?.feeStatus?.isDefaulter && (
           <Alert variant="destructive" className="border-2">
