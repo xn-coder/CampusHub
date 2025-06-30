@@ -595,8 +595,8 @@ export async function addCourseFileResourceAction(
     return { ok: false, message: 'Missing required data for file resource.' };
   }
   
-  if (type !== 'ebook') {
-      return { ok: false, message: "File uploads are currently only supported for the 'E-book' resource type."};
+  if (!['ebook', 'video'].includes(type)) {
+      return { ok: false, message: `File uploads are not supported for the '${type}' resource type.`};
   }
 
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
@@ -651,5 +651,3 @@ export async function addCourseFileResourceAction(
     
 
     
-
-

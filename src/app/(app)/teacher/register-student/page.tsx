@@ -24,6 +24,7 @@ export default function TeacherRegisterStudentPage() {
   
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [rollNumber, setRollNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [guardianName, setGuardianName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
@@ -77,7 +78,7 @@ export default function TeacherRegisterStudentPage() {
     setIsLoading(true);
 
     const result = await registerStudentAction({
-      name, email, date_of_birth: dateOfBirth, guardian_name: guardianName, contact_number: contactNumber, address,
+      name, email, rollNumber, date_of_birth: dateOfBirth, guardian_name: guardianName, contact_number: contactNumber, address,
       classId: selectedClassId,
       schoolId: currentSchoolId,
       profilePictureUrl
@@ -87,6 +88,7 @@ export default function TeacherRegisterStudentPage() {
       toast({ title: "Student Registered", description: result.message });
       setName(''); setEmail(''); setDateOfBirth(''); setGuardianName(''); 
       setContactNumber(''); setAddress(''); setSelectedClassId(''); setProfilePictureUrl('');
+      setRollNumber('');
       // Note: This page doesn't display a list of students itself,
       // so re-fetching students here isn't directly needed for this page's UI.
       // `revalidatePath` in the action should handle other pages.
@@ -132,6 +134,10 @@ export default function TeacherRegisterStudentPage() {
             <div>
               <Label htmlFor="email">Email Address (Login ID)</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="student@example.com" required disabled={isLoading}/>
+            </div>
+            <div>
+              <Label htmlFor="rollNumber">Roll Number (Optional)</Label>
+              <Input id="rollNumber" value={rollNumber} onChange={(e) => setRollNumber(e.target.value)} placeholder="Custom Student ID / Roll No." disabled={isLoading}/>
             </div>
              <div>
               <Label htmlFor="classSelect">Assign to Class</Label>
@@ -181,5 +187,3 @@ export default function TeacherRegisterStudentPage() {
     </div>
   );
 }
-
-

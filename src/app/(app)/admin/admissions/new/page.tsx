@@ -27,6 +27,7 @@ export default function AdminNewAdmissionPage() {
   // Form state
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [rollNumber, setRollNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [guardianName, setGuardianName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
@@ -114,6 +115,7 @@ export default function AdminNewAdmissionPage() {
 
     const result = await admitNewStudentAction({
       name, email, classId: selectedClassId, schoolId: currentSchoolId,
+      rollNumber: rollNumber || undefined,
       dateOfBirth: dateOfBirth || undefined,
       guardianName: guardianName || undefined,
       contactNumber: contactNumber || undefined,
@@ -127,6 +129,7 @@ export default function AdminNewAdmissionPage() {
       // Reset form
       setName(''); setEmail(''); setDateOfBirth(''); setGuardianName(''); 
       setContactNumber(''); setAddress(''); setSelectedClassId(''); setProfilePictureUrl('');
+      setRollNumber('');
       const resetFees = Object.keys(selectedFees).reduce((acc, key) => {
         acc[key] = { ...selectedFees[key], selected: false };
         return acc;
@@ -184,6 +187,10 @@ export default function AdminNewAdmissionPage() {
             <div>
               <Label htmlFor="email">Email Address (Login ID)</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="student@example.com" required disabled={isLoading}/>
+            </div>
+             <div>
+              <Label htmlFor="rollNumber">Roll Number (Optional)</Label>
+              <Input id="rollNumber" value={rollNumber} onChange={(e) => setRollNumber(e.target.value)} placeholder="Custom Student ID / Roll No." disabled={isLoading}/>
             </div>
              <div>
               <Label htmlFor="classSelect">Assign to Class</Label>

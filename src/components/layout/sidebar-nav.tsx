@@ -106,6 +106,8 @@ const studentNavItems: NavItem[] = [
   { href: '/student/subjects', label: 'My Subjects', icon: BookOpenText }, 
   { href: '/student/assignments', label: 'My Assignments', icon: ClipboardList }, 
   { href: '/student/my-scores', label: 'My Scores', icon: Award },
+  { href: '/student/attendance-history', label: 'My Attendance', icon: ClipboardCheck },
+  { href: '/student/leave-history', label: 'My Leave History', icon: History },
   { href: '/lms/available-courses', label: 'LMS Courses', icon: Library },
   { href: '/student/lms/activate', label: 'Activate Course', icon: KeyRound },
   { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit },

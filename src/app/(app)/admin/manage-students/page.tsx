@@ -70,7 +70,7 @@ export default function ManageStudentsPage() {
     setPageError(null);
     let query = supabase
       .from('students')
-      .select('id, name, email, class_id, profile_picture_url, user_id, school_id, status')
+      .select('id, name, email, class_id, profile_picture_url, user_id, school_id, status, roll_number')
       .eq('school_id', schoolId);
 
     if (!showTerminated) {
@@ -262,17 +262,18 @@ export default function ManageStudentsPage() {
         toast({ title: "No Data", description: "There are no students to download for the current filter.", variant: "destructive"});
         return;
     }
-    const headers = ["Name", "Student ID", "Email", "Class", "Status"];
+    const headers = ["Name", "Roll Number", "Email", "Class", "Status", "Student UUID"];
     const csvRows = [
         headers.join(','),
         ...filteredStudents.map(student => {
             const className = getClassDisplayName(student.class_id);
             const row = [
                 `"${student.name.replace(/"/g, '""')}"`,
-                `"${student.id}"`,
+                `"${student.roll_number || 'N/A'}"`,
                 `"${(student.email || 'N/A').replace(/"/g, '""')}"`,
                 `"${className.replace(/"/g, '""')}"`,
-                `"${student.status || 'Active'}"`
+                `"${student.status || 'Active'}"`,
+                `"${student.id}"`,
             ];
             return row.join(',');
         })
@@ -357,7 +358,7 @@ export default function ManageStudentsPage() {
                         <TableRow>
                           <TableHead>Avatar</TableHead>
                           <TableHead>Name</TableHead>
-                          <TableHead>Student ID</TableHead>
+                          <TableHead>Roll Number</TableHead>
                           <TableHead>Email</TableHead>
                           <TableHead>Class / Status</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
@@ -374,7 +375,7 @@ export default function ManageStudentsPage() {
                             </TableCell>
                             <TableCell className="font-medium">{student.name}</TableCell>
                             <TableCell>
-                                <span className="font-mono text-xs">{student.id.substring(0, 8)}</span>
+                                <span className="font-mono text-xs">{student.roll_number || 'N/A'}</span>
                             </TableCell>
                             <TableCell>{student.email}</TableCell>
                             <TableCell>

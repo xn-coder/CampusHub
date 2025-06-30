@@ -72,13 +72,14 @@ export interface StoredLeaveApplicationDB {
   school_id: string;
   created_at?: string;
   updated_at?: string;
-  // For joined data display
+  // For joined data
   applicant?: { name: string; email: string };
   student?: { name: string; email: string; class_id?: string | null };
 }
 
 export interface Student {
   id: string; // This is students.id (student_profile_id)
+  roll_number?: string | null;
   user_id: string; // This is users.id
   name: string;
   email: string;

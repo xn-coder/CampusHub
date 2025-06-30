@@ -15,6 +15,7 @@ const SALT_ROUNDS = 10;
 interface RegisterStudentInput {
   name: string;
   email: string;
+  rollNumber?: string;
   dateOfBirth?: string; 
   guardianName?: string;
   contactNumber?: string;
@@ -29,7 +30,7 @@ export async function registerStudentAction(
 ): Promise<{ ok: boolean; message: string; studentId?: string; userId?: string; admissionRecordId?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   const { 
-    name, email, dateOfBirth, guardianName, contactNumber, address, classId, schoolId, profilePictureUrl 
+    name, email, rollNumber, dateOfBirth, guardianName, contactNumber, address, classId, schoolId, profilePictureUrl 
   } = input;
   const defaultPassword = "password";
 
@@ -76,6 +77,7 @@ export async function registerStudentAction(
         user_id: newUser.id,
         name: name.trim(),
         email: email.trim(),
+        roll_number: rollNumber || null,
         class_id: classId,
         date_of_birth: dateOfBirth || null,
         guardian_name: guardianName || null,

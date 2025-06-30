@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2, ExternalLink, Eye } from 'lucide-react';
 import type { Course, CourseResource, CourseResourceType } from '@/types';
@@ -43,8 +44,10 @@ export default function ManageCourseContentPage() {
 
   const [activeTab, setActiveTab] = useState<ResourceTabKey>('ebooks');
   const [resourceTitle, setResourceTitle] = useState('');
-  const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
   const [resourceFile, setResourceFile] = useState<File | null>(null);
+  const [videoUploadMethod, setVideoUploadMethod] = useState<'url' | 'file'>('url');
+  const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
+
 
   useEffect(() => {
     if (courseId) {
@@ -91,15 +94,20 @@ export default function ManageCourseContentPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-        if (file.type !== 'application/pdf') {
-            toast({ title: "Invalid File Type", description: "Please select a PDF file for e-books.", variant: "destructive" });
-            setResourceFile(null);
-            e.target.value = '';
-            return;
-        }
-        setResourceFile(file);
-    } else {
+      const allowedTypes = {
+        ebooks: ['application/pdf'],
+        videos: ['video/mp4', 'video/webm', 'video/ogg'],
+      };
+      const currentAllowedTypes = allowedTypes[activeTab as keyof typeof allowedTypes] || [];
+      if (!currentAllowedTypes.includes(file.type)) {
+        toast({ title: "Invalid File Type", description: `Please select a valid file type for ${activeTab}.`, variant: "destructive" });
         setResourceFile(null);
+        e.target.value = '';
+        return;
+      }
+      setResourceFile(file);
+    } else {
+      setResourceFile(null);
     }
   };
 
@@ -112,10 +120,11 @@ export default function ManageCourseContentPage() {
     setIsSubmitting(true);
     
     let result;
+    const isFileUpload = (activeTab === 'ebooks') || (activeTab === 'videos' && videoUploadMethod === 'file');
 
-    if (activeTab === 'ebooks') {
+    if (isFileUpload) {
         if (!resourceFile) {
-            toast({ title: "Error", description: "A PDF file is required for e-books.", variant: "destructive" });
+            toast({ title: "Error", description: `A file is required for this upload method.`, variant: "destructive" });
             setIsSubmitting(false);
             return;
         }
@@ -252,6 +261,40 @@ export default function ManageCourseContentPage() {
                           disabled={isSubmitting}
                         />
                       </>
+                    ) : tabKey === 'videos' ? (
+                        <>
+                        <Label>Video Source</Label>
+                        <RadioGroup value={videoUploadMethod} onValueChange={(val) => setVideoUploadMethod(val as 'url' | 'file')} className="flex space-x-4 mb-2">
+                           <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="url" id="video-url" />
+                                <Label htmlFor="video-url">URL (e.g., YouTube)</Label>
+                            </div>
+                             <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="file" id="video-file" />
+                                <Label htmlFor="video-file">Upload File</Label>
+                            </div>
+                        </RadioGroup>
+                        {videoUploadMethod === 'url' ? (
+                             <Input 
+                                id={`${tabKey}-content`} 
+                                type="url"
+                                value={resourceUrlOrContent} 
+                                onChange={(e) => setResourceUrlOrContent(e.target.value)} 
+                                placeholder="Enter video URL..." 
+                                required 
+                                disabled={isSubmitting}
+                            />
+                        ) : (
+                             <Input
+                                id={`${tabKey}-content-file-input`}
+                                type="file"
+                                accept="video/*"
+                                onChange={handleFileChange}
+                                required
+                                disabled={isSubmitting}
+                            />
+                        )}
+                        </>
                     ) : (
                       <>
                         <Label htmlFor={`${tabKey}-content`}>
