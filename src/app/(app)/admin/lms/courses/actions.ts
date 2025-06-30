@@ -164,7 +164,7 @@ export async function addCourseFileResourceAction(
   const filePath = `public/courses/${courseId}/resources/${uuidv4()}-${sanitizedFileName}`;
 
   const { error: uploadError } = await supabaseAdmin.storage
-    .from('lms-course-resources')
+    .from('campushub')
     .upload(filePath, file);
 
   if (uploadError) {

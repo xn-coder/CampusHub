@@ -8,7 +8,7 @@ import type { StoredLeaveApplicationDB, LeaveRequestStatus, UserRole } from '@/t
 // Ensure your StoredLeaveApplicationDB type in types/index.ts matches the DB table.
 interface SubmitLeaveApplicationInput {
   student_profile_id?: string; // ID of student if student applied
-  student_name: string; // Name of student
+  student_name: string; // Name of supatudent
   reason: string;
   medical_notes_data_uri?: string;
   status: LeaveRequestStatus; // Approved, Rejected

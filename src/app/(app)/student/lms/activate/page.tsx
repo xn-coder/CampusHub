@@ -11,11 +11,10 @@ import { useState, useEffect, type FormEvent, useCallback, Suspense } from 'reac
 import { useToast } from "@/hooks/use-toast";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { KeyRound, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-// import { supabase } from '@/lib/supabaseClient'; // Removed direct supabase client
 import { getCourseActivationPageInitialDataAction, activateCourseWithCodeAction } from '@/app/(app)/admin/lms/courses/actions';
 
-function activateLMFForm() {
-const { toast } = useToast();
+function ActivateLmsForm() {
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -158,8 +157,9 @@ const { toast } = useToast();
 }
 
 export default function ActivateLmsCoursePage() {
-  <Suspense>
-    <activateLMFForm/>
-  </Suspense>
+  return (
+    <Suspense>
+      <ActivateLmsForm/>
+    </Suspense>
+  );
 }
-
