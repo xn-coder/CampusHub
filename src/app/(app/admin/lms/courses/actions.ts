@@ -680,5 +680,3 @@ export async function activateCourseWithCodeAction(
     return { ok: false, message: error.message || "An unexpected error occurred during course activation." };
   }
 }
-
-    
