@@ -152,7 +152,7 @@ export async function submitAssignmentFileAction(formData: FormData): Promise<{
 
   try {
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('assignment-submissions') 
+      .from('campushub') 
       .upload(filePath, file);
 
     if (uploadError) {
@@ -178,7 +178,7 @@ export async function submitAssignmentFileAction(formData: FormData): Promise<{
 
     if (dbError) {
       console.error("Database insert error for submission:", dbError);
-      await supabase.storage.from('assignment_submissions').remove([filePath]);
+      await supabase.storage.from('campushub').remove([filePath]);
       return { ok: false, message: `Failed to record submission: ${dbError.message}` };
     }
     
@@ -192,3 +192,4 @@ export async function submitAssignmentFileAction(formData: FormData): Promise<{
   }
 }
 
+    

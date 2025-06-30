@@ -164,7 +164,7 @@ export async function addCourseFileResourceAction(
   const filePath = `public/courses/${courseId}/resources/${uuidv4()}-${sanitizedFileName}`;
 
   const { error: uploadError } = await supabaseAdmin.storage
-    .from('lms-course-resources')
+    .from('campushub')
     .upload(filePath, file);
 
   if (uploadError) {
@@ -173,12 +173,12 @@ export async function addCourseFileResourceAction(
   }
   
   const { data: publicUrlData } = supabaseAdmin.storage
-      .from('lms-course-resources')
+      .from('campushub')
       .getPublicUrl(filePath);
 
   if (!publicUrlData) {
       // Clean up orphaned file
-      await supabaseAdmin.storage.from('lms-course-resources').remove([filePath]);
+      await supabaseAdmin.storage.from('campushub').remove([filePath]);
       return { ok: false, message: 'Could not retrieve public URL for the uploaded file.' };
   }
 
@@ -202,7 +202,7 @@ export async function addCourseFileResourceAction(
   if (dbError) {
     console.error('Error adding file course resource to DB:', dbError);
     // Clean up orphaned file
-    await supabaseAdmin.storage.from('lms-course-resources').remove([filePath]);
+    await supabaseAdmin.storage.from('campushub').remove([filePath]);
     return { ok: false, message: `Failed to add resource record: ${dbError.message}` };
   }
 
@@ -238,7 +238,7 @@ export async function deleteCourseResourceAction(id: string, courseId: string): 
   // If the DB record was deleted and there was a file path, try to delete the file from storage
   if (resourceToDelete?.file_path) {
     const { error: storageError } = await supabaseAdmin.storage
-      .from('lms-course-resources')
+      .from('campushub')
       .remove([resourceToDelete.file_path]);
     
     if (storageError) {
@@ -680,3 +680,5 @@ export async function activateCourseWithCodeAction(
     return { ok: false, message: error.message || "An unexpected error occurred during course activation." };
   }
 }
+
+    

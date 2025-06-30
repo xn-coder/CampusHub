@@ -32,7 +32,7 @@ export async function submitLeaveApplicationAction(
     const filePath = `public/leave-applications/${schoolId}/${studentProfileId || 'guest'}/${uuidv4()}-${sanitizedFileName}`;
 
     const { error: uploadError } = await supabase.storage
-      .from('leave-applications') // Ensure this bucket exists and has correct policies
+      .from('campushub') 
       .upload(filePath, medicalNotesFile);
 
     if (uploadError) {
@@ -41,7 +41,7 @@ export async function submitLeaveApplicationAction(
     }
 
     const { data: publicUrlData } = supabase.storage
-      .from('leave-applications')
+      .from('campushub')
       .getPublicUrl(filePath);
       
     medicalNotesUrl = publicUrlData?.publicUrl;
@@ -72,7 +72,7 @@ export async function submitLeaveApplicationAction(
       console.error("Error submitting leave application:", error);
       // If DB insert fails, try to clean up the uploaded file
       if (medicalNotesFilePath) {
-        await supabase.storage.from('leave-applications').remove([medicalNotesFilePath]);
+        await supabase.storage.from('campushub').remove([medicalNotesFilePath]);
       }
       return { ok: false, message: `Database error: ${error.message}` };
     }
@@ -157,3 +157,5 @@ export async function getLeaveRequestsAction(params: GetLeaveRequestsParams): Pr
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
 }
+
+    

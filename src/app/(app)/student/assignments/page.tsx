@@ -123,7 +123,7 @@ export default function StudentAssignmentsPage() {
   };
   
   const getPublicUrl = (filePath: string) => {
-    const { data } = supabase.storage.from('assignment_submissions').getPublicUrl(filePath);
+    const { data } = supabase.storage.from('campushub').getPublicUrl(filePath);
     return data.publicUrl;
   };
 
@@ -274,3 +274,5 @@ export default function StudentAssignmentsPage() {
     </div>
   );
 }
+
+    
