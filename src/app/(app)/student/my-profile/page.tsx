@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { Student, User, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
@@ -70,7 +71,8 @@ export default function StudentProfilePage() {
 
   useEffect(() => {
     fetchProfileData();
-  }, [toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleEditSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -176,7 +178,22 @@ export default function StudentProfilePage() {
                   </div>
                   <div>
                     <Label htmlFor="editBloodGroup">Blood Group</Label>
-                    <Input id="editBloodGroup" value={editBloodGroup} onChange={(e) => setEditBloodGroup(e.target.value)} disabled={isSubmitting} placeholder="e.g., A+, O-"/>
+                    <Select value={editBloodGroup} onValueChange={setEditBloodGroup} disabled={isSubmitting}>
+                        <SelectTrigger id="editBloodGroup">
+                            <SelectValue placeholder="Select blood group" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="A+">A+</SelectItem>
+                            <SelectItem value="A-">A-</SelectItem>
+                            <SelectItem value="B+">B+</SelectItem>
+                            <SelectItem value="B-">B-</SelectItem>
+                            <SelectItem value="AB+">AB+</SelectItem>
+                            <SelectItem value="AB-">AB-</SelectItem>
+                            <SelectItem value="O+">O+</SelectItem>
+                            <SelectItem value="O-">O-</SelectItem>
+                            <SelectItem value="Unknown">Unknown</SelectItem>
+                        </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <DialogFooter>

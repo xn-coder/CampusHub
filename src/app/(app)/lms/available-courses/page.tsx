@@ -130,7 +130,7 @@ export default function AvailableLmsCoursesPage() {
                         </span>
                     ) : (
                          <span className="text-xs font-semibold bg-green-500/20 text-green-700 px-2 py-1 rounded-full flex items-center">
-                            <Unlock className="mr-1 h-3 w-3"/> Unpaid
+                            <Unlock className="mr-1 h-3 w-3"/> Free
                         </span>
                     )}
                 </div>
@@ -175,5 +175,3 @@ export default function AvailableLmsCoursesPage() {
     </div>
   );
 }
-
-    

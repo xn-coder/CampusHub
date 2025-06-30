@@ -322,7 +322,7 @@ export default function ManageCoursesPage() {
                 {courses.map((course) => (
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
-                    <TableCell>{course.is_paid ? 'Paid' : 'Unpaid'}</TableCell>
+                    <TableCell>{course.is_paid ? 'Paid' : 'Free'}</TableCell>
                     <TableCell>{course.is_paid && course.price ? `$${course.price.toFixed(2)}` : 'N/A'}</TableCell>
                     <TableCell>{course.school_id ? 'School-Specific' : 'Global'}</TableCell>
                     <TableCell>{getTargetAudienceDisplay(course.target_audience)}</TableCell>
@@ -378,7 +378,7 @@ export default function ManageCoursesPage() {
                 <RadioGroup value={isPaid ? "paid" : "unpaid"} onValueChange={(val) => setIsPaid(val === "paid")} className="flex space-x-4 mt-1" disabled={isSubmitting}>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="unpaid" id="unpaid" />
-                    <Label htmlFor="unpaid">Unpaid (Free)</Label>
+                    <Label htmlFor="unpaid">Free</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="paid" id="paid" />

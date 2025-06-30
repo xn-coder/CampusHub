@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { Student, ClassData } from '@/types';
 
-export async function getIdCardPageDataAction(adminUserId: string): Promise<{
+export async function getStudentDataExportPageDataAction(adminUserId: string): Promise<{
   ok: boolean;
   schoolId?: string | null;
   schoolName?: string | null;
@@ -27,7 +27,7 @@ export async function getIdCardPageDataAction(adminUserId: string): Promise<{
       .single();
 
     if (schoolError || !schoolData) {
-      console.error("Error fetching admin's school for ID cards:", schoolError?.message);
+      console.error("Error fetching admin's school for data export:", schoolError?.message);
       return { ok: false, message: "Admin not linked to a school or school not found." };
     }
     const schoolId = schoolData.id;
@@ -40,7 +40,7 @@ export async function getIdCardPageDataAction(adminUserId: string): Promise<{
       .eq('school_id', schoolId);
 
     if (studentsError) {
-      console.error("Error fetching students for ID cards:", studentsError);
+      console.error("Error fetching students for data export:", studentsError);
       return { ok: false, message: `Failed to fetch students: ${studentsError.message}`, schoolId };
     }
 
@@ -51,7 +51,7 @@ export async function getIdCardPageDataAction(adminUserId: string): Promise<{
       .eq('school_id', schoolId);
 
     if (classesError) {
-      console.error("Error fetching classes for ID cards:", classesError);
+      console.error("Error fetching classes for data export:", classesError);
       return { ok: false, message: `Failed to fetch classes: ${classesError.message}`, schoolId, students: studentsData || [] };
     }
 
@@ -64,7 +64,7 @@ export async function getIdCardPageDataAction(adminUserId: string): Promise<{
     };
 
   } catch (error: any) {
-    console.error("Unexpected error in getIdCardPageDataAction:", error);
+    console.error("Unexpected error in getStudentDataExportPageDataAction:", error);
     return { ok: false, message: `An unexpected error occurred: ${error.message}` };
   }
 }
