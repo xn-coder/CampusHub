@@ -161,7 +161,7 @@ export async function addCourseFileResourceAction(
   }
 
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-  const filePath = `public/lms-resources/${courseId}/${uuidv4()}-${sanitizedFileName}`;
+  const filePath = `courses/${courseId}/resources/${uuidv4()}-${sanitizedFileName}`;
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from('lms-course-resources')
@@ -192,6 +192,7 @@ export async function addCourseFileResourceAction(
         type: type, 
         url_or_content: publicUrlData.publicUrl,
         file_name: sanitizedFileName,
+        file_path: filePath, // Store the path for deletion
         created_at: new Date().toISOString(), 
         updated_at: new Date().toISOString() 
     })
@@ -213,12 +214,39 @@ export async function addCourseFileResourceAction(
 
 export async function deleteCourseResourceAction(id: string, courseId: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
+  
+  // First, get the resource to check if there's a file to delete from storage
+  const { data: resourceToDelete, error: fetchError } = await supabaseAdmin
+    .from('lms_course_resources')
+    .select('file_path')
+    .eq('id', id)
+    .single();
+
+  if (fetchError && fetchError.code !== 'PGRST116') { // Ignore "no rows found"
+    console.error("Error fetching resource for deletion:", fetchError);
+    return { ok: false, message: 'Could not retrieve resource to delete.' };
+  }
+  
+  // Then, delete the resource from the database regardless of storage outcome
   const { error } = await supabaseAdmin.from('lms_course_resources').delete().eq('id', id);
 
   if (error) {
     console.error("Error deleting course resource:", error);
-    return { ok: false, message: `Failed to delete resource: ${error.message}` };
+    return { ok: false, message: `Failed to delete resource record: ${error.message}` };
   }
+  
+  // If the DB record was deleted and there was a file path, try to delete the file from storage
+  if (resourceToDelete?.file_path) {
+    const { error: storageError } = await supabaseAdmin.storage
+      .from('lms-course-resources')
+      .remove([resourceToDelete.file_path]);
+    
+    if (storageError) {
+        // Log a warning but don't fail the whole operation since the DB record is gone.
+        console.warn(`Could not delete file from storage: ${storageError.message}. The database record was deleted successfully.`);
+    }
+  }
+  
   revalidatePath(`/admin/lms/courses/${courseId}/content`);
   revalidatePath(`/lms/courses/${courseId}`);
   return { ok: true, message: 'Resource deleted successfully.' };

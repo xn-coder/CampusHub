@@ -387,6 +387,7 @@ export interface CourseResource {
   type: CourseResourceType;
   url_or_content: string;
   file_name?: string | null;
+  file_path?: string | null;
   created_at?: string;
   updated_at?: string;
 }

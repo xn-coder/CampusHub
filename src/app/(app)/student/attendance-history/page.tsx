@@ -18,6 +18,8 @@ import {
   ChartConfig,
 } from "@/components/ui/chart";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Cell } from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 const chartConfig = {
   Present: { label: "Present", color: "hsl(var(--chart-1))" },
@@ -26,11 +28,20 @@ const chartConfig = {
   Excused: { label: "Excused", color: "hsl(var(--chart-4))" },
 } satisfies ChartConfig;
 
+const months = [
+    { value: 'all', label: 'All Months' }, { value: '1', label: 'January' }, { value: '2', label: 'February' },
+    { value: '3', label: 'March' }, { value: '4', label: 'April' }, { value: '5', label: 'May' },
+    { value: '6', label: 'June' }, { value: '7', label: 'July' }, { value: '8', label: 'August' },
+    { value: '9', label: 'September' }, { value: '10', label: 'October' }, { value: '11', label: 'November' },
+    { value: '12', label: 'December' },
+];
+
 
 export default function StudentAttendanceHistoryPage() {
   const { toast } = useToast();
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
 
   useEffect(() => {
     async function fetchHistory() {
@@ -63,6 +74,17 @@ export default function StudentAttendanceHistoryPage() {
     }
     fetchHistory();
   }, [toast]);
+  
+  const filteredAttendance = useMemo(() => {
+    if (selectedMonth === 'all') {
+      return attendance;
+    }
+    return attendance.filter(record => {
+      const recordDate = parseISO(record.date);
+      return isValid(recordDate) && (recordDate.getMonth() + 1).toString() === selectedMonth;
+    });
+  }, [attendance, selectedMonth]);
+
 
   const summary = useMemo(() => {
     const data = {
@@ -71,13 +93,13 @@ export default function StudentAttendanceHistoryPage() {
       Late: 0,
       Excused: 0,
     };
-    attendance.forEach(record => {
+    filteredAttendance.forEach(record => {
       if (data[record.status as keyof typeof data] !== undefined) {
         data[record.status as keyof typeof data]++;
       }
     });
     return Object.entries(data).map(([status, count]) => ({ status, count }));
-  }, [attendance]);
+  }, [filteredAttendance]);
 
   const formatDateSafe = (dateString: string) => {
     const date = parseISO(dateString);
@@ -94,9 +116,20 @@ export default function StudentAttendanceHistoryPage() {
       <Card>
           <CardHeader>
               <CardTitle>Attendance Summary</CardTitle>
-              <CardDescription>A visual overview of your attendance record.</CardDescription>
+              <CardDescription>A visual overview of your attendance record for the selected period.</CardDescription>
           </CardHeader>
           <CardContent>
+              <div className="mb-4 max-w-xs">
+                <Label htmlFor="month-filter">Filter by Month</Label>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                    <SelectTrigger id="month-filter">
+                        <SelectValue placeholder="Select a month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+              </div>
               {isLoading ? (
                   <div className="flex justify-center items-center h-48"><Loader2 className="h-8 w-8 animate-spin" /></div>
               ) : attendance.length > 0 ? (
@@ -127,8 +160,8 @@ export default function StudentAttendanceHistoryPage() {
         <CardContent>
           {isLoading ? (
             <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading records...</div>
-          ) : attendance.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No attendance records found.</p>
+          ) : filteredAttendance.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">{selectedMonth === 'all' ? 'No attendance records found.' : 'No attendance records found for the selected month.'}</p>
           ) : (
             <Table>
               <TableHeader>
@@ -138,7 +171,7 @@ export default function StudentAttendanceHistoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {attendance.map((record) => (
+                {filteredAttendance.map((record) => (
                   <TableRow key={record.id}>
                     <TableCell className="font-medium">{formatDateSafe(record.date)}</TableCell>
                     <TableCell>
