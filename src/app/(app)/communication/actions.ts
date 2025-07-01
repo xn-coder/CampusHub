@@ -17,7 +17,6 @@ interface PostAnnouncementInput {
   target_class_id?: string;
   school_id: string;
   linked_exam_id?: string;
-  target_audience?: 'all' | 'student' | 'teacher';
 }
 
 export async function postAnnouncementAction(
@@ -68,7 +67,6 @@ export async function postAnnouncementAction(
         date: new Date().toISOString(), 
         target_class_id: input.target_class_id || null, 
         school_id: input.school_id,
-        target_audience: input.target_audience || 'all',
       })
       .select('*, target_class:target_class_id(name, division, teacher_id)')
       .single();
@@ -101,41 +99,20 @@ export async function postAnnouncementAction(
       
       let recipientEmails: string[] = [];
       const targetClassId = input.target_class_id;
-      const targetAudience = input.target_audience || 'all';
 
-      const rolesToEmail: UserRole[] = [];
-      if (targetAudience === 'all') {
-          rolesToEmail.push('student', 'teacher');
-      } else if (targetAudience === 'student') {
-          rolesToEmail.push('student');
-      } else if (targetAudience === 'teacher') {
-          rolesToEmail.push('teacher');
-      }
-      
       if (targetClassId && announcement.school_id) {
-          // Class-specific announcement, get users of specified roles within that class
-          let classSpecificEmails: string[] = [];
-          if (rolesToEmail.includes('student')) {
-              const studentEmails = await getStudentEmailsByClassId(targetClassId, announcement.school_id);
-              classSpecificEmails.push(...studentEmails);
-          }
-          if (rolesToEmail.includes('teacher')) {
-              const { data: classDetails } = await supabase.from('classes').select('teacher_id').eq('id', targetClassId).single();
-              if (classDetails?.teacher_id) {
-                  const teacherEmail = await getTeacherEmailByTeacherProfileId(classDetails.teacher_id);
-                  if (teacherEmail) classSpecificEmails.push(teacherEmail);
-              }
-          }
-          recipientEmails = classSpecificEmails;
+        // Class-specific announcement, get students and teacher
+        const studentEmails = await getStudentEmailsByClassId(targetClassId, announcement.school_id);
+        recipientEmails.push(...studentEmails);
+
+        const { data: classDetails } = await supabase.from('classes').select('teacher_id').eq('id', targetClassId).single();
+        if (classDetails?.teacher_id) {
+            const teacherEmail = await getTeacherEmailByTeacherProfileId(classDetails.teacher_id);
+            if (teacherEmail) recipientEmails.push(teacherEmail);
+        }
       } else if (announcement.school_id) {
-          // School-wide announcement, get all users of specified roles in the school
-          recipientEmails = await getAllUserEmailsInSchool(announcement.school_id, rolesToEmail);
-      }
-      
-      // Also send to admins if school-wide
-      if (!targetClassId && announcement.school_id) {
-        const adminEmails = await getAllUserEmailsInSchool(announcement.school_id, ['admin']);
-        recipientEmails.push(...adminEmails);
+        // School-wide announcement, get all users (students, teachers, admins)
+        recipientEmails = await getAllUserEmailsInSchool(announcement.school_id, ['student', 'teacher', 'admin']);
       }
       
       // Remove duplicates
@@ -193,14 +170,12 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
       query = query.eq('school_id', school_id);
 
       if (user_role === 'student') {
-        query = query.in('target_audience', ['all', 'student']);
         if (student_class_id) {
             query = query.or(`target_class_id.eq.${student_class_id},target_class_id.is.null`);
         } else {
             query = query.is('target_class_id', null);
         }
       } else if (user_role === 'teacher') {
-        query = query.in('target_audience', ['all', 'teacher']);
         if (teacher_class_ids && teacher_class_ids.length > 0) {
             query = query.or(`target_class_id.in.(${teacher_class_ids.join(',')}),target_class_id.is.null`);
         } else {

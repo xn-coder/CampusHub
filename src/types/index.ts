@@ -63,6 +63,7 @@ export interface StoredLeaveApplicationDB {
   student_profile_id?: string | null;
   student_name: string;
   reason: string;
+  medical_notes_data_uri?: string | null;
   medical_notes_url?: string | null;
   medical_notes_file_name?: string | null;
   medical_notes_file_path?: string | null;
@@ -163,7 +164,6 @@ export interface AnnouncementDB {
   posted_by_user_id: string;
   posted_by_role: UserRole;
   target_class_id?: string | null;
-  target_audience?: 'all' | 'student' | 'teacher' | null;
   school_id: string;
   linked_exam_id?: string | null;
   created_at?: string;
