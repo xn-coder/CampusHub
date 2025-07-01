@@ -39,103 +39,73 @@ export default function ViewCourseContentPage() {
   const courseId = params.courseId as string;
 
   const [course, setCourse] = useState<Course | null>(null);
-  const [isLoadingCourse, setIsLoadingCourse] = useState(true);
-  const [isLoadingEnrollment, setIsLoadingEnrollment] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [isEnrolled, setIsEnrolled] = useState(false); 
-  
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null); 
-  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log("[Course Detail Page] Effect 1: Initializing user context fetch.");
-    let cUserId: string | null = null;
-    let cUserRole: UserRole | null = null;
-    if (typeof window !== 'undefined') {
-        cUserId = localStorage.getItem('currentUserId');
-        cUserRole = localStorage.getItem('currentUserRole') as UserRole | null;
-    }
-    setCurrentUserId(cUserId);
-    setCurrentUserRole(cUserRole);
-    console.log(`[Course Detail Page] Effect 1: Basic context fetched - UserID: ${cUserId}, Role: ${cUserRole}`);
-    
-    // Set loading to false only after initial context is set, next effect will handle data loading
-    // This helps ensure the second effect has the IDs it needs.
-  }, []);
+    const fetchData = async () => {
+      setIsLoading(true);
+      setPageError(null);
 
+      const userId = localStorage.getItem('currentUserId');
+      const role = localStorage.getItem('currentUserRole') as UserRole | null;
 
-  const fetchCourseAndEnrollmentData = useCallback(async () => {
-    if (!courseId || !currentUserId || !currentUserRole) {
-      console.log("[Course Detail Page] Fetch prerequisites not met:", { courseId, currentUserId, currentUserRole });
-      setIsLoadingCourse(false);
-      setIsLoadingEnrollment(false);
-      if(!currentUserId || !currentUserRole) { // If user context is missing, show error
-        toast({ title: "Error", description: "User context not found. Cannot load course.", variant: "destructive" });
+      if (!userId || !role) {
+        setPageError("User session information is missing. Please log in again.");
+        setIsLoading(false);
+        return;
       }
-      return;
-    }
+      setUserRole(role); // Set role for UI logic
 
-    console.log(`[Course Detail Page] Fetching course and enrollment data for CourseID: ${courseId}, UserID: ${currentUserId}, Role: ${currentUserRole}`);
-    setIsLoadingCourse(true);
-    setIsLoadingEnrollment(true);
+      try {
+        const [courseResult, enrollmentResult] = await Promise.all([
+          getCourseDetailsForViewingAction(courseId),
+          checkUserEnrollmentForCourseViewAction(courseId, userId, role)
+        ]);
 
-    try {
-      const [courseResult, enrollmentResult] = await Promise.all([
-        getCourseDetailsForViewingAction(courseId),
-        checkUserEnrollmentForCourseViewAction(courseId, currentUserId, currentUserRole)
-      ]);
+        if (!courseResult.ok) {
+          throw new Error(courseResult.message || "Failed to load course details.");
+        }
+        setCourse(courseResult.course!);
 
-      if (courseResult.ok && courseResult.course) {
-        setCourse(courseResult.course);
-      } else {
-        toast({ title: "Error Loading Course", description: courseResult.message || "Failed to load course details.", variant: "destructive" });
+        if (!enrollmentResult.ok) {
+          // This might not be a critical error if the user is an admin, but we'll show a warning.
+          toast({ title: "Warning", description: enrollmentResult.message || "Could not verify enrollment status.", variant: "destructive" });
+          setIsEnrolled(false);
+        } else {
+          setIsEnrolled(enrollmentResult.isEnrolled);
+        }
+
+      } catch (error: any) {
+        setPageError(error.message);
+        toast({ title: "Error", description: error.message, variant: "destructive" });
         setCourse(null);
-      }
-
-      if (enrollmentResult.ok) {
-        setIsEnrolled(enrollmentResult.isEnrolled);
-        console.log(`[Course Detail Page] Enrollment status for UserID ${currentUserId} in CourseID ${courseId}: ${enrollmentResult.isEnrolled}`);
-      } else {
-        toast({ title: "Error Checking Enrollment", description: enrollmentResult.message || "Failed to verify enrollment status.", variant: "destructive" });
         setIsEnrolled(false);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error: any) {
-      toast({ title: "Error", description: `An unexpected error occurred: ${error.message}`, variant: "destructive" });
-      setCourse(null);
-      setIsEnrolled(false);
-    } finally {
-      setIsLoadingCourse(false);
-      setIsLoadingEnrollment(false);
+    };
+
+    if (courseId) {
+      fetchData();
     }
-  }, [courseId, currentUserId, currentUserRole, toast]);
+  }, [courseId, toast]);
 
-  useEffect(() => {
-    // This effect runs when courseId, currentUserId, or currentUserRole changes.
-    // It ensures that fetchCourseAndEnrollmentData is called once these dependencies are stable.
-    if (courseId && currentUserId && currentUserRole) {
-      fetchCourseAndEnrollmentData();
-    } else if (!currentUserId || !currentUserRole) {
-      // If user context is still missing after the first effect, we shouldn't proceed to fetch.
-      // The page will show a loading state or an error based on how isLoading states are handled.
-      setIsLoadingCourse(false); // No user context, nothing to load
-      setIsLoadingEnrollment(false);
-    }
-  }, [courseId, currentUserId, currentUserRole, fetchCourseAndEnrollmentData]);
-
-
-  if (isLoadingCourse || isLoadingEnrollment) {
+  if (isLoading) {
     return <div className="text-center py-10 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading course content...</div>;
   }
 
+  if (pageError) {
+    return <div className="text-center py-10 text-destructive">{pageError}</div>;
+  }
+  
   if (!course) {
     return <div className="text-center py-10 text-destructive">Course not found or an error occurred while loading.</div>;
   }
   
-  if (!currentUserId || !currentUserRole) {
-     return <div className="text-center py-10 text-destructive">User session information is missing. Please log in again.</div>;
-  }
-
-
-  if (!isEnrolled && (currentUserRole === 'student' || currentUserRole === 'teacher')) {
+  if (!isEnrolled) {
     return (
       <div className="flex flex-col gap-6 items-center justify-center min-h-[60vh]">
         <PageHeader title="Access Denied" />
@@ -179,7 +149,7 @@ export default function ViewCourseContentPage() {
                     {(course.resources?.[tabKey] || []).map((res: CourseResource) => (
                       <li key={res.id} className="p-4 border rounded-md hover:shadow-md transition-shadow">
                         <h4 className="font-semibold text-lg">{res.title}</h4>
-                        {res.type === 'note' ? (
+                        {res.type === 'note' && !res.file_name ? (
                           <div className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 p-3 rounded-sm max-h-48 overflow-y-auto">
                             {res.url_or_content}
                           </div>
