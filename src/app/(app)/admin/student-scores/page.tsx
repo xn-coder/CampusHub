@@ -72,6 +72,7 @@ export default function AdminStudentScoresPage() {
   }
 
   const getStudentName = (studentId: string) => allStudents.find(s => s.id === studentId)?.name || 'N/A';
+  const getStudentRollNumber = (studentId: string) => allStudents.find(s => s.id === studentId)?.roll_number || 'N/A';
   const getExamName = (examId: string) => allExams.find(e => e.id === examId)?.name || 'N/A';
   const getClassName = (classId: string) => {
     const cls = allClasses.find(c => c.id === classId);
@@ -98,7 +99,7 @@ export default function AdminStudentScoresPage() {
         toast({ title: "No Data", description: "There is no data to download for the current filters.", variant: "destructive"});
         return;
     }
-    const headers = ["Student", "Student ID", "Class", "Exam", "Subject", "Score", "Max Marks", "Result", "Recorded By", "Date Recorded"];
+    const headers = ["Student", "Roll Number", "Class", "Exam", "Subject", "Score", "Max Marks", "Result", "Recorded By", "Date Recorded"];
     const csvRows = [
         headers.join(','),
         ...filteredScores.map(score => {
@@ -106,7 +107,7 @@ export default function AdminStudentScoresPage() {
             const isPass = score.score !== null && score.score !== undefined && !isNaN(Number(score.score)) && Number(score.score) >= (maxMarks * 0.4);
             const row = [
                 `"${getStudentName(score.student_id).replace(/"/g, '""')}"`,
-                `"${score.student_id}"`,
+                `"${getStudentRollNumber(score.student_id)}"`
                 `"${getClassName(score.class_id).replace(/"/g, '""')}"`,
                 `"${getExamName(score.exam_id).replace(/"/g, '""')}"`,
                 `"${getSubjectName(score.subject_id).replace(/"/g, '""')}"`,
@@ -259,7 +260,7 @@ export default function AdminStudentScoresPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead><User className="inline-block mr-1 h-4 w-4"/>Student</TableHead>
-                  <TableHead>Student ID</TableHead>
+                  <TableHead>Roll Number</TableHead>
                   <TableHead>Class</TableHead>
                   <TableHead>Exam</TableHead>
                   <TableHead>Subject</TableHead>
@@ -309,7 +310,7 @@ export default function AdminStudentScoresPage() {
                         <TableRow key={score.id}>
                             <TableCell className="font-medium">{studentName}</TableCell>
                              <TableCell>
-                                <span className="font-mono text-xs">{score.student_id.substring(0, 8)}</span>
+                                <span className="font-mono text-xs">{getStudentRollNumber(score.student_id)}</span>
                             </TableCell>
                             <TableCell>{getClassName(score.class_id)}</TableCell>
                             <TableCell>{examName}</TableCell>

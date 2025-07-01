@@ -22,7 +22,7 @@ export default function CalendarEventsPage() {
   const { toast } = useToast();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [eventDates, setEventDates] = useState<Date[]>([]); // For highlighting dates
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>();
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
@@ -36,7 +36,7 @@ export default function CalendarEventsPage() {
   const [currentUserName, setCurrentUserName] = useState<string | null>(null); 
 
   const [eventTitle, setEventTitle] = useState('');
-  const [eventDate, setEventDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [eventDate, setEventDate] = useState<string>('');
   const [eventIsAllDay, setEventIsAllDay] = useState(false);
   const [eventStartTime, setEventStartTime] = useState('');
   const [eventEndTime, setEventEndTime] = useState('');
@@ -49,6 +49,9 @@ export default function CalendarEventsPage() {
       let userId: string | null = null;
       let fetchedSchoolId: string | null = null;
       let fetchedUserName: string | null = null;
+
+      setSelectedDate(new Date()); // Set date on client mount
+      setEventDate(format(new Date(), 'yyyy-MM-dd'));
 
       if (typeof window !== 'undefined') {
         role = localStorage.getItem('currentUserRole') as UserRole | null;
@@ -437,4 +440,3 @@ export default function CalendarEventsPage() {
     </div>
   );
 }
-    

@@ -23,7 +23,7 @@ export default function TeacherAttendancePage() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [studentsInSelectedClass, setStudentsInSelectedClass] = useState<Student[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceStatus>>({}); // studentId: status
-  const [currentDate, setCurrentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [currentDate, setCurrentDate] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingInitialData, setIsFetchingInitialData] = useState(true);
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID (teachers.id)
@@ -33,6 +33,7 @@ export default function TeacherAttendancePage() {
   useEffect(() => {
     async function loadInitialTeacherData() {
       setIsFetchingInitialData(true);
+      setCurrentDate(format(new Date(), 'yyyy-MM-dd')); // Set date on client mount
       const teacherUserId = localStorage.getItem('currentUserId'); // This is User.id
       const role = localStorage.getItem('currentUserRole') as UserRole | null;
 
