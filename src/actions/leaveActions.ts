@@ -2,18 +2,15 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { StoredLeaveApplicationDB, LeaveRequestStatus, UserRole } from '@/types'; // Assume StoredLeaveApplicationDB is for DB schema
+import type { StoredLeaveApplicationDB, UserRole } from '@/types';
+import { leaveApplicationApproval } from '@/ai/flows/leave-application-approval';
 
-// This type aligns with what leave-form.tsx might submit and what gets stored.
-// Ensure your StoredLeaveApplicationDB type in types/index.ts matches the DB table.
 interface SubmitLeaveApplicationInput {
-  student_profile_id?: string; // ID of student if student applied
-  student_name: string; // Name of supatudent
+  student_profile_id?: string;
+  student_name: string;
   reason: string;
   medical_notes_data_uri?: string;
-  status: LeaveRequestStatus; // Approved, Rejected
-  ai_reasoning?: string;
-  applicant_user_id: string; // User who submitted
+  applicant_user_id: string;
   applicant_role: UserRole | 'guest';
   school_id: string;
 }
@@ -23,6 +20,12 @@ export async function submitLeaveApplicationAction(
 ): Promise<{ ok: boolean; message: string; application?: StoredLeaveApplicationDB }> {
   const supabase = createSupabaseServerClient();
   try {
+    // Call the AI flow to get approval status
+    const aiResult = await leaveApplicationApproval({
+      reason: input.reason,
+      medicalNotesDataUri: input.medical_notes_data_uri,
+    });
+
     const { data, error } = await supabase
       .from('leave_applications')
       .insert({
@@ -30,9 +33,9 @@ export async function submitLeaveApplicationAction(
         student_name: input.student_name,
         reason: input.reason,
         medical_notes_data_uri: input.medical_notes_data_uri,
-        submission_date: new Date().toISOString(), // Handled by DB default if set
-        status: input.status,
-        ai_reasoning: input.ai_reasoning,
+        submission_date: new Date().toISOString(),
+        status: aiResult.approved ? 'Approved' : 'Rejected',
+        ai_reasoning: aiResult.reasoning,
         applicant_user_id: input.applicant_user_id,
         applicant_role: input.applicant_role,
         school_id: input.school_id,
@@ -46,7 +49,7 @@ export async function submitLeaveApplicationAction(
     }
     revalidatePath('/leave-application');
     revalidatePath('/teacher/leave-requests');
-    revalidatePath('/admin/leave-management'); // If an admin page exists
+    revalidatePath('/student/leave-history');
     return { ok: true, message: 'Leave application submitted successfully.', application: data as StoredLeaveApplicationDB };
   } catch (e: any) {
     console.error("Unexpected error submitting leave application:", e);
@@ -54,11 +57,11 @@ export async function submitLeaveApplicationAction(
   }
 }
 
+
 interface GetLeaveRequestsParams {
   school_id: string;
   teacher_id?: string; // For teacher role to get students in their classes
   student_profile_id?: string; // For student role
-  // Admin might not need teacher_id or student_profile_id if they see all for school_id
 }
 
 // Fetches leave requests. For teachers, it fetches for students in their classes.

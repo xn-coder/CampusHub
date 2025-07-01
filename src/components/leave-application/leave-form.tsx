@@ -13,10 +13,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CheckCircle, XCircle, Loader2, UploadCloud } from 'lucide-react';
 import type { User, Student, UserRole, SchoolEntry, StoredLeaveApplicationDB } from '@/types';
-import { submitLeaveApplicationAction } from '@/app/(app)/leave-application/actions';
+import { submitLeaveApplicationAction } from '@/actions/leaveActions';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
-
+import { fileToDataUri } from '@/lib/utils';
 
 const formSchema = z.object({
   studentName: z.string().min(1, "Student name is required"),
@@ -99,20 +99,29 @@ export default function LeaveForm() {
       setIsLoading(false);
       return;
     }
-    
-    const formData = new FormData();
-    formData.append('studentName', data.studentName);
-    formData.append('reason', data.reason);
-    if(studentProfile?.id) formData.append('studentProfileId', studentProfile.id);
-    formData.append('applicantUserId', currentUserId);
-    formData.append('applicantRole', currentUserRole);
-    formData.append('schoolId', currentSchoolId);
-    if (data.medicalNotes && data.medicalNotes[0]) {
-      formData.append('medicalNotes', data.medicalNotes[0]);
-    }
-    
+
     try {
-      const result = await submitLeaveApplicationAction(formData);
+      let medicalNotesDataUri: string | undefined = undefined;
+      if (data.medicalNotes && data.medicalNotes[0]) {
+        try {
+          medicalNotesDataUri = await fileToDataUri(data.medicalNotes[0]);
+        } catch (e) {
+          setError("Failed to read the medical notes file.");
+          toast({ title: "File Error", description: "Could not process the uploaded file.", variant: "destructive"});
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      const result = await submitLeaveApplicationAction({
+        student_name: data.studentName,
+        reason: data.reason,
+        medical_notes_data_uri: medicalNotesDataUri,
+        student_profile_id: studentProfile?.id,
+        applicant_user_id: currentUserId,
+        applicant_role: currentUserRole,
+        school_id: currentSchoolId,
+      });
 
       if (result.ok && result.application) {
         setSubmissionResult(result.application);
@@ -153,7 +162,7 @@ export default function LeaveForm() {
     <Card>
       <CardHeader>
         <CardTitle>Submit Leave Application</CardTitle>
-        <CardDescription>Fill in the details for your leave request. Your application will be pending review. All submissions are recorded.</CardDescription>
+        <CardDescription>Fill in the details for your leave request. Your application will be processed by our AI system based on school policy.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -207,7 +216,7 @@ export default function LeaveForm() {
                 Submitting...
               </>
             ) : (
-              'Submit Application'
+              'Submit for AI Review'
             )}
           </Button>
         </form>
@@ -221,10 +230,13 @@ export default function LeaveForm() {
         )}
 
         {submissionResult && (
-          <Alert className="mt-6" variant={submissionResult.status === 'Approved' ? "default" : "secondary"}>
-             <CheckCircle className="h-4 w-4" />
-            <AlertTitle>Application Submitted Successfully!</AlertTitle>
-            <AlertDescription>Your application is now '{submissionResult.status}'. It will be reviewed by an administrator.</AlertDescription>
+          <Alert className="mt-6" variant={submissionResult.status === 'Approved' ? "default" : "destructive"}>
+             {submissionResult.status === 'Approved' ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4"/>}
+            <AlertTitle>AI Decision: {submissionResult.status}</AlertTitle>
+            <AlertDescription>
+                <p className="font-semibold">Reasoning:</p>
+                <p>{submissionResult.ai_reasoning}</p>
+            </AlertDescription>
           </Alert>
         )}
       </CardContent>

@@ -9,7 +9,7 @@ import type { StoredLeaveApplicationDB } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { getLeaveRequestsAction } from '@/app/(app)/leave-application/actions';
+import { getLeaveRequestsAction } from '@/actions/leaveActions';
 import { format, parseISO, isValid } from 'date-fns';
 import { History, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import {

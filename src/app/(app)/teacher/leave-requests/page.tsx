@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -8,7 +9,7 @@ import type { UserRole, Student, StoredLeaveApplicationDB, User } from '@/types'
 import { useState, useEffect } from 'react';
 import { ClipboardCheck, ExternalLink, User as UserIcon, CalendarDays, MessageSquare, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { getLeaveRequestsAction } from '@/app/(app)/leave-application/actions';
+import { getLeaveRequestsAction } from '@/actions/leaveActions';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 
