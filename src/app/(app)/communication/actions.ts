@@ -17,6 +17,7 @@ interface PostAnnouncementInput {
   target_class_id?: string;
   school_id: string;
   linked_exam_id?: string;
+  target_audience?: 'student' | 'teacher' | 'all';
 }
 
 export async function postAnnouncementAction(
@@ -99,20 +100,33 @@ export async function postAnnouncementAction(
       
       let recipientEmails: string[] = [];
       const targetClassId = input.target_class_id;
+      const targetAudience = input.target_audience || 'all';
 
       if (targetClassId && announcement.school_id) {
-        // Class-specific announcement, get students and teacher
-        const studentEmails = await getStudentEmailsByClassId(targetClassId, announcement.school_id);
-        recipientEmails.push(...studentEmails);
-
-        const { data: classDetails } = await supabase.from('classes').select('teacher_id').eq('id', targetClassId).single();
-        if (classDetails?.teacher_id) {
-            const teacherEmail = await getTeacherEmailByTeacherProfileId(classDetails.teacher_id);
-            if (teacherEmail) recipientEmails.push(teacherEmail);
+        // Class-specific announcement logic updated for audience
+        if (targetAudience === 'student' || targetAudience === 'all') {
+          const studentEmails = await getStudentEmailsByClassId(targetClassId, announcement.school_id);
+          recipientEmails.push(...studentEmails);
+        }
+        
+        if (targetAudience === 'teacher' || targetAudience === 'all') {
+            const { data: classDetails } = await supabase.from('classes').select('teacher_id').eq('id', targetClassId).single();
+            if (classDetails?.teacher_id) {
+                const teacherEmail = await getTeacherEmailByTeacherProfileId(classDetails.teacher_id);
+                if (teacherEmail) recipientEmails.push(teacherEmail);
+            }
         }
       } else if (announcement.school_id) {
-        // School-wide announcement, get all users (students, teachers, admins)
-        recipientEmails = await getAllUserEmailsInSchool(announcement.school_id, ['student', 'teacher', 'admin']);
+        // School-wide announcement
+        let rolesToEmail: UserRole[] = [];
+        if (targetAudience === 'student') {
+            rolesToEmail = ['student'];
+        } else if (targetAudience === 'teacher') {
+            rolesToEmail = ['teacher'];
+        } else { // 'all'
+            rolesToEmail = ['student', 'teacher', 'admin'];
+        }
+        recipientEmails = await getAllUserEmailsInSchool(announcement.school_id, rolesToEmail);
       }
       
       // Remove duplicates
