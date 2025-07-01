@@ -9,11 +9,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Label } from '@/components/ui/label';
 import type { ClassData, Student, AttendanceRecord } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
-import { ListChecks, Users, Search, Loader2, Download } from 'lucide-react';
+import { ListChecks, Users, Search, Loader2, Download, Calendar as CalendarIcon, UserCheck, UserX, Clock, Ban } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getAdminAttendancePageDataAction, fetchAttendanceForReportAction } from './actions';
 import type jsPDF from 'jspdf';
 import type { UserOptions } from 'jspdf-autotable';
+import { Calendar } from '@/components/ui/calendar';
+import { isValid, parseISO, format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
 
 interface JsPDFWithAutoTable extends jsPDF {
   autoTable: (options: UserOptions) => jsPDF;
@@ -50,6 +53,7 @@ export default function AdminAttendancePage() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
 
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
@@ -87,6 +91,7 @@ export default function AdminAttendancePage() {
     }
     setIsLoadingReport(true);
     setSearchAttempted(true);
+    setSelectedStudentId(''); // Reset student selection on new search
     
     const result = await fetchAttendanceForReportAction(currentSchoolId, selectedClassId, selectedYear);
     if (result.ok && result.records) {
@@ -98,9 +103,12 @@ export default function AdminAttendancePage() {
     setIsLoadingReport(false);
   };
   
+  const studentsInClass = useMemo(() => {
+    return allStudents.filter(s => s.class_id === selectedClassId);
+  }, [allStudents, selectedClassId]);
+  
   useEffect(() => {
-    if (allYearlyRecords.length > 0 || searchAttempted) {
-        const studentsInClass = allStudents.filter(s => s.class_id === selectedClassId);
+    if (allYearlyRecords.length > 0 || (searchAttempted && !isLoadingReport)) {
         let recordsForPeriod = allYearlyRecords;
         if(selectedMonth !== 'all') {
             recordsForPeriod = allYearlyRecords.filter(r => {
@@ -129,7 +137,7 @@ export default function AdminAttendancePage() {
         });
         setAttendanceSummary(summary);
     }
-  }, [allYearlyRecords, selectedMonth, selectedClassId, allStudents, searchAttempted]);
+  }, [allYearlyRecords, selectedMonth, studentsInClass, searchAttempted, isLoadingReport]);
 
   const handleDownloadPdf = async () => {
     if (attendanceSummary.length === 0) {
@@ -166,7 +174,44 @@ export default function AdminAttendancePage() {
     doc.save(`Attendance_${selectedClass?.name}_${monthLabel}_${selectedYear}.pdf`);
   };
 
+  const selectedStudentRecords = useMemo(() => {
+    let records = allYearlyRecords.filter(r => r.student_id === selectedStudentId);
+    if(selectedMonth !== 'all') {
+        records = records.filter(r => new Date(r.date).getMonth() + 1 === Number(selectedMonth));
+    }
+    return records;
+  }, [selectedStudentId, selectedMonth, allYearlyRecords]);
+
+  const calendarModifiers = useMemo(() => {
+    const present: Date[] = [];
+    const absent: Date[] = [];
+    const late: Date[] = [];
+    const excused: Date[] = [];
+    
+    selectedStudentRecords.forEach(record => {
+      const date = parseISO(record.date);
+      if (isValid(date)) {
+        switch(record.status) {
+          case 'Present': present.push(date); break;
+          case 'Absent': absent.push(date); break;
+          case 'Late': late.push(date); break;
+          case 'Excused': excused.push(date); break;
+        }
+      }
+    });
+
+    return { present, absent, late, excused };
+  }, [selectedStudentRecords]);
+
+  const modifiersClassNames = {
+    present: 'rdp-day_present',
+    absent: 'rdp-day_absent',
+    late: 'rdp-day_late',
+    excused: 'rdp-day_excused',
+  };
+
   const selectedClassDetails = allClasses.find(c => c.id === selectedClassId);
+  const selectedStudentDetails = allStudents.find(s => s.id === selectedStudentId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -177,7 +222,7 @@ export default function AdminAttendancePage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><ListChecks className="mr-2 h-5 w-5" /> Attendance Report Generator</CardTitle>
-          <CardDescription>Select a class, year, and month to generate an attendance summary.</CardDescription>
+          <CardDescription>Select a class and time period, then optionally select a student to view their detailed calendar.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid md:grid-cols-4 gap-4 items-end">
@@ -206,22 +251,36 @@ export default function AdminAttendancePage() {
                 <Button onClick={handleSearchAttendance} disabled={isLoadingPage || isLoadingReport || !selectedClassId} className="w-full">
                     {isLoadingReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Search className="mr-2 h-4 w-4" />} Search
                 </Button>
-                <Button onClick={handleDownloadPdf} disabled={isLoadingReport || attendanceSummary.length === 0} variant="outline" className="w-full">
-                    <Download className="mr-2 h-4 w-4" /> Download
-                </Button>
             </div>
           </div>
           
+          {searchAttempted && studentsInClass.length > 0 && (
+            <div className="md:col-start-4">
+                <Label htmlFor="studentSelect">View Individual Student Calendar</Label>
+                <Select value={selectedStudentId} onValueChange={setSelectedStudentId}>
+                    <SelectTrigger id="studentSelect"><SelectValue placeholder="Select a student..." /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="">View Class Summary</SelectItem>
+                        {studentsInClass.map(student => <SelectItem key={student.id} value={student.id}>{student.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+            </div>
+          )}
+
           {!isLoadingPage && !currentSchoolId && (
              <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot view attendance.</p>
           )}
 
           {isLoadingReport && <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading attendance report...</div>}
 
-          {!isLoadingReport && searchAttempted && (
-            <div className="overflow-x-auto">
-              <h3 className="text-lg font-medium my-2">Attendance Summary</h3>
+          {!isLoadingReport && searchAttempted && !selectedStudentId && (
+            <>
+              <h3 className="text-lg font-medium my-2">Class Attendance Summary</h3>
               {attendanceSummary.length > 0 ? (
+                <>
+                <Button onClick={handleDownloadPdf} disabled={isLoadingReport || attendanceSummary.length === 0} variant="outline" size="sm" className="mb-2">
+                    <Download className="mr-2 h-4 w-4" /> Download Class Summary PDF
+                </Button>
                 <Table>
                     <TableHeader>
                     <TableRow>
@@ -242,11 +301,56 @@ export default function AdminAttendancePage() {
                     ))}
                     </TableBody>
                 </Table>
+                </>
               ) : (
                 <p className="text-muted-foreground text-center py-4">No attendance records found for the selected period.</p>
               )}
-            </div>
+            </>
           )}
+
+           {!isLoadingReport && searchAttempted && selectedStudentId && (
+            <div className="border-t mt-6 pt-6">
+                <h3 className="text-lg font-semibold mb-4">Attendance Calendar for: {selectedStudentDetails?.name}</h3>
+                <div className="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <Calendar
+                            mode="single"
+                            month={new Date(selectedYear, selectedMonth === 'all' ? new Date().getMonth() : Number(selectedMonth) - 1)}
+                            modifiers={calendarModifiers}
+                            modifiersClassNames={modifiersClassNames}
+                            className="rounded-md border mx-auto"
+                        />
+                         <div className="flex flex-wrap gap-x-4 gap-y-2 mt-4 text-xs">
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-400"></div> Present</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-400"></div> Absent</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400"></div> Late</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-400"></div> Excused</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 className="font-medium mb-2">Detailed Log for {months.find(m => m.value === selectedMonth)?.label}</h4>
+                        {selectedStudentRecords.length > 0 ? (
+                        <div className="max-h-96 overflow-y-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow><TableHead>Date</TableHead><TableHead>Status</TableHead></TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {selectedStudentRecords.map(rec => (
+                                        <TableRow key={rec.date}>
+                                            <TableCell>{format(parseISO(rec.date), 'PP')}</TableCell>
+                                            <TableCell><Badge variant={rec.status === 'Present' ? 'default' : rec.status === 'Absent' ? 'destructive' : 'secondary'}>{rec.status}</Badge></TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                        ) : <p className="text-sm text-muted-foreground text-center py-4">No records for this student in the selected period.</p>}
+                    </div>
+                </div>
+            </div>
+           )}
+
         </CardContent>
          <CardFooter>
             <p className="text-xs text-muted-foreground">Select a class and time period, then click 'Search' to generate the report.</p>

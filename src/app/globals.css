@@ -153,3 +153,24 @@
   border-radius: 50%;
   background-color: hsl(var(--primary)); /* Dot color for today, if not selected */
 }
+
+/* Styles for react-day-picker attendance highlighting */
+.rdp-day_present:not(.rdp-day_selected) {
+  @apply bg-green-100 text-green-900 dark:bg-green-900/50 dark:text-green-200;
+}
+.rdp-day_absent:not(.rdp-day_selected) {
+  @apply bg-red-100 text-red-900 dark:bg-red-900/50 dark:text-red-200;
+}
+.rdp-day_late:not(.rdp-day_selected) {
+  @apply bg-yellow-100 text-yellow-900 dark:bg-yellow-900/50 dark:text-yellow-200;
+}
+.rdp-day_excused:not(.rdp-day_selected) {
+  @apply bg-blue-100 text-blue-900 dark:bg-blue-900/50 dark:text-blue-200;
+}
+
+.rdp-day_present.rdp-day_today:not(.rdp-day_selected),
+.rdp-day_absent.rdp-day_today:not(.rdp-day_selected),
+.rdp-day_late.rdp-day_today:not(.rdp-day_selected),
+.rdp-day_excused.rdp-day_today:not(.rdp-day_selected) {
+  @apply ring-2 ring-ring ring-offset-2 ring-offset-background;
+}
