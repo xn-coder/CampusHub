@@ -221,7 +221,7 @@ export default function StudentPaymentHistoryPage() {
         doc.text(`Student: ${currentStudentName || 'N/A'}`, 14, 29);
         doc.text(`Date Generated: ${format(new Date(), 'PP')}`, 14, 34);
 
-        const tableColumn = ["Fee Category", "Due Date", "Assigned ($)", "Paid ($)", "Payment Date", "Status"];
+        const tableColumn = ["Fee Category", "Due Date", "Assigned (₹)", "Paid (₹)", "Payment Date", "Status"];
         const tableRows: (string | number)[][] = [];
 
         payments.forEach(payment => {
@@ -250,10 +250,10 @@ export default function StudentPaymentHistoryPage() {
         doc.setFontSize(10);
         const totalAssigned = payments.reduce((acc, p) => acc + p.assigned_amount, 0);
         const totalPaid = payments.reduce((acc, p) => acc + p.paid_amount, 0);
-        doc.text(`Total Assigned: $${totalAssigned.toFixed(2)}`, 14, finalY + 22);
-        doc.text(`Total Paid: $${totalPaid.toFixed(2)}`, 14, finalY + 28);
+        doc.text(`Total Assigned: ₹${totalAssigned.toFixed(2)}`, 14, finalY + 22);
+        doc.text(`Total Paid: ₹${totalPaid.toFixed(2)}`, 14, finalY + 28);
         doc.setFont('helvetica', 'bold');
-        doc.text(`Total Due: $${totalDue.toFixed(2)}`, 14, finalY + 34);
+        doc.text(`Total Due: ₹${totalDue.toFixed(2)}`, 14, finalY + 34);
         doc.setFont('helvetica', 'normal');
 
         doc.save(`payment_history_${(currentStudentName || 'student').replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -290,9 +290,9 @@ export default function StudentPaymentHistoryPage() {
                         <TableRow>
                         <TableHead><FileText className="inline-block mr-1 h-4 w-4" />Fee Category</TableHead>
                         <TableHead>Due Date</TableHead>
-                        <TableHead className="text-right">Assigned ($)</TableHead>
-                        <TableHead className="text-right">Paid ($)</TableHead>
-                        <TableHead className="text-right">Due ($)</TableHead>
+                        <TableHead className="text-right">Assigned (₹)</TableHead>
+                        <TableHead className="text-right">Paid (₹)</TableHead>
+                        <TableHead className="text-right">Due (₹)</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Action</TableHead>
                         </TableRow>
@@ -304,9 +304,9 @@ export default function StudentPaymentHistoryPage() {
                                 <TableRow key={payment.id}>
                                     <TableCell className="font-medium">{getFeeCategoryName(payment.fee_category_id)}</TableCell>
                                     <TableCell>{formatDateSafe(payment.due_date)}</TableCell>
-                                    <TableCell className="text-right">${payment.assigned_amount.toFixed(2)}</TableCell>
-                                    <TableCell className="text-right">${payment.paid_amount.toFixed(2)}</TableCell>
-                                    <TableCell className={`text-right font-semibold ${dueAmount > 0 ? 'text-destructive' : ''}`}>${dueAmount.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">₹{payment.assigned_amount.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">₹{payment.paid_amount.toFixed(2)}</TableCell>
+                                    <TableCell className={`text-right font-semibold ${dueAmount > 0 ? 'text-destructive' : ''}`}>₹{dueAmount.toFixed(2)}</TableCell>
                                     <TableCell>
                                     <Badge variant={
                                         payment.status === 'Paid' ? 'default' :
@@ -342,7 +342,7 @@ export default function StudentPaymentHistoryPage() {
                     <div className="flex-grow sm:flex-grow-0" />
                     <div className="text-right">
                         <p className="text-muted-foreground">Total Amount Due</p>
-                        <p className="text-2xl font-bold">${totalDue.toFixed(2)}</p>
+                        <p className="text-2xl font-bold">₹{totalDue.toFixed(2)}</p>
                     </div>
                     {totalDue > 0 && (
                         <Button onClick={handlePayAllFees} disabled={isPaying || isLoading}>

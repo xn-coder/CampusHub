@@ -68,6 +68,7 @@ export async function postAnnouncementAction(
         date: new Date().toISOString(), 
         target_class_id: input.target_class_id || null, 
         school_id: input.school_id,
+        target_audience: input.target_audience
       })
       .select('*, target_class:target_class_id(name, division, teacher_id)')
       .single();
@@ -184,12 +185,14 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
       query = query.eq('school_id', school_id);
 
       if (user_role === 'student') {
+        query = query.in('target_audience', ['student', 'all']);
         if (student_class_id) {
             query = query.or(`target_class_id.eq.${student_class_id},target_class_id.is.null`);
         } else {
             query = query.is('target_class_id', null);
         }
       } else if (user_role === 'teacher') {
+        query = query.in('target_audience', ['teacher', 'all']);
         if (teacher_class_ids && teacher_class_ids.length > 0) {
             query = query.or(`target_class_id.in.(${teacher_class_ids.join(',')}),target_class_id.is.null`);
         } else {
