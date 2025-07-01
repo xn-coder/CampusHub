@@ -17,7 +17,6 @@ import type { Course, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
 import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction, createDbRecordForUploadedResourceAction } from '../../actions';
-import * as tus from 'tus-js-client';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
 import dynamic from 'next/dynamic';
@@ -160,6 +159,7 @@ export default function ManageCourseContentPage() {
       setUploadProgress(0);
 
       try {
+        const tus = (await import('tus-js-client')).default;
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) {
           throw new Error("Could not get user session. Please log in again.");
@@ -187,10 +187,6 @@ export default function ManageCourseContentPage() {
             console.error("Upload Failed:", error);
             throw new Error(`Upload failed: ${error.message}`);
           },
-          onProgress: (bytesUploaded, bytesTotal) => {
-            const percentage = (bytesUploaded / bytesTotal) * 100;
-            setUploadProgress(percentage);
-          },
           onSuccess: async () => {
             toast({ title: "Upload Complete", description: "Finalizing resource..." });
             const { data: { publicUrl } } = supabase.storage.from('campushub').getPublicUrl(filePath);
@@ -215,13 +211,19 @@ export default function ManageCourseContentPage() {
               toast({ title: "Error Saving Resource", description: result.message, variant: "destructive" });
             }
           },
+          onProgress: (bytesUploaded, bytesTotal) => {
+            const percentage = (bytesUploaded / bytesTotal) * 100;
+            setUploadProgress(percentage);
+          },
         });
         upload.start();
       } catch (error: any) {
         toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
-      } finally {
-        setIsSubmitting(false);
+        setIsSubmitting(false); // Ensure this is reset on catch
         setUploadProgress(null);
+      } finally {
+        // 'finally' might not work as intended with the async nature of onSuccess.
+        // It's safer to reset state in onSuccess and onError.
       }
     } else { // Handle URL/content submissions
       if (!resourceUrlOrContent.trim()) {
