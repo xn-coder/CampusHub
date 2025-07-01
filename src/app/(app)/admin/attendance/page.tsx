@@ -260,7 +260,7 @@ export default function AdminAttendancePage() {
                 <Select value={selectedStudentId} onValueChange={setSelectedStudentId}>
                     <SelectTrigger id="studentSelect"><SelectValue placeholder="Select a student..." /></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="">View Class Summary</SelectItem>
+                        <SelectItem value="summary">View Class Summary</SelectItem>
                         {studentsInClass.map(student => <SelectItem key={student.id} value={student.id}>{student.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
@@ -273,7 +273,7 @@ export default function AdminAttendancePage() {
 
           {isLoadingReport && <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading attendance report...</div>}
 
-          {!isLoadingReport && searchAttempted && !selectedStudentId && (
+          {!isLoadingReport && searchAttempted && (!selectedStudentId || selectedStudentId === 'summary') && (
             <>
               <h3 className="text-lg font-medium my-2">Class Attendance Summary</h3>
               {attendanceSummary.length > 0 ? (
@@ -308,7 +308,7 @@ export default function AdminAttendancePage() {
             </>
           )}
 
-           {!isLoadingReport && searchAttempted && selectedStudentId && (
+           {!isLoadingReport && searchAttempted && selectedStudentId && selectedStudentId !== 'summary' && (
             <div className="border-t mt-6 pt-6">
                 <h3 className="text-lg font-semibold mb-4">Attendance Calendar for: {selectedStudentDetails?.name}</h3>
                 <div className="grid md:grid-cols-2 gap-6">
