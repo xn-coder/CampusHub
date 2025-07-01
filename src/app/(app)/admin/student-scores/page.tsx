@@ -15,8 +15,13 @@ import { useToast } from "@/hooks/use-toast";
 import { getStudentScoresPageDataAction, notifyStudentForReExamAction } from './actions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type jsPDF from 'jspdf';
+import type { UserOptions } from 'jspdf-autotable';
+
+interface JsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: UserOptions) => jsPDF;
+}
+
 
 export default function AdminStudentScoresPage() {
   const { toast } = useToast();
@@ -143,14 +148,17 @@ export default function AdminStudentScoresPage() {
     setIsNotifying(prev => ({ ...prev, [studentId]: false }));
   };
 
-  const handlePrintResult = (score: StudentScore) => {
+  const handlePrintResult = async (score: StudentScore) => {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+    
     const studentName = getStudentName(score.student_id);
     const examName = getExamName(score.exam_id);
     const subjectName = getSubjectName(score.subject_id);
     const maxMarks = score.max_marks ?? allExams.find(e => e.id === score.exam_id)?.max_marks ?? 100;
     const schoolName = "CampusHub School"; // Mocked for now
 
-    const doc = new jsPDF();
+    const doc = new jsPDF() as JsPDFWithAutoTable;
 
     doc.setFontSize(18);
     doc.text('Student Mark Sheet', 14, 22);

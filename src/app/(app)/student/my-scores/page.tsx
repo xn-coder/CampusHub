@@ -13,8 +13,12 @@ import { useToast } from "@/hooks/use-toast";
 import { getStudentScoresAndExamsAction } from './actions';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type jsPDF from 'jspdf';
+import type { UserOptions } from 'jspdf-autotable';
+
+interface JsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: UserOptions) => jsPDF;
+}
 
 export default function StudentMyScoresPage() {
   const { toast } = useToast();
@@ -70,10 +74,13 @@ export default function StudentMyScoresPage() {
     });
   };
   
-  const handleDownloadReport = () => {
+  const handleDownloadReport = async () => {
     if (!selectedReport) return;
     
-    const doc = new jsPDF();
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
+    const doc = new jsPDF() as JsPDFWithAutoTable;
     const schoolName = "CampusHub High School"; // Mock data
     
     doc.setFontSize(20);

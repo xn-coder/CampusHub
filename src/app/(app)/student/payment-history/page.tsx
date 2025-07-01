@@ -13,8 +13,12 @@ import { supabase } from '@/lib/supabaseClient';
 import { getStudentPaymentHistoryAction, createRazorpayOrderAction, verifyRazorpayPaymentAction, mockPayFeesAction } from '@/app/(app)/admin/student-fees/actions';
 import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type jsPDF from 'jspdf';
+import type { UserOptions } from 'jspdf-autotable';
+
+interface JsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: UserOptions) => jsPDF;
+}
 
 export default function StudentPaymentHistoryPage() {
     const { toast } = useToast();
@@ -199,13 +203,16 @@ export default function StudentPaymentHistoryPage() {
         return isValid(dateObj) ? format(dateObj, 'PP') : 'Invalid Date';
     };
 
-    const handleDownloadHistory = () => {
+    const handleDownloadHistory = async () => {
         if (payments.length === 0) {
             toast({ title: "No Data", description: "There is no payment history to download.", variant: "destructive" });
             return;
         }
+        
+        const { default: jsPDF } = await import('jspdf');
+        const { default: autoTable } = await import('jspdf-autotable');
 
-        const doc = new jsPDF();
+        const doc = new jsPDF() as JsPDFWithAutoTable;
         
         doc.setFontSize(18);
         doc.text("Fee Payment History Statement", 14, 22);

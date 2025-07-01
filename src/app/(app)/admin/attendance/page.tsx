@@ -12,8 +12,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { ListChecks, Users, Search, Loader2, Download } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getAdminAttendancePageDataAction, fetchAttendanceForReportAction } from './actions';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type jsPDF from 'jspdf';
+import type { UserOptions } from 'jspdf-autotable';
+
+interface JsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: UserOptions) => jsPDF;
+}
+
 
 interface AttendanceSummary {
   studentId: string;
@@ -126,12 +131,16 @@ export default function AdminAttendancePage() {
     }
   }, [allYearlyRecords, selectedMonth, selectedClassId, allStudents, searchAttempted]);
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     if (attendanceSummary.length === 0) {
       toast({ title: "No data to download", variant: "destructive"});
       return;
     }
-    const doc = new jsPDF();
+    
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+    
+    const doc = new jsPDF() as JsPDFWithAutoTable;
     const selectedClass = allClasses.find(c => c.id === selectedClassId);
     const monthLabel = months.find(m => m.value === selectedMonth)?.label;
     const title = `Attendance Report for ${selectedClass?.name} - ${selectedClass?.division}`;
