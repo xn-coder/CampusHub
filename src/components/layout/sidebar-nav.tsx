@@ -8,6 +8,8 @@ import {
   SidebarMenuButton,
   SidebarMenuBadge,
 } from '@/components/ui/sidebar';
+
+// Consolidated icon imports
 import {
   LayoutDashboard,
   School,
@@ -16,34 +18,32 @@ import {
   Presentation,
   Megaphone,
   CalendarDays,
-  Building, 
-  UserCog,
-  GraduationCap,
-  BookOpen,
+  Building,
+  Settings,
+  BookOpenText,
   FileText,
   Award,
   ClipboardCheck,
   BarChart3,
   UserCircle,
   CreditCard,
-  ClipboardList, 
-  Settings, 
+  ClipboardList,
   FilePlus2,
   Tags,
   Receipt,
   Printer,
-  Clock, 
-  CalendarRange, 
-  BookOpenText,
-  Briefcase, 
+  Clock,
+  CalendarRange,
+  Briefcase,
   UserPlus,
-  History, 
+  History,
   ScrollText,
   Library,
   KeyRound,
-  BookOpenCheck,
-  FileDown
+  BookOpenCheck
 } from 'lucide-react';
+
+
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
