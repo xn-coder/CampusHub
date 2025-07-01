@@ -453,9 +453,9 @@ export default function AdminStudentFeesPage() {
                   <TableHead>Student</TableHead>
                   <TableHead>Roll Number</TableHead>
                   <TableHead>Academic Year</TableHead>
-                  <TableHead className="text-right">Total Assigned (₹)</TableHead>
-                  <TableHead className="text-right">Total Paid (₹)</TableHead>
-                  <TableHead className="text-right">Total Due (₹)</TableHead>
+                  <TableHead className="text-right">Total Assigned (<span className="font-mono">₹</span>)</TableHead>
+                  <TableHead className="text-right">Total Paid (<span className="font-mono">₹</span>)</TableHead>
+                  <TableHead className="text-right">Total Due (<span className="font-mono">₹</span>)</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -468,9 +468,9 @@ export default function AdminStudentFeesPage() {
                       <span className="font-mono text-xs">{getStudentRollNumber(summary.studentId)}</span>
                     </TableCell>
                     <TableCell>{summary.academicYearName}</TableCell>
-                    <TableCell className="text-right">₹{summary.totalAssigned.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">₹{summary.totalPaid.toFixed(2)}</TableCell>
-                     <TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}>₹{summary.totalDue.toFixed(2)}</TableCell>
+                    <TableCell className="text-right"><span className="font-mono">₹</span>{summary.totalAssigned.toFixed(2)}</TableCell>
+                    <TableCell className="text-right"><span className="font-mono">₹</span>{summary.totalPaid.toFixed(2)}</TableCell>
+                     <TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</TableCell>
                     <TableCell>
                       <Badge variant={
                         summary.status === 'Paid' ? 'default' :
@@ -571,7 +571,7 @@ export default function AdminStudentFeesPage() {
            <DialogHeader>
             <DialogTitle>Fee Details for: {selectedStudentSummary?.studentName}</DialogTitle>
              <CardDescription>
-                Academic Year: {selectedStudentSummary?.academicYearName} | Total Due: ₹{selectedStudentSummary?.totalDue.toFixed(2)}
+                Academic Year: {selectedStudentSummary?.academicYearName} | Total Due: <span className="font-mono">₹</span>{selectedStudentSummary?.totalDue.toFixed(2)}
             </CardDescription>
           </DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto">
@@ -579,7 +579,7 @@ export default function AdminStudentFeesPage() {
                 <TableHeader>
                     <TableRow>
                         <TableHead>Fee Category</TableHead>
-                        <TableHead>Assigned (₹)</TableHead>
+                        <TableHead>Assigned (<span className="font-mono">₹</span>)</TableHead>
                         <TableHead>Due Date</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
@@ -589,7 +589,7 @@ export default function AdminStudentFeesPage() {
                   {(selectedStudentSummary?.payments || []).map((fp) => (
                       <TableRow key={fp.id}>
                         <TableCell className="font-medium">{getFeeCategoryName(fp.fee_category_id)}</TableCell>
-                        <TableCell>₹{fp.assigned_amount.toFixed(2)}</TableCell>
+                        <TableCell><span className="font-mono">₹</span>{fp.assigned_amount.toFixed(2)}</TableCell>
                         <TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell>
                         <TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell>
                         <TableCell className="space-x-1 text-right">
@@ -619,7 +619,7 @@ export default function AdminStudentFeesPage() {
           <form onSubmit={handleEditFeeSubmit}>
             <div className="grid gap-4 py-4">
                 <div>
-                  <Label htmlFor="editAssignedAmount">Assigned Amount (₹)</Label>
+                  <Label htmlFor="editAssignedAmount">Assigned Amount (<span className="font-mono">₹</span>)</Label>
                   <Input id="editAssignedAmount" type="number" value={editAssignedAmount} onChange={(e) => setEditAssignedAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} required disabled={isSubmitting}/>
                 </div>
                 <div>
@@ -647,13 +647,13 @@ export default function AdminStudentFeesPage() {
             <DialogTitle>Record Payment for {editingFeePayment ? getStudentName(editingFeePayment.student_id) : ''}</DialogTitle>
             <CardDescription>
                 Fee: {editingFeePayment ? getFeeCategoryName(editingFeePayment.fee_category_id) : ''} <br/>
-                Assigned: ₹{editingFeePayment?.assigned_amount.toFixed(2)} | Paid: ₹{editingFeePayment?.paid_amount.toFixed(2)} | Due: ₹{((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)) > 0 ? ((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)).toFixed(2) : '0.00'}
+                Assigned: <span className="font-mono">₹</span>{editingFeePayment?.assigned_amount.toFixed(2)} | Paid: <span className="font-mono">₹</span>{editingFeePayment?.paid_amount.toFixed(2)} | Due: <span className="font-mono">₹</span>{((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)) > 0 ? ((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)).toFixed(2) : '0.00'}
             </CardDescription>
           </DialogHeader>
           <form onSubmit={handleRecordPaymentSubmit}>
             <div className="grid gap-4 py-4">
                <div>
-                <Label htmlFor="paymentAmount">Payment Amount (₹)</Label>
+                <Label htmlFor="paymentAmount">Payment Amount (<span className="font-mono">₹</span>)</Label>
                 <Input id="paymentAmount" type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="Amount being paid" step="0.01" min="0.01" required disabled={isSubmitting}/>
               </div>
               <div>

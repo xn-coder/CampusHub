@@ -225,7 +225,7 @@ function ActivateLmsForm() {
                     </div>
                     <Button type="button" onClick={handlePayment} className="w-full" disabled={isLoading || isPageLoading || !targetCourse}>
                         {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
-                        Pay ₹{targetCourse?.price?.toFixed(2)} and Enroll
+                        Pay <span className="font-mono mx-1">₹</span>{targetCourse?.price?.toFixed(2)} and Enroll
                     </Button>
                 </>
             )}

@@ -200,7 +200,7 @@ export default function FeeCategoriesPage() {
                   <TableRow key={category.id}>
                     <TableCell className="font-medium">{category.name}</TableCell>
                     <TableCell>{category.description || 'N/A'}</TableCell>
-                    <TableCell>{category.amount !== undefined && category.amount !== null ? `₹${category.amount.toFixed(2)}` : 'N/A'}</TableCell>
+                    <TableCell>{category.amount !== undefined && category.amount !== null ? <><span className="font-mono">₹</span>{category.amount.toFixed(2)}</> : 'N/A'}</TableCell>
                     <TableCell className="space-x-1 text-right">
                       <Button variant="outline" size="icon" onClick={() => handleOpenDialog(category)} disabled={isSubmitting}>
                         <Edit2 className="h-4 w-4" />
@@ -233,7 +233,7 @@ export default function FeeCategoriesPage() {
                 <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of the fee" disabled={isSubmitting} />
               </div>
               <div>
-                <Label htmlFor="amount">Amount (Optional, in ₹)</Label>
+                <Label htmlFor="amount">Amount (Optional, <span className="font-mono">₹</span>)</Label>
                 <Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 100.00" step="0.01" min="0" disabled={isSubmitting}/>
                 <p className="text-xs text-muted-foreground mt-1">Leave blank if the amount varies or is calculated elsewhere.</p>
               </div>

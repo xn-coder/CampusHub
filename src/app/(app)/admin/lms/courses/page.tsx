@@ -323,7 +323,7 @@ export default function ManageCoursesPage() {
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
                     <TableCell>{course.is_paid ? 'Paid' : 'Free'}</TableCell>
-                    <TableCell>{course.is_paid && course.price ? `₹${course.price.toFixed(2)}` : 'N/A'}</TableCell>
+                    <TableCell>{course.is_paid && course.price ? <><span className="font-mono">₹</span>{course.price.toFixed(2)}</> : 'N/A'}</TableCell>
                     <TableCell>{course.school_id ? 'School-Specific' : 'Global'}</TableCell>
                     <TableCell>{getTargetAudienceDisplay(course.target_audience)}</TableCell>
                     <TableCell>{getTargetClassDisplay(course)}</TableCell>
@@ -388,7 +388,7 @@ export default function ManageCoursesPage() {
               </div>
               {isPaid && (
                 <div>
-                  <Label htmlFor="price">Price (₹)</Label>
+                  <Label htmlFor="price">Price (<span className="font-mono">₹</span>)</Label>
                   <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 49.99" step="0.01" min="0.01" required={isPaid} disabled={isSubmitting}/>
                 </div>
               )}
@@ -487,3 +487,4 @@ export default function ManageCoursesPage() {
     </div>
   );
 }
+
