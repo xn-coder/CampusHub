@@ -17,10 +17,21 @@ import type { Course, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
 import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction, createDbRecordForUploadedResourceAction } from '../../actions';
-import PdfViewer from '@/components/shared/pdf-viewer';
 import * as tus from 'tus-js-client';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
+import dynamic from 'next/dynamic';
+
+// Dynamically import the PDF viewer to avoid server-side rendering issues
+const PdfViewer = dynamic(() => import('@/components/shared/pdf-viewer'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin" />
+      <span className="ml-2">Loading PDF Viewer...</span>
+    </div>
+  ),
+});
 
 
 type ResourceTabKey = 'ebooks' | 'videos' | 'notes' | 'webinars';
