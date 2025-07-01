@@ -139,7 +139,7 @@ export default function AvailableLmsCoursesPage() {
               </CardHeader>
               <CardContent className="flex-grow">
                 {course.is_paid && course.price && (
-                  <p className="text-lg font-semibold text-foreground mb-2">${course.price.toFixed(2)}</p>
+                  <p className="text-lg font-semibold text-foreground mb-2">₹{course.price.toFixed(2)}</p>
                 )}
               </CardContent>
               <CardFooter>
