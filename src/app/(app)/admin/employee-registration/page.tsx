@@ -1,3 +1,4 @@
+
 // This file is intentionally left blank as the feature has been removed.
 // If you need to re-implement employee registration, you can create new content here.
 // For now, it serves as a placeholder to avoid 404s if old links exist,

@@ -209,9 +209,8 @@ export default function AdminReportsPage() {
             <TableRow>
               <SortableHeader column="name" label="Student Name" />
               <SortableHeader column="email" label="Email" />
-              <SortableHeader column="lastLogin" label="Last Login (Mock)" />
-              <SortableHeader column="assignmentsSubmitted" label="Assignments Submitted (Mock)" align="right" />
-              <SortableHeader column="attendancePercentage" label="Attendance % (Mock)" align="right" />
+              <SortableHeader column="assignmentsSubmitted" label="Assignments Submitted" align="right" />
+              <SortableHeader column="attendancePercentage" label="Attendance %" align="right" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -219,7 +218,6 @@ export default function AdminReportsPage() {
               <TableRow key={student.id}>
                 <TableCell className="font-medium">{student.name}</TableCell>
                 <TableCell>{student.email}</TableCell>
-                <TableCell>{formatDateSafe(student.lastLogin)}</TableCell>
                 <TableCell className="text-right">{student.assignmentsSubmitted ?? 'N/A'}</TableCell>
                 <TableCell className="text-right">{student.attendancePercentage !== undefined && student.attendancePercentage !== null ? `${student.attendancePercentage}%` : 'N/A'}</TableCell>
               </TableRow>
@@ -252,8 +250,7 @@ export default function AdminReportsPage() {
               <SortableHeader column="name" label="Teacher Name" />
               <SortableHeader column="email" label="Email" />
               <SortableHeader column="subject" label="Primary Subject" />
-              <SortableHeader column="lastLogin" label="Last Login (Mock)" />
-              <SortableHeader column="assignmentsPosted" label="Assignments Posted (Mock)" align="right" />
+              <SortableHeader column="assignmentsPosted" label="Assignments Posted" align="right" />
               <SortableHeader column="classesTaught" label="Classes Taught" align="right" />
             </TableRow>
           </TableHeader>
@@ -263,7 +260,6 @@ export default function AdminReportsPage() {
                 <TableCell className="font-medium">{teacher.name}</TableCell>
                 <TableCell>{teacher.email}</TableCell>
                 <TableCell>{teacher.subject || 'N/A'}</TableCell>
-                <TableCell>{formatDateSafe(teacher.lastLogin)}</TableCell>
                 <TableCell className="text-right">{teacher.assignmentsPosted ?? 'N/A'}</TableCell>
                 <TableCell className="text-right">{teacher.classesTaught ?? 'N/A'}</TableCell>
               </TableRow>

@@ -224,6 +224,49 @@ export async function addCourseFileResourceAction(
   return { ok: true, message: 'File resource added successfully.', resource: resourceData as CourseResource };
 }
 
+export async function createDbRecordForUploadedResourceAction(input: {
+  course_id: string;
+  title: string;
+  type: CourseResourceType;
+  url: string;
+  fileName: string;
+  filePath: string;
+}): Promise<{ ok: boolean; message: string; resource?: CourseResource }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  const resourceId = uuidv4();
+  const { course_id, title, type, url, fileName, filePath } = input;
+
+  const { error, data } = await supabaseAdmin
+    .from('lms_course_resources')
+    .insert({
+      id: resourceId,
+      course_id,
+      title,
+      type,
+      url_or_content: url,
+      file_name: fileName,
+      file_path: filePath,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating DB record for uploaded file:', error);
+    // Attempt to clean up the orphaned file if DB insert fails.
+    const { error: removeError } = await supabaseAdmin.storage.from('campushub').remove([filePath]);
+    if (removeError) {
+        console.error(`CRITICAL: Failed to remove orphaned file ${filePath}`, removeError);
+    }
+    return { ok: false, message: `Failed to create resource record: ${error.message}` };
+  }
+
+  revalidatePath(`/admin/lms/courses/${course_id}/content`);
+  revalidatePath(`/lms/courses/${course_id}`);
+  return { ok: true, message: 'Resource added successfully.', resource: data as CourseResource };
+}
+
 
 export async function deleteCourseResourceAction(id: string, courseId: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();

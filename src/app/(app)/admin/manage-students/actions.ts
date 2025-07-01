@@ -174,7 +174,7 @@ export async function updateStudentAction(
 
     if (userUpdateError) {
       // This is not a critical failure; the main student profile was updated. Log a warning.
-      console.warn(`Student profile ${studentId} updated, but failed to update associated user login ${userId}: ${userUpdateError.message}`);
+      console.warn(`Student profile ${studentId} updated, but failed to associated user login ${userId}: ${userUpdateError.message}`);
     }
 
     revalidatePath('/admin/manage-students');

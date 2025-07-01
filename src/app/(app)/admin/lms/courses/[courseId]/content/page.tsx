@@ -16,8 +16,12 @@ import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2, External
 import type { Course, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
-import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction, addCourseFileResourceAction } from '../../actions';
+import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction, createDbRecordForUploadedResourceAction } from '../../actions';
 import PdfViewer from '@/components/shared/pdf-viewer';
+import * as tus from 'tus-js-client';
+import { v4 as uuidv4 } from 'uuid';
+import { Progress } from '@/components/ui/progress';
+
 
 type ResourceTabKey = 'ebooks' | 'videos' | 'notes' | 'webinars';
 const resourceTypeMapping: Record<ResourceTabKey, CourseResourceType> = {
@@ -47,6 +51,7 @@ export default function ManageCourseContentPage() {
   const [resourceFile, setResourceFile] = useState<File | null>(null);
   const [videoUploadMethod, setVideoUploadMethod] = useState<'url' | 'file'>('url');
   const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
 
   useEffect(() => {
@@ -128,60 +133,112 @@ export default function ManageCourseContentPage() {
     }
   };
 
-  const handleAddResource = async (e: FormEvent) => {
-    e.preventDefault();
+ const handleAddResource = async () => {
     if (!course || !resourceTitle.trim()) {
       toast({ title: "Error", description: "Title is required.", variant: "destructive" });
       return;
     }
-    setIsSubmitting(true);
-    
-    try {
-      let result;
-      const isFileUpload = (activeTab === 'ebooks') || (activeTab === 'videos' && videoUploadMethod === 'file');
+    const isFileUpload = (activeTab === 'ebooks') || (activeTab === 'videos' && videoUploadMethod === 'file');
 
-      if (isFileUpload) {
-          if (!resourceFile) {
-              toast({ title: "Error", description: `A file is required for this upload method.`, variant: "destructive" });
-              return;
-          }
-          const formData = new FormData();
-          formData.append('resourceFile', resourceFile);
-          formData.append('courseId', course.id);
-          formData.append('title', resourceTitle.trim());
-          formData.append('type', resourceTypeMapping[activeTab]);
+    if (isFileUpload) {
+      if (!resourceFile) {
+        toast({ title: "Error", description: `A file is required for this upload method.`, variant: "destructive" });
+        return;
+      }
+      setIsSubmitting(true);
+      setUploadProgress(0);
 
-          result = await addCourseFileResourceAction(formData);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          throw new Error("Could not get user session. Please log in again.");
+        }
 
-      } else {
-          if (!resourceUrlOrContent.trim()) {
-              toast({ title: "Error", description: "URL/Content is required for this resource type.", variant: "destructive" });
-              return;
-          }
-          result = await addCourseResourceAction({
+        const fileNameForUpload = resourceFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+        const filePath = `public/courses/${course.id}/resources/${uuidv4()}-${fileNameForUpload}`;
+        const supabaseUploadUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/upload/resumable`;
+
+        const upload = new tus.Upload(resourceFile, {
+          endpoint: supabaseUploadUrl,
+          retryDelays: [0, 3000, 5000, 10000, 20000],
+          headers: {
+            authorization: `Bearer ${session.access_token}`,
+            'x-upsert': 'true',
+          },
+          metadata: {
+            bucketName: 'campushub',
+            objectName: filePath,
+            contentType: resourceFile.type,
+          },
+          uploadDataDuringCreation: true,
+          chunkSize: 6 * 1024 * 1024,
+          onError: (error) => {
+            console.error("Upload Failed:", error);
+            throw new Error(`Upload failed: ${error.message}`);
+          },
+          onProgress: (bytesUploaded, bytesTotal) => {
+            const percentage = (bytesUploaded / bytesTotal) * 100;
+            setUploadProgress(percentage);
+          },
+          onSuccess: async () => {
+            toast({ title: "Upload Complete", description: "Finalizing resource..." });
+            const { data: { publicUrl } } = supabase.storage.from('campushub').getPublicUrl(filePath);
+
+            const result = await createDbRecordForUploadedResourceAction({
               course_id: course.id,
               title: resourceTitle.trim(),
               type: resourceTypeMapping[activeTab],
-              url_or_content: resourceUrlOrContent.trim(),
-          });
-      }
+              url: publicUrl,
+              fileName: fileNameForUpload,
+              filePath: filePath,
+            });
 
-      if (result.ok) {
-        toast({ title: "Resource Added", description: result.message });
-        setResourceTitle('');
-        setResourceUrlOrContent('');
-        setResourceFile(null);
-        const fileInput = document.getElementById(`${activeTab}-content-file-input`) as HTMLInputElement;
-        if (fileInput) fileInput.value = '';
-
-        fetchCourseResources(); 
-      } else {
-        toast({ title: "Error Adding Resource", description: result.message, variant: "destructive" });
+            if (result.ok) {
+              toast({ title: "Resource Added", description: result.message });
+              fetchCourseResources();
+              setResourceTitle('');
+              setResourceFile(null);
+              const fileInput = document.getElementById(`${activeTab}-content-file-input`) as HTMLInputElement;
+              if (fileInput) fileInput.value = '';
+            } else {
+              toast({ title: "Error Saving Resource", description: result.message, variant: "destructive" });
+            }
+          },
+        });
+        upload.start();
+      } catch (error: any) {
+        toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
+      } finally {
+        setIsSubmitting(false);
+        setUploadProgress(null);
       }
-    } catch (error) {
-      toast({ title: "Unexpected Error", description: "An unexpected error occurred during the upload.", variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
+    } else { // Handle URL/content submissions
+      if (!resourceUrlOrContent.trim()) {
+        toast({ title: "Error", description: "URL/Content is required.", variant: "destructive" });
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const result = await addCourseResourceAction({
+          course_id: course.id,
+          title: resourceTitle.trim(),
+          type: resourceTypeMapping[activeTab],
+          url_or_content: resourceUrlOrContent.trim(),
+        });
+
+        if (result.ok) {
+          toast({ title: "Resource Added", description: result.message });
+          setResourceTitle('');
+          setResourceUrlOrContent('');
+          fetchCourseResources();
+        } else {
+          toast({ title: "Error Adding Resource", description: result.message, variant: "destructive" });
+        }
+      } catch (error: any) {
+        toast({ title: "Unexpected Error", description: error.message, variant: "destructive"});
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -240,6 +297,7 @@ export default function ManageCourseContentPage() {
         setResourceTitle(''); 
         setResourceUrlOrContent('');
         setResourceFile(null);
+        setUploadProgress(null);
       }} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
           <TabsTrigger value="ebooks"><BookOpen className="mr-2 h-4 w-4" /> E-books</TabsTrigger>
@@ -255,8 +313,8 @@ export default function ManageCourseContentPage() {
                 <CardTitle>Manage {getResourceTypeLabel(tabKey as ResourceTabKey)}s</CardTitle>
                 <CardDescription>Add or remove {tabKey.toLowerCase()} for this course.</CardDescription>
               </CardHeader>
-              <form onSubmit={handleAddResource}>
-                <CardContent className="space-y-4">
+              <CardContent>
+                <div className="space-y-4">
                   <div>
                     <Label htmlFor={`${tabKey}-title`}>{getResourceTypeLabel(tabKey as ResourceTabKey)} Title</Label>
                     <Input 
@@ -354,12 +412,19 @@ export default function ManageCourseContentPage() {
                       </>
                     )}
                   </div>
-                   <Button type="submit" disabled={isSubmitting || activeTab !== tabKey}>
+                   <Button type="button" onClick={handleAddResource} disabled={isSubmitting || activeTab !== tabKey}>
                     {isSubmitting && activeTab === tabKey ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} 
                     Add {getResourceTypeLabel(tabKey as ResourceTabKey)}
                   </Button>
-                </CardContent>
-              </form>
+                  {isSubmitting && uploadProgress !== null && activeTab === tabKey && (
+                    <div className="mt-4 space-y-1">
+                        <Label>Uploading...</Label>
+                        <Progress value={uploadProgress} />
+                        <p className="text-xs text-muted-foreground">{Math.round(uploadProgress)}% complete</p>
+                    </div>
+                   )}
+                </div>
+              </CardContent>
               <CardContent className="mt-6">
                 <h4 className="text-lg font-medium mb-2">Existing {getResourceTypeLabel(tabKey as ResourceTabKey)}s ({isLoadingResources ? 'loading...' : displayedResources.length}):</h4>
                 {isLoadingResources ? (

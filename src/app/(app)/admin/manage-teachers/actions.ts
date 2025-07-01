@@ -66,7 +66,7 @@ export async function createTeacherAction(
         id: newTeacherProfileId,
         user_id: newUser.id,
         name: name.trim(),
-        email: email.trim(),
+        email: email.trim(), 
         subject: subject.trim(),
         profile_picture_url: profilePictureUrl?.trim() || `https://placehold.co/100x100.png?text=${name.substring(0,1)}`,
         school_id: school_id,
