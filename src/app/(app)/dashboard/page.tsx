@@ -34,6 +34,21 @@ interface DashboardStats {
   upcomingEvents?: { id: string; title: string; date: string, start_time?: string | null, is_all_day: boolean }[];
 }
 
+const getDashboardTitle = (role: UserRole | null): string => {
+  switch (role) {
+    case 'superadmin':
+      return 'Super Admin Dashboard';
+    case 'admin':
+      return 'Admin Dashboard';
+    case 'teacher':
+      return 'Teacher Dashboard';
+    case 'student':
+      return 'Student Dashboard';
+    default:
+      return 'Dashboard';
+  }
+};
+
 
 export default function DashboardPage() {
   const { toast } = useToast();
@@ -176,7 +191,10 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={`Welcome back, ${currentUserName || 'User'}!`} description="Here's your overview." />
+      <PageHeader 
+        title={getDashboardTitle(currentUserRole)}
+        description={`Welcome back, ${currentUserName || 'User'}! Here's your overview.`} 
+      />
       
       {currentUserRole === 'student' && dashboardData?.feeStatus?.isDefaulter && (
           <Alert variant="destructive" className="border-2">
