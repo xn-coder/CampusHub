@@ -204,7 +204,9 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
       
       const { error: uploadError } = await supabase.storage
         .from('campushub')
-        .upload(filePath, resourceFile);
+        .upload(filePath, resourceFile, {
+            upsert: true, // Create folders if they don't exist
+        });
       
       if (uploadError) {
         throw new Error(`File upload failed: ${uploadError.message}`);
@@ -214,7 +216,10 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         .from('campushub')
         .getPublicUrl(filePath);
 
-      finalContentUrlOrJson = publicUrlData?.publicUrl;
+      if (!publicUrlData?.publicUrl) {
+          throw new Error("Could not retrieve public URL for the uploaded file.");
+      }
+      finalContentUrlOrJson = publicUrlData.publicUrl;
 
     } else if (resourceType === 'quiz' && quizDataJSON) {
         finalContentUrlOrJson = quizDataJSON;
