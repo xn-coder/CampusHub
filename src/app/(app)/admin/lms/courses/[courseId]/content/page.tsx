@@ -4,28 +4,25 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2, ExternalLink, Eye } from 'lucide-react';
-import type { Course, CourseResource, CourseResourceType } from '@/types';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2, ExternalLink } from 'lucide-react';
+import type { Course, LmsLesson, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient'; 
-import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction, createDbRecordForUploadedResourceAction } from '../../actions';
-import { v4 as uuidv4 } from 'uuid';
-import { Progress } from '@/components/ui/progress';
+import { 
+  addLessonAction, 
+  deleteLessonAction, 
+  getCourseDetailsForAdminAction,
+  addResourceToLessonAction,
+  deleteCourseResourceAction
+} from '../../actions';
 
-type ResourceTabKey = 'ebooks' | 'videos' | 'notes' | 'webinars';
-const resourceTypeMapping: Record<ResourceTabKey, CourseResourceType> = {
-    ebooks: 'ebook',
-    videos: 'video',
-    notes: 'note',
-    webinars: 'webinar',
-};
+type ResourceTabKey = 'ebook' | 'video' | 'note' | 'webinar';
 
 export default function ManageCourseContentPage() {
   const params = useParams();
@@ -34,431 +31,230 @@ export default function ManageCourseContentPage() {
   const courseId = params.courseId as string;
 
   const [course, setCourse] = useState<Course | null>(null);
-  const [courseResources, setCourseResources] = useState<CourseResource[]>([]);
-  const [isLoadingPage, setIsLoadingPage] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoadingResources, setIsLoadingResources] = useState(false);
+  const [lessons, setLessons] = useState<LmsLesson[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState<boolean | string>(false); // Use string for lesson-specific loading
 
-  const [activeTab, setActiveTab] = useState<ResourceTabKey>('ebooks');
+  const [newLessonTitle, setNewLessonTitle] = useState('');
+  
+  // Resource Form State
+  const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [resourceTitle, setResourceTitle] = useState('');
-  const [resourceFile, setResourceFile] = useState<File | null>(null);
-  const [videoUploadMethod, setVideoUploadMethod] = useState<'url' | 'file'>('url');
+  const [resourceType, setResourceType] = useState<ResourceTabKey>('note');
   const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
+  const fetchCourseData = async () => {
+    setIsLoading(true);
+    const result = await getCourseDetailsForAdminAction(courseId);
+    if (result.ok) {
+      setCourse(result.course || null);
+      setLessons(result.lessons || []);
+    } else {
+      toast({ title: "Error", description: result.message || "Failed to load course details.", variant: "destructive" });
+      router.push('/admin/lms/courses');
+    }
+    setIsLoading(false);
+  }
 
   useEffect(() => {
     if (courseId) {
-      fetchCourseDetails();
-      fetchCourseResources();
+      fetchCourseData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
 
-  async function fetchCourseDetails() {
-    setIsLoadingPage(true);
-    const { data, error } = await supabase
-      .from('lms_courses')
-      .select('*')
-      .eq('id', courseId)
-      .single();
-    if (error || !data) {
-      toast({ title: "Error", description: "Course not found or failed to load.", variant: "destructive" });
-      router.push('/admin/lms/courses');
+  const handleAddLesson = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newLessonTitle.trim() || !course) return;
+
+    setIsSubmitting('lesson');
+    const result = await addLessonAction({
+      course_id: course.id,
+      title: newLessonTitle.trim(),
+      order: (lessons.length || 0) + 1,
+    });
+
+    if (result.ok) {
+      toast({ title: "Lesson Added", description: `"${newLessonTitle}" has been added.` });
+      setNewLessonTitle('');
+      await fetchCourseData();
     } else {
-      setCourse(data as Course);
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    setIsLoadingPage(false);
-  }
+    setIsSubmitting(false);
+  };
   
-  async function fetchCourseResources() {
-    if (!courseId) return;
-    setIsLoadingResources(true);
-    const result = await getCourseResourcesAction(courseId);
-    if (result.ok && result.resources) {
-        setCourseResources(result.resources);
-    } else {
-        toast({title: "Error Loading Resources", description: result.message || "Failed to load course resources.", variant: "destructive"});
-        setCourseResources([]);
-    }
-    setIsLoadingResources(false);
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const MAX_FILE_SIZE_MB = 4.5;
-      const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        const message = activeTab === 'videos'
-          ? `The maximum file size is ${MAX_FILE_SIZE_MB} MB. For larger videos, please use the URL option.`
-          : `The maximum file size is ${MAX_FILE_SIZE_MB} MB.`;
-        toast({
-          title: "File is too large",
-          description: message,
-          variant: "destructive",
-        });
-        setResourceFile(null);
-        e.target.value = '';
-        return;
-      }
-
-      const allowedTypes = {
-        ebooks: ['application/pdf'],
-        videos: ['video/mp4', 'video/webm', 'video/ogg'],
-      };
-      const currentAllowedTypes = allowedTypes[activeTab as keyof typeof allowedTypes] || [];
-      if (!currentAllowedTypes.includes(file.type)) {
-        toast({ title: "Invalid File Type", description: `Please select a valid file type for ${activeTab}.`, variant: "destructive" });
-        setResourceFile(null);
-        e.target.value = '';
-        return;
-      }
-      setResourceFile(file);
-    } else {
-      setResourceFile(null);
-    }
-  };
-
- const handleAddResource = async () => {
-    if (!course || !resourceTitle.trim()) {
-      toast({ title: "Error", description: "Title is required.", variant: "destructive" });
-      return;
-    }
-    const isFileUpload = (activeTab === 'ebooks') || (activeTab === 'videos' && videoUploadMethod === 'file');
-
-    if (isFileUpload) {
-      if (!resourceFile) {
-        toast({ title: "Error", description: `A file is required for this upload method.`, variant: "destructive" });
-        return;
-      }
-      setIsSubmitting(true);
-      setUploadProgress(0);
-
-      try {
-        const tus = (await import('tus-js-client')).default;
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) {
-          throw new Error("Could not get user session. Please log in again.");
-        }
-
-        const fileNameForUpload = resourceFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-        const filePath = `public/courses/${course.id}/resources/${uuidv4()}-${fileNameForUpload}`;
-        const supabaseUploadUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/upload/resumable`;
-
-        const upload = new tus.Upload(resourceFile, {
-          endpoint: supabaseUploadUrl,
-          retryDelays: [0, 3000, 5000, 10000, 20000],
-          headers: {
-            authorization: `Bearer ${session.access_token}`,
-            'x-upsert': 'true',
-          },
-          metadata: {
-            bucketName: 'campushub',
-            objectName: filePath,
-            contentType: resourceFile.type,
-          },
-          uploadDataDuringCreation: true,
-          chunkSize: 6 * 1024 * 1024,
-          onError: (error) => {
-            console.error("Upload Failed:", error);
-            throw new Error(`Upload failed: ${error.message}`);
-          },
-          onSuccess: async () => {
-            toast({ title: "Upload Complete", description: "Finalizing resource..." });
-            const { data: { publicUrl } } = supabase.storage.from('campushub').getPublicUrl(filePath);
-
-            const result = await createDbRecordForUploadedResourceAction({
-              course_id: course.id,
-              title: resourceTitle.trim(),
-              type: resourceTypeMapping[activeTab],
-              url: publicUrl,
-              fileName: fileNameForUpload,
-              filePath: filePath,
-            });
-
-            if (result.ok) {
-              toast({ title: "Resource Added", description: result.message });
-              fetchCourseResources();
-              setResourceTitle('');
-              setResourceFile(null);
-              const fileInput = document.getElementById(`${activeTab}-content-file-input`) as HTMLInputElement;
-              if (fileInput) fileInput.value = '';
-            } else {
-              toast({ title: "Error Saving Resource", description: result.message, variant: "destructive" });
-            }
-          },
-          onProgress: (bytesUploaded, bytesTotal) => {
-            const percentage = (bytesUploaded / bytesTotal) * 100;
-            setUploadProgress(percentage);
-          },
-        });
-        upload.start();
-      } catch (error: any) {
-        toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
-        setIsSubmitting(false); // Ensure this is reset on catch
-        setUploadProgress(null);
-      } finally {
-        // 'finally' might not work as intended with the async nature of onSuccess.
-        // It's safer to reset state in onSuccess and onError.
-      }
-    } else { // Handle URL/content submissions
-      if (!resourceUrlOrContent.trim()) {
-        toast({ title: "Error", description: "URL/Content is required.", variant: "destructive" });
-        return;
-      }
-      setIsSubmitting(true);
-      try {
-        const result = await addCourseResourceAction({
-          course_id: course.id,
-          title: resourceTitle.trim(),
-          type: resourceTypeMapping[activeTab],
-          url_or_content: resourceUrlOrContent.trim(),
-        });
-
-        if (result.ok) {
-          toast({ title: "Resource Added", description: result.message });
-          setResourceTitle('');
-          setResourceUrlOrContent('');
-          fetchCourseResources();
-        } else {
-          toast({ title: "Error Adding Resource", description: result.message, variant: "destructive" });
-        }
-      } catch (error: any) {
-        toast({ title: "Unexpected Error", description: error.message, variant: "destructive"});
-      } finally {
-        setIsSubmitting(false);
-      }
-    }
-  };
-
-  const handleDeleteResource = async (resourceId: string) => {
-    if (!course) return;
-    if (confirm("Are you sure you want to delete this resource?")) {
-      setIsSubmitting(true);
-      const result = await deleteCourseResourceAction(resourceId, course.id);
+  const handleDeleteLesson = async (lessonId: string) => {
+    if (confirm("Are you sure you want to delete this lesson and all its resources? This action cannot be undone.")) {
+      setIsSubmitting(lessonId);
+      const result = await deleteLessonAction(lessonId);
       if (result.ok) {
-        toast({ title: "Resource Deleted", variant: "destructive" });
-        fetchCourseResources(); 
+        toast({ title: "Lesson Deleted", variant: "destructive" });
+        await fetchCourseData();
       } else {
-        toast({ title: "Error Deleting Resource", description: result.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
       setIsSubmitting(false);
     }
   };
-  
-  const getResourceTypeLabel = (type: ResourceTabKey): string => {
-    switch(type) {
-        case 'ebooks': return 'E-Book';
-        case 'videos': return 'Video';
-        case 'notes': return 'Note';
-        case 'webinars': return 'Webinar';
-        default: return 'Resource';
+
+  const resetResourceForm = () => {
+    setResourceTitle('');
+    setResourceUrlOrContent('');
+    setResourceType('note');
+  };
+
+  const handleAddResource = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!activeLessonId || !resourceTitle.trim() || !resourceUrlOrContent.trim()) {
+      toast({ title: "Error", description: "Title and Content/URL are required for the resource.", variant: "destructive" });
+      return;
     }
-  }
+    
+    setIsSubmitting(activeLessonId);
+    const result = await addResourceToLessonAction({
+      lesson_id: activeLessonId,
+      course_id: courseId,
+      title: resourceTitle.trim(),
+      type: resourceType,
+      url_or_content: resourceUrlOrContent.trim(),
+    });
+
+    if (result.ok) {
+      toast({ title: "Resource Added" });
+      resetResourceForm();
+      await fetchCourseData();
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsSubmitting(false);
+  };
   
-  const getResourceInputType = (type: ResourceTabKey): 'url' | 'textarea' => {
-      return type === 'notes' ? 'textarea' : 'url';
-  }
-  
-  const getResourcePlaceholder = (type: ResourceTabKey): string => {
-      if (type === 'notes') return 'Enter note content here...';
-      if (type === 'webinars') return 'Enter webinar/meeting URL...';
-      return 'Enter URL...';
-  }
+  const handleDeleteResource = async (resourceId: string, lessonId: string) => {
+    if (confirm("Are you sure you want to delete this resource?")) {
+        setIsSubmitting(lessonId);
+        const result = await deleteCourseResourceAction(resourceId);
+        if (result.ok) {
+            toast({ title: "Resource Deleted", variant: "destructive" });
+            await fetchCourseData();
+        } else {
+            toast({ title: "Error", description: result.message, variant: "destructive" });
+        }
+        setIsSubmitting(false);
+    }
+  };
 
-  const displayedResources = courseResources.filter(res => res.type === resourceTypeMapping[activeTab]);
 
-
-  if (isLoadingPage) {
+  if (isLoading) {
     return <div className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Loading course details...</div>;
   }
-
   if (!course) {
     return <div className="text-center py-10 text-destructive">Course not found. It might have been deleted.</div>;
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={`Manage Content: ${course.title}`} description="Add, edit, or remove resources for this course." />
+      <PageHeader title={`Manage Content: ${course.title}`} description="Add, edit, or remove lessons and their resources for this course." />
       
-      <Tabs value={activeTab} onValueChange={(value) => {
-        setActiveTab(value as ResourceTabKey);
-        setResourceTitle(''); 
-        setResourceUrlOrContent('');
-        setResourceFile(null);
-        setUploadProgress(null);
-      }} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
-          <TabsTrigger value="ebooks"><BookOpen className="mr-2 h-4 w-4" /> E-books</TabsTrigger>
-          <TabsTrigger value="videos"><Video className="mr-2 h-4 w-4" /> Videos</TabsTrigger>
-          <TabsTrigger value="notes"><FileText className="mr-2 h-4 w-4" /> Notes</TabsTrigger>
-          <TabsTrigger value="webinars"><Users className="mr-2 h-4 w-4" /> Webinars</TabsTrigger>
-        </TabsList>
-
-        {(['ebooks', 'videos', 'notes', 'webinars'] as ResourceTabKey[]).map((tabKey) => (
-          <TabsContent key={tabKey} value={tabKey}>
-            <Card>
-              <CardHeader>
-                <CardTitle>Manage {getResourceTypeLabel(tabKey as ResourceTabKey)}s</CardTitle>
-                <CardDescription>Add or remove {tabKey.toLowerCase()} for this course.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor={`${tabKey}-title`}>{getResourceTypeLabel(tabKey as ResourceTabKey)} Title</Label>
-                    <Input 
-                      id={`${tabKey}-title`} 
-                      value={resourceTitle} 
-                      onChange={(e) => setResourceTitle(e.target.value)} 
-                      placeholder={`Enter ${getResourceTypeLabel(tabKey as ResourceTabKey).toLowerCase()} title`} 
-                      required 
-                      disabled={isSubmitting}
-                    />
+      <Card>
+        <CardHeader>
+          <CardTitle>Add New Lesson</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleAddLesson} className="flex items-center gap-2">
+            <Input
+              value={newLessonTitle}
+              onChange={(e) => setNewLessonTitle(e.target.value)}
+              placeholder="e.g., Introduction to Algebra"
+              className="flex-grow"
+              disabled={isSubmitting === 'lesson'}
+            />
+            <Button type="submit" disabled={isSubmitting === 'lesson' || !newLessonTitle.trim()}>
+              {isSubmitting === 'lesson' ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} 
+              Add Lesson
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Course Lessons</CardTitle>
+          <CardDescription>Manage the resources within each lesson. Lessons are displayed in the order they are created.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {lessons.length > 0 ? (
+            <Accordion type="single" collapsible className="w-full" onValueChange={setActiveLessonId}>
+              {lessons.map(lesson => (
+                <AccordionItem value={lesson.id} key={lesson.id}>
+                  <div className="flex items-center">
+                    <AccordionTrigger className="flex-grow">{lesson.title}</AccordionTrigger>
+                    <Button variant="ghost" size="icon" className="ml-2" onClick={() => handleDeleteLesson(lesson.id)} disabled={!!isSubmitting}>
+                      <Trash2 className="h-4 w-4 text-destructive"/>
+                    </Button>
                   </div>
-                  <div>
-                    {tabKey === 'ebooks' ? (
-                      <>
-                        <Label htmlFor={`${tabKey}-content-file-input`}>PDF File</Label>
-                        <Input
-                          id={`${tabKey}-content-file-input`}
-                          type="file"
-                          accept=".pdf"
-                          onChange={handleFileChange}
-                          required
-                          disabled={isSubmitting}
-                        />
-                         <p className="text-xs text-muted-foreground mt-1">
-                            Max file size: 4.5 MB.
-                         </p>
-                      </>
-                    ) : tabKey === 'videos' ? (
-                        <>
-                        <Label>Video Source</Label>
-                        <RadioGroup value={videoUploadMethod} onValueChange={(val) => setVideoUploadMethod(val as 'url' | 'file')} className="flex space-x-4 mb-2">
-                           <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="url" id="video-url" />
-                                <Label htmlFor="video-url">URL (e.g., YouTube)</Label>
-                            </div>
-                             <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="file" id="video-file" />
-                                <Label htmlFor="video-file">Upload File</Label>
-                            </div>
-                        </RadioGroup>
-                        {videoUploadMethod === 'url' ? (
-                             <Input
-                                key="video-url-input" 
-                                id={`${tabKey}-content`} 
-                                type="url"
-                                value={resourceUrlOrContent} 
-                                onChange={(e) => setResourceUrlOrContent(e.target.value)} 
-                                placeholder="Enter video URL..." 
-                                required 
-                                disabled={isSubmitting}
-                            />
-                        ) : (
-                             <>
-                                <Input
-                                    key="video-file-input"
-                                    id={`${tabKey}-content-file-input`}
-                                    type="file"
-                                    accept="video/*"
-                                    onChange={handleFileChange}
-                                    required
-                                    disabled={isSubmitting}
-                                />
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    Max file size: 4.5 MB. For larger videos, please use the "URL" option.
-                                </p>
-                             </>
-                        )}
-                        </>
-                    ) : (
-                      <>
-                        <Label htmlFor={`${tabKey}-content`}>
-                          {getResourceInputType(tabKey as ResourceTabKey) === 'url' ? 'URL' : 'Content'}
-                        </Label>
-                        {getResourceInputType(tabKey as ResourceTabKey) === 'textarea' ? (
-                          <Textarea 
-                              id={`${tabKey}-content`} 
-                              value={resourceUrlOrContent} 
-                              onChange={(e) => setResourceUrlOrContent(e.target.value)} 
-                              placeholder={getResourcePlaceholder(tabKey as ResourceTabKey)} 
-                              required 
-                              rows={5}
-                              disabled={isSubmitting}
-                          />
-                        ) : (
-                          <Input 
-                              id={`${tabKey}-content`} 
-                              type="url"
-                              value={resourceUrlOrContent} 
-                              onChange={(e) => setResourceUrlOrContent(e.target.value)} 
-                              placeholder={getResourcePlaceholder(tabKey as ResourceTabKey)} 
-                              required 
-                              disabled={isSubmitting}
-                          />
-                        )}
-                      </>
-                    )}
-                  </div>
-                   <Button type="button" onClick={handleAddResource} disabled={isSubmitting || activeTab !== tabKey}>
-                    {isSubmitting && activeTab === tabKey ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} 
-                    Add {getResourceTypeLabel(tabKey as ResourceTabKey)}
-                  </Button>
-                  {isSubmitting && uploadProgress !== null && activeTab === tabKey && (
-                    <div className="mt-4 space-y-1">
-                        <Label>Uploading...</Label>
-                        <Progress value={uploadProgress} />
-                        <p className="text-xs text-muted-foreground">{Math.round(uploadProgress)}% complete</p>
-                    </div>
-                   )}
-                </div>
-              </CardContent>
-              <CardContent className="mt-6">
-                <h4 className="text-lg font-medium mb-2">Existing {getResourceTypeLabel(tabKey as ResourceTabKey)}s ({isLoadingResources ? 'loading...' : displayedResources.length}):</h4>
-                {isLoadingResources ? (
-                    <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading resources...</div>
-                ) : displayedResources.length > 0 ? (
-                  <ul className="space-y-3 max-h-96 overflow-y-auto">
-                    {displayedResources.map((res: CourseResource) => (
-                      <li key={res.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate" title={res.title}>{res.title}</p>
-                          {res.type === 'note' && !res.file_name ? (
-                             <div className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2 mt-1 rounded-sm max-h-24 overflow-y-auto">
-                                {res.url_or_content}
-                             </div>
-                          ) : (
-                            <a 
-                                href={res.url_or_content} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="text-xs text-primary hover:underline flex items-center truncate"
-                                title={res.url_or_content}
-                            >
-                                {res.file_name || res.url_or_content} <ExternalLink className="ml-1 h-3 w-3 shrink-0"/>
-                            </a>
-                          )}
-                        </div>
-                        <div className="flex gap-1 ml-2 shrink-0">
-                          <Button variant="destructive" size="icon" title="Delete Resource" onClick={() => handleDeleteResource(res.id)} disabled={isSubmitting}>
-                            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  <AccordionContent className="p-4 bg-muted/50 rounded-md">
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {/* Left side: Add Resource Form */}
+                      <div className="space-y-4">
+                        <h4 className="font-semibold text-md">Add Resource to "{lesson.title}"</h4>
+                        <form onSubmit={handleAddResource} className="space-y-4">
+                          <Input name="lessonId" type="hidden" value={lesson.id}/>
+                          <div>
+                            <Label htmlFor={`resource-title-${lesson.id}`}>Resource Title</Label>
+                            <Input id={`resource-title-${lesson.id}`} value={resourceTitle} onChange={e => setResourceTitle(e.target.value)} placeholder="e.g., Chapter 1 PDF" disabled={isSubmitting === lesson.id} />
+                          </div>
+                          <div>
+                            <Label>Resource Type</Label>
+                            <RadioGroup value={resourceType} onValueChange={(val) => setResourceType(val as ResourceTabKey)} className="flex space-x-4">
+                              <div className="flex items-center space-x-2"><RadioGroupItem value="note" id={`type-note-${lesson.id}`} /><Label htmlFor={`type-note-${lesson.id}`}>Note</Label></div>
+                              <div className="flex items-center space-x-2"><RadioGroupItem value="video" id={`type-video-${lesson.id}`} /><Label htmlFor={`type-video-${lesson.id}`}>Video</Label></div>
+                              <div className="flex items-center space-x-2"><RadioGroupItem value="ebook" id={`type-ebook-${lesson.id}`} /><Label htmlFor={`type-ebook-${lesson.id}`}>E-book</Label></div>
+                              <div className="flex items-center space-x-2"><RadioGroupItem value="webinar" id={`type-webinar-${lesson.id}`} /><Label htmlFor={`type-webinar-${lesson.id}`}>Webinar</Label></div>
+                            </RadioGroup>
+                          </div>
+                          <div>
+                            <Label htmlFor={`resource-content-${lesson.id}`}>{resourceType === 'note' ? 'Content' : 'URL'}</Label>
+                            <Textarea id={`resource-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder={resourceType === 'note' ? 'Enter text content...' : 'Enter full URL...'} disabled={isSubmitting === lesson.id} />
+                          </div>
+                           <Button type="submit" disabled={isSubmitting === lesson.id}>
+                            {isSubmitting === lesson.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} 
+                            Add Resource
                           </Button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">No {tabKey.toLowerCase()} added yet for this course.</p>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        ))}
-      </Tabs>
-       <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} className="mt-4 self-start" disabled={isSubmitting}>
+                        </form>
+                      </div>
+                      {/* Right side: Existing Resources List */}
+                      <div>
+                         <h4 className="font-semibold text-md mb-2">Existing Resources</h4>
+                         {lesson.resources && lesson.resources.length > 0 ? (
+                            <ul className="space-y-2 max-h-72 overflow-y-auto">
+                              {lesson.resources.map(resource => (
+                                <li key={resource.id} className="flex justify-between items-center p-2 border rounded-md bg-background">
+                                  <div className="truncate">
+                                      <p className="font-medium truncate" title={resource.title}>{resource.title}</p>
+                                      <p className="text-xs text-muted-foreground">{resource.type}</p>
+                                  </div>
+                                  <Button variant="ghost" size="icon" onClick={() => handleDeleteResource(resource.id, lesson.id)} disabled={!!isSubmitting}>
+                                      <Trash2 className="h-4 w-4 text-destructive"/>
+                                  </Button>
+                                </li>
+                              ))}
+                            </ul>
+                         ) : (
+                            <p className="text-sm text-muted-foreground text-center py-4">No resources added to this lesson yet.</p>
+                         )}
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          ) : (
+            <p className="text-center text-muted-foreground py-4">No lessons created yet. Add one above to get started.</p>
+          )}
+        </CardContent>
+      </Card>
+      <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} className="mt-4 self-start" disabled={!!isSubmitting}>
         Back to Courses
       </Button>
     </div>

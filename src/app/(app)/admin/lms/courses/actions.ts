@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LmsLesson } from '@/types';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -92,7 +92,9 @@ export async function updateCourseAction(
 export async function deleteCourseAction(id: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   
+  await supabaseAdmin.from('lms_student_lesson_progress').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_resources').delete().eq('course_id', id);
+  await supabaseAdmin.from('lms_lessons').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_activation_codes').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_student_course_enrollments').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_teacher_course_enrollments').delete().eq('course_id', id);
@@ -108,206 +110,65 @@ export async function deleteCourseAction(id: string): Promise<{ ok: boolean; mes
   return { ok: true, message: 'Course and related data deleted successfully.' };
 }
 
-// --- Course Resource Management ---
-interface CourseResourceInput {
-  course_id: string;
-  title: string;
-  type: CourseResourceType;
-  url_or_content: string;
-}
+// --- Lesson & Resource Management (Admin) ---
 
-export async function getCourseResourcesAction(courseId: string): Promise<{ok: boolean; resources?: CourseResource[]; message?: string}> {
-    const supabaseAdmin = createSupabaseServerClient();
-    if (!courseId) {
-        return { ok: false, message: "Course ID is required."};
+export async function getCourseDetailsForAdminAction(courseId: string): Promise<{
+    ok: boolean;
+    course?: Course;
+    lessons?: LmsLesson[];
+    message?: string;
+}> {
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data: course, error: courseError } = await supabase.from('lms_courses').select('*').eq('id', courseId).single();
+        if (courseError) throw courseError;
+        
+        const { data: lessons, error: lessonsError } = await supabase.from('lms_lessons').select('*, resources:lms_course_resources(*)').eq('course_id', courseId).order('order', { ascending: true });
+        if (lessonsError) throw lessonsError;
+
+        return { ok: true, course: course as Course, lessons: lessons as LmsLesson[] };
+    } catch (e: any) {
+        return { ok: false, message: e.message };
     }
-    const { data, error } = await supabaseAdmin
-        .from('lms_course_resources')
-        .select('*')
-        .eq('course_id', courseId)
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error("Error fetching course resources via action:", error);
-        return { ok: false, message: `Failed to fetch resources: ${error.message}` };
-    }
-    return { ok: true, resources: data || [] };
 }
 
 
-export async function addCourseResourceAction(
-  input: CourseResourceInput
-): Promise<{ ok: boolean; message: string; resource?: CourseResource }> {
-  const supabaseAdmin = createSupabaseServerClient();
-  const resourceId = uuidv4();
-  const { error, data } = await supabaseAdmin
-    .from('lms_course_resources')
-    .insert({ ...input, id: resourceId, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .select()
-    .single();
-
-  if (error) {
-    console.error("Error adding course resource:", error);
-    return { ok: false, message: `Failed to add resource: ${error.message}` };
-  }
-  revalidatePath(`/admin/lms/courses/${input.course_id}/content`);
-  revalidatePath(`/lms/courses/${input.course_id}`);
-  return { ok: true, message: 'Resource added successfully.', resource: data as CourseResource };
+export async function addLessonAction(input: { course_id: string; title: string; order: number }): Promise<{ ok: boolean; message: string; lesson?: LmsLesson }> {
+    const supabase = createSupabaseServerClient();
+    const { error, data } = await supabase.from('lms_lessons').insert(input).select().single();
+    if (error) return { ok: false, message: error.message };
+    return { ok: true, message: "Lesson added.", lesson: data as LmsLesson };
 }
 
-export async function addCourseFileResourceAction(
-  formData: FormData
-): Promise<{ ok: boolean; message: string; resource?: CourseResource }> {
-  const supabaseAdmin = createSupabaseServerClient();
-
-  const file = formData.get('resourceFile') as File | null;
-  const courseId = formData.get('courseId') as string | null;
-  const title = formData.get('title') as string | null;
-  const type = formData.get('type') as CourseResourceType | null;
-
-  if (!file || !courseId || !title || !type) {
-    return { ok: false, message: 'Missing required data for file resource.' };
-  }
-  
-  if (!['ebook', 'video'].includes(type)) {
-      return { ok: false, message: `File uploads are not supported for the '${type}' resource type.`};
-  }
-
-  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-  const filePath = `public/courses/${courseId}/resources/${uuidv4()}-${sanitizedFileName}`;
-
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from('campushub')
-    .upload(filePath, file);
-
-  if (uploadError) {
-    console.error('Supabase storage upload error for course resource:', uploadError);
-    return { ok: false, message: `Failed to upload file: ${uploadError.message}` };
-  }
-  
-  const { data: publicUrlData } = supabaseAdmin.storage
-      .from('campushub')
-      .getPublicUrl(filePath);
-
-  if (!publicUrlData) {
-      // Clean up orphaned file
-      await supabaseAdmin.storage.from('campushub').remove([filePath]);
-      return { ok: false, message: 'Could not retrieve public URL for the uploaded file.' };
-  }
-
-  const resourceId = uuidv4();
-  const { error: dbError, data: resourceData } = await supabaseAdmin
-    .from('lms_course_resources')
-    .insert({ 
-        id: resourceId,
-        course_id: courseId, 
-        title: title, 
-        type: type, 
-        url_or_content: publicUrlData.publicUrl,
-        file_name: sanitizedFileName,
-        file_path: filePath, // Store the path for deletion
-        created_at: new Date().toISOString(), 
-        updated_at: new Date().toISOString() 
-    })
-    .select()
-    .single();
-
-  if (dbError) {
-    console.error('Error adding file course resource to DB:', dbError);
-    // Clean up orphaned file
-    await supabaseAdmin.storage.from('campushub').remove([filePath]);
-    return { ok: false, message: `Failed to add resource record: ${dbError.message}` };
-  }
-
-  revalidatePath(`/admin/lms/courses/${courseId}/content`);
-  revalidatePath(`/lms/courses/${courseId}`);
-  return { ok: true, message: 'File resource added successfully.', resource: resourceData as CourseResource };
+export async function deleteLessonAction(lessonId: string): Promise<{ ok: boolean; message: string }> {
+    const supabase = createSupabaseServerClient();
+    // Cascade delete is set up in Supabase, so deleting a lesson will delete its resources and progress.
+    const { error } = await supabase.from('lms_lessons').delete().eq('id', lessonId);
+    if (error) return { ok: false, message: error.message };
+    return { ok: true, message: "Lesson deleted." };
 }
 
-export async function createDbRecordForUploadedResourceAction(input: {
-  course_id: string;
-  title: string;
-  type: CourseResourceType;
-  url: string;
-  fileName: string;
-  filePath: string;
-}): Promise<{ ok: boolean; message: string; resource?: CourseResource }> {
-  const supabaseAdmin = createSupabaseServerClient();
-  const resourceId = uuidv4();
-  const { course_id, title, type, url, fileName, filePath } = input;
-
-  const { error, data } = await supabaseAdmin
-    .from('lms_course_resources')
-    .insert({
-      id: resourceId,
-      course_id,
-      title,
-      type,
-      url_or_content: url,
-      file_name: fileName,
-      file_path: filePath,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error creating DB record for uploaded file:', error);
-    // Attempt to clean up the orphaned file if DB insert fails.
-    const { error: removeError } = await supabaseAdmin.storage.from('campushub').remove([filePath]);
-    if (removeError) {
-        console.error(`CRITICAL: Failed to remove orphaned file ${filePath}`, removeError);
-    }
-    return { ok: false, message: `Failed to create resource record: ${error.message}` };
-  }
-
-  revalidatePath(`/admin/lms/courses/${course_id}/content`);
-  revalidatePath(`/lms/courses/${course_id}`);
-  return { ok: true, message: 'Resource added successfully.', resource: data as CourseResource };
+interface ResourceInput {
+    course_id: string;
+    lesson_id: string;
+    title: string;
+    type: CourseResourceType;
+    url_or_content: string;
 }
 
-
-export async function deleteCourseResourceAction(id: string, courseId: string): Promise<{ ok: boolean; message: string }> {
-  const supabaseAdmin = createSupabaseServerClient();
-  
-  // First, get the resource to check if there's a file to delete from storage
-  const { data: resourceToDelete, error: fetchError } = await supabaseAdmin
-    .from('lms_course_resources')
-    .select('file_path')
-    .eq('id', id)
-    .single();
-
-  if (fetchError && fetchError.code !== 'PGRST116') { // Ignore "no rows found"
-    console.error("Error fetching resource for deletion:", fetchError);
-    return { ok: false, message: 'Could not retrieve resource to delete.' };
-  }
-  
-  // Then, delete the resource from the database regardless of storage outcome
-  const { error } = await supabaseAdmin.from('lms_course_resources').delete().eq('id', id);
-
-  if (error) {
-    console.error("Error deleting course resource:", error);
-    return { ok: false, message: `Failed to delete resource record: ${error.message}` };
-  }
-  
-  // If the DB record was deleted and there was a file path, try to delete the file from storage
-  if (resourceToDelete?.file_path) {
-    const { error: storageError } = await supabaseAdmin.storage
-      .from('campushub')
-      .remove([resourceToDelete.file_path]);
-    
-    if (storageError) {
-        // Log a warning but don't fail the whole operation since the DB record is gone.
-        console.warn(`Could not delete file from storage: ${storageError.message}. The database record was deleted successfully.`);
-    }
-  }
-  
-  revalidatePath(`/admin/lms/courses/${courseId}/content`);
-  revalidatePath(`/lms/courses/${courseId}`);
-  return { ok: true, message: 'Resource deleted successfully.' };
+export async function addResourceToLessonAction(input: ResourceInput): Promise<{ ok: boolean; message: string, resource?: CourseResource }> {
+    const supabase = createSupabaseServerClient();
+    const { error, data } = await supabase.from('lms_course_resources').insert(input).select().single();
+    if (error) return { ok: false, message: error.message };
+    return { ok: true, message: "Resource added.", resource: data as CourseResource };
 }
 
+export async function deleteCourseResourceAction(resourceId: string): Promise<{ ok: boolean; message: string }> {
+  const supabase = createSupabaseServerClient();
+  const { error } = await supabase.from('lms_course_resources').delete().eq('id', resourceId);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, message: "Resource deleted." };
+}
 
 // --- Activation Code Management ---
 interface GenerateCodesInput {

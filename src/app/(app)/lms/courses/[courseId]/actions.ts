@@ -2,33 +2,23 @@
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
-import type { Course, CourseResource, CourseResourceType, UserRole } from '@/types';
+import type { Course, LmsLesson, CourseResource, UserRole, LmsStudentLessonProgress } from '@/types';
 
-// Helper to group resources
-const groupResourcesByType = (resources: CourseResource[]): Required<Course>['resources'] => {
-  const grouped: Required<Course>['resources'] = { ebooks: [], videos: [], notes: [], webinars: [] };
-  const dbTypeToResourceKey: Record<CourseResourceType, keyof typeof grouped> = {
-    ebook: 'ebooks',
-    video: 'videos',
-    note: 'notes',
-    webinar: 'webinars',
-  };
-  resources.forEach(res => {
-    const key = dbTypeToResourceKey[res.type as CourseResourceType];
-    if (key) {
-      grouped[key].push(res);
-    }
-  });
-  return grouped;
-};
+interface EnrichedCourseForViewing extends Course {
+  lessons: (LmsLesson & {
+    resources: CourseResource[];
+    is_completed?: boolean;
+  })[];
+}
 
-export async function getCourseDetailsForViewingAction(courseId: string): Promise<{
+export async function getCourseDetailsForViewingAction(courseId: string, studentId: string): Promise<{
   ok: boolean;
-  course?: Course;
+  course?: EnrichedCourseForViewing;
   message?: string;
+  progress?: { completed: number; total: number; percentage: number };
 }> {
-  if (!courseId) {
-    return { ok: false, message: "Course ID is required." };
+  if (!courseId || !studentId) {
+    return { ok: false, message: "Course ID and Student ID are required." };
   }
   const supabase = createSupabaseServerClient();
   try {
@@ -42,30 +32,65 @@ export async function getCourseDetailsForViewingAction(courseId: string): Promis
       return { ok: false, message: courseError?.message || "Course not found." };
     }
 
-    const { data: resourcesData, error: resourcesError } = await supabase
-      .from('lms_course_resources')
-      .select('*')
-      .eq('course_id', courseId);
+    const { data: lessonsData, error: lessonsError } = await supabase
+      .from('lms_lessons')
+      .select('*, resources:lms_course_resources(*)')
+      .eq('course_id', courseId)
+      .order('order', { ascending: true });
 
-    if (resourcesError) {
-      console.warn("Failed to load course resources, but returning course details:", resourcesError.message);
+    if (lessonsError) {
+      return { ok: false, message: `Failed to fetch lessons: ${lessonsError.message}` };
+    }
+
+    const lessonIds = (lessonsData || []).map(l => l.id);
+    let completedLessonIds: string[] = [];
+
+    if (lessonIds.length > 0) {
+        const { data: progressData, error: progressError } = await supabase
+            .from('lms_student_lesson_progress')
+            .select('lesson_id')
+            .eq('student_id', studentId)
+            .in('lesson_id', lessonIds);
+        
+        if (progressError) {
+            console.warn("Could not fetch student progress:", progressError.message);
+        } else {
+            completedLessonIds = (progressData || []).map(p => p.lesson_id);
+        }
     }
     
-    const groupedResources = groupResourcesByType(resourcesData || []);
-    const enrichedCourse: Course = { ...(courseData as Course), resources: groupedResources };
+    const enrichedLessons = (lessonsData || []).map(lesson => ({
+        ...lesson,
+        resources: (lesson.resources || []) as CourseResource[],
+        is_completed: completedLessonIds.includes(lesson.id)
+    }));
+    
+    const enrichedCourse: EnrichedCourseForViewing = {
+        ...(courseData as Course),
+        lessons: enrichedLessons,
+    };
+    
+    const totalLessons = enrichedLessons.length;
+    const completedLessons = completedLessonIds.length;
+    const percentage = totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0;
 
-    return { ok: true, course: enrichedCourse };
+    return { 
+        ok: true, 
+        course: enrichedCourse, 
+        progress: { completed: completedLessons, total: totalLessons, percentage }
+    };
   } catch (error: any) {
     console.error("Error in getCourseDetailsForViewingAction:", error);
     return { ok: false, message: error.message || "An unexpected error occurred." };
   }
 }
 
+
 export async function checkUserEnrollmentForCourseViewAction(
   courseId: string,
   userId: string, // This is users.id
   userRole: UserRole
-): Promise<{ ok: boolean; isEnrolled: boolean; message?: string }> {
+): Promise<{ ok: boolean; isEnrolled: boolean; studentProfileId?: string; message?: string }> {
   if (!courseId || !userId || !userRole) {
     return { ok: false, isEnrolled: false, message: "Course ID, User ID, and User Role are required." };
   }
@@ -118,10 +143,35 @@ export async function checkUserEnrollmentForCourseViewAction(
       return { ok: false, isEnrolled: false, message: `Database error checking enrollment: ${enrollmentError.message}` };
     }
 
-    return { ok: true, isEnrolled: !!enrollment };
+    return { ok: true, isEnrolled: !!enrollment, studentProfileId: userRole === 'student' ? userProfileId : undefined };
 
   } catch (error: any) {
     console.error("Error in checkUserEnrollmentForCourseViewAction:", error);
     return { ok: false, isEnrolled: false, message: error.message || "An unexpected error occurred during enrollment check." };
   }
+}
+
+export async function markLessonAsCompleteAction(input: {
+    student_id: string;
+    lesson_id: string;
+    course_id: string;
+}): Promise<{ ok: boolean, message: string }> {
+    const supabase = createSupabaseServerClient();
+    const { student_id, lesson_id, course_id } = input;
+    
+    const { error } = await supabase.from('lms_student_lesson_progress').insert({
+        student_id,
+        lesson_id,
+        course_id,
+        completed_at: new Date().toISOString()
+    });
+
+    if (error) {
+        if (error.code === '23505') { // Unique constraint violation
+            return { ok: true, message: "Lesson already marked as complete." };
+        }
+        return { ok: false, message: error.message };
+    }
+    
+    return { ok: true, message: "Lesson marked as complete!" };
 }

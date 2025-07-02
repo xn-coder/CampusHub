@@ -111,6 +111,13 @@
   }
 }
 
+@layer utilities {
+    .font-certificate {
+        font-family: 'Times New Roman', Times, serif;
+    }
+}
+
+
 /* Styles for react-day-picker event highlighting */
 .rdp-day_hasEvents:not(.rdp-day_selected):not(.rdp-day_today) {
   position: relative;
