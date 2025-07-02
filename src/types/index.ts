@@ -9,7 +9,7 @@ export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'lesson';
+export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 
 
@@ -378,7 +378,8 @@ export interface CourseWithEnrollmentStatus extends Course {
 }
 
 
-// A resource that is a child of a lesson
+// A resource that is a child of a lesson. This is a client-side type
+// used to structure content stored in a JSON blob within a 'lesson' type CourseResource.
 export interface LessonContentResource {
     id: string;
     type: 'ebook' | 'video' | 'note' | 'webinar';
@@ -388,12 +389,13 @@ export interface LessonContentResource {
 
 // A resource stored in the DB.
 // It can be a "lesson" which acts as a container, or a regular resource if not using lessons.
+// The application interprets a resource with type 'note' as a lesson container.
 export interface CourseResource {
   id: string;
   course_id: string;
-  type: CourseResourceType; // Can be 'lesson', 'video', 'ebook', etc.
+  type: CourseResourceType;
   title: string;
-  // For 'lesson' type, this holds a JSON string of LessonContentResource[]
+  // For 'note' type that represents a lesson, this holds a JSON string of LessonContentResource[]
   // For other types, it holds the URL or text content.
   url_or_content: string;
   created_at?: string;

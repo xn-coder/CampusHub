@@ -137,21 +137,32 @@ export async function getCourseContentForAdminAction(courseId: string): Promise<
 }
 
 
-interface ResourceInput {
-    course_id: string;
-    title: string;
-    type: CourseResourceType;
-    url_or_content: string;
-}
-
-export async function addResourceToCourseAction(input: ResourceInput): Promise<{ ok: boolean; message: string, resource?: CourseResource }> {
+// Adds a "Lesson" to a course. A lesson is a container for other resources.
+// It's stored as a CourseResource with type 'note' and its content is a JSON array.
+export async function addLessonToCourseAction(input: { course_id: string; title: string }): Promise<{ ok: boolean; message: string, resource?: CourseResource }> {
     const supabase = createSupabaseServerClient();
-    const { error, data } = await supabase.from('lms_course_resources').insert(input).select().single();
-    if (error) return { ok: false, message: error.message };
+    const { error, data } = await supabase
+        .from('lms_course_resources')
+        .insert({
+            course_id: input.course_id,
+            title: input.title,
+            type: 'note', // Lessons are stored as type 'note' to act as containers
+            url_or_content: '[]' // Initialize with an empty JSON array for resources
+        })
+        .select()
+        .single();
+    
+    if (error) {
+      console.error("Error adding lesson:", error);
+      return { ok: false, message: error.message };
+    }
     revalidatePath(`/admin/lms/courses/${input.course_id}/content`);
-    return { ok: true, message: "Resource added.", resource: data as CourseResource };
+    return { ok: true, message: "Lesson Added", resource: data as CourseResource };
 }
 
+
+// Updates the content of a lesson (which is a CourseResource of type 'note').
+// The content is a JSON array of LessonContentResource objects.
 export async function updateLessonContentAction(
   lessonResourceId: string,
   newContent: LessonContentResource[]
@@ -162,17 +173,24 @@ export async function updateLessonContentAction(
         .update({ url_or_content: JSON.stringify(newContent) })
         .eq('id', lessonResourceId);
 
-    if (error) return { ok: false, message: `DB error updating lesson: ${error.message}` };
-    revalidatePath(`/admin/lms/courses/${lessonResourceId}/content`); // This needs adjustment based on actual route
+    if (error) {
+        console.error("Error updating lesson content:", error);
+        return { ok: false, message: `DB error updating lesson: ${error.message}` };
+    }
+    revalidatePath('/admin/lms/courses'); // Revalidate the parent course content page
     return { ok: true, message: "Lesson content updated."};
 }
 
 
+// Deletes a course resource, which can be a lesson container or a standalone resource.
 export async function deleteCourseResourceAction(resourceId: string): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
   const { error } = await supabase.from('lms_course_resources').delete().eq('id', resourceId);
-  if (error) return { ok: false, message: error.message };
-  revalidatePath('/admin/lms/courses'); // Revalidate the parent course content page
+  if (error) {
+    console.error("Error deleting course resource:", error);
+    return { ok: false, message: error.message };
+  }
+  revalidatePath('/admin/lms/courses'); 
   return { ok: true, message: "Resource deleted." };
 }
 
@@ -694,3 +712,4 @@ export async function verifyCoursePaymentAndEnrollAction(
         return { ok: false, message: `An unexpected error occurred during verification: ${error.message}` };
     }
 }
+

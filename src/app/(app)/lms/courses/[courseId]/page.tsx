@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter, usePathname } from 'next/navigation';
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -107,22 +107,24 @@ export default function ViewCourseContentPage() {
   useEffect(() => {
     if (!course) return;
 
-    const lessons = course.resources.filter(r => r.type === 'lesson');
+    // A lesson is a resource of type 'note' that contains other resources
+    const lessons = course.resources.filter(r => r.type === 'note');
     if (lessons.length === 0) {
-      setProgress(0);
+      setProgress(100); // If no lessons, course is complete
       return;
     }
 
     const allLessonContents = lessons.flatMap(lesson => {
       try {
-        return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[];
+        const content = JSON.parse(lesson.url_or_content || '[]');
+        return Array.isArray(content) ? content as LessonContentResource[] : [];
       } catch {
         return [];
       }
     });
 
     if(allLessonContents.length === 0) {
-        setProgress(100); // If a course has lessons but no content, it's "complete"
+        setProgress(100);
         return;
     }
 
@@ -181,7 +183,7 @@ export default function ViewCourseContentPage() {
     return <div className="text-center py-10 text-destructive">Course data could not be loaded.</div>;
   }
   
-  const lessons = course.resources.filter(r => r.type === 'lesson');
+  const lessons = course.resources.filter(r => r.type === 'note');
 
   return (
     <div className="flex flex-col gap-6">
