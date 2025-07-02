@@ -360,16 +360,21 @@ export default function ManageCourseContentPage() {
                                                       ))}
                                                       <Button type="button" variant="outline" size="sm" onClick={handleAddQuizQuestion}>Add Another Question</Button>
                                                   </div>
-                                                ) : resourceType === 'note' || resourceType === 'webinar' ? (
-                                                  <div>
-                                                      <Label htmlFor={`res-content-${lesson.id}`}>{resourceType === 'note' ? 'Content' : 'Webinar URL'}</Label>
-                                                      <Textarea id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder={resourceType === 'note' ? 'Enter text content...' : 'Enter full URL...'} disabled={isSubmitting} />
+                                                ) : resourceType === 'note' ? (
+                                                   <div>
+                                                      <Label htmlFor={`res-content-${lesson.id}`}>Content</Label>
+                                                      <Textarea id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='Enter text content...' disabled={isSubmitting} />
                                                   </div>
-                                                ) : (
+                                                ) : resourceType === 'webinar' ? (
+                                                  <div>
+                                                      <Label htmlFor={`res-content-${lesson.id}`}>Webinar URL</Label>
+                                                      <Textarea id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='Enter full URL...' disabled={isSubmitting} />
+                                                  </div>
+                                                ) : resourceType === 'video' || resourceType === 'ebook' ? (
                                                   <div className="space-y-4">
                                                       <div>
                                                           <Label htmlFor={`res-url-${lesson.id}`}>URL</Label>
-                                                          <Textarea id={`res-url-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder="Enter URL (e.g., YouTube, Vimeo)" disabled={isSubmitting}/>
+                                                          <Textarea id={`res-url-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder="Enter a URL (e.g., for a video or PDF document)" disabled={isSubmitting}/>
                                                       </div>
                                                       <div className="relative flex py-2 items-center justify-center text-sm text-muted-foreground">
                                                           <div className="flex-grow border-t"></div><span className="flex-shrink mx-4">OR</span><div className="flex-grow border-t"></div>
@@ -380,7 +385,7 @@ export default function ManageCourseContentPage() {
                                                           <p className="text-xs text-muted-foreground mt-1">File upload will override the URL field.</p>
                                                       </div>
                                                   </div>
-                                                )}
+                                                ) : null }
 
                                                 <div className="flex gap-2 pt-4">
                                                     <Button type="submit" disabled={isSubmitting}>
