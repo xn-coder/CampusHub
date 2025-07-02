@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCourseForViewingAction } from '../actions';
 import type { LessonContentResource } from '@/types';
@@ -21,16 +22,57 @@ export default function CourseResourcePage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // New state for navigation
+    // Navigation state
     const [previousResourceId, setPreviousResourceId] = useState<string | null>(null);
     const [nextResourceId, setNextResourceId] = useState<string | null>(null);
     const [previousResourceTitle, setPreviousResourceTitle] = useState<string | null>(null);
     const [nextResourceTitle, setNextResourceTitle] = useState<string | null>(null);
+    
+    // Video-specific state
+    const [isVideoCompleted, setIsVideoCompleted] = useState(false);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const lastValidTime = useRef(0);
+
+    // Effect to prevent forward seeking in videos
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        const handleTimeUpdate = () => {
+            // Only update our 'valid' time if the progress is incremental.
+            // This prevents updating the valid time when the user seeks far ahead.
+            if (Math.abs(video.currentTime - lastValidTime.current) < 2) { // 2 seconds threshold allows for some buffering
+                lastValidTime.current = video.currentTime;
+            }
+        };
+
+        const handleSeeking = () => {
+            // When a seek event happens, check if they tried to jump forward.
+            if (video.currentTime > lastValidTime.current) {
+                // If so, snap them back to the furthest point they've legitimately watched.
+                video.currentTime = lastValidTime.current;
+            }
+        };
+
+        video.addEventListener('timeupdate', handleTimeUpdate);
+        video.addEventListener('seeking', handleSeeking);
+
+        // Cleanup event listeners
+        return () => {
+            if (video) {
+              video.removeEventListener('timeupdate', handleTimeUpdate);
+              video.removeEventListener('seeking', handleSeeking);
+            }
+        };
+    }, [resource]); // Re-attach listeners if the resource (and thus the video src) changes
 
 
     useEffect(() => {
         if (courseId && resourceId) {
-            setIsLoading(true); // Set loading true at the start of fetch
+            setIsLoading(true);
+            lastValidTime.current = 0; // Reset video progress tracking
+            setIsVideoCompleted(false); // Reset completion status for the new resource
+
             getCourseForViewingAction(courseId).then(result => {
                 if (result.ok && result.course) {
                     setCourseTitle(result.course.title);
@@ -117,7 +159,15 @@ export default function CourseResourcePage() {
                 </CardHeader>
                 <CardContent className="min-h-[60vh]">
                     {resource.type === 'video' && resource.url_or_content && (
-                        <video controls autoPlay src={resource.url_or_content} className="w-full rounded-md aspect-video bg-black">
+                        <video 
+                            ref={videoRef}
+                            controls 
+                            autoPlay 
+                            src={resource.url_or_content} 
+                            className="w-full rounded-md aspect-video bg-black"
+                            onEnded={() => setIsVideoCompleted(true)}
+                            controlsList="nodownload nofullscreen noremoteplayback"
+                        >
                           Your browser does not support the video tag.
                         </video>
                     )}
@@ -155,7 +205,7 @@ export default function CourseResourcePage() {
                             </div>
                         </Link>
                     </Button>
-                    <Button variant="outline" asChild disabled={!nextResourceId}>
+                    <Button variant="outline" asChild disabled={!nextResourceId || (resource.type === 'video' && !isVideoCompleted)}>
                         <Link href={nextResourceId ? `/lms/courses/${courseId}/${nextResourceId}` : '#'} className="max-w-xs">
                              <div className="flex flex-col items-end">
                                 <span className="text-xs text-muted-foreground">Next</span>
