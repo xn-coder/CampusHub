@@ -214,7 +214,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         .from('campushub')
         .getPublicUrl(filePath);
       
-      finalContentUrlOrJson = publicUrlData.publicUrl;
+      finalContentUrlOrJson = publicUrlData?.publicUrl || null;
 
     } else if (resourceType === 'quiz' && quizDataJSON) {
         finalContentUrlOrJson = quizDataJSON;
