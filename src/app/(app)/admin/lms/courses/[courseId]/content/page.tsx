@@ -11,7 +11,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PlusCircle, Trash2, BookOpen, Video, FileText, Users, Loader2, ExternalLink, Eye } from 'lucide-react';
 import type { Course, CourseResource, CourseResourceType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
@@ -19,19 +18,6 @@ import { supabase } from '@/lib/supabaseClient';
 import { addCourseResourceAction, deleteCourseResourceAction, getCourseResourcesAction, createDbRecordForUploadedResourceAction } from '../../actions';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
-import dynamic from 'next/dynamic';
-
-// Dynamically import the PDF viewer to avoid server-side rendering issues
-const PdfViewer = dynamic(() => import('@/components/shared/pdf-viewer'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex h-full w-full items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin" />
-      <span className="ml-2">Loading PDF Viewer...</span>
-    </div>
-  ),
-});
-
 
 type ResourceTabKey = 'ebooks' | 'videos' | 'notes' | 'webinars';
 const resourceTypeMapping: Record<ResourceTabKey, CourseResourceType> = {
@@ -52,9 +38,6 @@ export default function ManageCourseContentPage() {
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingResources, setIsLoadingResources] = useState(false);
-
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<ResourceTabKey>('ebooks');
   const [resourceTitle, setResourceTitle] = useState('');
@@ -100,11 +83,6 @@ export default function ManageCourseContentPage() {
     }
     setIsLoadingResources(false);
   }
-
-  const handleOpenPreview = (url: string) => {
-    setPreviewUrl(url);
-    setIsPreviewOpen(true);
-  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -465,11 +443,6 @@ export default function ManageCourseContentPage() {
                           )}
                         </div>
                         <div className="flex gap-1 ml-2 shrink-0">
-                          {res.type === 'ebook' && res.url_or_content && (
-                            <Button variant="outline" size="icon" title="Preview E-book" onClick={() => handleOpenPreview(res.url_or_content)} disabled={isSubmitting}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          )}
                           <Button variant="destructive" size="icon" title="Delete Resource" onClick={() => handleDeleteResource(res.id)} disabled={isSubmitting}>
                             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                           </Button>
@@ -488,23 +461,6 @@ export default function ManageCourseContentPage() {
        <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} className="mt-4 self-start" disabled={isSubmitting}>
         Back to Courses
       </Button>
-
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="sm:max-w-4xl h-[90vh] p-0">
-          <DialogHeader className="p-4 border-b">
-            <DialogTitle>E-Book Preview</DialogTitle>
-          </DialogHeader>
-          <div className="h-full w-full overflow-hidden">
-            {previewUrl ? (
-                <PdfViewer fileUrl={previewUrl} />
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <p>No URL to preview.</p>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
