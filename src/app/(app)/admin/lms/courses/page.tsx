@@ -12,12 +12,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Course, CourseActivationCode, User, ClassData, UserRole } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { createCourseAction, updateCourseAction, deleteCourseAction, generateActivationCodesAction } from './actions';
 import { PlusCircle, Edit2, Trash2, Save, Library, Settings, UserPlus, KeyRound, Copy, Loader2, BookUser, Users as UsersIcon } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 
 
 async function fetchAdminSchoolIdAndRole(adminUserId: string): Promise<{ schoolId: string | null, role: UserRole | null }> {
@@ -62,6 +63,7 @@ export default function ManageCoursesPage() {
   const [price, setPrice] = useState<number | ''>('');
   const [selectedTargetAudience, setSelectedTargetAudience] = useState<'student' | 'teacher' | 'both' | ''>('');
   const [selectedTargetClassId, setSelectedTargetClassId] = useState<string>(''); 
+  const [lessonTitles, setLessonTitles] = useState<string[]>(['']);
 
 
   useEffect(() => {
@@ -143,6 +145,7 @@ export default function ManageCoursesPage() {
     setSelectedTargetAudience('');
     setSelectedTargetClassId('');
     setEditingCourse(null);
+    setLessonTitles(['']);
   };
 
   const handleOpenCourseDialog = (course?: Course) => {
@@ -196,7 +199,7 @@ export default function ManageCoursesPage() {
     if (editingCourse) {
       result = await updateCourseAction(editingCourse.id, courseData);
     } else {
-      result = await createCourseAction(courseData);
+      result = await createCourseAction({ ...courseData, lessons: lessonTitles.filter(t => t.trim() !== '') });
     }
 
     if (result.ok) {
@@ -366,7 +369,7 @@ export default function ManageCoursesPage() {
             <DialogTitle>{editingCourse ? 'Edit' : 'Add New'} Course</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCourseSubmit}>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-4 py-4 max-h-[80vh] overflow-y-auto px-2">
               <div>
                 <Label htmlFor="title">Course Title</Label>
                 <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Introduction to Programming" required disabled={isSubmitting} />
@@ -423,11 +426,61 @@ export default function ManageCoursesPage() {
                {(selectedTargetAudience === 'student' || selectedTargetAudience === 'both') && currentUserRole === 'superadmin' && !currentSchoolId && (
                  <p className="text-xs text-muted-foreground">For global student courses, class selection is not applicable.</p>
               )}
+
+              {!editingCourse && (
+                <>
+                  <Separator className="my-2" />
+                  <div>
+                    <Label>Initial Lessons</Label>
+                    <CardDescription>Add one or more lessons to start. You can add more content later.</CardDescription>
+                    <div className="space-y-2 mt-2">
+                      {lessonTitles.map((title, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Input
+                            value={title}
+                            onChange={(e) => {
+                              const newTitles = [...lessonTitles];
+                              newTitles[index] = e.target.value;
+                              setLessonTitles(newTitles);
+                            }}
+                            placeholder={`Lesson ${index + 1} Title`}
+                            disabled={isSubmitting}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              const newTitles = lessonTitles.filter((_, i) => i !== index);
+                              setLessonTitles(newTitles);
+                            }}
+                            disabled={isSubmitting || lessonTitles.length <= 1}
+                            title="Remove Lesson"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => setLessonTitles([...lessonTitles, ''])}
+                      disabled={isSubmitting}
+                    >
+                      <PlusCircle className="mr-2 h-4 w-4" /> Add Another Lesson
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
-            <DialogFooter>
+            <DialogFooter className="mt-4">
               <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingCourse ? 'Save Changes' : 'Add Course'}
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                {editingCourse ? 'Save Changes' : 'Add Course'}
               </Button>
             </DialogFooter>
           </form>
@@ -489,4 +542,3 @@ export default function ManageCoursesPage() {
     </div>
   );
 }
-

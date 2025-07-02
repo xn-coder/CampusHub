@@ -29,6 +29,7 @@ interface CourseInput {
   target_audience: 'student' | 'teacher' | 'both';
   target_class_id?: string | null;
   created_by_user_id: string;
+  lessons?: string[];
 }
 
 export async function createCourseAction(
@@ -36,16 +37,18 @@ export async function createCourseAction(
 ): Promise<{ ok: boolean; message: string; course?: Course }> {
   const supabaseAdmin = createSupabaseServerClient();
   const courseId = uuidv4();
+
+  const { lessons, ...courseInputData } = input;
   
   const insertData = {
-    ...input,
+    ...courseInputData,
     id: courseId,
     price: input.is_paid ? input.price : null, 
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
-  const { error, data } = await supabaseAdmin
+  const { error, data: courseData } = await supabaseAdmin
     .from('lms_courses')
     .insert(insertData)
     .select()
@@ -55,14 +58,39 @@ export async function createCourseAction(
     console.error("Error creating course:", error);
     return { ok: false, message: `Failed to create course: ${error.message}` };
   }
+
+  // If lessons are provided, create them now
+  if (lessons && lessons.length > 0) {
+    const lessonRecords = lessons
+      .filter(title => title.trim() !== '')
+      .map((title, index) => ({
+        course_id: courseId,
+        title: title.trim(),
+        order: index + 1,
+      }));
+
+    if (lessonRecords.length > 0) {
+      const { error: lessonError } = await supabaseAdmin
+        .from('lms_lessons')
+        .insert(lessonRecords);
+      
+      if (lessonError) {
+        console.error("Error creating lessons for the new course:", lessonError);
+        // Non-fatal error, the course is created but lessons failed. Inform the user.
+        return { ok: true, message: `Course created, but failed to add lessons: ${lessonError.message}. You can add them manually.`, course: courseData as Course };
+      }
+    }
+  }
+
+
   revalidatePath('/admin/lms/courses');
   revalidatePath('/lms/available-courses');
-  return { ok: true, message: 'Course created successfully.', course: data as Course };
+  return { ok: true, message: 'Course and lessons created successfully.', course: courseData as Course };
 }
 
 export async function updateCourseAction(
   id: string,
-  input: Partial<CourseInput>
+  input: Partial<Omit<CourseInput, 'lessons'>>
 ): Promise<{ ok: boolean; message: string; course?: Course }> {
   const supabaseAdmin = createSupabaseServerClient();
    const updateData = {
