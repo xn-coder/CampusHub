@@ -97,14 +97,12 @@ export async function addClassScheduleAction(
       const announcementContent = `A new class has been scheduled for subject "${subjectName}" in class "${className}".\n\nDetails:\n- Day: ${schedule.day_of_week}\n- Time: ${schedule.start_time} - ${schedule.end_time}\n- Teacher: ${teacherName}`;
 
       await postAnnouncementAction({
-        title: `New Class Scheduled: ${subjectName}`,
+        title: `New Class Scheduled: ${subjectName} for ${className}`,
         content: announcementContent,
         author_name: adminName,
         posted_by_user_id: input.posted_by_user_id,
-        posted_by_role: 'admin', 
-        target_class_id: schedule.class_id,
+        posted_by_role: 'admin',
         school_id: input.school_id,
-        target_audience: 'all'
       });
     }
 
@@ -160,14 +158,12 @@ export async function updateClassScheduleAction(
       const announcementContent = `The schedule for subject "${subjectName}" in class "${className}" has been updated.\n\nNew Details:\n- Day: ${schedule.day_of_week}\n- Time: ${schedule.start_time} - ${schedule.end_time}\n- Teacher: ${teacherName}`;
 
       await postAnnouncementAction({
-        title: `Schedule Update: ${subjectName}`,
+        title: `Schedule Update: ${subjectName} for ${className}`,
         content: announcementContent,
         author_name: adminName,
         posted_by_user_id: input.posted_by_user_id,
         posted_by_role: 'admin',
-        target_class_id: schedule.class_id,
         school_id: input.school_id,
-        target_audience: 'all'
       });
     }
 
