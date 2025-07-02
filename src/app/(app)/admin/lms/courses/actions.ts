@@ -200,7 +200,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
 
     if (resourceFile && resourceFile.size > 0) {
       const sanitizedFileName = resourceFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const filePath = `public/course-uploads/${courseId}-${lessonId}-${uuidv4()}-${sanitizedFileName}`;
+      const filePath = `public/course-uploads/${courseId}_${lessonId}_${uuidv4()}-${sanitizedFileName}`;
       
       const { error: uploadError } = await supabase.storage
         .from('campushub')
@@ -214,7 +214,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         .from('campushub')
         .getPublicUrl(filePath);
 
-      if (!publicUrlData || !publicUrlData.publicUrl) {
+      if (!publicUrlData?.publicUrl) {
           console.error(`Critical error: Could not get public URL for uploaded file at path: ${filePath}. The file might be uploaded but is inaccessible. Cleaning up.`);
           await supabase.storage.from('campushub').remove([filePath]);
           throw new Error("Could not retrieve public URL for the uploaded file. Please check bucket policies.");
@@ -228,7 +228,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         finalContentUrlOrJson = urlOrContent;
     }
 
-    if (!finalContentUrlOrJson && (resourceType !== 'note')) {
+    if (!finalContentUrlOrJson && (resourceType === 'ebook' || resourceType === 'video' || resourceType === 'webinar' || resourceType === 'quiz')) {
         return { ok: false, message: "Resource content (URL, File, or text) is required." };
     }
 
@@ -246,6 +246,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
     try {
         currentContent = JSON.parse(lesson.url_or_content || '[]');
     } catch(e) {
+        console.warn("Could not parse existing lesson content, starting with a new list. Original content:", lesson.url_or_content);
         currentContent = [];
     }
 
