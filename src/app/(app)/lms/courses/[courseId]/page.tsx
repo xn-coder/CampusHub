@@ -36,6 +36,7 @@ export default function ViewCourseContentPage() {
 
   const [currentStudentName, setCurrentStudentName] = useState<string>('');
   const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
+  const [openLessons, setOpenLessons] = useState<string[]>([]);
 
 
   const loadProgress = useCallback(() => {
@@ -222,9 +223,21 @@ export default function ViewCourseContentPage() {
   
   const lessons = course.resources.filter(r => r.type === 'note');
 
+  const handleStartCourse = () => {
+    if (lessons.length > 0) {
+      setOpenLessons([lessons[0].id]);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={course.title} description={course.description || "No description available."} />
+      <PageHeader 
+        title={course.title} 
+        description={course.description || "No description available."}
+        actions={
+            lessons.length > 0 ? <Button onClick={handleStartCourse}>Start Course</Button> : null
+        }
+      />
       
       <Card>
         <CardHeader>
@@ -252,7 +265,12 @@ export default function ViewCourseContentPage() {
           </CardHeader>
           <CardContent>
             {lessons.length > 0 ? (
-                <Accordion type="multiple" className="w-full space-y-2">
+                <Accordion 
+                    type="multiple" 
+                    className="w-full space-y-2"
+                    value={openLessons}
+                    onValueChange={setOpenLessons}
+                >
                  {lessons.map(lesson => {
                     const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
                     return (
