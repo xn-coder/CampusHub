@@ -3,7 +3,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter, usePathname } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion } from 'lucide-react';
 import type { Course, CourseResource, UserRole, LessonContentResource } from '@/types';
 import Link from 'next/link';
@@ -22,7 +21,6 @@ import { useToast } from "@/hooks/use-toast";
 export default function ViewCourseContentPage() {
   const params = useParams();
   const router = useRouter();
-  const pathname = usePathname();
   const { toast } = useToast();
   const courseId = params.courseId as string;
 
@@ -32,13 +30,11 @@ export default function ViewCourseContentPage() {
   const [pageError, setPageError] = useState<string | null>(null);
   
   const [completedResources, setCompletedResources] = useState<Record<string, boolean>>({});
-  const [videoCompletionStatus, setVideoCompletionStatus] = useState<Record<string, boolean>>({});
   const [progress, setProgress] = useState(0);
 
   const [currentStudentName, setCurrentStudentName] = useState<string>('');
   const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
   const [openLessons, setOpenLessons] = useState<string[]>([]);
-  const [viewingResource, setViewingResource] = useState<LessonContentResource | null>(null);
 
 
   const loadProgress = useCallback(() => {
@@ -141,19 +137,10 @@ export default function ViewCourseContentPage() {
 
   }, [completedResources, course]);
 
-  const handleVideoEnded = (resourceId: string) => {
-    setVideoCompletionStatus(prev => ({ ...prev, [resourceId]: true }));
-    toast({ title: "Video Completed!", description: "You can now mark this item as done." });
-  };
-
   const toggleResourceCompletion = (resourceId: string) => {
     const newCompleted = { ...completedResources, [resourceId]: !completedResources[resourceId] };
     setCompletedResources(newCompleted);
     saveProgress(newCompleted);
-  };
-  
-  const handleViewResource = (resource: LessonContentResource) => {
-    setViewingResource(resource);
   };
 
   const getResourceIcon = (type: string) => {
@@ -228,7 +215,7 @@ export default function ViewCourseContentPage() {
         {progress === 100 && (
             <CardFooter>
                  <Button asChild>
-                    <Link href={`${pathname}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                    <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
                         <Award className="mr-2 h-4 w-4" /> Generate Certificate
                     </Link>
                 </Button>
@@ -260,22 +247,17 @@ export default function ViewCourseContentPage() {
                                <div className="space-y-2 py-2">
                                    {lessonContents.length > 0 ? lessonContents.map(res => (
                                        <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
-                                            <Button
-                                                variant="ghost"
-                                                className="flex-grow justify-start text-left h-auto p-1 font-medium"
-                                                onClick={() => handleViewResource(res)}
-                                            >
-                                                <div className="flex items-center">
+                                            <Link href={`/lms/courses/${courseId}/${res.id}`} className="flex-grow">
+                                                <div className="flex items-center p-1 font-medium">
                                                     {getResourceIcon(res.type)}
                                                     <span>{res.title}</span>
                                                 </div>
-                                            </Button>
+                                            </Link>
                                             <div className="flex items-center space-x-2 pl-4 shrink-0">
                                                 <Checkbox
                                                     id={`res-complete-${res.id}`}
                                                     checked={!!completedResources[res.id]}
                                                     onCheckedChange={() => toggleResourceCompletion(res.id)}
-                                                    disabled={res.type === 'video' && !videoCompletionStatus[res.id]}
                                                 />
                                                 <Label htmlFor={`res-complete-${res.id}`} className="text-xs">Done</Label>
                                             </div>
@@ -292,51 +274,6 @@ export default function ViewCourseContentPage() {
             )}
           </CardContent>
       </Card>
-
-       <Dialog open={!!viewingResource} onOpenChange={(open) => !open && setViewingResource(null)}>
-          <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
-            <DialogHeader>
-              <DialogTitle>{viewingResource?.title}</DialogTitle>
-            </DialogHeader>
-            <div className="py-4 overflow-y-auto flex-grow">
-              {viewingResource?.type === 'video' && (
-                <video key={viewingResource.id} controls autoPlay src={viewingResource.url_or_content} className="w-full rounded-md" onEnded={() => handleVideoEnded(viewingResource!.id)}>
-                  Your browser does not support the video tag.
-                </video>
-              )}
-              {viewingResource?.type === 'note' && (
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingResource.url_or_content}</p>
-              )}
-              {viewingResource?.type === 'ebook' && viewingResource.url_or_content && (
-                viewingResource.url_or_content.toLowerCase().endsWith('.pdf') ? (
-                  <iframe src={viewingResource.url_or_content} className="w-full h-full min-h-[70vh]" title={viewingResource.title}>
-                      <p>Your browser does not support PDFs. Please download the PDF to view it: 
-                        <a href={viewingResource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-primary underline"> Download PDF</a>
-                      </p>
-                  </iframe>
-                ) : (
-                  <Button variant="link" className="text-lg p-0 h-auto" onClick={() => window.open(viewingResource?.url_or_content, '_blank', 'noopener,noreferrer')}>
-                      <BookOpen className="mr-2 h-5 w-5"/> Click here to open E-book in a new tab
-                  </Button>
-                )
-              )}
-              {viewingResource?.type === 'webinar' && viewingResource.url_or_content && (
-                  <Button variant="link" className="text-lg p-0 h-auto" onClick={() => window.open(viewingResource.url_or_content, '_blank', 'noopener,noreferrer')}>
-                    <Users className="mr-2 h-5 w-5"/> Click here to join the Webinar
-                  </Button>
-              )}
-              {viewingResource?.type === 'quiz' && (
-                  <div>
-                    <p>Quiz functionality will be displayed here.</p>
-                  </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setViewingResource(null)}>Close</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
 
       <Button variant="outline" onClick={() => router.push('/lms/available-courses')} className="mt-4 self-start">
         Back to Available Courses
