@@ -200,12 +200,13 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
 
     if (resourceFile && resourceFile.size > 0) {
       const sanitizedFileName = resourceFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const filePath = `public/course-uploads/${courseId}_${lessonId}_${uuidv4()}-${sanitizedFileName}`;
+      // A simpler, more robust path. All uploads go into one folder with a unique name.
+      const filePath = `public/course-uploads/${uuidv4()}-${sanitizedFileName}`;
       
       const { error: uploadError } = await supabase.storage
         .from('campushub')
         .upload(filePath, resourceFile, {
-            upsert: true, // Create folders if they don't exist
+            upsert: true,
         });
       
       if (uploadError) {
