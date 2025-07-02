@@ -1,4 +1,3 @@
-
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -137,7 +136,6 @@ export async function getCourseContentForAdminAction(courseId: string): Promise<
 
 
 // Adds a "Lesson" to a course. A lesson is a container for other resources.
-// It's stored as a CourseResource with type 'note' and its content is a JSON array.
 export async function addLessonToCourseAction(input: { course_id: string; title: string }): Promise<{ ok: boolean; message: string, resource?: CourseResource }> {
     const supabase = createSupabaseServerClient();
     const { error, data } = await supabase
@@ -161,7 +159,6 @@ export async function addLessonToCourseAction(input: { course_id: string; title:
 
 
 // Updates the content of a lesson (which is a CourseResource of type 'note').
-// The content is a JSON array of LessonContentResource objects.
 export async function updateLessonContentAction(
   lessonResourceId: string,
   newContent: LessonContentResource[]
@@ -180,52 +177,59 @@ export async function updateLessonContentAction(
     return { ok: true, message: "Lesson content updated."};
 }
 
+
+// ==================================================================
+// NEW ACTION: To create a secure URL for direct client-side file uploads
+// ==================================================================
 export async function createSignedUploadUrlAction(
-  courseId: string,
-  fileName: string,
-  fileType: string
+    courseId: string,
+    fileName: string,
+    fileType: string
 ): Promise<{ ok: boolean; message: string; signedUrl?: string; publicUrl?: string; path?: string }> {
-  const supabase = createSupabaseServerClient();
+    const supabase = createSupabaseServerClient();
 
-  try {
-      // Optional: Check if the user has permission to upload to this course
-      // (e.g., check if they are an admin or enrolled teacher)
-      // This is a crucial security step.
+    try {
+        // Optional but recommended: Check if the current user has permission to upload to this course.
+        // For example, fetch user role and verify they are an admin or teacher for this course.
 
-      const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const filePath = `public/course-uploads/${courseId}/${uuidv4()}-${sanitizedFileName}`;
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+        const filePath = `public/course-uploads/${courseId}/${uuidv4()}-${sanitizedFileName}`;
 
-      const { data, error } = await supabase.storage
-          .from('campushub')
-          .createSignedUploadUrl(filePath);
+        const { data, error } = await supabase.storage
+            .from('campushub') // Your bucket name
+            .createSignedUploadUrl(filePath);
 
-      if (error) {
-          throw new Error(`Failed to create signed URL: ${error.message}`);
-      }
-      
-      // We also need the final public URL to save in the database later
-      const { data: publicUrlData } = supabase.storage
-          .from('campushub')
-          .getPublicUrl(filePath);
+        if (error) {
+            throw new Error(`Failed to create signed URL: ${error.message}`);
+        }
+        
+        const { data: publicUrlData } = supabase.storage
+            .from('campushub')
+            .getPublicUrl(filePath);
 
-      if (!publicUrlData?.publicUrl) {
-          throw new Error("Could not determine public URL for the file path.");
-      }
+        if (!publicUrlData?.publicUrl) {
+            throw new Error("Could not determine public URL for the file path.");
+        }
 
-      return {
-          ok: true,
-          message: "Signed URL created successfully.",
-          signedUrl: data.signedUrl,
-          publicUrl: publicUrlData.publicUrl,
-          path: data.path, // The path is useful for some storage operations
-      };
+        return {
+            ok: true,
+            message: "Signed URL created successfully.",
+            signedUrl: data.signedUrl,
+            publicUrl: publicUrlData.publicUrl,
+            path: data.path,
+        };
 
-  } catch (e: any) {
-      console.error("Error in createSignedUploadUrlAction:", e);
-      return { ok: false, message: e.message || "An unexpected error occurred." };
-  }
+    } catch (e: any) {
+        console.error("Error in createSignedUploadUrlAction:", e);
+        return { ok: false, message: e.message || "An unexpected error occurred." };
+    }
 }
 
+
+// ==================================================================
+// MODIFIED ACTION: No longer handles file uploads directly.
+// It now only saves the metadata (including the URL) to the database.
+// ==================================================================
 export async function addResourceToLessonAction(formData: FormData): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
   
@@ -233,54 +237,23 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
   const courseId = formData.get('courseId') as string;
   const resourceTitle = formData.get('resourceTitle') as string;
   const resourceType = formData.get('resourceType') as CourseResourceType;
+  // This will now contain the final public URL for uploaded files, a user-entered URL, or JSON for a quiz.
   const urlOrContent = formData.get('urlOrContent') as string | null;
-  const quizDataJSON = formData.get('quizDataJSON') as string | null;
-  const resourceFile = formData.get('resourceFile') as File | null;
 
   if (!lessonId || !courseId || !resourceTitle || !resourceType) {
     return { ok: false, message: "Missing required fields for adding resource." };
   }
 
+  // Basic validation: ensure urlOrContent is present for types that need it.
+  if (!urlOrContent && ['ebook', 'video', 'webinar', 'quiz', 'note'].includes(resourceType)) {
+      if (resourceType === 'note' && urlOrContent === '') {
+          // allow empty note
+      } else {
+        return { ok: false, message: "Resource content (URL or data) is required." };
+      }
+  }
+
   try {
-    let finalContentUrlOrJson: string | null | undefined = null;
-
-    if (resourceFile && resourceFile.size > 0) {
-      const sanitizedFileName = resourceFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const filePath = `public/course-uploads/${uuidv4()}-${sanitizedFileName}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('campushub')
-        .upload(filePath, resourceFile, {
-            upsert: true,
-        });
-      
-      if (uploadError) {
-        throw new Error(`File upload failed: ${uploadError.message}`);
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from('campushub')
-        .getPublicUrl(filePath);
-
-      if (!publicUrlData?.publicUrl) {
-          throw new Error("Could not retrieve public URL for the uploaded file.");
-      }
-      finalContentUrlOrJson = publicUrlData.publicUrl;
-
-    } else if (resourceType === 'quiz' && quizDataJSON) {
-        finalContentUrlOrJson = quizDataJSON;
-    } else {
-        finalContentUrlOrJson = urlOrContent;
-    }
-
-    if (!finalContentUrlOrJson && (resourceType === 'ebook' || resourceType === 'video' || resourceType === 'webinar' || resourceType === 'quiz')) {
-        return { ok: false, message: "Resource content (URL, File, or text) is required." };
-    }
-    if(resourceType === 'note' && !finalContentUrlOrJson) {
-      finalContentUrlOrJson = ''; // Allow empty text notes
-    }
-
-
     const { data: lesson, error: fetchError } = await supabase
       .from('lms_course_resources')
       .select('url_or_content')
@@ -295,7 +268,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
     try {
         currentContent = JSON.parse(lesson.url_or_content || '[]');
     } catch(e) {
-        console.warn("Could not parse existing lesson content, starting with a new list. Original content:", lesson.url_or_content);
+        console.warn("Could not parse existing lesson content, starting with a new list.");
         currentContent = [];
     }
 
@@ -303,7 +276,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         id: uuidv4(),
         type: resourceType,
         title: resourceTitle.trim(),
-        url_or_content: (finalContentUrlOrJson || '').trim()
+        url_or_content: (urlOrContent || '').trim()
     };
 
     const updatedContent = [...currentContent, newResource];
@@ -326,8 +299,6 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
   }
 }
 
-
-
 // Deletes a course resource, which can be a lesson container or a standalone resource.
 export async function deleteCourseResourceAction(resourceId: string): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
@@ -340,7 +311,9 @@ export async function deleteCourseResourceAction(resourceId: string): Promise<{ 
   return { ok: true, message: "Resource deleted." };
 }
 
-// --- Activation Code Management ---
+// --- Activation Code Management (Rest of the file is unchanged) ---
+// ... (the rest of your original file from generateActivationCodesAction down to the end) ...
+
 interface GenerateCodesInput {
   course_id: string;
   num_codes: number;

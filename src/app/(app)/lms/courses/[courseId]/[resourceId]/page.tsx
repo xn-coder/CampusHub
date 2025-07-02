@@ -11,6 +11,12 @@ import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
+
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
 export default function CourseResourcePage() {
     const params = useParams();
     const router = useRouter();
@@ -32,6 +38,10 @@ export default function CourseResourcePage() {
     const [isVideoCompleted, setIsVideoCompleted] = useState(false);
     const videoRef = useRef<HTMLVideoElement>(null);
     const lastValidTime = useRef(0);
+
+    // PDF viewer state
+    const [numPages, setNumPages] = useState<number | null>(null);
+    const [pageNumber, setPageNumber] = useState(1);
 
     // Effect to prevent forward seeking in videos
     useEffect(() => {
@@ -72,6 +82,8 @@ export default function CourseResourcePage() {
             setIsLoading(true);
             lastValidTime.current = 0; // Reset video progress tracking
             setIsVideoCompleted(false); // Reset completion status for the new resource
+            setNumPages(null); // Reset PDF pages
+            setPageNumber(1); // Reset PDF page number
 
             getCourseForViewingAction(courseId).then(result => {
                 if (result.ok && result.course) {
@@ -125,6 +137,22 @@ export default function CourseResourcePage() {
             default: return null;
         }
     };
+    
+    function onDocumentLoadSuccess({ numPages }: { numPages: number }): void {
+        setNumPages(numPages);
+    }
+
+    function changePage(offset: number) {
+        setPageNumber(prevPageNumber => prevPageNumber + offset);
+    }
+
+    function previousPage() {
+        changePage(-1);
+    }
+
+    function nextPage() {
+        changePage(1);
+    }
 
     if (isLoading) {
         return <div className="text-center py-10 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading resource...</div>;
@@ -174,16 +202,31 @@ export default function CourseResourcePage() {
                     {resource.type === 'note' && (
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap">{resource.url_or_content}</p>
                     )}
+                    
                     {(resource.type === 'ebook' || (resource.url_or_content && resource.url_or_content.endsWith('.pdf'))) && resource.url_or_content && (
-                        <iframe src={resource.url_or_content} className="w-full h-full min-h-[70vh] border-0" title={resource.title}>
-                            <p>Your browser does not support embedded documents. Please use the link below to view it.</p>
-                            <Button asChild variant="link">
-                                <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer">
-                                    View E-book in new tab
-                                </a>
-                            </Button>
-                        </iframe>
+                        <div className="flex flex-col items-center gap-4">
+                            <div className="w-full border rounded-md overflow-hidden bg-muted">
+                                <Document
+                                    file={resource.url_or_content}
+                                    onLoadSuccess={onDocumentLoadSuccess}
+                                    loading={<div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
+                                    error={<div className="text-destructive text-center p-4">Failed to load PDF file. It might be corrupted or from an unsupported source.</div>}
+                                >
+                                    <Page pageNumber={pageNumber} renderAnnotationLayer={false} renderTextLayer={false} />
+                                </Document>
+                            </div>
+                            {numPages && numPages > 1 && (
+                                <div className="flex items-center gap-4">
+                                    <Button onClick={previousPage} disabled={pageNumber <= 1}>Previous</Button>
+                                    <p className="text-sm font-medium">
+                                        Page {pageNumber} of {numPages}
+                                    </p>
+                                    <Button onClick={nextPage} disabled={pageNumber >= numPages}>Next</Button>
+                                </div>
+                            )}
+                        </div>
                     )}
+                    
                     {resource.type === 'webinar' && resource.url_or_content && (
                          <Button variant="link" className="text-lg p-0 h-auto" onClick={() => window.open(resource.url_or_content, '_blank', 'noopener,noreferrer')}>
                             <Users className="mr-2 h-5 w-5"/> Click here to join the Webinar

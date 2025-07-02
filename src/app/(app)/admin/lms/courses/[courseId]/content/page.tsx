@@ -1,8 +1,6 @@
-
-
 "use client";
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -22,10 +20,13 @@ import {
   addLessonToCourseAction,
   deleteCourseResourceAction,
   updateLessonContentAction,
+  // These are the new/modified actions we'll use for the upload
+  createSignedUploadUrlAction, 
   addResourceToLessonAction,
   getAllCoursesForAdminNavAction,
 } from '../../actions';
 import { supabase } from '@/lib/supabaseClient';
+import { Progress } from '@/components/ui/progress';
 
 type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz';
 
@@ -48,9 +49,12 @@ export default function ManageCourseContentPage() {
   const [resourceType, setResourceType] = useState<ResourceTabKey>('note');
   const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
   const [resourceFile, setResourceFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0); // <-- NEW STATE FOR PROGRESS
 
   // Quiz State
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
+  const resourceFormRef = useRef<HTMLFormElement>(null);
+
 
   // Navigation state
   const [allCourses, setAllCourses] = useState<{ id: string; title: string }[]>([]);
@@ -63,7 +67,8 @@ export default function ManageCourseContentPage() {
     const result = await getCourseContentForAdminAction(courseId);
     if (result.ok) {
       setCourse(result.course || null);
-      setLessons(result.resources?.filter(r => r.type === 'note') || []);
+      // Ensure we only show lessons (resources of type 'note' that act as containers)
+      setLessons(result.resources?.filter(r => r.type === 'note' && r.url_or_content?.startsWith('[')) || []);
     } else {
       toast({ title: "Error", description: result.message || "Failed to load course details.", variant: "destructive" });
       router.push('/admin/lms/courses');
@@ -97,24 +102,18 @@ export default function ManageCourseContentPage() {
           setAllCourses(courses);
           const currentIndex = courses.findIndex(c => c.id === courseId);
           if (currentIndex !== -1) {
-            // Courses are sorted desc, so previous is next index, next is previous index
-            if (currentIndex > 0) {
-              setNextCourseId(courses[currentIndex - 1].id); 
-            } else {
-              setNextCourseId(null);
-            }
-            if (currentIndex < courses.length - 1) {
-              setPrevCourseId(courses[currentIndex + 1].id);
-            } else {
-              setPrevCourseId(null);
-            }
+            if (currentIndex > 0) setNextCourseId(courses[currentIndex - 1].id); 
+            else setNextCourseId(null);
+            
+            if (currentIndex < courses.length - 1) setPrevCourseId(courses[currentIndex + 1].id);
+            else setPrevCourseId(null);
           }
         }
       };
       getNavData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId]);
+  }, [courseId, router, toast]);
   
   const handleAddLesson = async (e: FormEvent) => {
     e.preventDefault();
@@ -161,16 +160,29 @@ export default function ManageCourseContentPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     setResourceFile(file);
+    // Clear URL field if user selects a file, to avoid confusion
+    if (file) setResourceUrlOrContent(''); 
   };
-
+  
+  // ==========================================================
+  //  THE CORRECTED FUNCTION TO HANDLE RESOURCE (VIDEO) UPLOADS
+  // ==========================================================
   const handleAddResourceToLesson = async (e: FormEvent, lesson: CourseResource) => {
     e.preventDefault();
     if (!resourceTitle.trim()) {
       toast({title: "Error", description: "Resource title is required.", variant: "destructive"});
       return;
     }
-    if (resourceType !== 'note' && resourceType !== 'quiz' && !resourceUrlOrContent.trim() && !resourceFile) {
-      toast({ title: "Error", description: "A URL or a file upload is required for this resource type.", variant: "destructive" });
+    
+    // Additional validation
+    const isFileRequired = resourceType === 'video' || resourceType === 'ebook';
+    const isUrlOrTextRequired = resourceType === 'note' || resourceType === 'webinar';
+    if (isFileRequired && !resourceFile && !resourceUrlOrContent.trim()) {
+      toast({ title: "Error", description: "A file upload or a URL is required for this resource type.", variant: "destructive" });
+      return;
+    }
+    if(isUrlOrTextRequired && !resourceUrlOrContent.trim()){
+      toast({ title: "Error", description: "Content is required for this resource type.", variant: "destructive" });
       return;
     }
     if (resourceType === 'quiz' && quizQuestions.some(q => !q.question.trim() || q.options.some(o => !o.trim()))) {
@@ -179,33 +191,72 @@ export default function ManageCourseContentPage() {
     }
 
     setIsSubmitting(true);
-    
-    const formData = new FormData();
-    formData.append('lessonId', lesson.id);
-    formData.append('courseId', courseId);
-    formData.append('resourceTitle', resourceTitle);
-    formData.append('resourceType', resourceType);
-    
-    if (resourceFile) {
-        formData.append('resourceFile', resourceFile);
-    }
-    if (resourceUrlOrContent) {
-        formData.append('urlOrContent', resourceUrlOrContent);
-    }
-    if (resourceType === 'quiz') {
-        formData.append('quizDataJSON', JSON.stringify(quizQuestions));
-    }
-    
-    const result = await addResourceToLessonAction(formData);
+    setUploadProgress(0);
 
-    if (result.ok) {
-        toast({title: "Resource Added"});
-        setIsResourceFormOpen(null);
-        await fetchCourseData();
-    } else {
-        toast({title: "Error", description: result.message, variant: "destructive"});
+    try {
+      let finalUrlOrContent = resourceUrlOrContent;
+
+      // --- NEW UPLOAD LOGIC ---
+      // Step 1: Handle file upload if a file is present
+      if (resourceFile) {
+        toast({title:"Preparing to upload file..."});
+        const signedUrlResult = await createSignedUploadUrlAction(
+          courseId,
+          resourceFile.name,
+          resourceFile.type
+        );
+
+        if (!signedUrlResult.ok || !signedUrlResult.signedUrl) {
+          throw new Error(signedUrlResult.message || 'Failed to prepare upload.');
+        }
+
+        // Step 2: Upload the file directly to Supabase
+        toast({title:"Starting upload... this may take a while."});
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', signedUrlResult.signedUrl!, true);
+          xhr.setRequestHeader('Content-Type', resourceFile.type);
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const percent = Math.round((event.loaded / event.total) * 100);
+              setUploadProgress(percent);
+            }
+          };
+          xhr.onload = () => xhr.status === 200 ? resolve() : reject(new Error(`Upload failed: ${xhr.statusText}`));
+          xhr.onerror = () => reject(new Error('Network error during upload.'));
+          xhr.send(resourceFile);
+        });
+
+        finalUrlOrContent = signedUrlResult.publicUrl!;
+        toast({title:"File upload complete!"});
+      } else if (resourceType === 'quiz') {
+        finalUrlOrContent = JSON.stringify(quizQuestions);
+      }
+
+      // Step 3: Call the final action to save metadata to the database
+      const formData = new FormData();
+      formData.append('lessonId', lesson.id);
+      formData.append('courseId', courseId);
+      formData.append('resourceTitle', resourceTitle);
+      formData.append('resourceType', resourceType);
+      formData.append('urlOrContent', finalUrlOrContent);
+      
+      const result = await addResourceToLessonAction(formData);
+
+      if (result.ok) {
+          toast({title: "Resource Added"});
+          setIsResourceFormOpen(null);
+          resourceFormRef.current?.reset();
+          await fetchCourseData();
+      } else {
+          throw new Error(result.message);
+      }
+    } catch (error: any) {
+      toast({title: "Error", description: error.message, variant: "destructive"});
+    } finally {
+      setIsSubmitting(false);
+      setUploadProgress(0);
     }
-    setIsSubmitting(false);
   };
 
 
@@ -257,14 +308,14 @@ export default function ManageCourseContentPage() {
 
 
   if (isLoading) {
-    return <div className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Loading course details...</div>;
+    return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin"/> <span className="ml-2">Loading course details...</span></div>;
   }
   if (!course) {
     return <div className="text-center py-10 text-destructive">Course not found. It might have been deleted.</div>;
   }
 
   const getResourceIcon = (type: string) => {
-    const props = { className: "mr-2 h-4 w-4 text-muted-foreground" };
+    const props = { className: "mr-2 h-4 w-4 text-muted-foreground flex-shrink-0" };
     switch(type) {
       case 'ebook': return <BookOpen {...props} />;
       case 'video': return <Video {...props} />;
@@ -304,7 +355,7 @@ export default function ManageCourseContentPage() {
                                <div className="space-y-3">
                                    {lessonContents.length > 0 ? lessonContents.map(res => (
                                        <div key={res.id} className="flex justify-between items-center p-2 border rounded-md">
-                                           <div className="flex items-center truncate">
+                                           <div className="flex items-center min-w-0">
                                                 {getResourceIcon(res.type)}
                                                 <span className="truncate" title={res.title}>{res.title}</span>
                                            </div>
@@ -319,7 +370,7 @@ export default function ManageCourseContentPage() {
                                    <Card className="mt-4 bg-muted/50">
                                        <CardHeader><CardTitle className="text-base">Add New Resource to "{lesson.title}"</CardTitle></CardHeader>
                                        <CardContent>
-                                           <form onSubmit={(e) => handleAddResourceToLesson(e, lesson)} className="space-y-4">
+                                           <form ref={resourceFormRef} onSubmit={(e) => handleAddResourceToLesson(e, lesson)} className="space-y-4">
                                                 <div>
                                                    <Label>Resource Type</Label>
                                                    <RadioGroup value={resourceType} onValueChange={(val) => setResourceType(val as ResourceTabKey)} className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
@@ -332,12 +383,13 @@ export default function ManageCourseContentPage() {
                                                 </div>
                                                 <div>
                                                     <Label htmlFor={`res-title-${lesson.id}`}>Resource Title</Label>
-                                                    <Input id={`res-title-${lesson.id}`} value={resourceTitle} onChange={e => setResourceTitle(e.target.value)} placeholder="e.g., Chapter 1 PDF" disabled={isSubmitting} />
+                                                    <Input id={`res-title-${lesson.id}`} value={resourceTitle} onChange={e => setResourceTitle(e.target.value)} placeholder="e.g., Chapter 1 PDF" required disabled={isSubmitting} />
                                                 </div>
 
                                                 {resourceType === 'quiz' ? (
                                                   <div className="space-y-4 p-4 border bg-background rounded-md">
-                                                      <Label className="text-lg">Quiz Builder</Label>
+                                                    {/* Quiz Builder JSX is unchanged and correct */}
+                                                    <Label className="text-lg">Quiz Builder</Label>
                                                       {quizQuestions.map((q, qIndex) => (
                                                           <div key={q.id} className="p-3 border rounded-lg space-y-3 bg-muted/50">
                                                               <div className="flex justify-between items-center">
@@ -363,18 +415,18 @@ export default function ManageCourseContentPage() {
                                                 ) : resourceType === 'note' ? (
                                                    <div>
                                                       <Label htmlFor={`res-content-${lesson.id}`}>Content</Label>
-                                                      <Textarea id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='Enter text content...' disabled={isSubmitting} />
+                                                      <Textarea id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='Enter text content...' required disabled={isSubmitting} />
                                                   </div>
                                                 ) : resourceType === 'webinar' ? (
                                                   <div>
                                                       <Label htmlFor={`res-content-${lesson.id}`}>Webinar URL</Label>
-                                                      <Textarea id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='Enter full URL...' disabled={isSubmitting} />
+                                                      <Input id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='https://...' type="url" required disabled={isSubmitting} />
                                                   </div>
                                                 ) : resourceType === 'video' || resourceType === 'ebook' ? (
                                                   <div className="space-y-4">
                                                       <div>
-                                                          <Label htmlFor={`res-url-${lesson.id}`}>URL</Label>
-                                                          <Textarea id={`res-url-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder="Enter a URL (e.g., for a video or PDF document)" disabled={isSubmitting}/>
+                                                          <Label htmlFor={`res-url-${lesson.id}`}>URL (Optional)</Label>
+                                                          <Input id={`res-url-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder="Or provide a direct URL" disabled={isSubmitting || !!resourceFile}/>
                                                       </div>
                                                       <div className="relative flex py-2 items-center justify-center text-sm text-muted-foreground">
                                                           <div className="flex-grow border-t"></div><span className="flex-shrink mx-4">OR</span><div className="flex-grow border-t"></div>
@@ -382,10 +434,17 @@ export default function ManageCourseContentPage() {
                                                       <div>
                                                           <Label htmlFor={`res-file-${lesson.id}`}>Upload File</Label>
                                                           <Input id={`res-file-${lesson.id}`} type="file" onChange={handleFileChange} disabled={isSubmitting} />
-                                                          <p className="text-xs text-muted-foreground mt-1">File upload will override the URL field.</p>
+                                                          <p className="text-xs text-muted-foreground mt-1">If you upload a file, it will be used instead of the URL.</p>
                                                       </div>
                                                   </div>
                                                 ) : null }
+                                                
+                                                {isSubmitting && uploadProgress > 0 && (
+                                                  <div className="space-y-2">
+                                                    <Label>Uploading...</Label>
+                                                    <Progress value={uploadProgress} />
+                                                  </div>
+                                                )}
 
                                                 <div className="flex gap-2 pt-4">
                                                     <Button type="submit" disabled={isSubmitting}>
@@ -420,7 +479,7 @@ export default function ManageCourseContentPage() {
                         <form onSubmit={handleAddLesson} className="flex items-end gap-2">
                             <div className="flex-grow">
                                 <Label htmlFor="new-lesson-title">Lesson Title</Label>
-                                <Input id="new-lesson-title" value={newLessonTitle} onChange={e => setNewLessonTitle(e.target.value)} placeholder="e.g., Week 1: Introduction" disabled={isSubmitting} />
+                                <Input id="new-lesson-title" value={newLessonTitle} onChange={e => setNewLessonTitle(e.target.value)} placeholder="e.g., Week 1: Introduction" required disabled={isSubmitting} />
                             </div>
                             <Button type="submit" disabled={isSubmitting}><PlusCircle className="mr-2 h-4 w-4"/> Save Lesson</Button>
                             <Button type="button" variant="ghost" onClick={() => setIsLessonFormOpen(false)} disabled={isSubmitting}>Cancel</Button>
@@ -441,12 +500,12 @@ export default function ManageCourseContentPage() {
              <div className="flex gap-2">
                 <Button variant="outline" asChild disabled={!prevCourseId || isSubmitting}>
                     <Link href={prevCourseId ? `/admin/lms/courses/${prevCourseId}/content` : '#'}>
-                        <ArrowLeft className="mr-2 h-4 w-4"/> Previous Course
+                        <ArrowLeft className="mr-2 h-4 w-4"/> Previous
                     </Link>
                 </Button>
                 <Button variant="outline" asChild disabled={!nextCourseId || isSubmitting}>
                     <Link href={nextCourseId ? `/admin/lms/courses/${nextCourseId}/content` : '#'}>
-                        Next Course <ArrowRight className="ml-2 h-4 w-4"/>
+                        Next <ArrowRight className="ml-2 h-4 w-4"/>
                     </Link>
                 </Button>
             </div>
