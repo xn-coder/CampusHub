@@ -32,9 +32,10 @@ export async function getCourseDetailsForViewingAction(courseId: string, student
       return { ok: false, message: courseError?.message || "Course not found." };
     }
 
+    // Step 1: Fetch lessons
     const { data: lessonsData, error: lessonsError } = await supabase
       .from('lms_lessons')
-      .select('*, resources:lms_course_resources(*)')
+      .select('*')
       .eq('course_id', courseId)
       .order('order', { ascending: true });
 
@@ -42,10 +43,29 @@ export async function getCourseDetailsForViewingAction(courseId: string, student
       return { ok: false, message: `Failed to fetch lessons: ${lessonsError.message}` };
     }
 
-    const lessonIds = (lessonsData || []).map(l => l.id);
-    let completedLessonIds: string[] = [];
+    if (!lessonsData || lessonsData.length === 0) {
+        const enrichedCourse: EnrichedCourseForViewing = { ...(courseData as Course), lessons: [] };
+        return { 
+            ok: true, 
+            course: enrichedCourse,
+            progress: { completed: 0, total: 0, percentage: 0 } 
+        };
+    }
+    
+    // Step 2: Fetch resources for all lessons in this course
+    const lessonIds = lessonsData.map(l => l.id);
+    const { data: resourcesData, error: resourcesError } = await supabase
+        .from('lms_course_resources')
+        .select('*')
+        .in('lesson_id', lessonIds);
+    
+    if (resourcesError) {
+        return { ok: false, message: `Failed to fetch resources: ${resourcesError.message}` };
+    }
 
-    if (lessonIds.length > 0) {
+    // Step 3: Fetch student progress
+    let completedLessonIds: string[] = [];
+    if (lessonIds.length > 0 && studentId !== 'non-student-viewer') {
         const { data: progressData, error: progressError } = await supabase
             .from('lms_student_lesson_progress')
             .select('lesson_id')
@@ -59,9 +79,10 @@ export async function getCourseDetailsForViewingAction(courseId: string, student
         }
     }
     
+    // Step 4: Manually join lessons with their resources and completion status
     const enrichedLessons = (lessonsData || []).map(lesson => ({
         ...lesson,
-        resources: (lesson.resources || []) as CourseResource[],
+        resources: (resourcesData || []).filter(resource => resource.lesson_id === lesson.id) as CourseResource[],
         is_completed: completedLessonIds.includes(lesson.id)
     }));
     

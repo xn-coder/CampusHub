@@ -123,10 +123,27 @@ export async function getCourseDetailsForAdminAction(courseId: string): Promise<
         const { data: course, error: courseError } = await supabase.from('lms_courses').select('*').eq('id', courseId).single();
         if (courseError) throw courseError;
         
-        const { data: lessons, error: lessonsError } = await supabase.from('lms_lessons').select('*, resources:lms_course_resources(*)').eq('course_id', courseId).order('order', { ascending: true });
+        const { data: lessonsData, error: lessonsError } = await supabase.from('lms_lessons').select('*').eq('course_id', courseId).order('order', { ascending: true });
         if (lessonsError) throw lessonsError;
 
-        return { ok: true, course: course as Course, lessons: lessons as LmsLesson[] };
+        if (!lessonsData || lessonsData.length === 0) {
+            return { ok: true, course: course as Course, lessons: [] };
+        }
+
+        const lessonIds = lessonsData.map(l => l.id);
+        const { data: resourcesData, error: resourcesError } = await supabase
+            .from('lms_course_resources')
+            .select('*')
+            .in('lesson_id', lessonIds);
+        
+        if (resourcesError) throw resourcesError;
+
+        const lessonsWithResources = lessonsData.map(lesson => ({
+            ...lesson,
+            resources: (resourcesData || []).filter(resource => resource.lesson_id === lesson.id) as CourseResource[]
+        }));
+
+        return { ok: true, course: course as Course, lessons: lessonsWithResources as LmsLesson[] };
     } catch (e: any) {
         return { ok: false, message: e.message };
     }
