@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion } from '@/types';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -200,7 +200,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
 
     if (resourceFile && resourceFile.size > 0) {
       const sanitizedFileName = resourceFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const filePath = `public/lms-resources/${courseId}/${lessonId}/${uuidv4()}-${sanitizedFileName}`;
+      const filePath = `public/lms-resources/${courseId}_${lessonId}_${uuidv4()}-${sanitizedFileName}`;
       
       const { error: uploadError } = await supabase.storage
         .from('campushub')
@@ -213,8 +213,12 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
       const { data: publicUrlData } = supabase.storage
         .from('campushub')
         .getPublicUrl(filePath);
+
+      if (!publicUrlData) {
+        throw new Error("Could not retrieve public URL for the uploaded file.");
+      }
       
-      finalContentUrlOrJson = publicUrlData?.publicUrl || null;
+      finalContentUrlOrJson = publicUrlData.publicUrl;
 
     } else if (resourceType === 'quiz' && quizDataJSON) {
         finalContentUrlOrJson = quizDataJSON;
@@ -222,8 +226,8 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         finalContentUrlOrJson = urlOrContent;
     }
 
-    if (!finalContentUrlOrJson && resourceType !== 'note') {
-        return { ok: false, message: "Resource content (URL, File, or Quiz Data) is required for this resource type." };
+    if (!finalContentUrlOrJson && resourceType !== 'note' && resourceType !== 'quiz') {
+        return { ok: false, message: "Resource content (URL or File) is required for this resource type." };
     }
 
     const { data: lesson, error: fetchError } = await supabase
