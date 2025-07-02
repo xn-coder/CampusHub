@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -10,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
+import { Label } from '@/components/ui/label';
 import { ExternalLink, Lock, Loader2, BookOpen, Video, FileText, Users, Award } from 'lucide-react';
 import type { Course, CourseResource, UserRole, LessonContentResource } from '@/types';
 import Link from 'next/link';
