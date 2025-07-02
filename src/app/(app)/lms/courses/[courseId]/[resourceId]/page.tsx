@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
@@ -389,15 +388,29 @@ export default function CourseResourcePage() {
                             </div>
                         </Link>
                     </Button>
-                    <Button variant="outline" asChild disabled={!nextResourceId || (resource.type === 'video' && !isVideoCompleted) || (resource.type === 'quiz' && (!quizResult || !quizResult.passed))}>
-                        <Link href={nextResourceId ? `/lms/courses/${courseId}/${nextResourceId}` : '#'} className="max-w-xs">
-                             <div className="flex flex-col items-end">
-                                <span className="text-xs text-muted-foreground">Next</span>
-                                <span className="truncate">{nextResourceTitle || '...'}</span>
+                    
+                    {nextResourceId ? (
+                        <Button 
+                            variant="outline" 
+                            asChild 
+                            disabled={(resource.type === 'video' && !isVideoCompleted) || (resource.type === 'quiz' && (!quizResult || !quizResult.passed))}
+                        >
+                            <Link href={`/lms/courses/${courseId}/${nextResourceId}`} className="max-w-xs">
+                                 <div className="flex flex-col items-end">
+                                    <span className="text-xs text-muted-foreground">Next</span>
+                                    <span className="truncate">{nextResourceTitle || '...'}</span>
+                                </div>
+                                <ArrowRight className="ml-2 h-4 w-4 shrink-0" />
+                            </Link>
+                        </Button>
+                    ) : (
+                        <Button variant="outline" disabled={true} className="max-w-xs">
+                            <div className="flex flex-col items-end">
+                                <span className="text-xs text-muted-foreground">End of course</span>
                             </div>
                             <ArrowRight className="ml-2 h-4 w-4 shrink-0" />
-                        </Link>
-                    </Button>
+                        </Button>
+                    )}
                 </CardFooter>
             </Card>
         </div>
