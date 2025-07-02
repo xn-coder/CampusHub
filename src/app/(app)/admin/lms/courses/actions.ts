@@ -203,7 +203,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
       const filePath = `public/course-uploads/${uuidv4()}-${sanitizedFileName}`;
       
       const { error: uploadError } = await supabase.storage
-        .from('lms-course-resources')
+        .from('campushub')
         .upload(filePath, resourceFile, {
             upsert: true,
         });
@@ -213,7 +213,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
       }
 
       const { data: publicUrlData } = supabase.storage
-        .from('lms-course-resources')
+        .from('campushub')
         .getPublicUrl(filePath);
 
       if (!publicUrlData?.publicUrl) {
