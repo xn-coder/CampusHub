@@ -166,7 +166,6 @@ export interface AnnouncementDB {
   target_class_id?: string | null;
   school_id: string;
   linked_exam_id?: string | null;
-  target_audience?: 'student' | 'teacher' | 'all';
   created_at?: string;
   updated_at?: string;
   // For joined data

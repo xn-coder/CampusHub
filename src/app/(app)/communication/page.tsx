@@ -31,7 +31,7 @@ function CommunicationPageForm() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>([]);
-  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '', linkedExamId: '', targetAudience: 'all' });
+  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '', linkedExamId: '' });
   const [showForm, setShowForm] = useState(false);
   const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false); 
@@ -203,7 +203,6 @@ function CommunicationPageForm() {
       target_class_id: newAnnouncement.targetClassId || undefined,
       school_id: currentSchoolId,
       linked_exam_id: newAnnouncement.linkedExamId || undefined,
-      target_audience: newAnnouncement.targetAudience as 'student' | 'teacher' | 'all' | undefined,
     });
     setIsSubmitting(false);
 
@@ -222,7 +221,7 @@ function CommunicationPageForm() {
         if (fetchResult.ok && fetchResult.announcements) setAllAnnouncements(fetchResult.announcements);
       }
 
-      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', linkedExamId: '', targetAudience: 'all' })); 
+      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', linkedExamId: '' })); 
       setShowForm(false);
     } else {
       toast({ title: "Error", description: result.message || "Failed to post announcement.", variant: "destructive" });
@@ -262,20 +261,6 @@ function CommunicationPageForm() {
                <div>
                 <Label htmlFor="authorName">Author Name / Department</Label>
                 <Input id="authorName" name="authorName" value={newAnnouncement.authorName} onChange={handleInputChange} placeholder="e.g., Principal's Office, Your Name" required disabled={isSubmitting}/>
-              </div>
-
-               <div>
-                <Label htmlFor="targetAudience">Target Audience</Label>
-                <Select value={newAnnouncement.targetAudience} onValueChange={handleSelectChange('targetAudience')} disabled={isSubmitting}>
-                  <SelectTrigger id="targetAudience">
-                    <SelectValue placeholder="Select Audience" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All (Students & Teachers)</SelectItem>
-                    <SelectItem value="student">Students Only</SelectItem>
-                    <SelectItem value="teacher">Teachers Only</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
               
                <div>
