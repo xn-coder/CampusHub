@@ -10,7 +10,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
-import { ExternalLink, Lock, Loader2, BookOpen, Video, FileText, Users, Award } from 'lucide-react';
+import { ExternalLink, Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion } from 'lucide-react';
 import type { Course, CourseResource, UserRole, LessonContentResource } from '@/types';
 import Link from 'next/link';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from './actions';
@@ -148,6 +148,7 @@ export default function ViewCourseContentPage() {
       case 'video': return <Video {...props} />;
       case 'note': return <FileText {...props} />;
       case 'webinar': return <Users {...props} />;
+      case 'quiz': return <FileQuestion {...props} />;
       default: return null;
     }
   };
@@ -231,7 +232,9 @@ export default function ViewCourseContentPage() {
                                                 {getResourceIcon(res.type)}
                                                 <div>
                                                     <p className="font-medium">{res.title}</p>
-                                                    {res.type === 'note' ? (
+                                                    {res.type === 'quiz' ? (
+                                                      <Button size="sm" variant="outline" className="mt-1">Take Quiz</Button>
+                                                    ) : res.type === 'note' ? (
                                                         <p className="text-sm text-muted-foreground whitespace-pre-wrap mt-1">{res.url_or_content}</p>
                                                     ) : (
                                                         <a href={res.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">

@@ -9,7 +9,7 @@ export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar';
+export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 
 
@@ -382,10 +382,18 @@ export interface CourseWithEnrollmentStatus extends Course {
 // used to structure content stored in a JSON blob within a 'lesson' type CourseResource.
 export interface LessonContentResource {
     id: string;
-    type: 'ebook' | 'video' | 'note' | 'webinar';
+    type: 'ebook' | 'video' | 'note' | 'webinar' | 'quiz';
     title: string;
     url_or_content: string;
 }
+
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctAnswerIndex: number;
+}
+
 
 // A resource stored in the DB.
 // It can be a "lesson" which acts as a container, or a regular resource if not using lessons.

@@ -12,8 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical } from 'lucide-react';
-import type { Course, CourseResource, LessonContentResource } from '@/types';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion } from 'lucide-react';
+import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
 import { 
@@ -21,9 +21,10 @@ import {
   addLessonToCourseAction,
   deleteCourseResourceAction,
   updateLessonContentAction,
+  addResourceToLessonAction,
 } from '../../actions';
 
-type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar';
+type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz';
 
 export default function ManageCourseContentPage() {
   const params = useParams();
@@ -43,6 +44,10 @@ export default function ManageCourseContentPage() {
   const [resourceTitle, setResourceTitle] = useState('');
   const [resourceType, setResourceType] = useState<ResourceTabKey>('note');
   const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
+  const [resourceFile, setResourceFile] = useState<File | null>(null);
+
+  // Quiz State
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
 
 
   const fetchCourseData = async () => {
@@ -50,7 +55,6 @@ export default function ManageCourseContentPage() {
     const result = await getCourseContentForAdminAction(courseId);
     if (result.ok) {
       setCourse(result.course || null);
-      // Lessons are stored as resources of type 'note'
       setLessons(result.resources?.filter(r => r.type === 'note') || []);
     } else {
       toast({ title: "Error", description: result.message || "Failed to load course details.", variant: "destructive" });
@@ -104,35 +108,49 @@ export default function ManageCourseContentPage() {
     setResourceTitle('');
     setResourceType('note');
     setResourceUrlOrContent('');
+    setResourceFile(null);
+    setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setResourceFile(file);
   };
 
   const handleAddResourceToLesson = async (e: FormEvent, lesson: CourseResource) => {
     e.preventDefault();
-    if (!resourceTitle.trim() || !resourceUrlOrContent.trim()) {
-      toast({title: "Error", description: "Resource title and content/URL are required.", variant: "destructive"});
+    if (!resourceTitle.trim()) {
+      toast({title: "Error", description: "Resource title is required.", variant: "destructive"});
       return;
     }
+    if (resourceType !== 'note' && resourceType !== 'quiz' && !resourceUrlOrContent.trim() && !resourceFile) {
+      toast({ title: "Error", description: "A URL or a file upload is required for this resource type.", variant: "destructive" });
+      return;
+    }
+    if (resourceType === 'quiz' && quizQuestions.some(q => !q.question.trim() || q.options.some(o => !o.trim()))) {
+      toast({ title: "Error", description: "Please fill out all question and option fields for the quiz.", variant: "destructive" });
+      return;
+    }
+
     setIsSubmitting(true);
     
-    let currentContent: LessonContentResource[] = [];
-    try {
-      currentContent = JSON.parse(lesson.url_or_content || '[]');
-    } catch(err) {
-       toast({title: "Error", description: "Could not parse existing lesson content.", variant: "destructive"});
-       setIsSubmitting(false);
-       return;
+    const formData = new FormData();
+    formData.append('lessonId', lesson.id);
+    formData.append('courseId', courseId);
+    formData.append('resourceTitle', resourceTitle);
+    formData.append('resourceType', resourceType);
+    
+    if (resourceFile) {
+        formData.append('resourceFile', resourceFile);
+    }
+    if (resourceUrlOrContent) {
+        formData.append('urlOrContent', resourceUrlOrContent);
+    }
+    if (resourceType === 'quiz') {
+        formData.append('quizDataJSON', JSON.stringify(quizQuestions));
     }
     
-    const newResource: LessonContentResource = {
-        id: uuidv4(),
-        type: resourceType,
-        title: resourceTitle.trim(),
-        url_or_content: resourceUrlOrContent.trim()
-    };
-    
-    const updatedContent = [...currentContent, newResource];
-    
-    const result = await updateLessonContentAction(lesson.id, updatedContent);
+    const result = await addResourceToLessonAction(formData);
 
     if (result.ok) {
         toast({title: "Resource Added"});
@@ -143,6 +161,7 @@ export default function ManageCourseContentPage() {
     }
     setIsSubmitting(false);
   };
+
 
   const handleDeleteResourceFromLesson = async (lesson: CourseResource, contentId: string) => {
      if (!confirm("Are you sure you want to delete this resource?")) return;
@@ -160,6 +179,35 @@ export default function ManageCourseContentPage() {
      }
      setIsSubmitting(false);
   };
+  
+  const handleAddQuizQuestion = () => {
+    setQuizQuestions(prev => [...prev, { id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
+  };
+
+  const handleQuizQuestionChange = (index: number, value: string) => {
+    const newQuestions = [...quizQuestions];
+    newQuestions[index].question = value;
+    setQuizQuestions(newQuestions);
+  };
+  
+  const handleQuizOptionChange = (qIndex: number, oIndex: number, value: string) => {
+    const newQuestions = [...quizQuestions];
+    newQuestions[qIndex].options[oIndex] = value;
+    setQuizQuestions(newQuestions);
+  };
+  
+  const handleCorrectAnswerChange = (qIndex: number, oIndex: number) => {
+    const newQuestions = [...quizQuestions];
+    newQuestions[qIndex].correctAnswerIndex = oIndex;
+    setQuizQuestions(newQuestions);
+  };
+
+  const handleRemoveQuizQuestion = (index: number) => {
+    if (quizQuestions.length > 1) {
+      const newQuestions = quizQuestions.filter((_, i) => i !== index);
+      setQuizQuestions(newQuestions);
+    }
+  };
 
 
   if (isLoading) {
@@ -176,6 +224,7 @@ export default function ManageCourseContentPage() {
       case 'video': return <Video {...props} />;
       case 'note': return <FileText {...props} />;
       case 'webinar': return <WebinarIcon {...props} />;
+      case 'quiz': return <FileQuestion {...props} />;
       default: return null;
     }
   };
@@ -225,24 +274,69 @@ export default function ManageCourseContentPage() {
                                        <CardHeader><CardTitle className="text-base">Add New Resource to "{lesson.title}"</CardTitle></CardHeader>
                                        <CardContent>
                                            <form onSubmit={(e) => handleAddResourceToLesson(e, lesson)} className="space-y-4">
-                                               <div>
+                                                <div>
                                                    <Label>Resource Type</Label>
-                                                   <RadioGroup value={resourceType} onValueChange={(val) => setResourceType(val as ResourceTabKey)} className="flex space-x-4 pt-1">
+                                                   <RadioGroup value={resourceType} onValueChange={(val) => setResourceType(val as ResourceTabKey)} className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="note" id={`type-note-${lesson.id}`} /><Label htmlFor={`type-note-${lesson.id}`}>Note</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="video" id={`type-video-${lesson.id}`} /><Label htmlFor={`type-video-${lesson.id}`}>Video</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="ebook" id={`type-ebook-${lesson.id}`} /><Label htmlFor={`type-ebook-${lesson.id}`}>E-book</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="webinar" id={`type-webinar-${lesson.id}`} /><Label htmlFor={`type-webinar-${lesson.id}`}>Webinar</Label></div>
+                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="quiz" id={`type-quiz-${lesson.id}`} /><Label htmlFor={`type-quiz-${lesson.id}`}>Quiz</Label></div>
                                                    </RadioGroup>
-                                               </div>
+                                                </div>
                                                 <div>
                                                     <Label htmlFor={`res-title-${lesson.id}`}>Resource Title</Label>
                                                     <Input id={`res-title-${lesson.id}`} value={resourceTitle} onChange={e => setResourceTitle(e.target.value)} placeholder="e.g., Chapter 1 PDF" disabled={isSubmitting} />
                                                 </div>
-                                                <div>
-                                                    <Label htmlFor={`res-content-${lesson.id}`}>{resourceType === 'note' ? 'Content' : 'URL'}</Label>
-                                                    <Textarea id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder={resourceType === 'note' ? 'Enter text content...' : 'Enter full URL...'} disabled={isSubmitting} />
-                                                </div>
-                                                <div className="flex gap-2">
+
+                                                {resourceType === 'quiz' ? (
+                                                  <div className="space-y-4 p-4 border bg-background rounded-md">
+                                                      <Label className="text-lg">Quiz Builder</Label>
+                                                      {quizQuestions.map((q, qIndex) => (
+                                                          <div key={q.id} className="p-3 border rounded-lg space-y-3 bg-muted/50">
+                                                              <div className="flex justify-between items-center">
+                                                                  <Label htmlFor={`q-text-${q.id}`}>Question {qIndex + 1}</Label>
+                                                                  {quizQuestions.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveQuizQuestion(qIndex)}><Trash2 className="h-4 w-4 text-destructive"/></Button>}
+                                                              </div>
+                                                              <Textarea id={`q-text-${q.id}`} value={q.question} onChange={e => handleQuizQuestionChange(qIndex, e.target.value)} placeholder="Enter the question text" disabled={isSubmitting}/>
+                                                              <div className="space-y-2">
+                                                                <Label>Options (select the correct answer)</Label>
+                                                                <RadioGroup value={String(q.correctAnswerIndex)} onValueChange={val => handleCorrectAnswerChange(qIndex, Number(val))}>
+                                                                    {q.options.map((opt, oIndex) => (
+                                                                        <div key={oIndex} className="flex items-center space-x-2">
+                                                                            <RadioGroupItem value={String(oIndex)} id={`q${qIndex}-o${oIndex}`} />
+                                                                            <Input value={opt} onChange={e => handleQuizOptionChange(qIndex, oIndex, e.target.value)} placeholder={`Option ${oIndex + 1}`} disabled={isSubmitting}/>
+                                                                        </div>
+                                                                    ))}
+                                                                </RadioGroup>
+                                                              </div>
+                                                          </div>
+                                                      ))}
+                                                      <Button type="button" variant="outline" size="sm" onClick={handleAddQuizQuestion}>Add Another Question</Button>
+                                                  </div>
+                                                ) : resourceType === 'note' || resourceType === 'webinar' ? (
+                                                  <div>
+                                                      <Label htmlFor={`res-content-${lesson.id}`}>{resourceType === 'note' ? 'Content' : 'Webinar URL'}</Label>
+                                                      <Textarea id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder={resourceType === 'note' ? 'Enter text content...' : 'Enter full URL...'} disabled={isSubmitting} />
+                                                  </div>
+                                                ) : (
+                                                  <div className="space-y-4">
+                                                      <div>
+                                                          <Label htmlFor={`res-url-${lesson.id}`}>URL</Label>
+                                                          <Textarea id={`res-url-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder="Enter URL (e.g., YouTube, Vimeo)" disabled={isSubmitting}/>
+                                                      </div>
+                                                      <div className="relative flex py-2 items-center justify-center text-sm text-muted-foreground">
+                                                          <div className="flex-grow border-t"></div><span className="flex-shrink mx-4">OR</span><div className="flex-grow border-t"></div>
+                                                      </div>
+                                                      <div>
+                                                          <Label htmlFor={`res-file-${lesson.id}`}>Upload File</Label>
+                                                          <Input id={`res-file-${lesson.id}`} type="file" onChange={handleFileChange} disabled={isSubmitting} />
+                                                          <p className="text-xs text-muted-foreground mt-1">File upload will override the URL field.</p>
+                                                      </div>
+                                                  </div>
+                                                )}
+
+                                                <div className="flex gap-2 pt-4">
                                                     <Button type="submit" disabled={isSubmitting}>
                                                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} Add Resource
                                                     </Button>

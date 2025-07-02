@@ -181,6 +181,96 @@ export async function updateLessonContentAction(
     return { ok: true, message: "Lesson content updated."};
 }
 
+export async function addResourceToLessonAction(formData: FormData): Promise<{ ok: boolean; message: string }> {
+  const supabase = createSupabaseServerClient();
+  
+  const lessonId = formData.get('lessonId') as string;
+  const courseId = formData.get('courseId') as string;
+  const resourceTitle = formData.get('resourceTitle') as string;
+  const resourceType = formData.get('resourceType') as CourseResourceType;
+  const urlOrContent = formData.get('urlOrContent') as string;
+  const quizDataJSON = formData.get('quizDataJSON') as string | null;
+  const resourceFile = formData.get('resourceFile') as File | null;
+
+  if (!lessonId || !courseId || !resourceTitle || !resourceType) {
+    return { ok: false, message: "Missing required fields for adding resource." };
+  }
+
+  let finalContentUrlOrJson: string;
+
+  try {
+    if (resourceFile && resourceFile.size > 0) {
+      const sanitizedFileName = resourceFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const filePath = `public/lms-resources/${courseId}/${lessonId}/${uuidv4()}-${sanitizedFileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('campushub')
+        .upload(filePath, resourceFile);
+      
+      if (uploadError) {
+        throw new Error(`File upload failed: ${uploadError.message}`);
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('campushub')
+        .getPublicUrl(filePath);
+      
+      finalContentUrlOrJson = publicUrlData.publicUrl;
+
+    } else if (resourceType === 'quiz' && quizDataJSON) {
+        finalContentUrlOrJson = quizDataJSON;
+    } else {
+        finalContentUrlOrJson = urlOrContent;
+    }
+
+    if (!finalContentUrlOrJson && resourceType !== 'note') {
+        return { ok: false, message: "Resource content (URL, File, or Quiz Data) is required." };
+    }
+
+    const { data: lesson, error: fetchError } = await supabase
+      .from('lms_course_resources')
+      .select('url_or_content')
+      .eq('id', lessonId)
+      .single();
+    
+    if (fetchError || !lesson) {
+        throw new Error("Could not find the parent lesson to add the resource to.");
+    }
+    
+    let currentContent: LessonContentResource[] = [];
+    try {
+        currentContent = JSON.parse(lesson.url_or_content || '[]');
+    } catch(e) {
+        currentContent = [];
+    }
+
+    const newResource: LessonContentResource = {
+        id: uuidv4(),
+        type: resourceType,
+        title: resourceTitle.trim(),
+        url_or_content: finalContentUrlOrJson.trim()
+    };
+
+    const updatedContent = [...currentContent, newResource];
+
+    const { error: updateError } = await supabase
+        .from('lms_course_resources')
+        .update({ url_or_content: JSON.stringify(updatedContent) })
+        .eq('id', lessonId);
+    
+    if (updateError) {
+        throw new Error(`DB error updating lesson content: ${updateError.message}`);
+    }
+
+    revalidatePath(`/admin/lms/courses/${courseId}/content`);
+    return { ok: true, message: "Resource added successfully." };
+    
+  } catch (e: any) {
+    return { ok: false, message: e.message || "An unexpected error occurred." };
+  }
+}
+
+
 
 // Deletes a course resource, which can be a lesson container or a standalone resource.
 export async function deleteCourseResourceAction(resourceId: string): Promise<{ ok: boolean; message: string }> {
@@ -712,4 +802,3 @@ export async function verifyCoursePaymentAndEnrollAction(
         return { ok: false, message: `An unexpected error occurred during verification: ${error.message}` };
     }
 }
-
