@@ -106,17 +106,12 @@ export default function CourseResourcePage() {
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap">{resource.url_or_content}</p>
                     )}
                     {resource.type === 'ebook' && resource.url_or_content && (
-                        resource.url_or_content.toLowerCase().endsWith('.pdf') ? (
-                          <iframe src={resource.url_or_content} className="w-full h-full min-h-[70vh]" title={resource.title}>
-                              <p>Your browser does not support PDFs. Please download the PDF to view it: 
-                                <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-primary underline"> Download PDF</a>
-                              </p>
-                          </iframe>
-                        ) : (
-                          <Button variant="link" className="text-lg p-0 h-auto" onClick={() => window.open(resource.url_or_content, '_blank', 'noopener,noreferrer')}>
-                              <BookOpen className="mr-2 h-5 w-5"/> Click here to open E-book in a new tab
-                          </Button>
-                        )
+                        <iframe src={resource.url_or_content} className="w-full h-full min-h-[70vh] border-0" title={resource.title}>
+                            <p>Your browser does not support embedded documents. Please use the link below to view it.</p>
+                            <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                                View E-book
+                            </a>
+                        </iframe>
                     )}
                     {resource.type === 'webinar' && resource.url_or_content && (
                         <Button variant="link" className="text-lg p-0 h-auto" onClick={() => window.open(resource.url_or_content, '_blank', 'noopener,noreferrer')}>
