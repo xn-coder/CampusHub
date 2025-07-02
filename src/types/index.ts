@@ -371,29 +371,16 @@ export interface Course {
   created_by_user_id: string;
   created_at?: string;
   updated_at?: string;
-  lessons?: LmsLesson[];
 }
 
 export interface CourseWithEnrollmentStatus extends Course {
   isEnrolled?: boolean;
 }
 
-
-export interface LmsLesson {
-  id: string;
-  course_id: string;
-  title: string;
-  order: number;
-  created_at?: string;
-  updated_at?: string;
-  resources?: CourseResource[];
-}
-
 // For DB interactions with `lms_course_resources` table
 export interface CourseResource {
   id: string;
   course_id: string;
-  lesson_id: string;
   title: string;
   type: CourseResourceType;
   url_or_content: string;
@@ -419,14 +406,6 @@ export interface StudentCourseEnrollment {
     student_id: string; // This is students.id (student_profile_id)
     course_id: string;
     enrolled_at?: string;
-}
-
-export interface LmsStudentLessonProgress {
-    id: string;
-    student_id: string;
-    lesson_id: string;
-    course_id: string;
-    completed_at: string;
 }
 
 export interface TeacherCourseEnrollment {

@@ -1,10 +1,11 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LmsLesson } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus } from '@/types';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -93,9 +94,7 @@ export async function updateCourseAction(
 export async function deleteCourseAction(id: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   
-  await supabaseAdmin.from('lms_student_lesson_progress').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_resources').delete().eq('course_id', id);
-  await supabaseAdmin.from('lms_lessons').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_activation_codes').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_student_course_enrollments').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_teacher_course_enrollments').delete().eq('course_id', id);
@@ -111,12 +110,12 @@ export async function deleteCourseAction(id: string): Promise<{ ok: boolean; mes
   return { ok: true, message: 'Course and related data deleted successfully.' };
 }
 
-// --- Lesson & Resource Management (Admin) ---
+// --- Resource Management (Admin) ---
 
-export async function getCourseDetailsForAdminAction(courseId: string): Promise<{
+export async function getCourseContentForAdminAction(courseId: string): Promise<{
     ok: boolean;
     course?: Course;
-    lessons?: LmsLesson[];
+    resources?: CourseResource[];
     message?: string;
 }> {
     const supabase = createSupabaseServerClient();
@@ -124,57 +123,28 @@ export async function getCourseDetailsForAdminAction(courseId: string): Promise<
         const { data: course, error: courseError } = await supabase.from('lms_courses').select('*').eq('id', courseId).single();
         if (courseError) throw courseError;
         
-        const { data: lessonsData, error: lessonsError } = await supabase.from('lms_lessons').select('*').eq('course_id', courseId).order('order', { ascending: true });
-        if (lessonsError) throw lessonsError;
-
-        if (!lessonsData || lessonsData.length === 0) {
-            return { ok: true, course: course as Course, lessons: [] };
-        }
-
-        const lessonIds = lessonsData.map(l => l.id);
-        const { data: resourcesData, error: resourcesError } = await supabase
+        const { data: resources, error: resourcesError } = await supabase
             .from('lms_course_resources')
             .select('*')
-            .in('lesson_id', lessonIds);
-        
+            .eq('course_id', courseId)
+            .order('created_at', { ascending: true });
         if (resourcesError) throw resourcesError;
 
-        const lessonsWithResources = lessonsData.map(lesson => ({
-            ...lesson,
-            resources: (resourcesData || []).filter(resource => resource.lesson_id === lesson.id) as CourseResource[]
-        }));
-
-        return { ok: true, course: course as Course, lessons: lessonsWithResources as LmsLesson[] };
+        return { ok: true, course: course as Course, resources: (resources || []) as CourseResource[] };
     } catch (e: any) {
         return { ok: false, message: e.message };
     }
 }
 
 
-export async function addLessonAction(input: { course_id: string; title: string; order: number }): Promise<{ ok: boolean; message: string; lesson?: LmsLesson }> {
-    const supabase = createSupabaseServerClient();
-    const { error, data } = await supabase.from('lms_lessons').insert(input).select().single();
-    if (error) return { ok: false, message: error.message };
-    return { ok: true, message: "Lesson added.", lesson: data as LmsLesson };
-}
-
-export async function deleteLessonAction(lessonId: string): Promise<{ ok: boolean; message: string }> {
-    const supabase = createSupabaseServerClient();
-    // Cascade delete is set up in Supabase, so deleting a lesson will delete its resources and progress.
-    const { error } = await supabase.from('lms_lessons').delete().eq('id', lessonId);
-    if (error) return { ok: false, message: error.message };
-    return { ok: true, message: "Lesson deleted." };
-}
-
 interface ResourceInput {
     course_id: string;
-    lesson_id: string;
     title: string;
     type: CourseResourceType;
     url_or_content: string;
 }
 
-export async function addResourceToLessonAction(input: ResourceInput): Promise<{ ok: boolean; message: string, resource?: CourseResource }> {
+export async function addResourceToCourseAction(input: ResourceInput): Promise<{ ok: boolean; message: string, resource?: CourseResource }> {
     const supabase = createSupabaseServerClient();
     const { error, data } = await supabase.from('lms_course_resources').insert(input).select().single();
     if (error) return { ok: false, message: error.message };
