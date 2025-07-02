@@ -1,14 +1,14 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCourseForViewingAction } from '../actions';
 import type { LessonContentResource } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default function CourseResourcePage() {
     const params = useParams();
@@ -21,29 +21,48 @@ export default function CourseResourcePage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // New state for navigation
+    const [previousResourceId, setPreviousResourceId] = useState<string | null>(null);
+    const [nextResourceId, setNextResourceId] = useState<string | null>(null);
+    const [previousResourceTitle, setPreviousResourceTitle] = useState<string | null>(null);
+    const [nextResourceTitle, setNextResourceTitle] = useState<string | null>(null);
+
+
     useEffect(() => {
         if (courseId && resourceId) {
+            setIsLoading(true); // Set loading true at the start of fetch
             getCourseForViewingAction(courseId).then(result => {
                 if (result.ok && result.course) {
                     setCourseTitle(result.course.title);
-                    let foundResource: LessonContentResource | undefined;
-                    // Find the resource within the course data
+
+                    const allFlattenedResources: LessonContentResource[] = [];
                     for (const lesson of result.course.resources) {
-                        if (lesson.type === 'note') { // Lessons are 'note' type
+                        if (lesson.type === 'note') {
                             try {
                                 const contents = JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[];
-                                foundResource = contents.find(r => r.id === resourceId);
-                                if (foundResource) break;
+                                allFlattenedResources.push(...contents);
                             } catch (e) {
                                 console.error("Failed to parse lesson content", e);
                             }
                         }
                     }
 
-                    if (foundResource) {
-                        setResource(foundResource);
+                    const currentIndex = allFlattenedResources.findIndex(r => r.id === resourceId);
+
+                    if (currentIndex !== -1) {
+                        setResource(allFlattenedResources[currentIndex]);
+                        
+                        const prevResource = currentIndex > 0 ? allFlattenedResources[currentIndex - 1] : null;
+                        const nextResource = currentIndex < allFlattenedResources.length - 1 ? allFlattenedResources[currentIndex + 1] : null;
+
+                        setPreviousResourceId(prevResource ? prevResource.id : null);
+                        setPreviousResourceTitle(prevResource ? prevResource.title : null);
+                        setNextResourceId(nextResource ? nextResource.id : null);
+                        setNextResourceTitle(nextResource ? nextResource.title : null);
+
                     } else {
                         setError("The requested resource could not be found in this course.");
+                        setResource(null);
                     }
                 } else {
                     setError(result.message || "Failed to load course details.");
@@ -96,7 +115,7 @@ export default function CourseResourcePage() {
                         {resource.title}
                     </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="min-h-[60vh]">
                     {resource.type === 'video' && resource.url_or_content && (
                         <video controls autoPlay src={resource.url_or_content} className="w-full rounded-md aspect-video bg-black">
                           Your browser does not support the video tag.
@@ -105,16 +124,18 @@ export default function CourseResourcePage() {
                     {resource.type === 'note' && (
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap">{resource.url_or_content}</p>
                     )}
-                    {resource.type === 'ebook' && resource.url_or_content && (
+                    {(resource.type === 'ebook' || (resource.url_or_content && resource.url_or_content.endsWith('.pdf'))) && resource.url_or_content && (
                         <iframe src={resource.url_or_content} className="w-full h-full min-h-[70vh] border-0" title={resource.title}>
                             <p>Your browser does not support embedded documents. Please use the link below to view it.</p>
-                            <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                                View E-book
-                            </a>
+                            <Button asChild variant="link">
+                                <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer">
+                                    View E-book in new tab
+                                </a>
+                            </Button>
                         </iframe>
                     )}
                     {resource.type === 'webinar' && resource.url_or_content && (
-                        <Button variant="link" className="text-lg p-0 h-auto" onClick={() => window.open(resource.url_or_content, '_blank', 'noopener,noreferrer')}>
+                         <Button variant="link" className="text-lg p-0 h-auto" onClick={() => window.open(resource.url_or_content, '_blank', 'noopener,noreferrer')}>
                             <Users className="mr-2 h-5 w-5"/> Click here to join the Webinar
                         </Button>
                     )}
@@ -124,6 +145,26 @@ export default function CourseResourcePage() {
                         </div>
                     )}
                 </CardContent>
+                 <CardFooter className="flex justify-between items-center">
+                    <Button variant="outline" asChild disabled={!previousResourceId}>
+                        <Link href={previousResourceId ? `/lms/courses/${courseId}/${previousResourceId}` : '#'} className="max-w-xs">
+                            <ArrowLeft className="mr-2 h-4 w-4 shrink-0" />
+                            <div className="flex flex-col items-start">
+                                <span className="text-xs text-muted-foreground">Previous</span>
+                                <span className="truncate">{previousResourceTitle || '...'}</span>
+                            </div>
+                        </Link>
+                    </Button>
+                    <Button variant="outline" asChild disabled={!nextResourceId}>
+                        <Link href={nextResourceId ? `/lms/courses/${courseId}/${nextResourceId}` : '#'} className="max-w-xs">
+                             <div className="flex flex-col items-end">
+                                <span className="text-xs text-muted-foreground">Next</span>
+                                <span className="truncate">{nextResourceTitle || '...'}</span>
+                            </div>
+                            <ArrowRight className="ml-2 h-4 w-4 shrink-0" />
+                        </Link>
+                    </Button>
+                </CardFooter>
             </Card>
         </div>
     );
