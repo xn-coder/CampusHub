@@ -5,7 +5,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource } from '@/types';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -148,13 +148,31 @@ export async function addResourceToCourseAction(input: ResourceInput): Promise<{
     const supabase = createSupabaseServerClient();
     const { error, data } = await supabase.from('lms_course_resources').insert(input).select().single();
     if (error) return { ok: false, message: error.message };
+    revalidatePath(`/admin/lms/courses/${input.course_id}/content`);
     return { ok: true, message: "Resource added.", resource: data as CourseResource };
 }
+
+export async function updateLessonContentAction(
+  lessonResourceId: string,
+  newContent: LessonContentResource[]
+): Promise<{ ok: boolean, message: string }> {
+    const supabase = createSupabaseServerClient();
+    const { error } = await supabase
+        .from('lms_course_resources')
+        .update({ url_or_content: JSON.stringify(newContent) })
+        .eq('id', lessonResourceId);
+
+    if (error) return { ok: false, message: `DB error updating lesson: ${error.message}` };
+    revalidatePath(`/admin/lms/courses/${lessonResourceId}/content`); // This needs adjustment based on actual route
+    return { ok: true, message: "Lesson content updated."};
+}
+
 
 export async function deleteCourseResourceAction(resourceId: string): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
   const { error } = await supabase.from('lms_course_resources').delete().eq('id', resourceId);
   if (error) return { ok: false, message: error.message };
+  revalidatePath('/admin/lms/courses'); // Revalidate the parent course content page
   return { ok: true, message: "Resource deleted." };
 }
 

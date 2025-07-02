@@ -1,25 +1,54 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, usePathname } from 'next/navigation';
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Lock, Loader2, BookOpen, Video, FileText, Users } from 'lucide-react';
-import type { Course, CourseResource, UserRole } from '@/types';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Progress } from '@/components/ui/progress';
+import { ExternalLink, Lock, Loader2, BookOpen, Video, FileText, Users, Award } from 'lucide-react';
+import type { Course, CourseResource, UserRole, LessonContentResource } from '@/types';
 import Link from 'next/link';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from './actions';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function ViewCourseContentPage() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
   const courseId = params.courseId as string;
 
   const [course, setCourse] = useState<(Course & { resources: CourseResource[] }) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  
+  const [completedResources, setCompletedResources] = useState<Record<string, boolean>>({});
+  const [progress, setProgress] = useState(0);
+
+  const [currentStudentName, setCurrentStudentName] = useState<string>('');
+  const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
+
+
+  const loadProgress = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      const storedProgress = localStorage.getItem(`progress_${courseId}`);
+      if (storedProgress) {
+        setCompletedResources(JSON.parse(storedProgress));
+      }
+    }
+  }, [courseId]);
+
+  const saveProgress = useCallback((newProgress: Record<string, boolean>) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
+    }
+  }, [courseId]);
+
 
   const fetchData = useCallback(async () => {
       setIsLoading(true);
@@ -51,6 +80,15 @@ export default function ViewCourseContentPage() {
       
       if (courseResult.ok && courseResult.course) {
         setCourse(courseResult.course);
+        // Fetch user and school name for certificate
+        const { data: user } = await supabase.from('users').select('name, school_id').eq('id', userId).single();
+        setCurrentStudentName(user?.name || 'Valued Student');
+        if (user?.school_id) {
+          const { data: school } = await supabase.from('schools').select('name').eq('id', user.school_id).single();
+          setCurrentSchoolName(school?.name || 'CampusHub');
+        } else {
+            setCurrentSchoolName('CampusHub');
+        }
       } else {
         setPageError(courseResult.message || "Failed to load course details.");
       }
@@ -62,15 +100,52 @@ export default function ViewCourseContentPage() {
   useEffect(() => {
     if (courseId) {
       fetchData();
+      loadProgress();
     }
-  }, [courseId, fetchData]);
+  }, [courseId, fetchData, loadProgress]);
+
+  useEffect(() => {
+    if (!course) return;
+
+    const lessons = course.resources.filter(r => r.type === 'lesson');
+    if (lessons.length === 0) {
+      setProgress(0);
+      return;
+    }
+
+    const allLessonContents = lessons.flatMap(lesson => {
+      try {
+        return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[];
+      } catch {
+        return [];
+      }
+    });
+
+    if(allLessonContents.length === 0) {
+        setProgress(100); // If a course has lessons but no content, it's "complete"
+        return;
+    }
+
+    const completedCount = allLessonContents.filter(res => completedResources[res.id]).length;
+    const newProgress = Math.round((completedCount / allLessonContents.length) * 100);
+    setProgress(newProgress);
+
+  }, [completedResources, course]);
+
+  const toggleResourceCompletion = (resourceId: string) => {
+    const newCompleted = { ...completedResources, [resourceId]: !completedResources[resourceId] };
+    setCompletedResources(newCompleted);
+    saveProgress(newCompleted);
+  };
+  
 
   const getResourceIcon = (type: string) => {
+    const props = { className: "mr-3 h-5 w-5 text-primary shrink-0" };
     switch(type) {
-      case 'ebook': return <BookOpen className="mr-2 h-4 w-4 text-primary" />;
-      case 'video': return <Video className="mr-2 h-4 w-4 text-primary" />;
-      case 'note': return <FileText className="mr-2 h-4 w-4 text-primary" />;
-      case 'webinar': return <Users className="mr-2 h-4 w-4 text-primary" />;
+      case 'ebook': return <BookOpen {...props} />;
+      case 'video': return <Video {...props} />;
+      case 'note': return <FileText {...props} />;
+      case 'webinar': return <Users {...props} />;
       default: return null;
     }
   };
@@ -106,34 +181,82 @@ export default function ViewCourseContentPage() {
     return <div className="text-center py-10 text-destructive">Course data could not be loaded.</div>;
   }
   
+  const lessons = course.resources.filter(r => r.type === 'lesson');
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={course.title} description={course.description || "No description available."} />
       
       <Card>
+        <CardHeader>
+            <CardTitle>Course Progress</CardTitle>
+            <div className="flex items-center gap-4 pt-2">
+                <Progress value={progress} className="flex-1"/>
+                <span className="font-bold text-lg">{progress}% Complete</span>
+            </div>
+        </CardHeader>
+        {progress === 100 && (
+            <CardFooter>
+                 <Button asChild>
+                    <Link href={`${pathname}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                        <Award className="mr-2 h-4 w-4" /> Generate Certificate
+                    </Link>
+                </Button>
+            </CardFooter>
+        )}
+      </Card>
+
+      <Card>
           <CardHeader>
-              <CardTitle>Course Resources</CardTitle>
-              <CardDescription>All materials available for this course.</CardDescription>
+              <CardTitle>Course Content</CardTitle>
+              <CardDescription>Work your way through the lessons below.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-              {course.resources.length > 0 ? (
-                course.resources.map(resource => (
-                    <div key={resource.id} className="p-4 border rounded-md hover:shadow-sm transition-shadow">
-                        <h4 className="font-semibold flex items-center">{getResourceIcon(resource.type)} {resource.title}</h4>
-                        {resource.type === 'note' ? (
-                            <div className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 p-3 rounded-sm">
-                                {resource.url_or_content}
-                            </div>
-                        ) : (
-                            <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="mt-1 text-sm text-primary hover:underline flex items-center">
-                                Access Resource <ExternalLink className="ml-1 h-3 w-3" />
-                            </a>
-                        )}
-                    </div>
-                ))
-              ) : (
-                <p className="text-muted-foreground text-center py-4">No resources have been added to this course yet.</p>
-              )}
+          <CardContent>
+            {lessons.length > 0 ? (
+                <Accordion type="multiple" className="w-full space-y-2">
+                 {lessons.map(lesson => {
+                    const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
+                    return (
+                        <AccordionItem value={lesson.id} key={lesson.id} className="border rounded-md">
+                            <AccordionTrigger className="px-4 hover:no-underline font-semibold text-lg">
+                                {lesson.title}
+                            </AccordionTrigger>
+                            <AccordionContent className="px-4 pt-2 border-t">
+                               <div className="space-y-3 py-2">
+                                   {lessonContents.length > 0 ? lessonContents.map(res => (
+                                       <div key={res.id} className="flex items-start p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                                            <div className="flex-grow flex items-center">
+                                                {getResourceIcon(res.type)}
+                                                <div>
+                                                    <p className="font-medium">{res.title}</p>
+                                                    {res.type === 'note' ? (
+                                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap mt-1">{res.url_or_content}</p>
+                                                    ) : (
+                                                        <a href={res.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
+                                                            Access Resource <ExternalLink className="ml-1 h-3 w-3" />
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center space-x-2 pl-4">
+                                                <Checkbox
+                                                    id={`res-complete-${res.id}`}
+                                                    checked={!!completedResources[res.id]}
+                                                    onCheckedChange={() => toggleResourceCompletion(res.id)}
+                                                />
+                                                <Label htmlFor={`res-complete-${res.id}`} className="text-xs">Done</Label>
+                                            </div>
+                                       </div>
+                                   )) : <p className="text-sm text-muted-foreground text-center py-2">This lesson is empty.</p>}
+                               </div>
+                            </AccordionContent>
+                        </AccordionItem>
+                    )
+                 })}
+                </Accordion>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">No lessons have been added to this course yet.</p>
+            )}
           </CardContent>
       </Card>
 
