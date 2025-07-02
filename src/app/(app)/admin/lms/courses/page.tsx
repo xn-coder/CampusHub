@@ -303,6 +303,8 @@ export default function ManageCoursesPage() {
         <CardContent>
           {isLoading ? (
             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
+          ) : !currentSchoolId ? (
+             <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage exams.</p>
           ) : courses.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">No courses created yet.</p>
           ) : (
@@ -323,7 +325,7 @@ export default function ManageCoursesPage() {
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
                     <TableCell>{course.is_paid ? 'Paid' : 'Free'}</TableCell>
-                    <TableCell>{course.is_paid && course.price ? <><span className="font-mono">₹</span>{course.price.toFixed(2)}</> : 'N/A'}</TableCell>
+                    <TableCell>{course.is_paid && course.price ? <span className="font-mono">₹</span>: ''}{course.is_paid && course.price ? course.price.toFixed(2) : 'N/A'}</TableCell>
                     <TableCell>{course.school_id ? 'School-Specific' : 'Global'}</TableCell>
                     <TableCell>{getTargetAudienceDisplay(course.target_audience)}</TableCell>
                     <TableCell>{getTargetClassDisplay(course)}</TableCell>
