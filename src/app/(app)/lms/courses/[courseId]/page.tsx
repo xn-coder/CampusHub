@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -10,7 +11,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
-import { ExternalLink, Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion } from 'lucide-react';
+import { ExternalLink, Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion, PlayCircle } from 'lucide-react';
 import type { Course, CourseResource, UserRole, LessonContentResource } from '@/types';
 import Link from 'next/link';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from './actions';
@@ -153,6 +154,39 @@ export default function ViewCourseContentPage() {
     }
   };
 
+  const renderResourceLink = (resource: LessonContentResource) => {
+    switch (resource.type) {
+      case 'video':
+        return (
+          <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
+            <PlayCircle className="mr-1 h-4 w-4"/> Play Video
+          </a>
+        );
+      case 'ebook':
+        return (
+          <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
+            <BookOpen className="mr-1 h-4 w-4"/> Read E-book
+          </a>
+        );
+      case 'quiz':
+        return <Button size="sm" variant="outline" className="mt-1">Take Quiz</Button>;
+      case 'webinar':
+        return (
+          <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
+            <Users className="mr-1 h-4 w-4"/> Join Webinar
+          </a>
+        );
+      case 'note':
+        return <p className="text-sm text-muted-foreground whitespace-pre-wrap mt-1">{resource.url_or_content}</p>;
+      default:
+        return (
+          <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
+            Access Resource <ExternalLink className="ml-1 h-3 w-3" />
+          </a>
+        );
+    }
+  };
+
   if (isLoading) {
     return <div className="text-center py-10 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading course content...</div>;
   }
@@ -232,15 +266,7 @@ export default function ViewCourseContentPage() {
                                                 {getResourceIcon(res.type)}
                                                 <div>
                                                     <p className="font-medium">{res.title}</p>
-                                                    {res.type === 'quiz' ? (
-                                                      <Button size="sm" variant="outline" className="mt-1">Take Quiz</Button>
-                                                    ) : res.type === 'note' ? (
-                                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap mt-1">{res.url_or_content}</p>
-                                                    ) : (
-                                                        <a href={res.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
-                                                            Access Resource <ExternalLink className="ml-1 h-3 w-3" />
-                                                        </a>
-                                                    )}
+                                                    {renderResourceLink(res)}
                                                 </div>
                                             </div>
                                             <div className="flex items-center space-x-2 pl-4">

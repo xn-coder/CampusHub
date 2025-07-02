@@ -200,11 +200,10 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
 
     if (resourceFile && resourceFile.size > 0) {
       const sanitizedFileName = resourceFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      // A simpler, more robust path. All uploads go into one folder with a unique name.
       const filePath = `public/course-uploads/${uuidv4()}-${sanitizedFileName}`;
       
       const { error: uploadError } = await supabase.storage
-        .from('campushub')
+        .from('lms-course-resources')
         .upload(filePath, resourceFile, {
             upsert: true,
         });
@@ -214,7 +213,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
       }
 
       const { data: publicUrlData } = supabase.storage
-        .from('campushub')
+        .from('lms-course-resources')
         .getPublicUrl(filePath);
 
       if (!publicUrlData?.publicUrl) {
@@ -797,7 +796,7 @@ export async function verifyCoursePaymentAndEnrollAction(
         if(profileError || !profile) return {ok: false, message: "User profile for enrollment not found."};
         
         const enrollmentResult = await enrollUserInCourseAction({
-            course_id: courseId,
+            course_id: ""+courseId,
             user_profile_id: profile.id,
             user_type: userRole,
         });
@@ -812,4 +811,39 @@ export async function verifyCoursePaymentAndEnrollAction(
         console.error("Error during course payment verification:", error);
         return { ok: false, message: `An unexpected error occurred during verification: ${error.message}` };
     }
+}
+
+// --- New action for navigation ---
+export async function getAllCoursesForAdminNavAction(input: {
+  schoolId: string | null;
+  adminUserId: string | null;
+  userRole: UserRole | null;
+}): Promise<{ ok: boolean; courses?: { id: string; title: string }[] }> {
+  const { schoolId, adminUserId, userRole } = input;
+  const supabase = createSupabaseServerClient();
+
+  let query = supabase
+    .from('lms_courses')
+    .select('id, title')
+    .order('created_at', { ascending: false });
+
+  if (userRole === 'superadmin') {
+    // No filter for superadmin, they see all
+  } else if (schoolId) {
+    // Admin/Teacher/etc. see their school's courses + global courses
+    query = query.or(`school_id.eq.${schoolId},school_id.is.null`);
+  } else if (adminUserId && userRole !== 'superadmin') {
+    // A user with no school context (if possible) sees only global courses
+    query = query.is('school_id', null);
+  } else {
+    // Unhandled case, return no courses
+    return { ok: true, courses: [] };
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error("Error fetching courses for nav:", error);
+    return { ok: false };
+  }
+  return { ok: true, courses: data || [] };
 }
