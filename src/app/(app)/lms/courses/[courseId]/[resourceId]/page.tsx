@@ -1,10 +1,10 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCourseForViewingAction } from '../actions';
-import type { LessonContentResource } from '@/types';
+import type { LessonContentResource, QuizQuestion } from '@/types';
 import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
@@ -14,6 +14,8 @@ import Link from 'next/link';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 
 // The 'new URL' approach will ask Next.js to copy the worker file into the build output.
 // This is the recommended and most robust way for Next.js App Router.
@@ -48,6 +50,13 @@ export default function CourseResourcePage() {
     // PDF viewer state
     const [numPages, setNumPages] = useState<number | null>(null);
     const [pageNumber, setPageNumber] = useState(1);
+
+    // Quiz state
+    const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
+    const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+    const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+    const [quizResult, setQuizResult] = useState<{ score: number; total: number } | null>(null);
+
 
     // Effect to prevent forward seeking in videos
     useEffect(() => {
@@ -85,6 +94,10 @@ export default function CourseResourcePage() {
             setIsVideoCompleted(false);
             setNumPages(null);
             setPageNumber(1);
+            setQuizQuestions([]);
+            setCurrentQuestionIndex(0);
+            setSelectedAnswers({});
+            setQuizResult(null);
 
             // Auto-mark resource as complete
             if (typeof window !== 'undefined') {
@@ -117,8 +130,18 @@ export default function CourseResourcePage() {
                     const currentIndex = allFlattenedResources.findIndex(r => r.id === resourceId);
 
                     if (currentIndex !== -1) {
-                        setResource(allFlattenedResources[currentIndex]);
+                        const currentResource = allFlattenedResources[currentIndex];
+                        setResource(currentResource);
                         
+                        if (currentResource.type === 'quiz') {
+                          try {
+                            const questions = JSON.parse(currentResource.url_or_content) as QuizQuestion[];
+                            setQuizQuestions(questions);
+                          } catch(e) {
+                            setError("Failed to load quiz questions.");
+                          }
+                        }
+
                         const prevResource = currentIndex > 0 ? allFlattenedResources[currentIndex - 1] : null;
                         const nextResource = currentIndex < allFlattenedResources.length - 1 ? allFlattenedResources[currentIndex + 1] : null;
 
@@ -166,6 +189,40 @@ export default function CourseResourcePage() {
     function nextPage() {
         changePage(1);
     }
+
+    // --- Quiz Handlers ---
+    const handleAnswerChange = (questionIndex: number, answerIndex: number) => {
+        setSelectedAnswers(prev => ({ ...prev, [questionIndex]: answerIndex }));
+    };
+
+    const handleNextQuestion = () => {
+        if (currentQuestionIndex < quizQuestions.length - 1) {
+            setCurrentQuestionIndex(prev => prev + 1);
+        }
+    };
+
+    const handlePreviousQuestion = () => {
+        if (currentQuestionIndex > 0) {
+            setCurrentQuestionIndex(prev => prev - 1);
+        }
+    };
+
+    const handleSubmitQuiz = () => {
+        let score = 0;
+        quizQuestions.forEach((q, index) => {
+            if (selectedAnswers[index] === q.correctAnswerIndex) {
+                score++;
+            }
+        });
+        setQuizResult({ score, total: quizQuestions.length });
+    };
+
+    const handleRetakeQuiz = () => {
+        setCurrentQuestionIndex(0);
+        setSelectedAnswers({});
+        setQuizResult(null);
+    };
+
 
     if (isLoading) {
         return <div className="text-center py-10 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading resource...</div>;
@@ -245,9 +302,54 @@ export default function CourseResourcePage() {
                             <Users className="mr-2 h-5 w-5"/> Click here to join the Webinar
                         </Button>
                     )}
-                    {resource.type === 'quiz' && (
-                        <div>
-                            <p>Quiz functionality will be displayed here.</p>
+                    
+                    {resource.type === 'quiz' && quizQuestions.length > 0 && (
+                        <div className="p-2 sm:p-4">
+                            {!quizResult ? (
+                                <div>
+                                    <Card className="mb-4">
+                                        <CardHeader>
+                                            <CardTitle>Question {currentQuestionIndex + 1} of {quizQuestions.length}</CardTitle>
+                                            <CardDescription className="text-lg pt-2">{quizQuestions[currentQuestionIndex].question}</CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <RadioGroup
+                                                value={selectedAnswers[currentQuestionIndex]?.toString()}
+                                                onValueChange={(value) => handleAnswerChange(currentQuestionIndex, parseInt(value))}
+                                                className="space-y-2"
+                                            >
+                                                {quizQuestions[currentQuestionIndex].options.map((option, index) => (
+                                                    <div key={index} className="flex items-center space-x-3 p-3 rounded-md border hover:bg-muted/50 has-[[data-state=checked]]:bg-muted">
+                                                        <RadioGroupItem value={index.toString()} id={`q${currentQuestionIndex}-o${index}`} />
+                                                        <Label htmlFor={`q${currentQuestionIndex}-o${index}`} className="w-full cursor-pointer">{option}</Label>
+                                                    </div>
+                                                ))}
+                                            </RadioGroup>
+                                        </CardContent>
+                                    </Card>
+                                    <div className="flex justify-between mt-4">
+                                        <Button onClick={handlePreviousQuestion} disabled={currentQuestionIndex === 0}>Previous</Button>
+                                        {currentQuestionIndex < quizQuestions.length - 1 ? (
+                                            <Button onClick={handleNextQuestion}>Next Question</Button>
+                                        ) : (
+                                            <Button onClick={handleSubmitQuiz}>Submit Quiz</Button>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-center">
+                                    <Card className="text-center w-full max-w-md">
+                                        <CardHeader>
+                                            <CardTitle className="text-2xl">Quiz Results</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="text-lg">You scored</p>
+                                            <p className="text-6xl font-bold my-4 text-primary">{quizResult.score} / {quizResult.total}</p>
+                                            <Button onClick={handleRetakeQuiz}>Retake Quiz</Button>
+                                        </CardContent>
+                                    </Card>
+                                </div>
+                            )}
                         </div>
                     )}
                 </CardContent>
@@ -275,4 +377,3 @@ export default function CourseResourcePage() {
         </div>
     );
 }
-
