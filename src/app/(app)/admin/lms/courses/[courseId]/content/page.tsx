@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, ChevronDown } from 'lucide-react';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical } from 'lucide-react';
 import type { Course, CourseResource, LessonContentResource } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
@@ -202,13 +202,7 @@ export default function ManageCourseContentPage() {
                                         <GripVertical className="h-5 w-5 text-muted-foreground mr-2" />
                                         <span className="font-semibold">{lesson.title}</span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm text-muted-foreground">{lessonContents.length} resource(s)</span>
-                                        <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); handleDeleteLesson(lesson.id); }} disabled={isSubmitting}>
-                                            <Trash2 className="h-4 w-4 text-destructive"/>
-                                        </Button>
-                                        <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
-                                    </div>
+                                    <span className="text-sm text-muted-foreground">{lessonContents.length} resource(s)</span>
                                 </div>
                             </AccordionTrigger>
                             <AccordionContent className="px-4 pt-2 border-t">
@@ -263,6 +257,11 @@ export default function ManageCourseContentPage() {
                                   </Button>
                                )}
 
+                                <div className="border-t mt-4 pt-4">
+                                    <Button size="sm" variant="destructive" onClick={() => handleDeleteLesson(lesson.id)} disabled={isSubmitting}>
+                                        <Trash2 className="mr-2 h-4 w-4"/> Delete Entire Lesson
+                                    </Button>
+                                </div>
                             </AccordionContent>
                         </AccordionItem>
                     )
