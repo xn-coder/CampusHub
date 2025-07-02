@@ -180,6 +180,52 @@ export async function updateLessonContentAction(
     return { ok: true, message: "Lesson content updated."};
 }
 
+export async function createSignedUploadUrlAction(
+  courseId: string,
+  fileName: string,
+  fileType: string
+): Promise<{ ok: boolean; message: string; signedUrl?: string; publicUrl?: string; path?: string }> {
+  const supabase = createSupabaseServerClient();
+
+  try {
+      // Optional: Check if the user has permission to upload to this course
+      // (e.g., check if they are an admin or enrolled teacher)
+      // This is a crucial security step.
+
+      const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const filePath = `public/course-uploads/${courseId}/${uuidv4()}-${sanitizedFileName}`;
+
+      const { data, error } = await supabase.storage
+          .from('campushub')
+          .createSignedUploadUrl(filePath);
+
+      if (error) {
+          throw new Error(`Failed to create signed URL: ${error.message}`);
+      }
+      
+      // We also need the final public URL to save in the database later
+      const { data: publicUrlData } = supabase.storage
+          .from('campushub')
+          .getPublicUrl(filePath);
+
+      if (!publicUrlData?.publicUrl) {
+          throw new Error("Could not determine public URL for the file path.");
+      }
+
+      return {
+          ok: true,
+          message: "Signed URL created successfully.",
+          signedUrl: data.signedUrl,
+          publicUrl: publicUrlData.publicUrl,
+          path: data.path, // The path is useful for some storage operations
+      };
+
+  } catch (e: any) {
+      console.error("Error in createSignedUploadUrlAction:", e);
+      return { ok: false, message: e.message || "An unexpected error occurred." };
+  }
+}
+
 export async function addResourceToLessonAction(formData: FormData): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
   

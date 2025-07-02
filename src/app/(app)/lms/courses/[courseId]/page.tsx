@@ -16,11 +16,13 @@ import type { Course, CourseResource, UserRole, LessonContentResource } from '@/
 import Link from 'next/link';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
+import { useToast } from "@/hooks/use-toast";
 
 export default function ViewCourseContentPage() {
   const params = useParams();
   const router = useRouter();
   const pathname = usePathname();
+  const { toast } = useToast();
   const courseId = params.courseId as string;
 
   const [course, setCourse] = useState<(Course & { resources: CourseResource[] }) | null>(null);
@@ -29,6 +31,7 @@ export default function ViewCourseContentPage() {
   const [pageError, setPageError] = useState<string | null>(null);
   
   const [completedResources, setCompletedResources] = useState<Record<string, boolean>>({});
+  const [videoCompletionStatus, setVideoCompletionStatus] = useState<Record<string, boolean>>({});
   const [progress, setProgress] = useState(0);
 
   const [currentStudentName, setCurrentStudentName] = useState<string>('');
@@ -135,6 +138,11 @@ export default function ViewCourseContentPage() {
 
   }, [completedResources, course]);
 
+  const handleVideoEnded = (resourceId: string) => {
+    setVideoCompletionStatus(prev => ({ ...prev, [resourceId]: true }));
+    toast({ title: "Video Completed!", description: "You can now mark this item as done." });
+  };
+
   const toggleResourceCompletion = (resourceId: string) => {
     const newCompleted = { ...completedResources, [resourceId]: !completedResources[resourceId] };
     setCompletedResources(newCompleted);
@@ -156,12 +164,6 @@ export default function ViewCourseContentPage() {
 
   const renderResourceLink = (resource: LessonContentResource) => {
     switch (resource.type) {
-      case 'video':
-        return (
-          <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
-            <PlayCircle className="mr-1 h-4 w-4"/> Play Video
-          </a>
-        );
       case 'ebook':
         return (
           <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
@@ -260,13 +262,28 @@ export default function ViewCourseContentPage() {
                             </AccordionTrigger>
                             <AccordionContent className="px-4 pt-2 border-t">
                                <div className="space-y-3 py-2">
-                                   {lessonContents.length > 0 ? lessonContents.map(res => (
+                                   {lessonContents.length > 0 ? lessonContents.map(res => {
+                                     const isVideo = res.type === 'video';
+                                     const isVideoCompleted = !!videoCompletionStatus[res.id];
+                                     return (
                                        <div key={res.id} className="flex items-start p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                                            <div className="flex-grow flex items-center">
+                                            <div className="flex-grow flex items-start">
                                                 {getResourceIcon(res.type)}
                                                 <div>
                                                     <p className="font-medium">{res.title}</p>
-                                                    {renderResourceLink(res)}
+                                                    {isVideo ? (
+                                                        <video 
+                                                            key={res.id}
+                                                            controls 
+                                                            src={res.url_or_content} 
+                                                            className="w-full max-w-md rounded-md mt-2"
+                                                            onEnded={() => handleVideoEnded(res.id)}
+                                                        >
+                                                            Your browser does not support the video tag.
+                                                        </video>
+                                                    ) : (
+                                                        renderResourceLink(res)
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="flex items-center space-x-2 pl-4">
@@ -274,11 +291,12 @@ export default function ViewCourseContentPage() {
                                                     id={`res-complete-${res.id}`}
                                                     checked={!!completedResources[res.id]}
                                                     onCheckedChange={() => toggleResourceCompletion(res.id)}
+                                                    disabled={isVideo && !isVideoCompleted}
                                                 />
                                                 <Label htmlFor={`res-complete-${res.id}`} className="text-xs">Done</Label>
                                             </div>
                                        </div>
-                                   )) : <p className="text-sm text-muted-foreground text-center py-2">This lesson is empty.</p>}
+                                   )}) : <p className="text-sm text-muted-foreground text-center py-2">This lesson is empty.</p>}
                                </div>
                             </AccordionContent>
                         </AccordionItem>
