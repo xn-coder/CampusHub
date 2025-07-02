@@ -188,7 +188,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
   const courseId = formData.get('courseId') as string;
   const resourceTitle = formData.get('resourceTitle') as string;
   const resourceType = formData.get('resourceType') as CourseResourceType;
-  const urlOrContent = formData.get('urlOrContent') as string;
+  const urlOrContent = formData.get('urlOrContent') as string | null;
   const quizDataJSON = formData.get('quizDataJSON') as string | null;
   const resourceFile = formData.get('resourceFile') as File | null;
 
@@ -196,9 +196,9 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
     return { ok: false, message: "Missing required fields for adding resource." };
   }
 
-  let finalContentUrlOrJson: string;
-
   try {
+    let finalContentUrlOrJson: string | null = null;
+
     if (resourceFile && resourceFile.size > 0) {
       const sanitizedFileName = resourceFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
       const filePath = `public/lms-resources/${courseId}/${lessonId}/${uuidv4()}-${sanitizedFileName}`;
@@ -224,7 +224,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
     }
 
     if (!finalContentUrlOrJson && resourceType !== 'note') {
-        return { ok: false, message: "Resource content (URL, File, or Quiz Data) is required." };
+        return { ok: false, message: "Resource content (URL, File, or Quiz Data) is required for this resource type." };
     }
 
     const { data: lesson, error: fetchError } = await supabase
@@ -248,7 +248,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         id: uuidv4(),
         type: resourceType,
         title: resourceTitle.trim(),
-        url_or_content: finalContentUrlOrJson.trim()
+        url_or_content: (finalContentUrlOrJson || '').trim()
     };
 
     const updatedContent = [...currentContent, newResource];
