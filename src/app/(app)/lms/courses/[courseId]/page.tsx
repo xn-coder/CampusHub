@@ -11,7 +11,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
-import { ExternalLink, Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion, PlayCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion } from 'lucide-react';
 import type { Course, CourseResource, UserRole, LessonContentResource } from '@/types';
 import Link from 'next/link';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from './actions';
@@ -37,6 +38,7 @@ export default function ViewCourseContentPage() {
   const [currentStudentName, setCurrentStudentName] = useState<string>('');
   const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
   const [openLessons, setOpenLessons] = useState<string[]>([]);
+  const [viewingResource, setViewingResource] = useState<LessonContentResource | null>(null);
 
 
   const loadProgress = useCallback(() => {
@@ -150,6 +152,9 @@ export default function ViewCourseContentPage() {
     saveProgress(newCompleted);
   };
   
+  const handleViewResource = (resource: LessonContentResource) => {
+    setViewingResource(resource);
+  };
 
   const getResourceIcon = (type: string) => {
     const props = { className: "mr-3 h-5 w-5 text-primary shrink-0" };
@@ -160,33 +165,6 @@ export default function ViewCourseContentPage() {
       case 'webinar': return <Users {...props} />;
       case 'quiz': return <FileQuestion {...props} />;
       default: return null;
-    }
-  };
-
-  const renderResourceLink = (resource: LessonContentResource) => {
-    switch (resource.type) {
-      case 'ebook':
-        return (
-          <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
-            <BookOpen className="mr-1 h-4 w-4"/> Read E-book
-          </a>
-        );
-      case 'quiz':
-        return <Button size="sm" variant="outline" className="mt-1">Take Quiz</Button>;
-      case 'webinar':
-        return (
-          <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
-            <Users className="mr-1 h-4 w-4"/> Join Webinar
-          </a>
-        );
-      case 'note':
-        return <p className="text-sm text-muted-foreground whitespace-pre-wrap mt-1">{resource.url_or_content}</p>;
-      default:
-        return (
-          <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
-            Access Resource <ExternalLink className="ml-1 h-3 w-3" />
-          </a>
-        );
     }
   };
 
@@ -279,42 +257,30 @@ export default function ViewCourseContentPage() {
                                 {lesson.title}
                             </AccordionTrigger>
                             <AccordionContent className="px-4 pt-2 border-t">
-                               <div className="space-y-3 py-2">
-                                   {lessonContents.length > 0 ? lessonContents.map(res => {
-                                     const isVideo = res.type === 'video';
-                                     const isVideoCompleted = !!videoCompletionStatus[res.id];
-                                     return (
-                                       <div key={res.id} className="flex items-start p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                                            <div className="flex-grow flex items-start">
-                                                {getResourceIcon(res.type)}
-                                                <div>
-                                                    <p className="font-medium">{res.title}</p>
-                                                    {isVideo ? (
-                                                        <video 
-                                                            key={res.id}
-                                                            controls 
-                                                            src={res.url_or_content} 
-                                                            className="w-full max-w-md rounded-md mt-2"
-                                                            onEnded={() => handleVideoEnded(res.id)}
-                                                        >
-                                                            Your browser does not support the video tag.
-                                                        </video>
-                                                    ) : (
-                                                        renderResourceLink(res)
-                                                    )}
+                               <div className="space-y-2 py-2">
+                                   {lessonContents.length > 0 ? lessonContents.map(res => (
+                                       <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
+                                            <Button
+                                                variant="ghost"
+                                                className="flex-grow justify-start text-left h-auto p-1 font-medium"
+                                                onClick={() => handleViewResource(res)}
+                                            >
+                                                <div className="flex items-center">
+                                                    {getResourceIcon(res.type)}
+                                                    <span>{res.title}</span>
                                                 </div>
-                                            </div>
-                                            <div className="flex items-center space-x-2 pl-4">
+                                            </Button>
+                                            <div className="flex items-center space-x-2 pl-4 shrink-0">
                                                 <Checkbox
                                                     id={`res-complete-${res.id}`}
                                                     checked={!!completedResources[res.id]}
                                                     onCheckedChange={() => toggleResourceCompletion(res.id)}
-                                                    disabled={isVideo && !isVideoCompleted}
+                                                    disabled={res.type === 'video' && !videoCompletionStatus[res.id]}
                                                 />
                                                 <Label htmlFor={`res-complete-${res.id}`} className="text-xs">Done</Label>
                                             </div>
                                        </div>
-                                   )}) : <p className="text-sm text-muted-foreground text-center py-2">This lesson is empty.</p>}
+                                   )) : <p className="text-sm text-muted-foreground text-center py-2">This lesson is empty.</p>}
                                </div>
                             </AccordionContent>
                         </AccordionItem>
@@ -326,6 +292,43 @@ export default function ViewCourseContentPage() {
             )}
           </CardContent>
       </Card>
+
+       <Dialog open={!!viewingResource} onOpenChange={(open) => !open && setViewingResource(null)}>
+          <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle>{viewingResource?.title}</DialogTitle>
+            </DialogHeader>
+            <div className="py-4 overflow-y-auto flex-grow">
+              {viewingResource?.type === 'video' && (
+                <video key={viewingResource.id} controls autoPlay src={viewingResource.url_or_content} className="w-full rounded-md" onEnded={() => handleVideoEnded(viewingResource!.id)}>
+                  Your browser does not support the video tag.
+                </video>
+              )}
+              {viewingResource?.type === 'note' && (
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingResource.url_or_content}</p>
+              )}
+              {viewingResource?.type === 'ebook' && (
+                  <a href={viewingResource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-lg text-primary hover:underline flex items-center">
+                    <BookOpen className="mr-2 h-5 w-5"/> Click here to open E-book in a new tab
+                  </a>
+              )}
+              {viewingResource?.type === 'webinar' && (
+                  <a href={viewingResource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-lg text-primary hover:underline flex items-center">
+                    <Users className="mr-2 h-5 w-5"/> Click here to join the Webinar
+                  </a>
+              )}
+              {viewingResource?.type === 'quiz' && (
+                  <div>
+                    <p>Quiz functionality will be displayed here.</p>
+                  </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setViewingResource(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
 
       <Button variant="outline" onClick={() => router.push('/lms/available-courses')} className="mt-4 self-start">
         Back to Available Courses
