@@ -55,7 +55,7 @@ export default function CourseResourcePage() {
     const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
-    const [quizResult, setQuizResult] = useState<{ score: number; total: number } | null>(null);
+    const [quizResult, setQuizResult] = useState<{ score: number; total: number; passed: boolean; } | null>(null);
 
 
     // Effect to prevent forward seeking in videos
@@ -99,18 +99,6 @@ export default function CourseResourcePage() {
             setSelectedAnswers({});
             setQuizResult(null);
 
-            // Auto-mark resource as complete
-            if (typeof window !== 'undefined') {
-                const storedProgressString = localStorage.getItem(`progress_${courseId}`);
-                const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
-                
-                if (!storedProgress[resourceId]) {
-                    const newProgress = { ...storedProgress, [resourceId]: true };
-                    localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
-                }
-            }
-
-
             getCourseForViewingAction(courseId).then(result => {
                 if (result.ok && result.course) {
                     setCourseTitle(result.course.title);
@@ -133,6 +121,19 @@ export default function CourseResourcePage() {
                         const currentResource = allFlattenedResources[currentIndex];
                         setResource(currentResource);
                         
+                        // Auto-mark non-quiz resources as complete on visit
+                        if (currentResource.type !== 'quiz') {
+                          if (typeof window !== 'undefined') {
+                              const storedProgressString = localStorage.getItem(`progress_${courseId}`);
+                              const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
+                              
+                              if (!storedProgress[resourceId]) {
+                                  const newProgress = { ...storedProgress, [resourceId]: true };
+                                  localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
+                              }
+                          }
+                        }
+
                         if (currentResource.type === 'quiz') {
                           try {
                             const questions = JSON.parse(currentResource.url_or_content) as QuizQuestion[];
@@ -203,7 +204,7 @@ export default function CourseResourcePage() {
 
     const handlePreviousQuestion = () => {
         if (currentQuestionIndex > 0) {
-            setCurrentQuestionIndex(prev => prev - 1);
+            setCurrentQuestionIndex(prev => prev + 1);
         }
     };
 
@@ -214,7 +215,25 @@ export default function CourseResourcePage() {
                 score++;
             }
         });
-        setQuizResult({ score, total: quizQuestions.length });
+        
+        const percentage = quizQuestions.length > 0 ? (score / quizQuestions.length) * 100 : 0;
+        const passed = percentage >= 70; // Pass at 70% or more
+
+        setQuizResult({ score, total: quizQuestions.length, passed });
+        
+        // Mark as complete only if passed
+        if (passed) {
+             if (typeof window !== 'undefined') {
+                const storedProgressString = localStorage.getItem(`progress_${courseId}`);
+                const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
+                
+                // Only update if not already marked as done
+                if (!storedProgress[resourceId]) {
+                    const newProgress = { ...storedProgress, [resourceId]: true };
+                    localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
+                }
+            }
+        }
     };
 
     const handleRetakeQuiz = () => {
@@ -298,8 +317,10 @@ export default function CourseResourcePage() {
                     )}
                     
                     {resource.type === 'webinar' && resource.url_or_content && (
-                         <Button variant="link" className="text-lg p-0 h-auto" onClick={() => window.open(resource.url_or_content, '_blank', 'noopener,noreferrer')}>
-                            <Users className="mr-2 h-5 w-5"/> Click here to join the Webinar
+                         <Button asChild variant="link" className="text-lg p-0 h-auto">
+                            <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer">
+                                <Users className="mr-2 h-5 w-5"/> Click here to join the Webinar
+                            </a>
                         </Button>
                     )}
                     
@@ -341,11 +362,16 @@ export default function CourseResourcePage() {
                                     <Card className="text-center w-full max-w-md">
                                         <CardHeader>
                                             <CardTitle className="text-2xl">Quiz Results</CardTitle>
+                                            <CardDescription>
+                                                {quizResult.passed ? "Congratulations, you passed!" : "You did not pass. Please review the material and try again."}
+                                            </CardDescription>
                                         </CardHeader>
                                         <CardContent>
                                             <p className="text-lg">You scored</p>
-                                            <p className="text-6xl font-bold my-4 text-primary">{quizResult.score} / {quizResult.total}</p>
-                                            <Button onClick={handleRetakeQuiz}>Retake Quiz</Button>
+                                            <p className={`text-6xl font-bold my-4 ${quizResult.passed ? 'text-primary' : 'text-destructive'}`}>
+                                                {quizResult.score} / {quizResult.total}
+                                            </p>
+                                            {!quizResult.passed && <Button onClick={handleRetakeQuiz}>Retake Quiz</Button>}
                                         </CardContent>
                                     </Card>
                                 </div>
@@ -363,7 +389,7 @@ export default function CourseResourcePage() {
                             </div>
                         </Link>
                     </Button>
-                    <Button variant="outline" asChild disabled={!nextResourceId || (resource.type === 'video' && !isVideoCompleted)}>
+                    <Button variant="outline" asChild disabled={!nextResourceId || (resource.type === 'video' && !isVideoCompleted) || (resource.type === 'quiz' && (!quizResult || !quizResult.passed))}>
                         <Link href={nextResourceId ? `/lms/courses/${courseId}/${nextResourceId}` : '#'} className="max-w-xs">
                              <div className="flex flex-col items-end">
                                 <span className="text-xs text-muted-foreground">Next</span>
