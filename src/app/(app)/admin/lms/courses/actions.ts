@@ -214,13 +214,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         .from('campushub')
         .getPublicUrl(filePath);
 
-      if (!publicUrlData?.publicUrl) {
-          console.error(`Critical error: Could not get public URL for uploaded file at path: ${filePath}. The file might be uploaded but is inaccessible. Cleaning up.`);
-          await supabase.storage.from('campushub').remove([filePath]);
-          throw new Error("Could not retrieve public URL for the uploaded file. Please check bucket policies.");
-      }
-      
-      finalContentUrlOrJson = publicUrlData.publicUrl;
+      finalContentUrlOrJson = publicUrlData?.publicUrl;
 
     } else if (resourceType === 'quiz' && quizDataJSON) {
         finalContentUrlOrJson = quizDataJSON;
@@ -231,6 +225,10 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
     if (!finalContentUrlOrJson && (resourceType === 'ebook' || resourceType === 'video' || resourceType === 'webinar' || resourceType === 'quiz')) {
         return { ok: false, message: "Resource content (URL, File, or text) is required." };
     }
+    if(resourceType === 'note' && !finalContentUrlOrJson) {
+      finalContentUrlOrJson = ''; // Allow empty text notes
+    }
+
 
     const { data: lesson, error: fetchError } = await supabase
       .from('lms_course_resources')
