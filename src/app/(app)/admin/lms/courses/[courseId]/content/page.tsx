@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
 import { 
   getCourseContentForAdminAction,
-  addResourceToCourseAction,
+  addLessonToCourseAction,
   deleteCourseResourceAction,
   updateLessonContentAction,
 } from '../../actions';
@@ -50,7 +50,8 @@ export default function ManageCourseContentPage() {
     const result = await getCourseContentForAdminAction(courseId);
     if (result.ok) {
       setCourse(result.course || null);
-      setLessons(result.resources?.filter(r => r.type === 'lesson') || []);
+      // Lessons are stored as resources of type 'note'
+      setLessons(result.resources?.filter(r => r.type === 'note') || []);
     } else {
       toast({ title: "Error", description: result.message || "Failed to load course details.", variant: "destructive" });
       router.push('/admin/lms/courses');
@@ -69,11 +70,9 @@ export default function ManageCourseContentPage() {
     e.preventDefault();
     if (!newLessonTitle.trim()) return;
     setIsSubmitting(true);
-    const result = await addResourceToCourseAction({
+    const result = await addLessonToCourseAction({
       course_id: courseId,
       title: newLessonTitle.trim(),
-      type: 'lesson',
-      url_or_content: '[]' // Empty array for new lesson
     });
     if (result.ok) {
       toast({ title: "Lesson Added" });
@@ -300,4 +299,3 @@ export default function ManageCourseContentPage() {
     </div>
   );
 }
-
