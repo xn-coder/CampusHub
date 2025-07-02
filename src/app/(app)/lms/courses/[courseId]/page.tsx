@@ -8,10 +8,8 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { Label } from '@/components/ui/label';
-import { Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion } from 'lucide-react';
+import { Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion, CheckCircle } from 'lucide-react';
 import type { Course, CourseResource, UserRole, LessonContentResource } from '@/types';
 import Link from 'next/link';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from './actions';
@@ -43,12 +41,6 @@ export default function ViewCourseContentPage() {
       if (storedProgress) {
         setCompletedResources(JSON.parse(storedProgress));
       }
-    }
-  }, [courseId]);
-
-  const saveProgress = useCallback((newProgress: Record<string, boolean>) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
     }
   }, [courseId]);
 
@@ -136,12 +128,6 @@ export default function ViewCourseContentPage() {
     setProgress(newProgress);
 
   }, [completedResources, course]);
-
-  const toggleResourceCompletion = (resourceId: string) => {
-    const newCompleted = { ...completedResources, [resourceId]: !completedResources[resourceId] };
-    setCompletedResources(newCompleted);
-    saveProgress(newCompleted);
-  };
 
   const getResourceIcon = (type: string) => {
     const props = { className: "mr-3 h-5 w-5 text-primary shrink-0" };
@@ -254,12 +240,9 @@ export default function ViewCourseContentPage() {
                                                 </div>
                                             </Link>
                                             <div className="flex items-center space-x-2 pl-4 shrink-0">
-                                                <Checkbox
-                                                    id={`res-complete-${res.id}`}
-                                                    checked={!!completedResources[res.id]}
-                                                    onCheckedChange={() => toggleResourceCompletion(res.id)}
-                                                />
-                                                <Label htmlFor={`res-complete-${res.id}`} className="text-xs">Done</Label>
+                                                {completedResources[res.id] && (
+                                                    <CheckCircle className="h-5 w-5 text-green-500" />
+                                                )}
                                             </div>
                                        </div>
                                    )) : <p className="text-sm text-muted-foreground text-center py-2">This lesson is empty.</p>}

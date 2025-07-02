@@ -49,17 +49,13 @@ export default function CourseResourcePage() {
         if (!video) return;
 
         const handleTimeUpdate = () => {
-            // Only update our 'valid' time if the progress is incremental.
-            // This prevents updating the valid time when the user seeks far ahead.
-            if (Math.abs(video.currentTime - lastValidTime.current) < 2) { // 2 seconds threshold allows for some buffering
+            if (Math.abs(video.currentTime - lastValidTime.current) < 2) { 
                 lastValidTime.current = video.currentTime;
             }
         };
 
         const handleSeeking = () => {
-            // When a seek event happens, check if they tried to jump forward.
             if (video.currentTime > lastValidTime.current) {
-                // If so, snap them back to the furthest point they've legitimately watched.
                 video.currentTime = lastValidTime.current;
             }
         };
@@ -67,23 +63,34 @@ export default function CourseResourcePage() {
         video.addEventListener('timeupdate', handleTimeUpdate);
         video.addEventListener('seeking', handleSeeking);
 
-        // Cleanup event listeners
         return () => {
             if (video) {
               video.removeEventListener('timeupdate', handleTimeUpdate);
               video.removeEventListener('seeking', handleSeeking);
             }
         };
-    }, [resource]); // Re-attach listeners if the resource (and thus the video src) changes
+    }, [resource]); 
 
 
     useEffect(() => {
         if (courseId && resourceId) {
             setIsLoading(true);
-            lastValidTime.current = 0; // Reset video progress tracking
-            setIsVideoCompleted(false); // Reset completion status for the new resource
-            setNumPages(null); // Reset PDF pages
-            setPageNumber(1); // Reset PDF page number
+            lastValidTime.current = 0;
+            setIsVideoCompleted(false);
+            setNumPages(null);
+            setPageNumber(1);
+
+            // Auto-mark resource as complete
+            if (typeof window !== 'undefined') {
+                const storedProgressString = localStorage.getItem(`progress_${courseId}`);
+                const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
+                
+                if (!storedProgress[resourceId]) {
+                    const newProgress = { ...storedProgress, [resourceId]: true };
+                    localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
+                }
+            }
+
 
             getCourseForViewingAction(courseId).then(result => {
                 if (result.ok && result.course) {
@@ -262,3 +269,5 @@ export default function CourseResourcePage() {
         </div>
     );
 }
+
+    

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useRef } from 'react';
@@ -10,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, ArrowRight } from 'lucide-react';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft } from 'lucide-react';
 import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
@@ -20,7 +21,6 @@ import {
   addLessonToCourseAction,
   deleteCourseResourceAction,
   updateLessonContentAction,
-  // These are the new/modified actions we'll use for the upload
   createSignedUploadUrlAction, 
   addResourceToLessonAction,
   getAllCoursesForAdminNavAction,
@@ -49,25 +49,17 @@ export default function ManageCourseContentPage() {
   const [resourceType, setResourceType] = useState<ResourceTabKey>('note');
   const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
   const [resourceFile, setResourceFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0); // <-- NEW STATE FOR PROGRESS
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Quiz State
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
   const resourceFormRef = useRef<HTMLFormElement>(null);
-
-
-  // Navigation state
-  const [allCourses, setAllCourses] = useState<{ id: string; title: string }[]>([]);
-  const [prevCourseId, setPrevCourseId] = useState<string | null>(null);
-  const [nextCourseId, setNextCourseId] = useState<string | null>(null);
-
 
   const fetchCourseData = async () => {
     setIsLoading(true);
     const result = await getCourseContentForAdminAction(courseId);
     if (result.ok) {
       setCourse(result.course || null);
-      // Ensure we only show lessons (resources of type 'note' that act as containers)
       setLessons(result.resources?.filter(r => r.type === 'note' && r.url_or_content?.startsWith('[')) || []);
     } else {
       toast({ title: "Error", description: result.message || "Failed to load course details.", variant: "destructive" });
@@ -79,38 +71,6 @@ export default function ManageCourseContentPage() {
   useEffect(() => {
     if (courseId) {
       fetchCourseData();
-
-      const getNavData = async () => {
-        const adminUserId = localStorage.getItem('currentUserId');
-        const role = localStorage.getItem('currentUserRole') as UserRole | null;
-        if (!adminUserId || !role) return;
-        
-        let schoolIdToUse: string | null = null;
-        if (role !== 'superadmin') {
-          const {data: userRec} = await supabase.from('users').select('school_id').eq('id', adminUserId).single();
-          schoolIdToUse = userRec?.school_id || null;
-        }
-
-        const navResult = await getAllCoursesForAdminNavAction({
-          schoolId: schoolIdToUse,
-          adminUserId: adminUserId,
-          userRole: role,
-        });
-
-        if (navResult.ok && navResult.courses) {
-          const courses = navResult.courses;
-          setAllCourses(courses);
-          const currentIndex = courses.findIndex(c => c.id === courseId);
-          if (currentIndex !== -1) {
-            if (currentIndex > 0) setNextCourseId(courses[currentIndex - 1].id); 
-            else setNextCourseId(null);
-            
-            if (currentIndex < courses.length - 1) setPrevCourseId(courses[currentIndex + 1].id);
-            else setPrevCourseId(null);
-          }
-        }
-      };
-      getNavData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, router, toast]);
@@ -160,13 +120,9 @@ export default function ManageCourseContentPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     setResourceFile(file);
-    // Clear URL field if user selects a file, to avoid confusion
     if (file) setResourceUrlOrContent(''); 
   };
   
-  // ==========================================================
-  //  THE CORRECTED FUNCTION TO HANDLE RESOURCE (VIDEO) UPLOADS
-  // ==========================================================
   const handleAddResourceToLesson = async (e: FormEvent, lesson: CourseResource) => {
     e.preventDefault();
     if (!resourceTitle.trim()) {
@@ -174,7 +130,6 @@ export default function ManageCourseContentPage() {
       return;
     }
     
-    // Additional validation
     const isFileRequired = resourceType === 'video' || resourceType === 'ebook';
     const isUrlOrTextRequired = resourceType === 'note' || resourceType === 'webinar';
     if (isFileRequired && !resourceFile && !resourceUrlOrContent.trim()) {
@@ -196,8 +151,6 @@ export default function ManageCourseContentPage() {
     try {
       let finalUrlOrContent = resourceUrlOrContent;
 
-      // --- NEW UPLOAD LOGIC ---
-      // Step 1: Handle file upload if a file is present
       if (resourceFile) {
         toast({title:"Preparing to upload file..."});
         const signedUrlResult = await createSignedUploadUrlAction(
@@ -210,7 +163,6 @@ export default function ManageCourseContentPage() {
           throw new Error(signedUrlResult.message || 'Failed to prepare upload.');
         }
 
-        // Step 2: Upload the file directly to Supabase
         toast({title:"Starting upload... this may take a while."});
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -233,7 +185,6 @@ export default function ManageCourseContentPage() {
         finalUrlOrContent = JSON.stringify(quizQuestions);
       }
 
-      // Step 3: Call the final action to save metadata to the database
       const formData = new FormData();
       formData.append('lessonId', lesson.id);
       formData.append('courseId', courseId);
@@ -388,7 +339,6 @@ export default function ManageCourseContentPage() {
 
                                                 {resourceType === 'quiz' ? (
                                                   <div className="space-y-4 p-4 border bg-background rounded-md">
-                                                    {/* Quiz Builder JSX is unchanged and correct */}
                                                     <Label className="text-lg">Quiz Builder</Label>
                                                       {quizQuestions.map((q, qIndex) => (
                                                           <div key={q.id} className="p-3 border rounded-lg space-y-3 bg-muted/50">
@@ -493,22 +443,10 @@ export default function ManageCourseContentPage() {
             )}
 
         </CardContent>
-        <CardFooter className="flex justify-between items-center">
-             <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} disabled={isSubmitting}>
+        <CardFooter>
+            <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} disabled={isSubmitting}>
                 Back to All Courses
             </Button>
-             <div className="flex gap-2">
-                <Button variant="outline" asChild disabled={!prevCourseId || isSubmitting}>
-                    <Link href={prevCourseId ? `/admin/lms/courses/${prevCourseId}/content` : '#'}>
-                        <ArrowLeft className="mr-2 h-4 w-4"/> Previous
-                    </Link>
-                </Button>
-                <Button variant="outline" asChild disabled={!nextCourseId || isSubmitting}>
-                    <Link href={nextCourseId ? `/admin/lms/courses/${nextCourseId}/content` : '#'}>
-                        Next <ArrowRight className="ml-2 h-4 w-4"/>
-                    </Link>
-                </Button>
-            </div>
         </CardFooter>
       </Card>
     </div>
