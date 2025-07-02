@@ -6,7 +6,7 @@ console.log('[LOG] Loading src/app/(app)/admin/class-schedule/actions.ts');
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import type { ClassScheduleDB, ClassData, Subject, Teacher, UserRole } from '@/types'; // Use DB types
-import { getStudentEmailsByClassId, getTeacherEmailByTeacherProfileId, sendEmail } from '@/services/emailService';
+import { postAnnouncementAction } from '../../communication/actions';
 
 interface ClassScheduleInput {
   school_id: string;
@@ -56,13 +56,21 @@ export async function fetchClassSchedulePageData(schoolId: string): Promise<{
 
 
 export async function addClassScheduleAction(
-  input: ClassScheduleInput
+  input: ClassScheduleInput & { posted_by_user_id: string }
 ): Promise<{ ok: boolean; message: string; schedule?: ClassScheduleDB }> {
   const supabase = createSupabaseServerClient();
   try {
     const { data, error } = await supabase
       .from('class_schedules')
-      .insert(input)
+      .insert({
+        school_id: input.school_id,
+        class_id: input.class_id,
+        subject_id: input.subject_id,
+        teacher_id: input.teacher_id,
+        day_of_week: input.day_of_week,
+        start_time: input.start_time,
+        end_time: input.end_time,
+      })
       .select('*, class:class_id(name, division), subject:subject_id(name, code), teacher:teacher_id(name)')
       .single();
 
@@ -78,46 +86,29 @@ export async function addClassScheduleAction(
         subject?: { name: string }, 
         teacher?: { name: string } 
       };
+      
+      const { data: adminUser } = await supabase.from('users').select('name').eq('id', input.posted_by_user_id).single();
+      const adminName = adminUser?.name || 'School Administration';
+      
       const className = schedule.class ? `${schedule.class.name} - ${schedule.class.division}` : 'N/A';
       const subjectName = schedule.subject?.name || 'N/A';
       const teacherName = schedule.teacher?.name || 'N/A';
 
-      const emailSubject = `New Class Scheduled: ${subjectName} on ${schedule.day_of_week}`;
-      const emailBody = `
-        <h1>New Class Added to Schedule</h1>
-        <p>A new class has been scheduled:</p>
-        <ul>
-          <li><strong>Class:</strong> ${className}</li>
-          <li><strong>Subject:</strong> ${subjectName}</li>
-          <li><strong>Teacher:</strong> ${teacherName}</li>
-          <li><strong>Day:</strong> ${schedule.day_of_week}</li>
-          <li><strong>Time:</strong> ${schedule.start_time} - ${schedule.end_time}</li>
-        </ul>
-        <p>Please check the school timetable for full details.</p>
-      `;
+      const announcementContent = `A new class has been scheduled for subject "${subjectName}" in class "${className}".\n\nDetails:\n- Day: ${schedule.day_of_week}\n- Time: ${schedule.start_time} - ${schedule.end_time}\n- Teacher: ${teacherName}`;
 
-      const studentEmails = await getStudentEmailsByClassId(schedule.class_id, schedule.school_id);
-      const teacherEmail = await getTeacherEmailByTeacherProfileId(schedule.teacher_id);
-      
-      const recipientEmails = [...studentEmails];
-      if (teacherEmail) recipientEmails.push(teacherEmail);
-
-      if (recipientEmails.length > 0) {
-        try {
-          console.log(`[addClassScheduleAction] Attempting to send schedule notification via email service to: ${[...new Set(recipientEmails)].join(', ')}`);
-          const result = await sendEmail({ to: [...new Set(recipientEmails)], subject: emailSubject, html: emailBody });
-          if (!result.ok) {
-            console.error(`[addClassScheduleAction] Failed to send email via service: ${result.message}`);
-          } else {
-            console.log(`[addClassScheduleAction] Email successfully dispatched via service: ${result.message}`);
-          }
-        } catch (apiError: any) {
-          console.error(`[addClassScheduleAction] Error calling email service: ${apiError.message}`);
-        }
-      }
+      await postAnnouncementAction({
+        title: `New Class Scheduled: ${subjectName}`,
+        content: announcementContent,
+        author_name: adminName,
+        posted_by_user_id: input.posted_by_user_id,
+        posted_by_role: 'admin', 
+        target_class_id: schedule.class_id,
+        school_id: input.school_id,
+        target_audience: 'all'
+      });
     }
 
-    return { ok: true, message: 'Class schedule added successfully.', schedule: data as ClassScheduleDB };
+    return { ok: true, message: 'Class schedule added and announcement posted.', schedule: data as ClassScheduleDB };
   } catch (e: any) {
     console.error("Unexpected error adding schedule:", e);
     return { ok: false, message: `Unexpected error: ${e.message}` };
@@ -126,13 +117,21 @@ export async function addClassScheduleAction(
 
 export async function updateClassScheduleAction(
   id: string,
-  input: Partial<ClassScheduleInput> & { school_id: string }
+  input: Partial<ClassScheduleInput> & { school_id: string; posted_by_user_id: string }
 ): Promise<{ ok: boolean; message: string; schedule?: ClassScheduleDB }> {
   const supabase = createSupabaseServerClient();
   try {
     const { data, error } = await supabase
       .from('class_schedules')
-      .update(input)
+      .update({
+        school_id: input.school_id,
+        class_id: input.class_id,
+        subject_id: input.subject_id,
+        teacher_id: input.teacher_id,
+        day_of_week: input.day_of_week,
+        start_time: input.start_time,
+        end_time: input.end_time,
+      })
       .eq('id', id)
       .eq('school_id', input.school_id)
       .select('*, class:class_id(name, division), subject:subject_id(name, code), teacher:teacher_id(name)')
@@ -144,56 +143,35 @@ export async function updateClassScheduleAction(
     }
     revalidatePath('/admin/class-schedule');
     
-    // Send update notification emails, similar to addClassScheduleAction
     if (data) {
-      const schedule = data as ClassScheduleDB & { 
+       const schedule = data as ClassScheduleDB & { 
         class?: { name: string, division: string }, 
         subject?: { name: string }, 
         teacher?: { name: string } 
       };
       
+      const { data: adminUser } = await supabase.from('users').select('name').eq('id', input.posted_by_user_id).single();
+      const adminName = adminUser?.name || 'School Administration';
+      
       const className = schedule.class ? `${schedule.class.name} - ${schedule.class.division}` : 'N/A';
       const subjectName = schedule.subject?.name || 'N/A';
       const teacherName = schedule.teacher?.name || 'N/A';
 
-      const emailSubject = `Schedule Updated: ${subjectName} on ${schedule.day_of_week}`;
-      const emailBody = `
-        <h1>Class Schedule Updated</h1>
-        <p>A class in your schedule has been updated:</p>
-        <ul>
-          <li><strong>Class:</strong> ${className}</li>
-          <li><strong>Subject:</strong> ${subjectName}</li>
-          <li><strong>Teacher:</strong> ${teacherName}</li>
-          <li><strong>Day:</strong> ${schedule.day_of_week}</li>
-          <li><strong>Time:</strong> ${schedule.start_time} - ${schedule.end_time}</li>
-        </ul>
-        <p>Please check the school timetable for full details.</p>
-      `;
+      const announcementContent = `The schedule for subject "${subjectName}" in class "${className}" has been updated.\n\nNew Details:\n- Day: ${schedule.day_of_week}\n- Time: ${schedule.start_time} - ${schedule.end_time}\n- Teacher: ${teacherName}`;
 
-      if (schedule.class_id && schedule.teacher_id && schedule.school_id) {
-        const studentEmails = await getStudentEmailsByClassId(schedule.class_id, schedule.school_id);
-        const teacherEmail = await getTeacherEmailByTeacherProfileId(schedule.teacher_id);
-        
-        const recipientEmails = [...studentEmails];
-        if (teacherEmail) recipientEmails.push(teacherEmail);
-
-        if (recipientEmails.length > 0) {
-          try {
-            console.log(`[updateClassScheduleAction] Attempting to send schedule update notification to: ${[...new Set(recipientEmails)].join(', ')}`);
-            const result = await sendEmail({ to: [...new Set(recipientEmails)], subject: emailSubject, html: emailBody });
-            if (!result.ok) {
-              console.error(`[updateClassScheduleAction] Failed to send email update: ${result.message}`);
-            } else {
-              console.log(`[updateClassScheduleAction] Email update dispatched successfully.`);
-            }
-          } catch (apiError: any) {
-            console.error(`[updateClassScheduleAction] Error calling email service: ${apiError.message}`);
-          }
-        }
-      }
+      await postAnnouncementAction({
+        title: `Schedule Update: ${subjectName}`,
+        content: announcementContent,
+        author_name: adminName,
+        posted_by_user_id: input.posted_by_user_id,
+        posted_by_role: 'admin',
+        target_class_id: schedule.class_id,
+        school_id: input.school_id,
+        target_audience: 'all'
+      });
     }
 
-    return { ok: true, message: 'Class schedule updated successfully.', schedule: data as ClassScheduleDB };
+    return { ok: true, message: 'Class schedule updated and announcement posted.', schedule: data as ClassScheduleDB };
   } catch (e: any) {
     console.error("Unexpected error updating schedule:", e);
     return { ok: false, message: `Unexpected error: ${e.message}` };

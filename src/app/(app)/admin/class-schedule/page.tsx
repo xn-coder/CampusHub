@@ -39,6 +39,7 @@ export default function ClassSchedulePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ClassScheduleItem | null>(null);
@@ -51,9 +52,10 @@ export default function ClassSchedulePage() {
   const [endTime, setEndTime] = useState('');
 
   useEffect(() => {
-    const adminUserId = localStorage.getItem('currentUserId');
-    if (adminUserId) {
-      fetchAdminSchoolId(adminUserId).then(schoolId => {
+    const adminId = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(adminId);
+    if (adminId) {
+      fetchAdminSchoolId(adminId).then(schoolId => {
         setCurrentSchoolId(schoolId);
         if (schoolId) {
           loadPageData(schoolId);
@@ -105,8 +107,8 @@ export default function ClassSchedulePage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!currentSchoolId || !selectedClassId || !selectedSubjectId || !selectedTeacherId || !dayOfWeek || !startTime || !endTime) {
-      toast({ title: "Error", description: "All fields are required.", variant: "destructive" });
+    if (!currentSchoolId || !selectedClassId || !selectedSubjectId || !selectedTeacherId || !dayOfWeek || !startTime || !endTime || !currentAdminUserId) {
+      toast({ title: "Error", description: "All fields and user context are required.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
@@ -119,6 +121,7 @@ export default function ClassSchedulePage() {
       day_of_week: dayOfWeek,
       start_time: startTime,
       end_time: endTime,
+      posted_by_user_id: currentAdminUserId,
     };
 
     let result;
