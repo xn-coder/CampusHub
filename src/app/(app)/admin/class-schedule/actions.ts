@@ -104,8 +104,8 @@ export async function addClassScheduleAction(
 
       if (recipientEmails.length > 0) {
         try {
-          console.log(`[addClassScheduleAction] Attempting to send schedule notification via email service to: ${recipientEmails.join(', ')}`);
-          const result = await sendEmail({ to: recipientEmails, subject: emailSubject, html: emailBody });
+          console.log(`[addClassScheduleAction] Attempting to send schedule notification via email service to: ${[...new Set(recipientEmails)].join(', ')}`);
+          const result = await sendEmail({ to: [...new Set(recipientEmails)], subject: emailSubject, html: emailBody });
           if (!result.ok) {
             console.error(`[addClassScheduleAction] Failed to send email via service: ${result.message}`);
           } else {
@@ -143,7 +143,56 @@ export async function updateClassScheduleAction(
       return { ok: false, message: `Database error: ${error.message}` };
     }
     revalidatePath('/admin/class-schedule');
-    // Optionally, send update notification emails here, similar to addClassScheduleAction
+    
+    // Send update notification emails, similar to addClassScheduleAction
+    if (data) {
+      const schedule = data as ClassScheduleDB & { 
+        class?: { name: string, division: string }, 
+        subject?: { name: string }, 
+        teacher?: { name: string } 
+      };
+      
+      const className = schedule.class ? `${schedule.class.name} - ${schedule.class.division}` : 'N/A';
+      const subjectName = schedule.subject?.name || 'N/A';
+      const teacherName = schedule.teacher?.name || 'N/A';
+
+      const emailSubject = `Schedule Updated: ${subjectName} on ${schedule.day_of_week}`;
+      const emailBody = `
+        <h1>Class Schedule Updated</h1>
+        <p>A class in your schedule has been updated:</p>
+        <ul>
+          <li><strong>Class:</strong> ${className}</li>
+          <li><strong>Subject:</strong> ${subjectName}</li>
+          <li><strong>Teacher:</strong> ${teacherName}</li>
+          <li><strong>Day:</strong> ${schedule.day_of_week}</li>
+          <li><strong>Time:</strong> ${schedule.start_time} - ${schedule.end_time}</li>
+        </ul>
+        <p>Please check the school timetable for full details.</p>
+      `;
+
+      if (schedule.class_id && schedule.teacher_id && schedule.school_id) {
+        const studentEmails = await getStudentEmailsByClassId(schedule.class_id, schedule.school_id);
+        const teacherEmail = await getTeacherEmailByTeacherProfileId(schedule.teacher_id);
+        
+        const recipientEmails = [...studentEmails];
+        if (teacherEmail) recipientEmails.push(teacherEmail);
+
+        if (recipientEmails.length > 0) {
+          try {
+            console.log(`[updateClassScheduleAction] Attempting to send schedule update notification to: ${[...new Set(recipientEmails)].join(', ')}`);
+            const result = await sendEmail({ to: [...new Set(recipientEmails)], subject: emailSubject, html: emailBody });
+            if (!result.ok) {
+              console.error(`[updateClassScheduleAction] Failed to send email update: ${result.message}`);
+            } else {
+              console.log(`[updateClassScheduleAction] Email update dispatched successfully.`);
+            }
+          } catch (apiError: any) {
+            console.error(`[updateClassScheduleAction] Error calling email service: ${apiError.message}`);
+          }
+        }
+      }
+    }
+
     return { ok: true, message: 'Class schedule updated successfully.', schedule: data as ClassScheduleDB };
   } catch (e: any) {
     console.error("Unexpected error updating schedule:", e);
