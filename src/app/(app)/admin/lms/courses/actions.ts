@@ -200,7 +200,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
 
     if (resourceFile && resourceFile.size > 0) {
       const sanitizedFileName = resourceFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const filePath = `public/lms-resources/${courseId}/${lessonId}/${uuidv4()}-${sanitizedFileName}`;
+      const filePath = `public/course-uploads/${courseId}-${lessonId}-${uuidv4()}-${sanitizedFileName}`;
       
       const { error: uploadError } = await supabase.storage
         .from('campushub')
@@ -214,7 +214,13 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         .from('campushub')
         .getPublicUrl(filePath);
 
-      finalContentUrlOrJson = publicUrlData?.publicUrl;
+      if (!publicUrlData || !publicUrlData.publicUrl) {
+          console.error(`Critical error: Could not get public URL for uploaded file at path: ${filePath}. The file might be uploaded but is inaccessible. Cleaning up.`);
+          await supabase.storage.from('campushub').remove([filePath]);
+          throw new Error("Could not retrieve public URL for the uploaded file. Please check bucket policies.");
+      }
+      
+      finalContentUrlOrJson = publicUrlData.publicUrl;
 
     } else if (resourceType === 'quiz' && quizDataJSON) {
         finalContentUrlOrJson = quizDataJSON;
@@ -222,8 +228,8 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         finalContentUrlOrJson = urlOrContent;
     }
 
-    if (!finalContentUrlOrJson && (resourceType === 'video' || resourceType === 'ebook' || resourceType === 'webinar')) {
-        return { ok: false, message: "Resource content (URL or File) is required for this resource type." };
+    if (!finalContentUrlOrJson && (resourceType !== 'note')) {
+        return { ok: false, message: "Resource content (URL, File, or text) is required." };
     }
 
     const { data: lesson, error: fetchError } = await supabase
@@ -265,6 +271,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
     return { ok: true, message: "Resource added successfully." };
     
   } catch (e: any) {
+    console.error("Error in addResourceToLessonAction:", e);
     return { ok: false, message: e.message || "An unexpected error occurred." };
   }
 }
