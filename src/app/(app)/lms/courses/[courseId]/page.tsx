@@ -307,15 +307,23 @@ export default function ViewCourseContentPage() {
               {viewingResource?.type === 'note' && (
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingResource.url_or_content}</p>
               )}
-              {viewingResource?.type === 'ebook' && (
-                  <a href={viewingResource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-lg text-primary hover:underline flex items-center">
-                    <BookOpen className="mr-2 h-5 w-5"/> Click here to open E-book in a new tab
-                  </a>
+              {viewingResource?.type === 'ebook' && viewingResource.url_or_content && (
+                viewingResource.url_or_content.toLowerCase().endsWith('.pdf') ? (
+                  <iframe src={viewingResource.url_or_content} className="w-full h-full min-h-[70vh]" title={viewingResource.title}>
+                      <p>Your browser does not support PDFs. Please download the PDF to view it: 
+                        <a href={viewingResource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-primary underline"> Download PDF</a>
+                      </p>
+                  </iframe>
+                ) : (
+                  <Button variant="link" className="text-lg p-0 h-auto" onClick={() => window.open(viewingResource?.url_or_content, '_blank', 'noopener,noreferrer')}>
+                      <BookOpen className="mr-2 h-5 w-5"/> Click here to open E-book in a new tab
+                  </Button>
+                )
               )}
-              {viewingResource?.type === 'webinar' && (
-                  <a href={viewingResource.url_or_content} target="_blank" rel="noopener noreferrer" className="text-lg text-primary hover:underline flex items-center">
+              {viewingResource?.type === 'webinar' && viewingResource.url_or_content && (
+                  <Button variant="link" className="text-lg p-0 h-auto" onClick={() => window.open(viewingResource.url_or_content, '_blank', 'noopener,noreferrer')}>
                     <Users className="mr-2 h-5 w-5"/> Click here to join the Webinar
-                  </a>
+                  </Button>
               )}
               {viewingResource?.type === 'quiz' && (
                   <div>
