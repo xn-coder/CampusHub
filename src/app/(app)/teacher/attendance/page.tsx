@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -8,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import type { ClassData, Student, AttendanceStatus, UserRole, Holiday } from '@/types';
+import type { ClassData, Student, AttendanceStatus, UserRole, Holiday, CalendarEventDB } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Save, ListChecks, Loader2, Search, Ban } from 'lucide-react';
@@ -22,6 +23,7 @@ export default function TeacherAttendancePage() {
   const { toast } = useToast();
   const [assignedClasses, setAssignedClasses] = useState<ClassData[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [allDayEvents, setAllDayEvents] = useState<Pick<CalendarEventDB, 'id' | 'title' | 'date'>[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [studentsInSelectedClass, setStudentsInSelectedClass] = useState<Student[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceStatus>>({}); // studentId: status
@@ -55,6 +57,7 @@ export default function TeacherAttendancePage() {
           setCurrentSchoolId(result.schoolId || null);
           setAssignedClasses(result.assignedClasses || []);
           setHolidays(result.holidays || []);
+          setAllDayEvents(result.allDayEvents || []);
       } else {
           toast({ title: "Error", description: result.message || "Failed to load initial data.", variant: "destructive" });
       }
@@ -74,7 +77,6 @@ export default function TeacherAttendancePage() {
         return;
       }
       
-      // Check for Sunday or Holiday
       const selectedDateObj = parseISO(currentDate);
       
       if (isSunday(selectedDateObj)) {
@@ -86,11 +88,9 @@ export default function TeacherAttendancePage() {
 
       const holidayOnDate = holidays.find(h => {
           try {
-              // Ensure both dates are parsed and compared in the same format
               const holidayDate = parseISO(h.date);
               return format(holidayDate, 'yyyy-MM-dd') === currentDate;
           } catch (e) {
-              // Log error if date is invalid, but don't crash
               console.error("Invalid date format in holidays array:", h.date);
               return false;
           }
@@ -104,12 +104,29 @@ export default function TeacherAttendancePage() {
           return;
       }
 
+      const eventOnDate = allDayEvents.find(event => {
+        try {
+            const eventDate = parseISO(event.date);
+            return format(eventDate, 'yyyy-MM-dd') === currentDate;
+        } catch (e) {
+            console.error("Invalid event date format:", event.date);
+            return false;
+        }
+      });
+
+      if (eventOnDate) {
+          const reason = `Attendance is disabled due to a school event: ${eventOnDate.title}.`;
+          setAttendanceDisabledReason(reason);
+          setStudentsInSelectedClass([]);
+          setIsAttendanceDisabled(true);
+          return;
+      }
+
       setIsAttendanceDisabled(false);
       setAttendanceDisabledReason(null);
 
       setIsLoading(true);
 
-      // Fetch students in the selected class
       const { data: classStudents, error: studentsError } = await supabase
         .from('students')
         .select('*')
@@ -126,7 +143,6 @@ export default function TeacherAttendancePage() {
       }
       setStudentsInSelectedClass(classStudents || []);
 
-      // Fetch existing attendance records for these students on the selected date
       const studentIds = (classStudents || []).map(s => s.id);
       if (studentIds.length > 0) {
         const { data: existingDbRecords, error: attendanceError } = await supabase
@@ -140,7 +156,7 @@ export default function TeacherAttendancePage() {
         const initialRecords: Record<string, AttendanceStatus> = {};
         (classStudents || []).forEach(student => {
           const foundRecord = existingDbRecords?.find(r => r.student_id === student.id);
-          initialRecords[student.id] = foundRecord ? foundRecord.status as AttendanceStatus : 'Present'; // Default to Present
+          initialRecords[student.id] = foundRecord ? foundRecord.status as AttendanceStatus : 'Present';
         });
         setAttendanceRecords(initialRecords);
         
@@ -148,12 +164,12 @@ export default function TeacherAttendancePage() {
           toast({ title: "Warning", description: "Could not fetch existing attendance records, defaulting to 'Present'.", variant: "default" });
         }
       } else {
-        setAttendanceRecords({}); // No students, no records
+        setAttendanceRecords({});
       }
       setIsLoading(false);
     }
     loadStudentsAndAttendance();
-  }, [selectedClassId, currentDate, currentSchoolId, toast, holidays]);
+  }, [selectedClassId, currentDate, currentSchoolId, toast, holidays, allDayEvents]);
 
   const handleAttendanceChange = (studentId: string, status: AttendanceStatus) => {
     setAttendanceRecords(prev => ({ ...prev, [studentId]: status }));
@@ -172,7 +188,7 @@ export default function TeacherAttendancePage() {
 
     const recordsToSubmit: { student_id: string; status: AttendanceStatus }[] = studentsInSelectedClass.map(student => ({
       student_id: student.id,
-      status: attendanceRecords[student.id] || 'Present', // Default to present if somehow missing
+      status: attendanceRecords[student.id] || 'Present',
     }));
 
     const result = await saveAttendanceAction({

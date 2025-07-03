@@ -3,7 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { AttendanceStatus, AttendanceRecord, ClassData, Holiday } from '@/types';
+import type { AttendanceStatus, AttendanceRecord, ClassData, Holiday, CalendarEventDB } from '@/types';
 
 interface AttendanceInput {
   student_id: string;
@@ -25,6 +25,7 @@ export async function getTeacherAttendanceInitialDataAction(teacherUserId: strin
   schoolId?: string;
   assignedClasses?: ClassData[];
   holidays?: Holiday[];
+  allDayEvents?: Pick<CalendarEventDB, 'id' | 'title' | 'date'>[];
 }> {
   if (!teacherUserId) {
     return { ok: false, message: "Teacher user ID is required." };
@@ -45,9 +46,10 @@ export async function getTeacherAttendanceInitialDataAction(teacherUserId: strin
       return { ok: false, message: "Teacher is not associated with a school." };
     }
 
-    const [classesRes, holidaysRes] = await Promise.all([
+    const [classesRes, holidaysRes, eventsRes] = await Promise.all([
       supabase.from('classes').select('*').eq('teacher_id', teacherProfileId).eq('school_id', schoolId),
-      supabase.from('holidays').select('*').eq('school_id', schoolId)
+      supabase.from('holidays').select('*').eq('school_id', schoolId),
+      supabase.from('calendar_events').select('id, title, date').eq('school_id', schoolId).eq('is_all_day', true)
     ]);
     if (classesRes.error) throw new Error(`Fetching classes failed: ${classesRes.error.message}`);
     
@@ -61,13 +63,18 @@ export async function getTeacherAttendanceInitialDataAction(teacherUserId: strin
     } else {
         holidaysData = holidaysRes.data || [];
     }
+
+    if (eventsRes.error) {
+      console.warn("Could not fetch calendar events for attendance check:", eventsRes.error.message);
+    }
     
     return {
       ok: true,
       teacherProfileId,
       schoolId,
       assignedClasses: (classesRes.data || []) as ClassData[],
-      holidays: holidaysData
+      holidays: holidaysData,
+      allDayEvents: (eventsRes.data || []) as Pick<CalendarEventDB, 'id' | 'title' | 'date'>[]
     };
   } catch(e: any) {
     console.error("Error in getTeacherAttendanceInitialDataAction:", e);
