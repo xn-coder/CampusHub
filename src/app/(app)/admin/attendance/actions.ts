@@ -2,7 +2,7 @@
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
-import type { ClassData, Student, AttendanceRecord } from '@/types';
+import type { ClassData, Student, AttendanceRecord, Holiday } from '@/types';
 import { startOfYear, endOfYear } from 'date-fns';
 
 async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
@@ -27,7 +27,8 @@ export async function getAdminAttendancePageDataAction(adminUserId: string): Pro
   ok: boolean;
   schoolId?: string | null;
   classes?: ClassData[];
-  students?: Student[]; // All students for the school, filtering done client-side or in specific record fetch
+  students?: Student[];
+  holidays?: Holiday[];
   message?: string;
 }> {
   const schoolId = await getAdminSchoolId(adminUserId);
@@ -37,19 +38,33 @@ export async function getAdminAttendancePageDataAction(adminUserId: string): Pro
 
   const supabaseAdmin = createSupabaseServerClient();
   try {
-    const [classesRes, studentsRes] = await Promise.all([
+    const [classesRes, studentsRes, holidaysRes] = await Promise.all([
       supabaseAdmin.from('classes').select('*').eq('school_id', schoolId).order('name'),
       supabaseAdmin.from('students').select('*').eq('school_id', schoolId).order('name'),
+      supabaseAdmin.from('holidays').select('*').eq('school_id', schoolId)
     ]);
 
     if (classesRes.error) throw new Error(`Fetching classes failed: ${classesRes.error.message}`);
     if (studentsRes.error) throw new Error(`Fetching students failed: ${studentsRes.error.message}`);
+    
+    let holidaysData: Holiday[] = [];
+    if (holidaysRes.error) {
+        if(holidaysRes.error.message.includes('relation "public.holidays" does not exist')) {
+            console.warn("Holidays table does not exist. Attendance report may not exclude holidays.");
+            // Gracefully continue without holidays
+        } else {
+            throw new Error(`Fetching holidays failed: ${holidaysRes.error.message}`);
+        }
+    } else {
+        holidaysData = holidaysRes.data || [];
+    }
 
     return {
       ok: true,
       schoolId,
       classes: classesRes.data || [],
       students: studentsRes.data || [],
+      holidays: holidaysData,
     };
   } catch (error: any) {
     console.error("Error in getAdminAttendancePageDataAction:", error);

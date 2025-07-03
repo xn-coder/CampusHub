@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
-import type { ClassData, Student, AttendanceRecord } from '@/types';
+import type { ClassData, Student, AttendanceRecord, Holiday } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { ListChecks, Users, Search, Loader2, Download, Calendar as CalendarIcon, UserCheck, UserX, Clock, Ban } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
@@ -78,6 +78,7 @@ export default function AdminAttendancePage() {
       setCurrentSchoolId(result.schoolId || null);
       setAllClasses(result.classes || []);
       setAllStudents(result.students || []);
+      // Holidays are fetched but used in the logic below, not stored in state here
     } else {
       toast({ title: "Error loading initial data", description: result.message, variant: "destructive" });
     }
@@ -117,12 +118,18 @@ export default function AdminAttendancePage() {
             });
         }
         
+        // Get all unique dates from records for the period for the whole class
+        const allDatesForPeriod = new Set(recordsForPeriod.map(r => r.date.split('T')[0]));
+        const totalRecordedDays = allDatesForPeriod.size;
+        
         const summary = studentsInClass.map(student => {
             const studentRecords = recordsForPeriod.filter(r => r.student_id === student.id);
             const present = studentRecords.filter(r => r.status === 'Present' || r.status === 'Late' || r.status === 'Excused').length;
-            const absent = studentRecords.filter(r => r.status === 'Absent').length;
-            const total = studentRecords.length;
-            const percentage = total > 0 ? (present / total) * 100 : 0;
+            
+            // Absent days are the total recorded attendance days minus the days the student was present/late/excused.
+            const absent = totalRecordedDays - present; 
+            
+            const percentage = totalRecordedDays > 0 ? (present / totalRecordedDays) * 100 : 0;
 
             return {
                 studentId: student.id,
@@ -131,7 +138,7 @@ export default function AdminAttendancePage() {
                 absent,
                 late: studentRecords.filter(r => r.status === 'Late').length,
                 excused: studentRecords.filter(r => r.status === 'Excused').length,
-                total,
+                total: totalRecordedDays,
                 percentage
             };
         });

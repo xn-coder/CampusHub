@@ -6,116 +6,131 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { useState, type ChangeEvent, useEffect } from 'react';
+import { useState, type ChangeEvent, useEffect, type FormEvent } from 'react';
 import type { SchoolDetails, Holiday } from '@/types';
 import { Calendar } from '@/components/ui/calendar';
-import { PlusCircle, Trash2 } from 'lucide-react';
+import { PlusCircle, Trash2, Loader2, Save } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from '@/lib/supabaseClient';
+import { getSchoolDetailsAndHolidaysAction, updateSchoolDetailsAction, addHolidayAction, deleteHolidayAction } from './actions';
 
-const MOCK_SCHOOL_DETAILS_KEY = 'mockSchoolDetails';
-const MOCK_HOLIDAYS_KEY = 'mockSchoolHolidays';
+async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('school_id')
+    .eq('id', adminUserId)
+    .single();
+
+  if (error || !user?.school_id) {
+    console.error("Error fetching admin's school for details:", error?.message);
+    return null;
+  }
+  return user.school_id;
+}
+
 
 export default function SchoolDetailsPage() {
   const { toast } = useToast();
-  const [schoolDetails, setSchoolDetails] = useState<SchoolDetails>({
-    name: 'CampusHub High School',
-    address: '123 Education Lane, Knowledgetown, USA 12345',
-    contactEmail: 'info@campushubhs.edu',
-    contactPhone: '(555) 123-4567',
-  });
-
+  const [schoolDetails, setSchoolDetails] = useState<Partial<SchoolDetails>>({});
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [newHolidayName, setNewHolidayName] = useState('');
   const [newHolidayDate, setNewHolidayDate] = useState<Date | undefined>(new Date());
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingDetails, setIsSubmittingDetails] = useState(false);
+  const [isSubmittingHoliday, setIsSubmittingHoliday] = useState(false);
+  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedDetails = localStorage.getItem(MOCK_SCHOOL_DETAILS_KEY);
-      if (storedDetails) {
-        setSchoolDetails(JSON.parse(storedDetails));
-      } else {
-        localStorage.setItem(MOCK_SCHOOL_DETAILS_KEY, JSON.stringify(schoolDetails));
+    async function loadData() {
+      setIsLoading(true);
+      const adminUserId = localStorage.getItem('currentUserId');
+      if (!adminUserId) {
+        toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+        setIsLoading(false);
+        return;
       }
+      
+      const schoolId = await getAdminSchoolId(adminUserId);
+      setCurrentSchoolId(schoolId);
 
-      const storedHolidays = localStorage.getItem(MOCK_HOLIDAYS_KEY);
-      if (storedHolidays) {
-        // Ensure date strings are converted to Date objects
-        const parsedHolidays: Holiday[] = JSON.parse(storedHolidays).map((h: any) => ({
-          ...h,
-          date: new Date(h.date),
-        }));
-        setHolidays(parsedHolidays.sort((a,b) => b.date.getTime() - a.date.getTime())); // Sort newest first on load
+      if (schoolId) {
+        const result = await getSchoolDetailsAndHolidaysAction(schoolId);
+        if (result.ok) {
+          setSchoolDetails(result.details || {});
+          setHolidays((result.holidays || []).map(h => ({ ...h, date: new Date(h.date.replace(/-/g, '\/')) })));
+        } else {
+          toast({ title: "Error", description: result.message || "Failed to load school data.", variant: "destructive" });
+        }
       } else {
-         // Initialize with some default holidays if none are stored
-        const initialHolidays = [
-          { id: '1', name: 'Summer Break Starts', date: new Date(2024, 6, 20) }, // July 20, 2024
-          { id: '2', name: 'Independence Day', date: new Date(2024, 6, 4) }, // July 4, 2024
-        ].sort((a,b) => b.date.getTime() - a.date.getTime());
-        setHolidays(initialHolidays);
-        localStorage.setItem(MOCK_HOLIDAYS_KEY, JSON.stringify(initialHolidays));
+        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
       }
+      setIsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-
-  const updateLocalStorage = (key: string, data: any) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(data));
-    }
-  };
+    loadData();
+  }, [toast]);
 
   const handleDetailChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setSchoolDetails(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSaveSchoolDetails = () => {
-    updateLocalStorage(MOCK_SCHOOL_DETAILS_KEY, schoolDetails);
-    toast({
-      title: "School Details Updated",
-      description: "The school information has been saved. (In a real system, these changes might require Super Admin approval).",
+  const handleSaveSchoolDetails = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!currentSchoolId || !schoolDetails.name) return;
+    setIsSubmittingDetails(true);
+    const result = await updateSchoolDetailsAction({
+        id: currentSchoolId,
+        name: schoolDetails.name,
+        address: schoolDetails.address,
+        contact_email: schoolDetails.contact_email,
+        contact_phone: schoolDetails.contact_phone,
     });
+    
+    if (result.ok) {
+        toast({ title: "School Details Updated", description: result.message });
+    } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsSubmittingDetails(false);
   };
 
-  const handleAddHoliday = () => {
-    if (newHolidayName && newHolidayDate && isValid(newHolidayDate)) {
-      const updatedHolidays = [
-        { id: String(Date.now()), name: newHolidayName, date: newHolidayDate },
-        ...holidays
-      ].sort((a,b) => b.date.getTime() - a.date.getTime()); // Ensure newest is always on top after adding
-      
-      setHolidays(updatedHolidays);
-      updateLocalStorage(MOCK_HOLIDAYS_KEY, updatedHolidays);
+  const handleAddHoliday = async () => {
+    if (!newHolidayName || !newHolidayDate || !isValid(newHolidayDate) || !currentSchoolId) {
+      toast({ title: "Error", description: "Please provide a valid name and date.", variant: "destructive" });
+      return;
+    }
+    setIsSubmittingHoliday(true);
+    const result = await addHolidayAction({
+      name: newHolidayName,
+      date: format(newHolidayDate, 'yyyy-MM-dd'),
+      school_id: currentSchoolId,
+    });
+
+    if (result.ok) {
+      toast({ title: "Holiday Added", description: result.message });
       setNewHolidayName('');
       setNewHolidayDate(new Date());
-      toast({
-        title: "Holiday Added",
-        description: `${newHolidayName} has been added to the schedule.`,
-      });
+      // Re-fetch holidays
+      const holidaysRes = await getSchoolDetailsAndHolidaysAction(currentSchoolId);
+      if (holidaysRes.ok) setHolidays((holidaysRes.holidays || []).map(h => ({ ...h, date: new Date(h.date.replace(/-/g, '\/')) })));
     } else {
-      toast({
-        title: "Error",
-        description: "Please provide a valid name and date for the holiday.",
-        variant: "destructive",
-      });
+       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
+    setIsSubmittingHoliday(false);
   };
   
-  const handleRemoveHoliday = (id: string) => {
-    const holidayToRemove = holidays.find(h => h.id === id);
-    const updatedHolidays = holidays.filter(holiday => holiday.id !== id);
-    setHolidays(updatedHolidays);
-    updateLocalStorage(MOCK_HOLIDAYS_KEY, updatedHolidays);
-    if (holidayToRemove) {
-      toast({
-        title: "Holiday Removed",
-        description: `${holidayToRemove.name} has been removed from the schedule.`,
-        variant: "destructive"
-      });
+  const handleRemoveHoliday = async (id: string) => {
+    const result = await deleteHolidayAction(id);
+    if (result.ok) {
+      toast({ title: "Holiday Removed", variant: "destructive" });
+      setHolidays(prev => prev.filter(h => h.id !== id));
+    } else {
+       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
   };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -126,25 +141,30 @@ export default function SchoolDetailsPage() {
           <CardTitle>School Information</CardTitle>
           <CardDescription>Update the general details for the school.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="name">School Name</Label>
-            <Input id="name" name="name" value={schoolDetails.name} onChange={handleDetailChange} />
-          </div>
-          <div>
-            <Label htmlFor="address">Address</Label>
-            <Input id="address" name="address" value={schoolDetails.address} onChange={handleDetailChange} />
-          </div>
-          <div>
-            <Label htmlFor="contactEmail">Contact Email</Label>
-            <Input id="contactEmail" name="contactEmail" type="email" value={schoolDetails.contactEmail} onChange={handleDetailChange} />
-          </div>
-          <div>
-            <Label htmlFor="contactPhone">Contact Phone</Label>
-            <Input id="contactPhone" name="contactPhone" type="tel" value={schoolDetails.contactPhone} onChange={handleDetailChange} />
-          </div>
-          <Button onClick={handleSaveSchoolDetails}>Save School Details</Button>
-        </CardContent>
+        <form onSubmit={handleSaveSchoolDetails}>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="name">School Name</Label>
+                <Input id="name" name="name" value={schoolDetails.name || ''} onChange={handleDetailChange} />
+              </div>
+              <div>
+                <Label htmlFor="address">Address</Label>
+                <Input id="address" name="address" value={schoolDetails.address || ''} onChange={handleDetailChange} />
+              </div>
+              <div>
+                <Label htmlFor="contact_email">Contact Email</Label>
+                <Input id="contact_email" name="contact_email" type="email" value={schoolDetails.contact_email || ''} onChange={handleDetailChange} />
+              </div>
+              <div>
+                <Label htmlFor="contact_phone">Contact Phone</Label>
+                <Input id="contact_phone" name="contact_phone" type="tel" value={schoolDetails.contact_phone || ''} onChange={handleDetailChange} />
+              </div>
+              <Button type="submit" disabled={isSubmittingDetails}>
+                {isSubmittingDetails && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                Save School Details
+              </Button>
+            </CardContent>
+        </form>
       </Card>
 
       <Card>
@@ -170,14 +190,15 @@ export default function SchoolDetailsPage() {
                     if (isValid(parsedDate)) {
                       setNewHolidayDate(parsedDate);
                     } else {
-                      setNewHolidayDate(undefined); // Handle invalid date input
+                      setNewHolidayDate(undefined);
                     }
                   }}
                   className="w-full"
                 />
               </div>
-              <Button onClick={handleAddHoliday} className="self-end mt-2 md:mt-0">
-                <PlusCircle className="mr-2 h-4 w-4" /> Add Holiday
+              <Button onClick={handleAddHoliday} className="self-end mt-2 md:mt-0" disabled={isSubmittingHoliday}>
+                {isSubmittingHoliday ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />} 
+                Add Holiday
               </Button>
             </div>
              <div className="md:col-span-3 flex justify-center md:justify-start">
@@ -191,7 +212,9 @@ export default function SchoolDetailsPage() {
             </div>
           </div>
           <h4 className="text-lg font-medium mt-6 mb-2">Current Holidays:</h4>
-          {holidays.length > 0 ? (
+          {isLoading ? (
+             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
+          ) : holidays.length > 0 ? (
             <ul className="space-y-2">
               {holidays.map(holiday => (
                 <li key={holiday.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">

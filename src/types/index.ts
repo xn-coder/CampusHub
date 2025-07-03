@@ -41,6 +41,7 @@ export interface SchoolEntry {
   address?: string | null;
   admin_email: string;
   admin_name: string;
+  contact_email?: string | null;
   admin_user_id?: string | null;
   status: SchoolStatus;
   contact_phone?: string | null;

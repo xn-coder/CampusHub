@@ -3,7 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { AttendanceStatus, AttendanceRecord } from '@/types';
+import type { AttendanceStatus, AttendanceRecord, ClassData, Holiday } from '@/types';
 
 interface AttendanceInput {
   student_id: string;
@@ -16,6 +16,63 @@ interface SaveAttendancePayload {
   records: AttendanceInput[];
   teacher_id: string; // Teacher's profile ID (teachers.id)
   school_id: string;
+}
+
+export async function getTeacherAttendanceInitialDataAction(teacherUserId: string): Promise<{
+  ok: boolean;
+  message?: string;
+  teacherProfileId?: string;
+  schoolId?: string;
+  assignedClasses?: ClassData[];
+  holidays?: Holiday[];
+}> {
+  if (!teacherUserId) {
+    return { ok: false, message: "Teacher user ID is required." };
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data: teacherProfile, error: profileError } = await supabase
+      .from('teachers')
+      .select('id, school_id')
+      .eq('user_id', teacherUserId)
+      .single();
+
+    if (profileError || !teacherProfile) {
+      return { ok: false, message: profileError?.message || "Teacher profile not found." };
+    }
+    const { id: teacherProfileId, school_id: schoolId } = teacherProfile;
+    if (!schoolId) {
+      return { ok: false, message: "Teacher is not associated with a school." };
+    }
+
+    const [classesRes, holidaysRes] = await Promise.all([
+      supabase.from('classes').select('*').eq('teacher_id', teacherProfileId).eq('school_id', schoolId),
+      supabase.from('holidays').select('*').eq('school_id', schoolId)
+    ]);
+    if (classesRes.error) throw new Error(`Fetching classes failed: ${classesRes.error.message}`);
+    
+    let holidaysData: Holiday[] = [];
+     if (holidaysRes.error) {
+        if(holidaysRes.error.message.includes('relation "public.holidays" does not exist')) {
+            console.warn("Holidays table does not exist. Attendance cannot check for holidays.");
+        } else {
+            throw new Error(`Fetching holidays failed: ${holidaysRes.error.message}`);
+        }
+    } else {
+        holidaysData = holidaysRes.data || [];
+    }
+    
+    return {
+      ok: true,
+      teacherProfileId,
+      schoolId,
+      assignedClasses: (classesRes.data || []) as ClassData[],
+      holidays: holidaysData
+    };
+  } catch(e: any) {
+    console.error("Error in getTeacherAttendanceInitialDataAction:", e);
+    return { ok: false, message: e.message || "An unexpected error occurred." };
+  }
 }
 
 export async function saveAttendanceAction(

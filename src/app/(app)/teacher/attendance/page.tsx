@@ -9,24 +9,25 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import type { ClassData, Student, AttendanceRecord, AttendanceStatus, UserRole } from '@/types';
+import type { ClassData, Student, AttendanceStatus, UserRole, Holiday } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Save, ListChecks, Loader2, Search } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
-import { saveAttendanceAction } from './actions';
+import { saveAttendanceAction, getTeacherAttendanceInitialDataAction } from './actions';
 
 export default function TeacherAttendancePage() {
   const { toast } = useToast();
   const [assignedClasses, setAssignedClasses] = useState<ClassData[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [studentsInSelectedClass, setStudentsInSelectedClass] = useState<Student[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceStatus>>({}); // studentId: status
   const [currentDate, setCurrentDate] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingInitialData, setIsFetchingInitialData] = useState(true);
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID (teachers.id)
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -42,36 +43,18 @@ export default function TeacherAttendancePage() {
         setIsFetchingInitialData(false);
         return;
       }
+      
+      const result = await getTeacherAttendanceInitialDataAction(teacherUserId);
 
-      // Get teacher's profile ID and school_id
-      const { data: teacherProfile, error: teacherProfileError } = await supabase
-        .from('teachers')
-        .select('id, school_id') // teachers.id is the profile ID
-        .eq('user_id', teacherUserId)
-        .single();
-
-      if (teacherProfileError || !teacherProfile) {
-        toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
-        setIsFetchingInitialData(false);
-        return;
+      if (result.ok) {
+          setCurrentTeacherId(result.teacherProfileId || null);
+          setCurrentSchoolId(result.schoolId || null);
+          setAssignedClasses(result.assignedClasses || []);
+          setHolidays(result.holidays || []);
+      } else {
+          toast({ title: "Error", description: result.message || "Failed to load initial data.", variant: "destructive" });
       }
-      setCurrentTeacherId(teacherProfile.id);
-      setCurrentSchoolId(teacherProfile.school_id);
 
-      // Fetch classes assigned to this teacher
-      if (teacherProfile.id && teacherProfile.school_id) {
-        const { data: classesData, error: classesError } = await supabase
-          .from('classes')
-          .select('id, name, division')
-          .eq('teacher_id', teacherProfile.id)
-          .eq('school_id', teacherProfile.school_id);
-
-        if (classesError) {
-          toast({ title: "Error", description: "Failed to fetch assigned classes.", variant: "destructive" });
-        } else {
-          setAssignedClasses(classesData || []);
-        }
-      }
       setIsFetchingInitialData(false);
     }
     loadInitialTeacherData();
@@ -84,6 +67,24 @@ export default function TeacherAttendancePage() {
         setAttendanceRecords({});
         return;
       }
+      
+      // Check for Sunday or Holiday
+      const selectedDateObj = new Date(currentDate.replace(/-/g, '\/')); // More robust date parsing
+      const isSunday = selectedDateObj.getDay() === 0;
+      const holidayOnDate = holidays.find(h => format(new Date(h.date.replace(/-/g, '\/')), 'yyyy-MM-dd') === currentDate);
+
+      if (isSunday || holidayOnDate) {
+          toast({
+              title: isSunday ? "Sunday" : `Holiday: ${holidayOnDate?.name}`,
+              description: "Attendance cannot be taken on a Sunday or a holiday.",
+              variant: "destructive"
+          });
+          setStudentsInSelectedClass([]);
+          setAttendanceRecords({});
+          return;
+      }
+
+
       setIsLoading(true);
 
       // Fetch students in the selected class
@@ -130,7 +131,7 @@ export default function TeacherAttendancePage() {
       setIsLoading(false);
     }
     loadStudentsAndAttendance();
-  }, [selectedClassId, currentDate, currentSchoolId, toast]);
+  }, [selectedClassId, currentDate, currentSchoolId, toast, holidays]);
 
   const handleAttendanceChange = (studentId: string, status: AttendanceStatus) => {
     setAttendanceRecords(prev => ({ ...prev, [studentId]: status }));
