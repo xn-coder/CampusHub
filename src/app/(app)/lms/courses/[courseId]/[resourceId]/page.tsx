@@ -16,9 +16,9 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 
-// The 'new URL' approach can cause webpack issues in some environments.
-// We will fall back to using a reliable CDN path, dynamically inserting the version.
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.js`;
+// Import the worker entry file to let webpack handle it.
+// This is the most reliable method when CDN fetching fails.
+import 'pdfjs-dist/build/pdf.worker.entry.js';
 
 
 export default function CourseResourcePage() {
