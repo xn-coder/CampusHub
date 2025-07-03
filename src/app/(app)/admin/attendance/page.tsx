@@ -47,6 +47,7 @@ export default function AdminAttendancePage() {
   const { toast } = useToast();
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [allYearlyRecords, setAllYearlyRecords] = useState<Pick<AttendanceRecord, 'student_id' | 'status' | 'date'>[]>([]);
   const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary[]>([]);
   
@@ -78,7 +79,7 @@ export default function AdminAttendancePage() {
       setCurrentSchoolId(result.schoolId || null);
       setAllClasses(result.classes || []);
       setAllStudents(result.students || []);
-      // Holidays are fetched but used in the logic below, not stored in state here
+      setHolidays(result.holidays || []);
     } else {
       toast({ title: "Error loading initial data", description: result.message, variant: "destructive" });
     }
@@ -207,14 +208,17 @@ export default function AdminAttendancePage() {
       }
     });
 
-    return { present, absent, late, excused };
-  }, [selectedStudentRecords]);
+    const holidayDates = holidays.map(h => parseISO(h.date)).filter(isValid);
+
+    return { present, absent, late, excused, holiday: holidayDates };
+  }, [selectedStudentRecords, holidays]);
 
   const modifiersClassNames = {
     present: 'rdp-day_present',
     absent: 'rdp-day_absent',
     late: 'rdp-day_late',
     excused: 'rdp-day_excused',
+    holiday: 'rdp-day_holiday',
   };
 
   const selectedClassDetails = allClasses.find(c => c.id === selectedClassId);
@@ -332,6 +336,7 @@ export default function AdminAttendancePage() {
                             <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-400"></div> Absent</div>
                             <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400"></div> Late</div>
                             <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-400"></div> Excused</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-purple-400"></div> Holiday</div>
                         </div>
                     </div>
                     <div>

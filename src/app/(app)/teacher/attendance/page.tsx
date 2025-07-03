@@ -30,6 +30,7 @@ export default function TeacherAttendancePage() {
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isAttendanceDisabled, setIsAttendanceDisabled] = useState(false);
 
   useEffect(() => {
     async function loadInitialTeacherData() {
@@ -65,6 +66,7 @@ export default function TeacherAttendancePage() {
       if (!selectedClassId || !currentSchoolId || !currentDate) {
         setStudentsInSelectedClass([]);
         setAttendanceRecords({});
+        setIsAttendanceDisabled(false);
         return;
       }
       
@@ -81,8 +83,10 @@ export default function TeacherAttendancePage() {
           });
           setStudentsInSelectedClass([]);
           setAttendanceRecords({});
+          setIsAttendanceDisabled(true);
           return;
       }
+      setIsAttendanceDisabled(false);
 
 
       setIsLoading(true);
@@ -253,11 +257,11 @@ export default function TeacherAttendancePage() {
 
           {isLoading && selectedClassId && <p className="text-muted-foreground text-center py-4">Loading students and attendance...</p>}
           
-          {!isLoading && selectedClassId && studentsInSelectedClass.length === 0 && (
+          {!isLoading && selectedClassId && studentsInSelectedClass.length === 0 && !isAttendanceDisabled && (
             <p className="text-muted-foreground text-center py-4">No students found in {selectedClassDetails?.name} - {selectedClassDetails?.division}.</p>
           )}
 
-          {!isLoading && studentsInSelectedClass.length > 0 && (
+          {!isLoading && !isAttendanceDisabled && studentsInSelectedClass.length > 0 && (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -292,7 +296,7 @@ export default function TeacherAttendancePage() {
             </div>
           )}
         </CardContent>
-        {!isLoading && studentsInSelectedClass.length > 0 && selectedClassId && (
+        {!isLoading && !isAttendanceDisabled && studentsInSelectedClass.length > 0 && selectedClassId && (
           <CardFooter>
             <Button onClick={handleSaveAttendance} disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Attendance
