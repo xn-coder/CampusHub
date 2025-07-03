@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 
 // The 'new URL' approach can cause webpack issues in some environments.
 // We will fall back to using a reliable CDN path, dynamically inserting the version.
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.js`;
 
 
 export default function CourseResourcePage() {
