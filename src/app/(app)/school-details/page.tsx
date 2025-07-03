@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -7,13 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useState, type ChangeEvent, useEffect, type FormEvent } from 'react';
-import type { SchoolDetails, Holiday } from '@/types';
+import type { SchoolDetails, Holiday, UserRole } from '@/types';
 import { Calendar } from '@/components/ui/calendar';
-import { PlusCircle, Trash2, Loader2, Save } from 'lucide-react';
+import { PlusCircle, Trash2, Loader2, Save, Ban } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { getSchoolDetailsAndHolidaysAction, updateSchoolDetailsAction, addHolidayAction, deleteHolidayAction } from './actions';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+
 
 async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: user, error } = await supabase
@@ -41,13 +42,16 @@ export default function SchoolDetailsPage() {
   const [isSubmittingDetails, setIsSubmittingDetails] = useState(false);
   const [isSubmittingHoliday, setIsSubmittingHoliday] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
 
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
       const adminUserId = localStorage.getItem('currentUserId');
-      if (!adminUserId) {
-        toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      const role = localStorage.getItem('currentUserRole') as UserRole | null;
+      setCurrentUserRole(role);
+
+      if (!adminUserId || (role !== 'admin' && role !== 'superadmin')) {
         setIsLoading(false);
         return;
       }
@@ -131,6 +135,24 @@ export default function SchoolDetailsPage() {
     }
   };
 
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
+  
+  if (currentUserRole !== 'admin' && currentUserRole !== 'superadmin') {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="School Details" />
+        <Alert variant="destructive">
+            <Ban className="h-4 w-4" />
+            <AlertTitle>Access Denied</AlertTitle>
+            <AlertDescription>
+                You do not have permission to view or manage school details. This page is for administrators only.
+            </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">

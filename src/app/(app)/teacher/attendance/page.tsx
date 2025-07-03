@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -13,7 +12,7 @@ import type { ClassData, Student, AttendanceStatus, UserRole, Holiday } from '@/
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Save, ListChecks, Loader2, Search, Ban } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isSunday } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { saveAttendanceAction, getTeacherAttendanceInitialDataAction } from './actions';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -76,18 +75,35 @@ export default function TeacherAttendancePage() {
       }
       
       // Check for Sunday or Holiday
-      const selectedDateObj = new Date(currentDate.replace(/-/g, '\/')); // Use replace for cross-browser safety
-      const isSunday = selectedDateObj.getDay() === 0;
-      const holidayOnDate = holidays.find(h => h.date === currentDate); // Direct string comparison is safest
-
-      if (isSunday || holidayOnDate) {
-          const reason = isSunday ? "Attendance cannot be taken on a Sunday." : `Attendance is disabled due to a holiday: ${holidayOnDate?.name}.`;
-          setAttendanceDisabledReason(reason);
+      const selectedDateObj = parseISO(currentDate);
+      
+      if (isSunday(selectedDateObj)) {
+          setAttendanceDisabledReason("Attendance cannot be taken on a Sunday.");
           setStudentsInSelectedClass([]);
-          setAttendanceRecords({});
           setIsAttendanceDisabled(true);
           return;
       }
+
+      const holidayOnDate = holidays.find(h => {
+          try {
+              // Ensure both dates are parsed and compared in the same format
+              const holidayDate = parseISO(h.date);
+              return format(holidayDate, 'yyyy-MM-dd') === currentDate;
+          } catch (e) {
+              // Log error if date is invalid, but don't crash
+              console.error("Invalid date format in holidays array:", h.date);
+              return false;
+          }
+      });
+      
+      if (holidayOnDate) {
+          const reason = `Attendance is disabled due to a holiday: ${holidayOnDate?.name}.`;
+          setAttendanceDisabledReason(reason);
+          setStudentsInSelectedClass([]);
+          setIsAttendanceDisabled(true);
+          return;
+      }
+
       setIsAttendanceDisabled(false);
       setAttendanceDisabledReason(null);
 
@@ -317,4 +333,3 @@ export default function TeacherAttendancePage() {
     </div>
   );
 }
-
