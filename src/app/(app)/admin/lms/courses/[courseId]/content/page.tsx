@@ -174,8 +174,26 @@ export default function ManageCourseContentPage() {
               setUploadProgress(percent);
             }
           };
-          xhr.onload = () => xhr.status === 200 ? resolve() : reject(new Error(`Upload failed: ${xhr.statusText}`));
-          xhr.onerror = () => reject(new Error('Network error during upload.'));
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              let errorMessage = `Upload failed with status ${xhr.status}`;
+              if (xhr.statusText) {
+                errorMessage += ` - ${xhr.statusText}`;
+              }
+              try {
+                const errorResponse = JSON.parse(xhr.responseText);
+                if (errorResponse.message) {
+                  errorMessage += `: ${errorResponse.message}`;
+                }
+              } catch (e) {
+                // Not a JSON response
+              }
+              reject(new Error(errorMessage));
+            }
+          };
+          xhr.onerror = () => reject(new Error('Network error during upload. Please check your internet connection.'));
           xhr.send(resourceFile);
         });
 
@@ -452,3 +470,4 @@ export default function ManageCourseContentPage() {
     </div>
   );
 }
+
