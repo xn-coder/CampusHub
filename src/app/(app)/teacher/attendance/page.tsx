@@ -12,10 +12,12 @@ import { Input } from '@/components/ui/input';
 import type { ClassData, Student, AttendanceStatus, UserRole, Holiday } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Save, ListChecks, Loader2, Search } from 'lucide-react';
+import { Save, ListChecks, Loader2, Search, Ban } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { saveAttendanceAction, getTeacherAttendanceInitialDataAction } from './actions';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
 
 export default function TeacherAttendancePage() {
   const { toast } = useToast();
@@ -30,7 +32,9 @@ export default function TeacherAttendancePage() {
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
   const [isAttendanceDisabled, setIsAttendanceDisabled] = useState(false);
+  const [attendanceDisabledReason, setAttendanceDisabledReason] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadInitialTeacherData() {
@@ -67,27 +71,25 @@ export default function TeacherAttendancePage() {
         setStudentsInSelectedClass([]);
         setAttendanceRecords({});
         setIsAttendanceDisabled(false);
+        setAttendanceDisabledReason(null);
         return;
       }
       
       // Check for Sunday or Holiday
-      const selectedDateObj = new Date(currentDate.replace(/-/g, '\/')); // More robust date parsing
+      const selectedDateObj = new Date(currentDate.replace(/-/g, '\/')); // Use replace for cross-browser safety
       const isSunday = selectedDateObj.getDay() === 0;
-      const holidayOnDate = holidays.find(h => format(new Date(h.date.replace(/-/g, '\/')), 'yyyy-MM-dd') === currentDate);
+      const holidayOnDate = holidays.find(h => h.date === currentDate); // Direct string comparison is safest
 
       if (isSunday || holidayOnDate) {
-          toast({
-              title: isSunday ? "Sunday" : `Holiday: ${holidayOnDate?.name}`,
-              description: "Attendance cannot be taken on a Sunday or a holiday.",
-              variant: "destructive"
-          });
+          const reason = isSunday ? "Attendance cannot be taken on a Sunday." : `Attendance is disabled due to a holiday: ${holidayOnDate?.name}.`;
+          setAttendanceDisabledReason(reason);
           setStudentsInSelectedClass([]);
           setAttendanceRecords({});
           setIsAttendanceDisabled(true);
           return;
       }
       setIsAttendanceDisabled(false);
-
+      setAttendanceDisabledReason(null);
 
       setIsLoading(true);
 
@@ -255,6 +257,14 @@ export default function TeacherAttendancePage() {
              )}
           </div>
 
+          {isAttendanceDisabled && attendanceDisabledReason && (
+            <Alert variant="destructive" className="my-4">
+              <Ban className="h-4 w-4" />
+              <AlertTitle>Attendance Closed</AlertTitle>
+              <AlertDescription>{attendanceDisabledReason}</AlertDescription>
+            </Alert>
+          )}
+
           {isLoading && selectedClassId && <p className="text-muted-foreground text-center py-4">Loading students and attendance...</p>}
           
           {!isLoading && selectedClassId && studentsInSelectedClass.length === 0 && !isAttendanceDisabled && (
@@ -307,3 +317,4 @@ export default function TeacherAttendancePage() {
     </div>
   );
 }
+
