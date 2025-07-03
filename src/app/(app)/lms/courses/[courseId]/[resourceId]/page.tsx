@@ -16,12 +16,9 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 
-// The 'new URL' approach will ask Next.js to copy the worker file into the build output.
-// This is the recommended and most robust way for Next.js App Router.
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.js',
-  import.meta.url,
-).toString();
+// The 'new URL' approach can cause webpack issues in some environments.
+// We will fall back to using a reliable CDN path, dynamically inserting the version.
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 
 export default function CourseResourcePage() {
