@@ -20,6 +20,7 @@ export default function AdminIdCardPrintingPage() {
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [currentSchoolId, setCurrentSchoolId] = useState<string|null>(null);
+  const [currentSchoolName, setCurrentSchoolName] = useState<string|null>(null);
   const [isLoadingPage, setIsLoadingPage] = useState(true);
 
   const [selectedClassId, setSelectedClassId] = useState<string>('all'); 
@@ -38,11 +39,13 @@ export default function AdminIdCardPrintingPage() {
       const result = await getStudentDataExportPageDataAction(adminUserId);
       if (result.ok) {
         setCurrentSchoolId(result.schoolId || null);
+        setCurrentSchoolName(result.schoolName || null);
         setAllStudents(result.students || []);
         setAllClasses(result.classes || []);
       } else {
         toast({ title: "Error loading data", description: result.message, variant: "destructive" });
         setCurrentSchoolId(null);
+        setCurrentSchoolName(null);
         setAllStudents([]);
         setAllClasses([]);
       }
@@ -66,7 +69,7 @@ export default function AdminIdCardPrintingPage() {
     
     toast({ title: "Generating CSV...", description: `Preparing data for ${studentsToExport.length} student(s).` });
     
-    const headers = ["Student ID", "Name", "Email", "Roll Number", "Class", "Guardian Name", "Contact Number", "Address", "Blood Group", "Date of Birth", "Admission Date"];
+    const headers = ["Student ID", "Name", "Email", "Roll Number", "Class", "School Name", "Guardian Name", "Contact Number", "Address", "Blood Group", "Date of Birth", "Admission Date"];
     const csvRows = [
         headers.join(','),
         ...studentsToExport.map(student => {
@@ -80,7 +83,8 @@ export default function AdminIdCardPrintingPage() {
                 `"${(student.email || '').replace(/"/g, '""')}"`,
                 `"${student.roll_number || ''}"`,
                 `"${className}"`,
-                `"${student.guardian_name || ''}"`,
+                `"${(currentSchoolName || 'N/A').replace(/"/g, '""')}"`,
+                `"${(student.guardian_name || '').replace(/"/g, '""')}"`,
                 `"${student.contact_number || ''}"`,
                 `"${(student.address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
                 `"${student.blood_group || ''}"`,

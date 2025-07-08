@@ -22,6 +22,7 @@ export default function TeacherDataExportPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentSchoolName, setCurrentSchoolName] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -48,9 +49,10 @@ export default function TeacherDataExportPage() {
       setCurrentSchoolId(teacherProfile.school_id);
 
       if (teacherProfile.id && teacherProfile.school_id) {
-        const [classesRes, studentsRes] = await Promise.all([
+        const [classesRes, studentsRes, schoolRes] = await Promise.all([
           supabase.from('classes').select('*').eq('teacher_id', teacherProfile.id).eq('school_id', teacherProfile.school_id),
-          supabase.from('students').select('*').eq('school_id', teacherProfile.school_id)
+          supabase.from('students').select('*').eq('school_id', teacherProfile.school_id),
+          supabase.from('schools').select('name').eq('id', teacherProfile.school_id).single()
         ]);
 
         if (classesRes.error) toast({ title: "Error fetching classes", variant: "destructive" });
@@ -58,6 +60,9 @@ export default function TeacherDataExportPage() {
 
         if (studentsRes.error) toast({ title: "Error fetching students", variant: "destructive" });
         else setAllStudentsInSchool(studentsRes.data || []);
+        
+        if (schoolRes.error) toast({ title: "Error fetching school name", variant: "destructive" });
+        else setCurrentSchoolName(schoolRes.data?.name || null);
       }
       setIsLoading(false);
     }
@@ -77,7 +82,7 @@ export default function TeacherDataExportPage() {
 
     toast({ title: "Generating CSV...", description: `Preparing data for ${studentsToExport.length} student(s).` });
     
-    const headers = ["Student ID", "Name", "Email", "Roll Number", "Class", "Guardian Name", "Contact Number", "Address", "Blood Group", "Date of Birth", "Admission Date"];
+    const headers = ["Student ID", "Name", "Email", "Roll Number", "Class", "School Name", "Guardian Name", "Contact Number", "Address", "Blood Group", "Date of Birth", "Admission Date"];
     const csvRows = [
         headers.join(','),
         ...studentsToExport.map(student => {
@@ -91,7 +96,8 @@ export default function TeacherDataExportPage() {
                 `"${(student.email || '').replace(/"/g, '""')}"`,
                 `"${student.roll_number || ''}"`,
                 `"${className}"`,
-                `"${student.guardian_name || ''}"`,
+                `"${(currentSchoolName || 'N/A').replace(/"/g, '""')}"`,
+                `"${(student.guardian_name || '').replace(/"/g, '""')}"`,
                 `"${student.contact_number || ''}"`,
                 `"${(student.address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
                 `"${student.blood_group || ''}"`,
