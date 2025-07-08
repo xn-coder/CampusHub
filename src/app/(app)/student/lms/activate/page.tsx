@@ -11,6 +11,7 @@ import { useState, useEffect, type FormEvent, useCallback, Suspense } from 'reac
 import { useToast } from "@/hooks/use-toast";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { KeyRound, CheckCircle, XCircle, Loader2, CreditCard } from 'lucide-react';
+import Script from 'next/script';
 import { 
   getCourseActivationPageInitialDataAction, 
   activateCourseWithCodeAction,
@@ -188,59 +189,62 @@ function ActivateLmsForm() {
 
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader 
-        title="Activate LMS Course" 
-        description="Enter your activation code or pay to get access to a paid course." 
-      />
-      <Card className="max-w-lg mx-auto w-full">
-        <CardHeader>
-          <CardTitle className="flex items-center"><KeyRound className="mr-2 h-5 w-5" /> Course Activation</CardTitle>
-          {targetCourse && <CardDescription>You are activating: <strong>{targetCourse.title}</strong></CardDescription>}
-        </CardHeader>
-        <form onSubmit={handleSubmitCode}>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="activationCode">Activation Code</Label>
-              <Input 
-                id="activationCode" 
-                value={activationCode} 
-                onChange={(e) => setActivationCode(e.target.value.toUpperCase())} 
-                placeholder="Enter code from vendor..." 
-                disabled={isLoading || isPageLoading}
-              />
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-3">
-             <Button type="submit" className="w-full" disabled={isLoading || isPageLoading || !activationCode.trim()}>
-              {isLoading && activationCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-              {isLoading && activationCode ? 'Activating...' : 'Activate with Code'}
-            </Button>
-            {targetCourse?.is_paid && (
-                <>
-                    <div className="relative flex py-2 items-center w-full">
-                        <div className="flex-grow border-t border-muted"></div>
-                        <span className="flex-shrink mx-4 text-muted-foreground text-xs">OR</span>
-                        <div className="flex-grow border-t border-muted"></div>
-                    </div>
-                    <Button type="button" onClick={handlePayment} className="w-full" disabled={isLoading || isPageLoading || !targetCourse}>
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
-                        Pay <span className="font-mono mx-1">₹</span>{targetCourse?.price?.toFixed(2)} and Enroll
-                    </Button>
-                </>
-            )}
-          </CardFooter>
-        </form>
-         <CardContent>
-             {message && (
-              <div className={`p-3 rounded-md text-sm ${message.type === 'success' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'}`}>
-                {message.type === 'success' ? <CheckCircle className="inline mr-1 h-4 w-4"/> : <XCircle className="inline mr-1 h-4 w-4"/>}
-                {message.text}
+    <>
+      <Script id="razorpay-checkout-js" src="https://checkout.razorpay.com/v1/checkout.js" />
+      <div className="flex flex-col gap-6">
+        <PageHeader 
+          title="Activate LMS Course" 
+          description="Enter your activation code or pay to get access to a paid course." 
+        />
+        <Card className="max-w-lg mx-auto w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center"><KeyRound className="mr-2 h-5 w-5" /> Course Activation</CardTitle>
+            {targetCourse && <CardDescription>You are activating: <strong>{targetCourse.title}</strong></CardDescription>}
+          </CardHeader>
+          <form onSubmit={handleSubmitCode}>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="activationCode">Activation Code</Label>
+                <Input 
+                  id="activationCode" 
+                  value={activationCode} 
+                  onChange={(e) => setActivationCode(e.target.value.toUpperCase())} 
+                  placeholder="Enter code from vendor..." 
+                  disabled={isLoading || isPageLoading}
+                />
               </div>
-            )}
-        </CardContent>
-      </Card>
-    </div>
+            </CardContent>
+            <CardFooter className="flex flex-col gap-3">
+              <Button type="submit" className="w-full" disabled={isLoading || isPageLoading || !activationCode.trim()}>
+                {isLoading && activationCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                {isLoading && activationCode ? 'Activating...' : 'Activate with Code'}
+              </Button>
+              {targetCourse?.is_paid && (
+                  <>
+                      <div className="relative flex py-2 items-center w-full">
+                          <div className="flex-grow border-t border-muted"></div>
+                          <span className="flex-shrink mx-4 text-muted-foreground text-xs">OR</span>
+                          <div className="flex-grow border-t border-muted"></div>
+                      </div>
+                      <Button type="button" onClick={handlePayment} className="w-full" disabled={isLoading || isPageLoading || !targetCourse}>
+                          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+                          Pay <span className="font-mono mx-1">₹</span>{targetCourse?.price?.toFixed(2)} and Enroll
+                      </Button>
+                  </>
+              )}
+            </CardFooter>
+          </form>
+          <CardContent>
+              {message && (
+                <div className={`p-3 rounded-md text-sm ${message.type === 'success' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'}`}>
+                  {message.type === 'success' ? <CheckCircle className="inline mr-1 h-4 w-4"/> : <XCircle className="inline mr-1 h-4 w-4"/>}
+                  {message.text}
+                </div>
+              )}
+          </CardContent>
+        </Card>
+      </div>
+    </>
   );
 }
 

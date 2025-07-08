@@ -15,6 +15,7 @@ import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import type jsPDF from 'jspdf';
 import type { UserOptions } from 'jspdf-autotable';
+import Script from 'next/script';
 
 interface JsPDFWithAutoTable extends jsPDF {
   autoTable: (options: UserOptions) => jsPDF;
@@ -266,95 +267,98 @@ export default function StudentPaymentHistoryPage() {
 
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader 
-        title="My Payment History" 
-        description="View your fee payments, transaction details, and payment statuses." 
-      />
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center"><DollarSign className="mr-2 h-5 w-5" />My Fee Payment Records</CardTitle>
-          <CardDescription>A history of all your financial transactions with the school.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading payment history...</div>
-          ) : !currentStudentProfileId ? (
-             <p className="text-destructive text-center py-4">Could not load student profile. Payment history unavailable.</p>
-          ) : payments.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No payment records found for you.</p>
-          ) : (
-            <div className="space-y-6">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                        <TableHead><FileText className="inline-block mr-1 h-4 w-4" />Fee Category</TableHead>
-                        <TableHead>Due Date</TableHead>
-                        <TableHead className="text-right">Assigned (<span className="font-mono">₹</span>)</TableHead>
-                        <TableHead className="text-right">Paid (<span className="font-mono">₹</span>)</TableHead>
-                        <TableHead className="text-right">Due (<span className="font-mono">₹</span>)</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {payments.map((payment) => {
-                            const dueAmount = payment.assigned_amount - payment.paid_amount;
-                            return (
-                                <TableRow key={payment.id}>
-                                    <TableCell className="font-medium">{getFeeCategoryName(payment.fee_category_id)}</TableCell>
-                                    <TableCell>{formatDateSafe(payment.due_date)}</TableCell>
-                                    <TableCell className="text-right"><span className="font-mono">₹</span>{payment.assigned_amount.toFixed(2)}</TableCell>
-                                    <TableCell className="text-right"><span className="font-mono">₹</span>{payment.paid_amount.toFixed(2)}</TableCell>
-                                    <TableCell className={`text-right font-semibold ${dueAmount > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{dueAmount.toFixed(2)}</TableCell>
-                                    <TableCell>
-                                    <Badge variant={
-                                        payment.status === 'Paid' ? 'default' :
-                                        payment.status === 'Partially Paid' ? 'secondary' :
-                                        payment.status === 'Overdue' ? 'destructive' : 
-                                        'outline'
-                                    }>
-                                        {payment.status}
-                                    </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        {payment.status !== 'Paid' && (
-                                            <Button variant="outline" size="sm" onClick={() => handlePayFee(payment)} disabled={isPaying}>
-                                                <CreditCard className="mr-1 h-3 w-3" /> Pay
-                                            </Button>
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            )
-                        })}
-                    </TableBody>
-                </Table>
-            </div>
+    <>
+      <Script id="razorpay-checkout-js" src="https://checkout.razorpay.com/v1/checkout.js" />
+      <div className="flex flex-col gap-6">
+        <PageHeader 
+          title="My Payment History" 
+          description="View your fee payments, transaction details, and payment statuses." 
+        />
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center"><DollarSign className="mr-2 h-5 w-5" />My Fee Payment Records</CardTitle>
+            <CardDescription>A history of all your financial transactions with the school.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading payment history...</div>
+            ) : !currentStudentProfileId ? (
+              <p className="text-destructive text-center py-4">Could not load student profile. Payment history unavailable.</p>
+            ) : payments.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">No payment records found for you.</p>
+            ) : (
+              <div className="space-y-6">
+                  <Table>
+                      <TableHeader>
+                          <TableRow>
+                          <TableHead><FileText className="inline-block mr-1 h-4 w-4" />Fee Category</TableHead>
+                          <TableHead>Due Date</TableHead>
+                          <TableHead className="text-right">Assigned (<span className="font-mono">₹</span>)</TableHead>
+                          <TableHead className="text-right">Paid (<span className="font-mono">₹</span>)</TableHead>
+                          <TableHead className="text-right">Due (<span className="font-mono">₹</span>)</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                          </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                          {payments.map((payment) => {
+                              const dueAmount = payment.assigned_amount - payment.paid_amount;
+                              return (
+                                  <TableRow key={payment.id}>
+                                      <TableCell className="font-medium">{getFeeCategoryName(payment.fee_category_id)}</TableCell>
+                                      <TableCell>{formatDateSafe(payment.due_date)}</TableCell>
+                                      <TableCell className="text-right"><span className="font-mono">₹</span>{payment.assigned_amount.toFixed(2)}</TableCell>
+                                      <TableCell className="text-right"><span className="font-mono">₹</span>{payment.paid_amount.toFixed(2)}</TableCell>
+                                      <TableCell className={`text-right font-semibold ${dueAmount > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{dueAmount.toFixed(2)}</TableCell>
+                                      <TableCell>
+                                      <Badge variant={
+                                          payment.status === 'Paid' ? 'default' :
+                                          payment.status === 'Partially Paid' ? 'secondary' :
+                                          payment.status === 'Overdue' ? 'destructive' : 
+                                          'outline'
+                                      }>
+                                          {payment.status}
+                                      </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-right">
+                                          {payment.status !== 'Paid' && (
+                                              <Button variant="outline" size="sm" onClick={() => handlePayFee(payment)} disabled={isPaying}>
+                                                  <CreditCard className="mr-1 h-3 w-3" /> Pay
+                                              </Button>
+                                          )}
+                                      </TableCell>
+                                  </TableRow>
+                              )
+                          })}
+                      </TableBody>
+                  </Table>
+              </div>
+            )}
+          </CardContent>
+          {payments.length > 0 && !isLoading && (
+              <CardFooter>
+                  <div className="flex w-full items-center gap-4 pt-4 border-t flex-wrap justify-end">
+                      <Button variant="outline" onClick={handleDownloadHistory} disabled={isLoading || isPaying}>
+                          <Download className="mr-2 h-4 w-4" />
+                          Download History
+                      </Button>
+                      <div className="flex-grow sm:flex-grow-0" />
+                      <div className="text-right">
+                          <p className="text-muted-foreground">Total Amount Due</p>
+                          <p className="text-2xl font-bold"><span className="font-mono">₹</span>{totalDue.toFixed(2)}</p>
+                      </div>
+                      {totalDue > 0 && (
+                          <Button onClick={handlePayAllFees} disabled={isPaying || isLoading}>
+                              {isPaying ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4"/>}
+                              Pay All Due Fees
+                          </Button>
+                      )}
+                  </div>
+              </CardFooter>
           )}
-        </CardContent>
-         {payments.length > 0 && !isLoading && (
-            <CardFooter>
-                <div className="flex w-full items-center gap-4 pt-4 border-t flex-wrap justify-end">
-                    <Button variant="outline" onClick={handleDownloadHistory} disabled={isLoading || isPaying}>
-                        <Download className="mr-2 h-4 w-4" />
-                        Download History
-                    </Button>
-                    <div className="flex-grow sm:flex-grow-0" />
-                    <div className="text-right">
-                        <p className="text-muted-foreground">Total Amount Due</p>
-                        <p className="text-2xl font-bold"><span className="font-mono">₹</span>{totalDue.toFixed(2)}</p>
-                    </div>
-                    {totalDue > 0 && (
-                        <Button onClick={handlePayAllFees} disabled={isPaying || isLoading}>
-                            {isPaying ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4"/>}
-                            Pay All Due Fees
-                        </Button>
-                    )}
-                </div>
-            </CardFooter>
-         )}
-      </Card>
+        </Card>
 
-    </div>
+      </div>
+    </>
   );
 }
