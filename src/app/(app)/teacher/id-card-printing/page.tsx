@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -6,13 +5,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { ClassData, Student, UserRole } from '@/types';
+import type { ClassData, Student } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Download, Table as TableIcon } from 'lucide-react';
+import { Loader2, Download, Printer } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { format, parseISO } from 'date-fns';
+import { IdCardPreview } from '@/components/shared/id-card-preview';
+import { Checkbox } from '@/components/ui/checkbox';
+
 
 export default function TeacherDataExportPage() {
   const { toast } = useToast();
@@ -23,6 +24,8 @@ export default function TeacherDataExportPage() {
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [currentSchoolName, setCurrentSchoolName] = useState<string | null>(null);
+  const [selectedStudentsForPrint, setSelectedStudentsForPrint] = useState<string[]>([]);
+
 
   useEffect(() => {
     async function fetchData() {
@@ -69,23 +72,38 @@ export default function TeacherDataExportPage() {
     fetchData();
   }, [toast]);
 
-  const studentsToExport = useMemo(() => {
+  const studentsToDisplay = useMemo(() => {
     if (!selectedClassId) return [];
     return allStudentsInSchool.filter(s => s.class_id === selectedClassId);
   }, [selectedClassId, allStudentsInSchool]);
 
+  const handleSelectStudentForPrint = (studentId: string, isSelected: boolean) => {
+    setSelectedStudentsForPrint(prev => 
+      isSelected ? [...prev, studentId] : prev.filter(id => id !== studentId)
+    );
+  };
+  
+  const handleSelectAllForPrint = (isSelected: boolean) => {
+    if (isSelected) {
+      setSelectedStudentsForPrint(studentsToDisplay.map(s => s.id));
+    } else {
+      setSelectedStudentsForPrint([]);
+    }
+  };
+
+
   const handleDownloadCsv = () => {
-    if (studentsToExport.length === 0) {
+    if (studentsToDisplay.length === 0) {
         toast({ title: "No Data", description: "There are no students in the selected class to download.", variant: "destructive" });
         return;
     }
 
-    toast({ title: "Generating CSV...", description: `Preparing data for ${studentsToExport.length} student(s).` });
+    toast({ title: "Generating CSV...", description: `Preparing data for ${studentsToDisplay.length} student(s).` });
     
     const headers = ["Student ID", "Name", "Email", "Roll Number", "Class", "School Name", "Guardian Name", "Contact Number", "Address", "Blood Group", "Date of Birth", "Admission Date"];
     const csvRows = [
         headers.join(','),
-        ...studentsToExport.map(student => {
+        ...studentsToDisplay.map(student => {
             const className = assignedClasses.find(c => c.id === student.class_id)?.name || 'N/A';
             const dob = student.date_of_birth ? format(parseISO(student.date_of_birth), 'yyyy-MM-dd') : '';
             const admissionDate = student.admission_date ? format(parseISO(student.admission_date), 'yyyy-MM-dd') : '';
@@ -117,6 +135,20 @@ export default function TeacherDataExportPage() {
     link.click();
     document.body.removeChild(link);
   };
+
+  const handlePrint = () => {
+    if (selectedStudentsForPrint.length === 0) {
+      toast({title: "No Cards Selected", description: "Please select one or more ID cards to print.", variant: "destructive"});
+      return;
+    }
+    window.print();
+  };
+  
+  const getStudentClassName = (student: Student) => {
+    if (!student.class_id) return "N/A";
+    const cls = assignedClasses.find(c => c.id === student.class_id);
+    return cls ? `${cls.name} - ${cls.division}` : 'Unknown Class';
+  };
   
   if (isLoading && !currentTeacherId) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading teacher data...</span></div>;
@@ -136,65 +168,70 @@ export default function TeacherDataExportPage() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="ID Card Printing" 
-        description="Download detailed student information for your classes, ideal for creating ID cards." 
+        description="Preview, select, and print student ID cards for your assigned classes." 
       />
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><TableIcon className="mr-2 h-5 w-5" /> Export Student Data</CardTitle>
-          <CardDescription>Choose one of your classes to view the student roster and download their information.</CardDescription>
+          <CardTitle className="flex items-center">ID Card Generation</CardTitle>
+          <CardDescription>Choose one of your classes to view the student roster, then select cards to print.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="classSelect">Select Your Class</Label>
-            <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading}>
-              <SelectTrigger id="classSelect" className="max-w-md">
-                <SelectValue placeholder="Choose a class" />
-              </SelectTrigger>
-              <SelectContent>
-                {assignedClasses.length > 0 ? assignedClasses.map(cls => (
-                  <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
-                )) : <SelectItem value="-" disabled>No classes assigned to you</SelectItem>}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {isLoading && selectedClassId && <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading students...</div>}
-
-          {!isLoading && selectedClassId && studentsToExport.length === 0 && (
-            <p className="text-muted-foreground text-center py-4">No students found in {assignedClasses.find(c=>c.id === selectedClassId)?.name || 'this class'}.</p>
-          )}
-
-          {!isLoading && studentsToExport.length > 0 && (
-            <div className="max-h-[60vh] overflow-y-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Roll Number</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {studentsToExport.map(student => (
-                    <TableRow key={student.id}>
-                      <TableCell>{student.name}</TableCell>
-                      <TableCell>{student.email}</TableCell>
-                      <TableCell>{student.roll_number || 'N/A'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+        <CardContent>
+          <div className="mb-6 flex flex-col md:flex-row gap-4 items-end print:hidden">
+            <div className="flex-grow">
+                <Label htmlFor="classSelect">Select Your Class</Label>
+                <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading}>
+                  <SelectTrigger id="classSelect" className="max-w-md">
+                    <SelectValue placeholder="Choose a class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assignedClasses.length > 0 ? assignedClasses.map(cls => (
+                      <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                    )) : <SelectItem value="-" disabled>No classes assigned to you</SelectItem>}
+                  </SelectContent>
+                </Select>
             </div>
-          )}
+            <div className="flex gap-2">
+              <Button onClick={handleDownloadCsv} disabled={studentsToDisplay.length === 0} variant="outline">
+                  <Download className="mr-2 h-4 w-4" /> Download CSV
+              </Button>
+              <Button onClick={handlePrint} disabled={selectedStudentsForPrint.length === 0}>
+                  <Printer className="mr-2 h-4 w-4" /> Print Selected ({selectedStudentsForPrint.length})
+              </Button>
+            </div>
+          </div>
+          
+           {selectedClassId && studentsToDisplay.length > 0 && (
+                <div className="flex items-center space-x-2 mb-4 print:hidden">
+                    <Checkbox
+                      id="select-all"
+                      onCheckedChange={(checked) => handleSelectAllForPrint(Boolean(checked))}
+                      checked={selectedStudentsForPrint.length === studentsToDisplay.length && studentsToDisplay.length > 0}
+                    />
+                    <Label htmlFor="select-all">Select All Visible Cards</Label>
+                </div>
+            )}
+               
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 printable-area">
+                {isLoading && selectedClassId ? (
+                    <div className="col-span-full text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading students...</div>
+                ) : studentsToDisplay.length > 0 ? (
+                    studentsToDisplay.map(student => (
+                        <div key={student.id} className={`relative print-card ${!selectedStudentsForPrint.includes(student.id) ? 'print:hidden' : ''}`}>
+                            <Checkbox
+                                className="absolute top-2 right-2 z-10 print:hidden"
+                                checked={selectedStudentsForPrint.includes(student.id)}
+                                onCheckedChange={(checked) => handleSelectStudentForPrint(student.id, Boolean(checked))}
+                            />
+                            <IdCardPreview student={student} schoolName={currentSchoolName} className={getStudentClassName(student)} />
+                        </div>
+                    ))
+                ) : (
+                    <p className="text-muted-foreground text-center py-4 col-span-full">
+                       {selectedClassId ? 'No students found in this class.' : 'Please select a class to view ID cards.'}
+                    </p>
+                )}
+            </div>
         </CardContent>
-        {studentsToExport.length > 0 && (
-          <CardFooter>
-            <Button onClick={handleDownloadCsv} disabled={isLoading}>
-              <Download className="mr-2 h-4 w-4" /> 
-              Download Data for {studentsToExport.length} Student(s)
-            </Button>
-          </CardFooter>
-        )}
       </Card>
     </div>
   );
