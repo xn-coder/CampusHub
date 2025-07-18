@@ -1,5 +1,7 @@
 
 import type {NextConfig} from 'next';
+import CopyWebpackPlugin from 'copy-webpack-plugin';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -21,8 +23,19 @@ const nextConfig: NextConfig = {
   },
   webpack: (config) => {
     config.resolve.alias.canvas = false;
-    // Add alias for pdfjs-dist
-    config.resolve.alias['pdfjs-dist'] = 'pdfjs-dist/build/pdf.mjs';
+    
+    // Copy the pdf.worker.min.js file to the public directory
+    config.plugins.push(
+      new CopyWebpackPlugin({
+        patterns: [
+          {
+            from: path.join(path.dirname(require.resolve('pdfjs-dist/package.json')), 'build/pdf.worker.min.js'),
+            to: path.join(__dirname, 'public'),
+          },
+        ],
+      })
+    );
+
     return config;
   },
 };
