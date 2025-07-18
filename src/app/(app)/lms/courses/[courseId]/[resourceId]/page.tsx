@@ -4,8 +4,8 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCourseForViewingAction } from '../actions';
-import type { LessonContentResource, QuizQuestion } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle } from 'lucide-react';
+import type { LessonContentResource, QuizQuestion, Course, CourseResource } from '@/types';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import HTMLFlipBook from 'react-pageflip';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { supabase } from '@/lib/supabaseClient';
 
 // Configure the worker to be served from the public directory
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
@@ -27,8 +28,8 @@ export default function CourseResourcePage() {
     const courseId = params.courseId as string;
     const resourceId = params.resourceId as string;
 
+    const [course, setCourse] = useState<(Course & { resources: CourseResource[] }) | null>(null);
     const [resource, setResource] = useState<LessonContentResource | null>(null);
-    const [courseTitle, setCourseTitle] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +41,12 @@ export default function CourseResourcePage() {
     
     // Completion state
     const [isCompleted, setIsCompleted] = useState(false);
+    const [overallProgress, setOverallProgress] = useState(0);
+
+    // Certificate state
+    const [currentStudentName, setCurrentStudentName] = useState<string>('');
+    const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
+
 
     // PDF viewer state
     const [numPages, setNumPages] = useState<number | null>(null);
@@ -49,6 +56,30 @@ export default function CourseResourcePage() {
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
     const [quizResult, setQuizResult] = useState<{ score: number; total: number; passed: boolean; } | null>(null);
+
+    const calculateProgress = (completedResources: Record<string, boolean>) => {
+        if (!course) return 0;
+        const lessons = course.resources.filter(r => r.type === 'note');
+        if (lessons.length === 0) return 0;
+        const allLessonContents = lessons.flatMap(lesson => {
+            try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } 
+            catch { return []; }
+        });
+        if (allLessonContents.length === 0) return 0;
+        const completedCount = allLessonContents.filter(res => completedResources[res.id]).length;
+        return Math.round((completedCount / allLessonContents.length) * 100);
+    };
+
+    const handleMarkAsComplete = () => {
+        if (typeof window !== 'undefined') {
+            const storedProgressString = localStorage.getItem(`progress_${courseId}`);
+            const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
+            const newProgress = { ...storedProgress, [resourceId]: true };
+            localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
+            setIsCompleted(true);
+            setOverallProgress(calculateProgress(newProgress));
+        }
+    };
 
 
     useEffect(() => {
@@ -69,9 +100,35 @@ export default function CourseResourcePage() {
             setSelectedAnswers({});
             setQuizResult(null);
 
-            getCourseForViewingAction(courseId).then(result => {
+            getCourseForViewingAction(courseId).then(async result => {
                 if (result.ok && result.course) {
-                    setCourseTitle(result.course.title);
+                    setCourse(result.course); // Set course first for progress calculation
+                    
+                    const userId = localStorage.getItem('currentUserId');
+                    if(userId) {
+                        const { data: user } = await supabase.from('users').select('name, school_id').eq('id', userId).single();
+                        setCurrentStudentName(user?.name || 'Valued Student');
+                        if (user?.school_id) {
+                            const { data: school } = await supabase.from('schools').select('name').eq('id', user.school_id).single();
+                            setCurrentSchoolName(school?.name || 'CampusHub');
+                        } else {
+                            setCurrentSchoolName('CampusHub');
+                        }
+                    }
+
+                    const storedProgressString = localStorage.getItem(`progress_${courseId}`);
+                    const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
+                    
+                    const lessons = result.course.resources.filter(r => r.type === 'note');
+                    const allLessonContents = lessons.flatMap(lesson => {
+                        try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } 
+                        catch { return []; }
+                    });
+                    if (allLessonContents.length > 0) {
+                        const completedCount = allLessonContents.filter(res => storedProgress[res.id]).length;
+                        setOverallProgress(Math.round((completedCount / allLessonContents.length) * 100));
+                    }
+
 
                     const allFlattenedResources: LessonContentResource[] = [];
                     for (const lesson of result.course.resources) {
@@ -177,17 +234,6 @@ export default function CourseResourcePage() {
         setQuizResult(null);
     };
 
-    const handleMarkAsComplete = () => {
-        if (typeof window !== 'undefined') {
-            const storedProgressString = localStorage.getItem(`progress_${courseId}`);
-            const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
-            const newProgress = { ...storedProgress, [resourceId]: true };
-            localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
-            setIsCompleted(true);
-        }
-    };
-
-
     if (isLoading) {
         return <div className="text-center py-10 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading resource...</div>;
     }
@@ -196,7 +242,7 @@ export default function CourseResourcePage() {
         return <div className="text-center py-10 text-destructive">{error}</div>;
     }
     
-    if (!resource) {
+    if (!resource || !course) {
         return <div className="text-center py-10 text-destructive">Resource not found.</div>;
     }
 
@@ -204,7 +250,7 @@ export default function CourseResourcePage() {
         <div className="flex flex-col gap-6">
             <PageHeader
                 title={resource.title}
-                description={`Part of course: ${courseTitle}`}
+                description={`Part of course: ${course.title}`}
                 actions={
                     <Button variant="outline" onClick={() => router.push(`/lms/courses/${courseId}`)}>
                         <ArrowLeft className="mr-2 h-4 w-4" />
@@ -336,7 +382,7 @@ export default function CourseResourcePage() {
                         </div>
                     )}
                 </CardContent>
-                 <CardFooter className="flex justify-between items-center">
+                 <CardFooter className="flex justify-between items-center flex-wrap gap-2">
                     <Button variant="outline" asChild disabled={!previousResourceId}>
                         <Link href={previousResourceId ? `/lms/courses/${courseId}/${previousResourceId}` : '#'} className="max-w-xs">
                             <ArrowLeft className="mr-2 h-4 w-4 shrink-0" />
@@ -363,12 +409,20 @@ export default function CourseResourcePage() {
                             </Link>
                         </Button>
                     ) : (
-                        <Button variant="outline" disabled={true} className="max-w-xs">
-                            <div className="flex flex-col items-end">
-                                <span className="text-xs text-muted-foreground">End of course</span>
-                            </div>
-                            <ArrowRight className="ml-2 h-4 w-4 shrink-0" />
-                        </Button>
+                        isCompleted && overallProgress === 100 ? (
+                           <Button asChild>
+                                <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                                    <Award className="mr-2 h-4 w-4" /> Generate Certificate
+                                </Link>
+                            </Button>
+                        ) : (
+                            <Button variant="outline" disabled={true} className="max-w-xs">
+                                <div className="flex flex-col items-end">
+                                    <span className="text-xs text-muted-foreground">End of course</span>
+                                </div>
+                                <ArrowRight className="ml-2 h-4 w-4 shrink-0" />
+                            </Button>
+                        )
                     )}
                 </CardFooter>
             </Card>
