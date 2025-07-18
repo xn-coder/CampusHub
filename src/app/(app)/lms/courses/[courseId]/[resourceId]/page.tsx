@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCourseForViewingAction } from '../actions';
 import type { LessonContentResource, QuizQuestion } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight } from 'lucide-react';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import HTMLFlipBook from 'react-pageflip';
 
 // Import the worker entry file to let webpack handle it.
 // This is the most reliable method when CDN fetching fails.
@@ -38,15 +39,13 @@ export default function CourseResourcePage() {
     const [previousResourceTitle, setPreviousResourceTitle] = useState<string | null>(null);
     const [nextResourceTitle, setNextResourceTitle] = useState<string | null>(null);
     
-    // Video-specific state
-    const [isVideoCompleted, setIsVideoCompleted] = useState(false);
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const lastValidTime = useRef(0);
+    // Completion state
+    const [isCompleted, setIsCompleted] = useState(false);
 
     // PDF viewer state
     const [numPages, setNumPages] = useState<number | null>(null);
-    const [pageNumber, setPageNumber] = useState(1);
-
+    const [pdfPages, setPdfPages] = useState<JSX.Element[]>([]);
+    
     // Quiz state
     const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -54,42 +53,20 @@ export default function CourseResourcePage() {
     const [quizResult, setQuizResult] = useState<{ score: number; total: number; passed: boolean; } | null>(null);
 
 
-    // Effect to prevent forward seeking in videos
     useEffect(() => {
-        const video = videoRef.current;
-        if (!video) return;
-
-        const handleTimeUpdate = () => {
-            if (Math.abs(video.currentTime - lastValidTime.current) < 2) { 
-                lastValidTime.current = video.currentTime;
-            }
-        };
-
-        const handleSeeking = () => {
-            if (video.currentTime > lastValidTime.current) {
-                video.currentTime = lastValidTime.current;
-            }
-        };
-
-        video.addEventListener('timeupdate', handleTimeUpdate);
-        video.addEventListener('seeking', handleSeeking);
-
-        return () => {
-            if (video) {
-              video.removeEventListener('timeupdate', handleTimeUpdate);
-              video.removeEventListener('seeking', handleSeeking);
-            }
-        };
-    }, [resource]); 
+        if (typeof window !== 'undefined') {
+          const storedProgressString = localStorage.getItem(`progress_${courseId}`);
+          const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
+          setIsCompleted(!!storedProgress[resourceId]);
+        }
+    }, [courseId, resourceId]);
 
 
     useEffect(() => {
         if (courseId && resourceId) {
             setIsLoading(true);
-            lastValidTime.current = 0;
-            setIsVideoCompleted(false);
             setNumPages(null);
-            setPageNumber(1);
+            setPdfPages([]);
             setQuizQuestions([]);
             setCurrentQuestionIndex(0);
             setSelectedAnswers({});
@@ -117,19 +94,6 @@ export default function CourseResourcePage() {
                         const currentResource = allFlattenedResources[currentIndex];
                         setResource(currentResource);
                         
-                        // Auto-mark non-quiz resources as complete on visit
-                        if (currentResource.type !== 'quiz') {
-                          if (typeof window !== 'undefined') {
-                              const storedProgressString = localStorage.getItem(`progress_${courseId}`);
-                              const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
-                              
-                              if (!storedProgress[resourceId]) {
-                                  const newProgress = { ...storedProgress, [resourceId]: true };
-                                  localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
-                              }
-                          }
-                        }
-
                         if (currentResource.type === 'quiz') {
                           try {
                             const questions = JSON.parse(currentResource.url_or_content) as QuizQuestion[];
@@ -173,20 +137,14 @@ export default function CourseResourcePage() {
     
     function onDocumentLoadSuccess({ numPages }: { numPages: number }): void {
         setNumPages(numPages);
+        const pages = Array.from(new Array(numPages), (el, index) => (
+            <div key={`page_${index + 1}`} className="bg-white shadow-lg flex justify-center items-center">
+                <Page pageNumber={index + 1} renderAnnotationLayer={false} renderTextLayer={false} />
+            </div>
+        ));
+        setPdfPages(pages);
     }
-
-    function changePage(offset: number) {
-        setPageNumber(prevPageNumber => prevPageNumber + offset);
-    }
-
-    function previousPage() {
-        changePage(-1);
-    }
-
-    function nextPage() {
-        changePage(1);
-    }
-
+    
     // --- Quiz Handlers ---
     const handleAnswerChange = (questionIndex: number, answerIndex: number) => {
         setSelectedAnswers(prev => ({ ...prev, [questionIndex]: answerIndex }));
@@ -200,7 +158,7 @@ export default function CourseResourcePage() {
 
     const handlePreviousQuestion = () => {
         if (currentQuestionIndex > 0) {
-            setCurrentQuestionIndex(prev => prev + 1);
+            setCurrentQuestionIndex(prev => prev - 1);
         }
     };
 
@@ -217,18 +175,8 @@ export default function CourseResourcePage() {
 
         setQuizResult({ score, total: quizQuestions.length, passed });
         
-        // Mark as complete only if passed
         if (passed) {
-             if (typeof window !== 'undefined') {
-                const storedProgressString = localStorage.getItem(`progress_${courseId}`);
-                const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
-                
-                // Only update if not already marked as done
-                if (!storedProgress[resourceId]) {
-                    const newProgress = { ...storedProgress, [resourceId]: true };
-                    localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
-                }
-            }
+             handleMarkAsComplete();
         }
     };
 
@@ -236,6 +184,16 @@ export default function CourseResourcePage() {
         setCurrentQuestionIndex(0);
         setSelectedAnswers({});
         setQuizResult(null);
+    };
+
+    const handleMarkAsComplete = () => {
+        if (typeof window !== 'undefined') {
+            const storedProgressString = localStorage.getItem(`progress_${courseId}`);
+            const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
+            const newProgress = { ...storedProgress, [resourceId]: true };
+            localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
+            setIsCompleted(true);
+        }
     };
 
 
@@ -265,20 +223,30 @@ export default function CourseResourcePage() {
             />
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center">
-                        {getResourceIcon(resource.type)}
-                        {resource.title}
-                    </CardTitle>
+                    <div className="flex justify-between items-center">
+                        <CardTitle className="flex items-center">
+                            {getResourceIcon(resource.type)}
+                            {resource.title}
+                        </CardTitle>
+                        <Button 
+                            onClick={handleMarkAsComplete} 
+                            disabled={isCompleted} 
+                            size="sm"
+                            variant={isCompleted ? "secondary" : "default"}
+                            className="shrink-0"
+                        >
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            {isCompleted ? "Completed" : "Mark as Completed"}
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent className="min-h-[60vh]">
                     {resource.type === 'video' && resource.url_or_content && (
                         <video 
-                            ref={videoRef}
                             controls 
                             autoPlay 
                             src={resource.url_or_content} 
                             className="w-full rounded-md aspect-video bg-black"
-                            onEnded={() => setIsVideoCompleted(true)}
                             controlsList="nodownload nofullscreen noremoteplayback"
                         >
                           Your browser does not support the video tag.
@@ -290,25 +258,26 @@ export default function CourseResourcePage() {
                     
                     {(resource.type === 'ebook' || (resource.url_or_content && resource.url_or_content.endsWith('.pdf'))) && resource.url_or_content && (
                         <div className="flex flex-col items-center gap-4">
-                            <div className="w-full border rounded-md overflow-hidden bg-muted">
+                            <div style={{ width: '100%', height: '70vh' }}>
                                 <Document
                                     file={resource.url_or_content}
                                     onLoadSuccess={onDocumentLoadSuccess}
-                                    loading={<div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
-                                    error={<div className="text-destructive text-center p-4">Failed to load PDF file. It might be corrupted or from an unsupported source.</div>}
+                                    loading={<div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
+                                    error={<div className="text-destructive text-center p-4">Failed to load PDF file.</div>}
+                                    className="hidden"
                                 >
-                                    <Page pageNumber={pageNumber} renderAnnotationLayer={false} renderTextLayer={false} />
                                 </Document>
+                                {pdfPages.length > 0 && (
+                                    <HTMLFlipBook 
+                                        width={400} 
+                                        height={565} 
+                                        showCover={true} 
+                                        className="mx-auto"
+                                    >
+                                        {pdfPages}
+                                    </HTMLFlipBook>
+                                )}
                             </div>
-                            {numPages && numPages > 1 && (
-                                <div className="flex items-center gap-4">
-                                    <Button onClick={previousPage} disabled={pageNumber <= 1}>Previous</Button>
-                                    <p className="text-sm font-medium">
-                                        Page {pageNumber} of {numPages}
-                                    </p>
-                                    <Button onClick={nextPage} disabled={pageNumber >= numPages}>Next</Button>
-                                </div>
-                            )}
                         </div>
                     )}
                     
@@ -390,7 +359,8 @@ export default function CourseResourcePage() {
                         <Button 
                             variant="outline" 
                             asChild 
-                            disabled={(resource.type === 'video' && !isVideoCompleted) || (resource.type === 'quiz' && (!quizResult || !quizResult.passed))}
+                            disabled={!isCompleted}
+                            title={!isCompleted ? "Complete this lesson to proceed" : ""}
                         >
                             <Link href={`/lms/courses/${courseId}/${nextResourceId}`} className="max-w-xs">
                                  <div className="flex flex-col items-end">
