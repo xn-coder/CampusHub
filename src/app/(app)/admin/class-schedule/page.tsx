@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { ClassScheduleDB as ClassScheduleItem, ClassData, Subject, Teacher, DayOfWeek as DayOfWeekType, User } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useCallback } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, Clock, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { addClassScheduleAction, updateClassScheduleAction, deleteClassScheduleAction, fetchClassSchedulePageData } from './actions';
@@ -51,6 +51,20 @@ export default function ClassSchedulePage() {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
 
+  const loadPageData = useCallback(async (schoolId: string) => {
+    setIsLoading(true);
+    const result = await fetchClassSchedulePageData(schoolId);
+    if (result.ok) {
+      setScheduleItems(result.schedules || []);
+      setActiveClasses(result.activeClasses || []);
+      setSubjects(result.subjects || []);
+      setTeachers(result.teachers || []);
+    } else {
+      toast({ title: "Error loading data", description: result.message, variant: "destructive" });
+    }
+    setIsLoading(false);
+  }, [toast]);
+
   useEffect(() => {
     const adminId = localStorage.getItem('currentUserId');
     setCurrentAdminUserId(adminId);
@@ -68,21 +82,8 @@ export default function ClassSchedulePage() {
       toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, loadPageData]);
 
-  async function loadPageData(schoolId: string) {
-    setIsLoading(true);
-    const result = await fetchClassSchedulePageData(schoolId);
-    if (result.ok) {
-      setScheduleItems(result.schedules || []);
-      setActiveClasses(result.activeClasses || []);
-      setSubjects(result.subjects || []);
-      setTeachers(result.teachers || []);
-    } else {
-      toast({ title: "Error loading data", description: result.message, variant: "destructive" });
-    }
-    setIsLoading(false);
-  }
 
   const resetForm = () => {
     setSelectedClassId(''); setSelectedSubjectId(''); setSelectedTeacherId('');
@@ -211,7 +212,7 @@ export default function ClassSchedulePage() {
                         <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button variant="destructive" size="icon" onClick={() => handleDeleteItem(item.id)} disabled={isSubmitting}>
-                        <Trash2 className="h-4 w-4" />
+                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                       </Button>
                     </TableCell>
                   </TableRow>

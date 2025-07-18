@@ -8,7 +8,7 @@ import { CalendarRange, Loader2 } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import AcademicYearActions from './academic-year-actions';
 import type { AcademicYear } from '@/types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { getAdminSchoolIdAction, getAcademicYearsForSchoolAction } from './actions';
 
@@ -18,40 +18,48 @@ export default function AcademicYearsPage() {
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchData() {
-      setIsLoading(true);
-      const adminUserId = localStorage.getItem('currentUserId');
-      if (!adminUserId) {
-        toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
+  const fetchPageData = useCallback(async (adminUserId: string) => {
+    const fetchedSchoolId = await getAdminSchoolIdAction(adminUserId);
+    setSchoolId(fetchedSchoolId);
 
-      const fetchedSchoolId = await getAdminSchoolIdAction(adminUserId);
-      setSchoolId(fetchedSchoolId);
-
-      if (fetchedSchoolId) {
-        const result = await getAcademicYearsForSchoolAction(fetchedSchoolId);
-        if (result.ok && result.years) {
-          setAcademicYears(result.years);
-        } else {
-          toast({ title: "Error", description: result.message || "Failed to load academic years.", variant: "destructive" });
-          setAcademicYears([]);
-        }
+    if (fetchedSchoolId) {
+      const result = await getAcademicYearsForSchoolAction(fetchedSchoolId);
+      if (result.ok && result.years) {
+        setAcademicYears(result.years);
       } else {
-        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+        toast({ title: "Error", description: result.message || "Failed to load academic years.", variant: "destructive" });
         setAcademicYears([]);
       }
-      setIsLoading(false);
+    } else {
+      toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+      setAcademicYears([]);
     }
-    fetchData();
+    setIsLoading(false);
   }, [toast]);
+
+
+  useEffect(() => {
+    setIsLoading(true);
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (!adminUserId) {
+      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      setIsLoading(false);
+      return;
+    }
+    fetchPageData(adminUserId);
+  }, [fetchPageData, toast]);
 
   const formatDateString = (dateString: string | Date) => {
     if (!dateString) return 'N/A';
     const dateObj = typeof dateString === 'string' ? parseISO(dateString) : dateString;
     return isValid(dateObj) ? format(dateObj, 'MMM d, yyyy') : 'Invalid Date';
+  };
+
+  const handleActionCompletion = () => {
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (adminUserId) {
+      fetchPageData(adminUserId);
+    }
   };
 
   if (isLoading) {
@@ -68,7 +76,7 @@ export default function AcademicYearsPage() {
       <PageHeader
         title="Academic Year Management"
         description="Define and manage academic years for the school."
-        actions={<AcademicYearActions schoolId={schoolId} />}
+        actions={<AcademicYearActions schoolId={schoolId} onActionComplete={handleActionCompletion} />}
       />
       <Card>
         <CardHeader>
@@ -106,6 +114,7 @@ export default function AcademicYearsPage() {
                           endDate: new Date(year.end_date),
                           schoolId: year.school_id
                         }}
+                        onActionComplete={handleActionCompletion}
                       />
                     </TableCell>
                   </TableRow>

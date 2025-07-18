@@ -23,10 +23,11 @@ interface AcademicYearDisplayType {
 
 interface AcademicYearActionsProps {
   schoolId: string | null; 
-  existingYear?: AcademicYearDisplayType; 
+  existingYear?: AcademicYearDisplayType;
+  onActionComplete?: () => void;
 }
 
-export default function AcademicYearActions({ schoolId, existingYear }: AcademicYearActionsProps) {
+export default function AcademicYearActions({ schoolId, existingYear, onActionComplete }: AcademicYearActionsProps) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,6 +77,7 @@ export default function AcademicYearActions({ schoolId, existingYear }: Academic
     if (result.ok) {
       toast({ title: result.message });
       setIsDialogOpen(false);
+      onActionComplete?.();
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -91,6 +93,7 @@ export default function AcademicYearActions({ schoolId, existingYear }: Academic
       setIsSubmitting(false);
       if (result.ok) {
         toast({ title: result.message, variant: "destructive" }); // Changed to destructive for delete success
+        onActionComplete?.();
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
       }

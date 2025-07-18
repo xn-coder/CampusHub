@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Subject, AcademicYear } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useCallback } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, BookOpenText, Loader2, Search } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getSubjectsPageDataAction, addSubjectAction, updateSubjectAction, deleteSubjectAction } from './actions';
@@ -32,18 +32,7 @@ export default function SubjectsPage() {
   const [subjectCode, setSubjectCode] = useState('');
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string | undefined>(undefined);
 
-  useEffect(() => {
-    const adminUserId = localStorage.getItem('currentUserId');
-    if (adminUserId) {
-      loadInitialData(adminUserId);
-    } else {
-      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
-      setIsLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function loadInitialData(adminUserId: string) {
+  const loadInitialData = useCallback(async (adminUserId: string) => {
     setIsLoading(true);
     const result = await getSubjectsPageDataAction(adminUserId);
     if (result.ok) {
@@ -56,7 +45,18 @@ export default function SubjectsPage() {
       setAcademicYears([]);
     }
     setIsLoading(false);
-  }
+  }, [toast]);
+
+
+  useEffect(() => {
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (adminUserId) {
+      loadInitialData(adminUserId);
+    } else {
+      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      setIsLoading(false);
+    }
+  }, [loadInitialData, toast]);
 
   const resetForm = () => {
     setSubjectName('');
@@ -116,12 +116,12 @@ export default function SubjectsPage() {
     if (confirm("Are you sure you want to delete this subject?")) {
       setIsSubmitting(true);
       const result = await deleteSubjectAction(subjectId, currentSchoolId);
+      setIsSubmitting(false);
       toast({ title: result.ok ? "Subject Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
       if (result.ok) {
         const adminUserId = localStorage.getItem('currentUserId');
         if (adminUserId) loadInitialData(adminUserId);
       }
-      setIsSubmitting(false);
     }
   };
 
@@ -192,7 +192,7 @@ export default function SubjectsPage() {
                         <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button variant="destructive" size="icon" onClick={() => handleDeleteSubject(subject.id)} disabled={isSubmitting}>
-                        <Trash2 className="h-4 w-4" />
+                         {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -246,4 +246,3 @@ export default function SubjectsPage() {
     </div>
   );
 }
-    
