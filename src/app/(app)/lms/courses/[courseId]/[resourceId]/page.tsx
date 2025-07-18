@@ -299,7 +299,7 @@ export default function CourseResourcePage() {
                                 file={resource.url_or_content}
                                 onLoadSuccess={onDocumentLoadSuccess}
                                 loading={<div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
-                                error={<div className="text-destructive text-center p-4">Failed to load PDF file.</div>}
+                                error={<div className="text-destructive text-center p-4">Could not load the PDF file. Please ensure the URL is correct and accessible.</div>}
                             >
                                 {numPages && (
                                     <HTMLFlipBook 
