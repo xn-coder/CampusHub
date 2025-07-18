@@ -134,7 +134,10 @@ export default function FeeCategoriesPage() {
   };
   
   const handleDeleteCategory = async (categoryId: string) => {
-    if (!currentSchoolId) return;
+    if (!currentSchoolId) {
+        toast({ title: "Error", description: "Cannot delete category without school context.", variant: "destructive"});
+        return;
+    }
     if (confirm("Are you sure you want to delete this fee category?")) {
       setIsSubmitting(true);
       const result = await deleteFeeCategoryAction(categoryId, currentSchoolId);
@@ -250,5 +253,3 @@ export default function FeeCategoriesPage() {
     </div>
   );
 }
-
-    
