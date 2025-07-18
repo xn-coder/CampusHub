@@ -1,3 +1,4 @@
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -302,12 +303,22 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
 // Deletes a course resource, which can be a lesson container or a standalone resource.
 export async function deleteCourseResourceAction(resourceId: string): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
+  const { data: resource, error: fetchError } = await supabase
+    .from('lms_course_resources')
+    .select('course_id')
+    .eq('id', resourceId)
+    .single();
+
+  if (fetchError || !resource) {
+    return { ok: false, message: "Resource not found." };
+  }
+  
   const { error } = await supabase.from('lms_course_resources').delete().eq('id', resourceId);
   if (error) {
     console.error("Error deleting course resource:", error);
     return { ok: false, message: error.message };
   }
-  revalidatePath('/admin/lms/courses'); 
+  revalidatePath(`/admin/lms/courses/${resource.course_id}/content`);
   return { ok: true, message: "Resource deleted." };
 }
 
@@ -629,7 +640,7 @@ export async function getCourseActivationPageInitialDataAction(
         .eq('user_id', userId)
         .single();
       if (teacherError || !teacherProfile) {
-        return { ok: false, message: teacherError?.message || "Teacher profile not found." };
+        return { ok: false, message: teacherError?.message || "Teacher profile not found."};
       }
       resultData.userProfileId = teacherProfile.id;
     }
