@@ -247,30 +247,28 @@ export default function CourseResourcePage() {
                     )}
                     
                     {(resource.type === 'ebook' || (resource.url_or_content && resource.url_or_content.endsWith('.pdf'))) && resource.url_or_content && (
-                        <div className="flex flex-col items-center gap-4">
-                            <div style={{ width: '100%', height: '70vh' }}>
-                                <Document
-                                    file={resource.url_or_content}
-                                    onLoadSuccess={onDocumentLoadSuccess}
-                                    loading={<div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
-                                    error={<div className="text-destructive text-center p-4">Failed to load PDF file.</div>}
-                                >
-                                    {numPages && (
-                                        <HTMLFlipBook 
-                                            width={400} 
-                                            height={565} 
-                                            showCover={true} 
-                                            className="mx-auto"
-                                        >
-                                            {Array.from(new Array(numPages), (el, index) => (
-                                                <div key={`page_${index + 1}`} className="bg-white shadow-lg flex justify-center items-center">
-                                                    <Page pageNumber={index + 1} renderAnnotationLayer={false} renderTextLayer={false} />
-                                                </div>
-                                            ))}
-                                        </HTMLFlipBook>
-                                    )}
-                                </Document>
-                            </div>
+                        <div className="w-full overflow-auto" style={{ height: '70vh' }}>
+                            <Document
+                                file={resource.url_or_content}
+                                onLoadSuccess={onDocumentLoadSuccess}
+                                loading={<div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
+                                error={<div className="text-destructive text-center p-4">Failed to load PDF file.</div>}
+                            >
+                                {numPages && (
+                                    <HTMLFlipBook 
+                                        width={400} 
+                                        height={565} 
+                                        showCover={true} 
+                                        className="mx-auto"
+                                    >
+                                        {Array.from(new Array(numPages), (el, index) => (
+                                            <div key={`page_${index + 1}`} className="bg-white shadow-lg flex justify-center items-center">
+                                                <Page pageNumber={index + 1} renderAnnotationLayer={false} renderTextLayer={false} />
+                                            </div>
+                                        ))}
+                                    </HTMLFlipBook>
+                                )}
+                            </Document>
                         </div>
                     )}
                     
