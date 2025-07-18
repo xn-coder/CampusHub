@@ -20,6 +20,8 @@ const nextConfig: NextConfig = {
   },
   webpack: (config) => {
     config.resolve.alias.canvas = false;
+    // Add alias for pdfjs-dist
+    config.resolve.alias['pdfjs-dist'] = 'pdfjs-dist/build/pdf';
     return config;
   },
 };

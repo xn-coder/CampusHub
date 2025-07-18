@@ -15,9 +15,8 @@ import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import HTMLFlipBook from 'react-pageflip';
 
-// Import the worker entry file to let webpack handle it.
-// This is the most reliable method when CDN fetching fails.
-import 'pdfjs-dist/build/pdf.worker.entry.js';
+// Configure the worker to be served locally
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 
 export default function CourseResourcePage() {
