@@ -89,7 +89,7 @@ export default function ViewCourseContentPage() {
       }
       
       setIsLoading(false);
-  }, [courseId]);
+  }, [courseId, toast]);
 
 
   useEffect(() => {
