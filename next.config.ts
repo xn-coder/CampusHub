@@ -1,3 +1,4 @@
+
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
@@ -21,7 +22,7 @@ const nextConfig: NextConfig = {
   webpack: (config) => {
     config.resolve.alias.canvas = false;
     // Add alias for pdfjs-dist
-    config.resolve.alias['pdfjs-dist'] = 'pdfjs-dist/build/pdf';
+    config.resolve.alias['pdfjs-dist'] = 'pdfjs-dist/build/pdf.mjs';
     return config;
   },
 };
