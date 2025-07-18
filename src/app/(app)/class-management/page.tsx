@@ -312,7 +312,7 @@ export default function ClassManagementPage() {
     if (confirm(`Are you sure you want to delete this active class-section? This will unassign all students.`)) {
       setIsSubmitting(true);
       const result = await deleteActiveClassAction(activeClassId, currentSchoolId);
-      toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+      toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
       if (result.ok && currentSchoolId) {
         fetchAllData(currentSchoolId);
       }

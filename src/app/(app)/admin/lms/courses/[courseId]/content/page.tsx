@@ -233,10 +233,7 @@ export default function ManageCourseContentPage() {
      if (!confirm("Are you sure you want to delete this resource?")) return;
      
      setIsSubmitting(true);
-     const currentContent: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
-     const updatedContent = currentContent.filter(res => res.id !== contentId);
-
-     const result = await updateLessonContentAction(lesson.id, updatedContent);
+     const result = await deleteCourseResourceAction(contentId);
      if (result.ok) {
         toast({title: "Resource Deleted", variant: "destructive"});
         await fetchCourseData();

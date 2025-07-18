@@ -62,6 +62,7 @@ export default function ManageTeachersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-teachers");
   const [isLoading, setIsLoading] = useState(true); 
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
@@ -154,7 +155,7 @@ export default function ManageTeachersPage() {
       toast({ title: "Error", description: "Name, Email, Subject, and School context are required.", variant: "destructive" });
       return;
     }
-    setIsLoading(true);
+    setIsSubmitting(true);
     
     const result = await updateTeacherAction({
       id: editingTeacher.id,
@@ -174,13 +175,13 @@ export default function ManageTeachersPage() {
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
   
   const handleDeleteTeacher = async (teacher: Teacher) => { 
     if (!currentSchoolId) return;
     if(confirm(`Are you sure you want to delete teacher ${teacher.name}? This will also remove their login access.`)) {
-      setIsLoading(true);
+      setIsSubmitting(true);
       const result = await deleteTeacherAction(teacher.id, teacher.user_id, currentSchoolId);
       if (result.ok) {
         toast({ title: "Teacher Deleted", description: result.message, variant: "destructive" });
@@ -188,7 +189,7 @@ export default function ManageTeachersPage() {
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
       }
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -202,7 +203,7 @@ export default function ManageTeachersPage() {
       toast({ title: "Error", description: "School context not found. Cannot create teacher.", variant: "destructive" });
       return;
     }
-    setIsLoading(true);
+    setIsSubmitting(true);
 
     const result = await createTeacherAction({
       name: newTeacherName,
@@ -223,7 +224,7 @@ export default function ManageTeachersPage() {
     } else {
        toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
   const handleDownloadCsv = () => {
@@ -271,7 +272,7 @@ export default function ManageTeachersPage() {
         title="Manage Teachers" 
         description="Administer teacher profiles, assignments, and records." 
         actions={
-          <Button onClick={() => setActiveTab("create-teacher")} disabled={isLoading || !currentSchoolId}>
+          <Button onClick={() => setActiveTab("create-teacher")} disabled={isLoading || isSubmitting || !currentSchoolId}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Teacher
           </Button>
         }
@@ -337,11 +338,11 @@ export default function ManageTeachersPage() {
                         <TableCell>{teacher.email}</TableCell>
                         <TableCell>{teacher.subject}</TableCell>
                         <TableCell className="space-x-1 text-right">
-                          <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(teacher)} disabled={isLoading}>
+                          <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(teacher)} disabled={isLoading || isSubmitting}>
                             <Edit2 className="h-4 w-4" />
                           </Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteTeacher(teacher)} disabled={isLoading}>
-                             {isLoading && editingTeacher?.id === teacher.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteTeacher(teacher)} disabled={isLoading || isSubmitting}>
+                             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -363,24 +364,24 @@ export default function ManageTeachersPage() {
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="teacherName">Teacher Name</Label>
-                  <Input id="teacherName" value={newTeacherName} onChange={(e) => setNewTeacherName(e.target.value)} placeholder="Full Name" required disabled={isLoading || !currentSchoolId}/>
+                  <Input id="teacherName" value={newTeacherName} onChange={(e) => setNewTeacherName(e.target.value)} placeholder="Full Name" required disabled={isSubmitting || !currentSchoolId}/>
                 </div>
                 <div>
                   <Label htmlFor="teacherEmail">Email (Login ID)</Label>
-                  <Input id="teacherEmail" type="email" value={newTeacherEmail} onChange={(e) => setNewTeacherEmail(e.target.value)} placeholder="teacher@example.com" required disabled={isLoading || !currentSchoolId}/>
+                  <Input id="teacherEmail" type="email" value={newTeacherEmail} onChange={(e) => setNewTeacherEmail(e.target.value)} placeholder="teacher@example.com" required disabled={isSubmitting || !currentSchoolId}/>
                 </div>
                 <div>
                   <Label htmlFor="teacherSubject">Subject</Label>
-                  <Input id="teacherSubject" value={newTeacherSubject} onChange={(e) => setNewTeacherSubject(e.target.value)} placeholder="e.g., Mathematics, English" required disabled={isLoading || !currentSchoolId}/>
+                  <Input id="teacherSubject" value={newTeacherSubject} onChange={(e) => setNewTeacherSubject(e.target.value)} placeholder="e.g., Mathematics, English" required disabled={isSubmitting || !currentSchoolId}/>
                 </div>
                 <div>
                   <Label htmlFor="teacherProfilePicUrl">Profile Picture URL (Optional)</Label>
-                  <Input id="teacherProfilePicUrl" value={newTeacherProfilePicUrl} onChange={(e) => setNewTeacherProfilePicUrl(e.target.value)} placeholder="https://placehold.co/100x100.png" disabled={isLoading || !currentSchoolId}/>
+                  <Input id="teacherProfilePicUrl" value={newTeacherProfilePicUrl} onChange={(e) => setNewTeacherProfilePicUrl(e.target.value)} placeholder="https://placehold.co/100x100.png" disabled={isSubmitting || !currentSchoolId}/>
                 </div>
               </CardContent>
               <CardFooter>
-                <Button type="submit" disabled={isLoading || !currentSchoolId}>
-                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
+                <Button type="submit" disabled={isSubmitting || !currentSchoolId}>
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
                   Save Teacher & Create Account
                 </Button>
               </CardFooter>
@@ -410,25 +411,25 @@ export default function ManageTeachersPage() {
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editTeacherName" className="text-right">Name</Label>
-                <Input id="editTeacherName" value={editTeacherName} onChange={(e) => setEditTeacherName(e.target.value)} className="col-span-3" required disabled={isLoading}/>
+                <Input id="editTeacherName" value={editTeacherName} onChange={(e) => setEditTeacherName(e.target.value)} className="col-span-3" required disabled={isSubmitting}/>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editTeacherEmail" className="text-right">Email</Label>
-                <Input id="editTeacherEmail" type="email" value={editTeacherEmail} onChange={(e) => setEditTeacherEmail(e.target.value)} className="col-span-3" required disabled={isLoading}/>
+                <Input id="editTeacherEmail" type="email" value={editTeacherEmail} onChange={(e) => setEditTeacherEmail(e.target.value)} className="col-span-3" required disabled={isSubmitting}/>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editTeacherSubject" className="text-right">Subject</Label>
-                <Input id="editTeacherSubject" value={editTeacherSubject} onChange={(e) => setEditTeacherSubject(e.target.value)} className="col-span-3" required disabled={isLoading}/>
+                <Input id="editTeacherSubject" value={editTeacherSubject} onChange={(e) => setEditTeacherSubject(e.target.value)} className="col-span-3" required disabled={isSubmitting}/>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editTeacherProfilePicUrl" className="text-right">Profile URL</Label>
-                <Input id="editTeacherProfilePicUrl" value={editTeacherProfilePicUrl} onChange={(e) => setEditTeacherProfilePicUrl(e.target.value)} className="col-span-3" placeholder="Optional image URL" disabled={isLoading}/>
+                <Input id="editTeacherProfilePicUrl" value={editTeacherProfilePicUrl} onChange={(e) => setEditTeacherProfilePicUrl(e.target.value)} className="col-span-3" placeholder="Optional image URL" disabled={isSubmitting}/>
               </div>
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
+              <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
                 Save Changes
               </Button>
             </DialogFooter>

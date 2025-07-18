@@ -209,7 +209,7 @@ export default function FeeCategoriesPage() {
                         <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button variant="destructive" size="icon" onClick={() => handleDeleteCategory(category.id)} disabled={isSubmitting}>
-                        <Trash2 className="h-4 w-4" />
+                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                       </Button>
                     </TableCell>
                   </TableRow>
