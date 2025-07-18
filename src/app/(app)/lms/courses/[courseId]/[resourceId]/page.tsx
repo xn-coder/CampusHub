@@ -13,8 +13,6 @@ import Link from 'next/link';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
 import HTMLFlipBook from 'react-pageflip';
 
 // Import the worker entry file to let webpack handle it.
@@ -44,7 +42,6 @@ export default function CourseResourcePage() {
 
     // PDF viewer state
     const [numPages, setNumPages] = useState<number | null>(null);
-    const [pdfPages, setPdfPages] = useState<JSX.Element[]>([]);
     
     // Quiz state
     const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
@@ -66,7 +63,6 @@ export default function CourseResourcePage() {
         if (courseId && resourceId) {
             setIsLoading(true);
             setNumPages(null);
-            setPdfPages([]);
             setQuizQuestions([]);
             setCurrentQuestionIndex(0);
             setSelectedAnswers({});
@@ -137,12 +133,6 @@ export default function CourseResourcePage() {
     
     function onDocumentLoadSuccess({ numPages }: { numPages: number }): void {
         setNumPages(numPages);
-        const pages = Array.from(new Array(numPages), (el, index) => (
-            <div key={`page_${index + 1}`} className="bg-white shadow-lg flex justify-center items-center">
-                <Page pageNumber={index + 1} renderAnnotationLayer={false} renderTextLayer={false} />
-            </div>
-        ));
-        setPdfPages(pages);
     }
     
     // --- Quiz Handlers ---
@@ -264,19 +254,22 @@ export default function CourseResourcePage() {
                                     onLoadSuccess={onDocumentLoadSuccess}
                                     loading={<div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
                                     error={<div className="text-destructive text-center p-4">Failed to load PDF file.</div>}
-                                    className="hidden"
                                 >
+                                    {numPages && (
+                                        <HTMLFlipBook 
+                                            width={400} 
+                                            height={565} 
+                                            showCover={true} 
+                                            className="mx-auto"
+                                        >
+                                            {Array.from(new Array(numPages), (el, index) => (
+                                                <div key={`page_${index + 1}`} className="bg-white shadow-lg flex justify-center items-center">
+                                                    <Page pageNumber={index + 1} renderAnnotationLayer={false} renderTextLayer={false} />
+                                                </div>
+                                            ))}
+                                        </HTMLFlipBook>
+                                    )}
                                 </Document>
-                                {pdfPages.length > 0 && (
-                                    <HTMLFlipBook 
-                                        width={400} 
-                                        height={565} 
-                                        showCover={true} 
-                                        className="mx-auto"
-                                    >
-                                        {pdfPages}
-                                    </HTMLFlipBook>
-                                )}
                             </div>
                         </div>
                     )}
