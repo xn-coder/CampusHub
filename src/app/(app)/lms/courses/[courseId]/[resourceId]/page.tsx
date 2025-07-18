@@ -296,7 +296,7 @@ export default function CourseResourcePage() {
                     {(resource.type === 'ebook' || (resource.url_or_content && resource.url_or_content.endsWith('.pdf'))) && resource.url_or_content && (
                         <div className="w-full overflow-auto" style={{ height: '70vh' }}>
                             <Document
-                                file={resource.url_or_content}
+                                file={{ url: resource.url_or_content }}
                                 onLoadSuccess={onDocumentLoadSuccess}
                                 loading={<div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
                                 error={<div className="text-destructive text-center p-4">Could not load the PDF file. Please ensure the URL is correct and accessible.</div>}
