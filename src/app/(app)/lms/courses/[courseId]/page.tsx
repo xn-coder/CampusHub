@@ -102,10 +102,9 @@ export default function ViewCourseContentPage() {
   useEffect(() => {
     if (!course) return;
 
-    // A lesson is a resource of type 'note' that contains other resources
     const lessons = course.resources.filter(r => r.type === 'note');
     if (lessons.length === 0) {
-      setProgress(100); // If no lessons, course is complete
+      setProgress(0); // If no lessons, progress is 0, not 100.
       return;
     }
 
@@ -119,7 +118,7 @@ export default function ViewCourseContentPage() {
     });
 
     if(allLessonContents.length === 0) {
-        setProgress(100);
+        setProgress(0); // If lessons exist but have no content, progress is 0.
         return;
     }
 
@@ -141,6 +140,12 @@ export default function ViewCourseContentPage() {
     }
   };
 
+  const handleStartCourse = () => {
+    if (lessons.length > 0) {
+      setOpenLessons([lessons[0].id]);
+    }
+  };
+  
   if (isLoading) {
     return <div className="text-center py-10 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading course content...</div>;
   }
@@ -173,12 +178,6 @@ export default function ViewCourseContentPage() {
   }
   
   const lessons = course.resources.filter(r => r.type === 'note');
-
-  const handleStartCourse = () => {
-    if (lessons.length > 0) {
-      setOpenLessons([lessons[0].id]);
-    }
-  };
 
   return (
     <div className="flex flex-col gap-6">
