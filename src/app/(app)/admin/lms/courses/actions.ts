@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -547,10 +548,19 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
 
   try {
     let courseQuery = supabase.from('lms_courses').select('*');
+
+    // Filter by school
     if (userSchoolId && userRole !== 'superadmin') {
       courseQuery = courseQuery.or(`school_id.eq.${userSchoolId},school_id.is.null`);
     } else if (userRole !== 'superadmin') { 
       courseQuery = courseQuery.is('school_id', null);
+    }
+    
+    // Filter by target audience based on user role
+    if (userRole === 'student') {
+        courseQuery = courseQuery.in('target_audience', ['student', 'both']);
+    } else if (userRole === 'teacher') {
+        courseQuery = courseQuery.in('target_audience', ['teacher', 'both']);
     }
 
     const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
