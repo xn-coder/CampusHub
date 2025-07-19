@@ -428,7 +428,6 @@ export async function enrollUserInCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
-  revalidatePath('/student/study-material');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} enrolled successfully.` };
 }
 
@@ -454,7 +453,6 @@ export async function unenrollUserFromCourseAction(
   revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
   revalidatePath(`/lms/courses/${course_id}`);
   revalidatePath('/lms/available-courses');
-  revalidatePath('/student/study-material');
   return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} unenrolled successfully.` };
 }
 
