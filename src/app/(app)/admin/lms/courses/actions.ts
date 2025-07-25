@@ -138,7 +138,7 @@ export async function updateCourseAction(
       if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
       const { data: publicUrlData } = supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
-      updateData.feature_image_url = publicUrlData?.publicUrl;
+      updateData.feature_image_url = publicUrlData.publicUrl;
     }
     
     const { error, data } = await supabaseAdmin
@@ -720,7 +720,7 @@ export async function getCourseActivationPageInitialDataAction(
         .eq('user_id', userId)
         .single();
       if (teacherError || !teacherProfile) {
-        return { ok: false, message: teacherError?.message || "Teacher profile not found."};
+         return { ok: false, message: teacherError?.message || "Teacher profile not found."};
       }
       resultData.userProfileId = teacherProfile.id;
     }
@@ -857,7 +857,7 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
     const options = {
         amount: amountInPaisa,
         currency: "INR",
-        receipt: `crs_${courseId}_${uuidv4().substring(0, 8)}`,
+        receipt: `crs_${uuidv4().substring(0, 12)}`,
         notes: {
             course_id: courseId,
             user_id: userId,

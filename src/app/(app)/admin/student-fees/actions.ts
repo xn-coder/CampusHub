@@ -526,7 +526,7 @@ export async function createRazorpayOrderAction(
   const options = {
     amount: amountInPaisa,
     currency: "INR",
-    receipt: `rcpt_${uuidv4().substring(0, 25)}`,
+    receipt: `rcpt_${uuidv4().substring(0, 15)}`,
     notes: {
       fee_payment_ids: JSON.stringify(feePaymentIds), // Store fee IDs in notes
     },
