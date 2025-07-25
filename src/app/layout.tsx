@@ -27,7 +27,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <div className="no-screenshot">
+            {children}
+          </div>
           <Toaster />
         </ThemeProvider>
       </body>

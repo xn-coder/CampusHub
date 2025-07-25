@@ -207,3 +207,29 @@
     break-inside: avoid;
   }
 }
+
+.no-screenshot {
+    position: relative;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.no-screenshot::after {
+    content: "";
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: transparent;
+    pointer-events: none;
+}
+
+@media print {
+    .no-screenshot::after {
+        background-color: white !important;
+    }
+}
