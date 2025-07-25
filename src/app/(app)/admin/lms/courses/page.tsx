@@ -219,7 +219,8 @@ export default function ManageCoursesPage() {
     }
     formData.append('school_id', currentUserRole === 'superadmin' && !currentSchoolId ? '' : currentSchoolId || '');
     formData.append('target_audience', selectedTargetAudience);
-    formData.append('target_class_id', (selectedTargetAudience === 'student' || selectedTargetAudience === 'both') ? (selectedTargetClassId && selectedTargetClassId !== 'all_students_in_school' ? selectedTargetClassId : '') : '');
+    const targetClassIdValue = (selectedTargetAudience === 'student' || selectedTargetAudience === 'both') ? (selectedTargetClassId && selectedTargetClassId !== 'all_students_in_school' ? selectedTargetClassId : '') : '';
+    formData.append('target_class_id', targetClassIdValue);
     formData.append('created_by_user_id', currentAdminUserId);
     if(featureImageFile) {
         formData.append('feature_image_url', featureImageFile);

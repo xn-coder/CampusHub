@@ -35,9 +35,11 @@ export async function createCourseAction(
   const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : 0;
   const school_id = formData.get('school_id') as string | null;
   const target_audience = formData.get('target_audience') as 'student' | 'teacher' | 'both';
-  const target_class_id = formData.get('target_class_id') as string | null;
+  let target_class_id = formData.get('target_class_id') as string | null;
   const created_by_user_id = formData.get('created_by_user_id') as string;
   const featureImageFile = formData.get('feature_image_url') as File | null;
+  
+  if (target_class_id === '') target_class_id = null;
   
   let feature_image_url: string | undefined = undefined;
 
@@ -106,8 +108,10 @@ export async function updateCourseAction(
   const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : 0;
   const school_id = formData.get('school_id') as string | null;
   const target_audience = formData.get('target_audience') as 'student' | 'teacher' | 'both';
-  const target_class_id = formData.get('target_class_id') as string | null;
+  let target_class_id = formData.get('target_class_id') as string | null;
   const featureImageFile = formData.get('feature_image_url') as File | null;
+  
+  if (target_class_id === '') target_class_id = null;
   
   try {
     const updateData: Partial<Course> = {
