@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { createCourseAction, updateCourseAction, deleteCourseAction, generateActivationCodesAction } from './actions';
-import { PlusCircle, Edit2, Trash2, Save, Library, Settings, UserPlus, KeyRound, Copy, Loader2, BookUser, Users as UsersIcon, Percent } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Library, Settings, UserPlus, KeyRound, Copy, Loader2, BookUser, Users as UsersIcon, Percent, Upload } from 'lucide-react';
 
 
 async function fetchAdminSchoolIdAndRole(adminUserId: string): Promise<{ schoolId: string | null, role: UserRole | null }> {
@@ -65,6 +65,7 @@ export default function ManageCoursesPage() {
   // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [featureImageFile, setFeatureImageFile] = useState<File | null>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState<number | ''>('');
   const [currency, setCurrency] = useState<'INR' | 'USD' | 'EUR'>('INR');
@@ -147,6 +148,7 @@ export default function ManageCoursesPage() {
   const resetCourseForm = () => {
     setTitle('');
     setDescription('');
+    setFeatureImageFile(null);
     setIsPaid(false);
     setPrice('');
     setCurrency('INR');
@@ -161,6 +163,7 @@ export default function ManageCoursesPage() {
       setEditingCourse(course);
       setTitle(course.title);
       setDescription(course.description || '');
+      setFeatureImageFile(null);
       setIsPaid(course.is_paid);
       setPrice(course.price ?? '');
       setCurrency(course.currency || 'INR');
@@ -171,6 +174,17 @@ export default function ManageCoursesPage() {
       resetCourseForm();
     }
     setIsCourseDialogOpen(true);
+  };
+  
+   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file && file.size > 2 * 1024 * 1024) { // 2MB limit
+      toast({ title: "File too large", description: "Feature image should be less than 2MB.", variant: "destructive" });
+      setFeatureImageFile(null);
+      e.target.value = '';
+      return;
+    }
+    setFeatureImageFile(file);
   };
 
   const handleCourseSubmit = async (e: FormEvent) => {
@@ -194,24 +208,28 @@ export default function ManageCoursesPage() {
 
     setIsSubmitting(true);
 
-    const courseData = {
-      title: title.trim(),
-      description: description.trim() || undefined,
-      is_paid: isPaid,
-      price: isPaid ? Number(price) : undefined,
-      currency: isPaid ? currency : undefined,
-      discount_percentage: isPaid ? Number(discount || 0) : undefined,
-      school_id: currentUserRole === 'superadmin' && !currentSchoolId ? null : currentSchoolId, 
-      target_audience: selectedTargetAudience as 'student' | 'teacher' | 'both',
-      target_class_id: (selectedTargetAudience === 'student' || selectedTargetAudience === 'both') ? (selectedTargetClassId && selectedTargetClassId !== 'all_students_in_school' ? selectedTargetClassId : null) : null,
-      created_by_user_id: currentAdminUserId,
-    };
-
+    const formData = new FormData();
+    formData.append('title', title.trim());
+    formData.append('description', description.trim());
+    formData.append('is_paid', String(isPaid));
+    if (isPaid) {
+      formData.append('price', String(price));
+      formData.append('currency', currency);
+      formData.append('discount_percentage', String(discount || 0));
+    }
+    formData.append('school_id', currentUserRole === 'superadmin' && !currentSchoolId ? '' : currentSchoolId || '');
+    formData.append('target_audience', selectedTargetAudience);
+    formData.append('target_class_id', (selectedTargetAudience === 'student' || selectedTargetAudience === 'both') ? (selectedTargetClassId && selectedTargetClassId !== 'all_students_in_school' ? selectedTargetClassId : '') : '');
+    formData.append('created_by_user_id', currentAdminUserId);
+    if(featureImageFile) {
+        formData.append('feature_image_url', featureImageFile);
+    }
+    
     let result;
     if (editingCourse) {
-      result = await updateCourseAction(editingCourse.id, courseData);
+      result = await updateCourseAction(editingCourse.id, formData);
     } else {
-      result = await createCourseAction(courseData as any);
+      result = await createCourseAction(formData);
     }
 
     if (result.ok) {
@@ -408,6 +426,10 @@ export default function ManageCoursesPage() {
               <div>
                 <Label htmlFor="description">Description</Label>
                 <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief overview of the course" disabled={isSubmitting}/>
+              </div>
+              <div>
+                <Label htmlFor="feature_image_url">Feature Image (Optional, &lt;2MB)</Label>
+                <Input id="feature_image_url" type="file" onChange={handleFileChange} accept="image/png, image/jpeg, image/webp" disabled={isSubmitting}/>
               </div>
               <div>
                 <Label>Course Type</Label>

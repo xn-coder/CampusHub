@@ -364,6 +364,7 @@ export interface Course {
   id: string;
   title: string;
   description?: string | null;
+  feature_image_url?: string | null;
   is_paid: boolean;
   price?: number | null;
   currency?: 'INR' | 'USD' | 'EUR';

@@ -21,80 +21,142 @@ if (process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) 
 
 
 // --- Course Management ---
-interface CourseInput {
-  title: string;
-  description?: string;
-  is_paid: boolean;
-  price?: number;
-  currency: 'INR' | 'USD' | 'EUR';
-  discount_percentage?: number;
-  school_id?: string | null;
-  target_audience: 'student' | 'teacher' | 'both';
-  target_class_id?: string | null;
-  created_by_user_id: string;
-}
-
 export async function createCourseAction(
-  input: CourseInput
+  formData: FormData
 ): Promise<{ ok: boolean; message: string; course?: Course }> {
   const supabaseAdmin = createSupabaseServerClient();
   const courseId = uuidv4();
 
-  const insertData = {
-    ...input,
-    id: courseId,
-    price: input.is_paid ? input.price : null,
-    discount_percentage: input.is_paid ? (input.discount_percentage || 0) : null,
-    currency: input.is_paid ? (input.currency || 'INR') : null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
+  const title = formData.get('title') as string;
+  const description = formData.get('description') as string | null;
+  const is_paid = formData.get('is_paid') === 'true';
+  const price = formData.get('price') ? Number(formData.get('price')) : undefined;
+  const currency = formData.get('currency') as 'INR' | 'USD' | 'EUR' | undefined;
+  const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : 0;
+  const school_id = formData.get('school_id') as string | null;
+  const target_audience = formData.get('target_audience') as 'student' | 'teacher' | 'both';
+  const target_class_id = formData.get('target_class_id') as string | null;
+  const created_by_user_id = formData.get('created_by_user_id') as string;
+  const featureImageFile = formData.get('feature_image_url') as File | null;
+  
+  let feature_image_url: string | undefined = undefined;
 
-  const { error, data: courseData } = await supabaseAdmin
-    .from('lms_courses')
-    .insert(insertData)
-    .select()
-    .single();
+  try {
+    if (featureImageFile && featureImageFile.size > 0) {
+      const sanitizedFileName = featureImageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const filePath = `public/course-feature-images/${school_id || 'global'}/${courseId}-${sanitizedFileName}`;
 
-  if (error) {
-    console.error("Error creating course:", error);
-    return { ok: false, message: `Failed to create course: ${error.message}` };
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('campushub')
+        .upload(filePath, featureImageFile);
+
+      if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
+
+      const { data: publicUrlData } = supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
+      feature_image_url = publicUrlData?.publicUrl;
+    }
+
+    const insertData = {
+      id: courseId,
+      title,
+      description,
+      feature_image_url,
+      is_paid,
+      price: is_paid ? price : null,
+      currency: is_paid ? (currency || 'INR') : null,
+      discount_percentage: is_paid ? discount_percentage : null,
+      school_id,
+      target_audience,
+      target_class_id,
+      created_by_user_id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error, data: courseData } = await supabaseAdmin
+      .from('lms_courses')
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error creating course:", error);
+      return { ok: false, message: `Failed to create course: ${error.message}` };
+    }
+
+    revalidatePath('/admin/lms/courses');
+    revalidatePath('/lms/available-courses');
+    return { ok: true, message: 'Course created successfully.', course: courseData as Course };
+  } catch (e: any) {
+    return { ok: false, message: e.message || "An unexpected error occurred." };
   }
-
-  revalidatePath('/admin/lms/courses');
-  revalidatePath('/lms/available-courses');
-  return { ok: true, message: 'Course created successfully.', course: courseData as Course };
 }
 
 export async function updateCourseAction(
   id: string,
-  input: Partial<Omit<CourseInput, 'lessons'>>
+  formData: FormData
 ): Promise<{ ok: boolean; message: string; course?: Course }> {
   const supabaseAdmin = createSupabaseServerClient();
-   const updateData = {
-    ...input,
-    price: input.is_paid ? input.price : null,
-    discount_percentage: input.is_paid ? (input.discount_percentage || 0) : null,
-    currency: input.is_paid ? (input.currency || 'INR') : null,
-    updated_at: new Date().toISOString(),
-  };
-  const { error, data } = await supabaseAdmin
-    .from('lms_courses')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single();
 
-  if (error) {
-    console.error("Error updating course:", error);
-    return { ok: false, message: `Failed to update course: ${error.message}` };
+  const title = formData.get('title') as string;
+  const description = formData.get('description') as string | null;
+  const is_paid = formData.get('is_paid') === 'true';
+  const price = formData.get('price') ? Number(formData.get('price')) : undefined;
+  const currency = formData.get('currency') as 'INR' | 'USD' | 'EUR' | undefined;
+  const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : 0;
+  const school_id = formData.get('school_id') as string | null;
+  const target_audience = formData.get('target_audience') as 'student' | 'teacher' | 'both';
+  const target_class_id = formData.get('target_class_id') as string | null;
+  const featureImageFile = formData.get('feature_image_url') as File | null;
+  
+  try {
+    const updateData: Partial<Course> = {
+      title,
+      description,
+      is_paid,
+      price: is_paid ? price : null,
+      currency: is_paid ? (currency || 'INR') : null,
+      discount_percentage: is_paid ? discount_percentage : null,
+      school_id,
+      target_audience,
+      target_class_id,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (featureImageFile && featureImageFile.size > 0) {
+      const sanitizedFileName = featureImageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const filePath = `public/course-feature-images/${school_id || 'global'}/${id}-${sanitizedFileName}`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('campushub')
+        .upload(filePath, featureImageFile);
+
+      if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
+
+      const { data: publicUrlData } = supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
+      updateData.feature_image_url = publicUrlData?.publicUrl;
+    }
+    
+    const { error, data } = await supabaseAdmin
+      .from('lms_courses')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error updating course:", error);
+      return { ok: false, message: `Failed to update course: ${error.message}` };
+    }
+    revalidatePath('/admin/lms/courses');
+    revalidatePath(`/admin/lms/courses/${id}/content`);
+    revalidatePath(`/admin/lms/courses/${id}/enrollments`);
+    revalidatePath(`/lms/courses/${id}`);
+    revalidatePath('/lms/available-courses');
+    return { ok: true, message: 'Course updated successfully.', course: data as Course };
+  } catch (e: any) {
+     return { ok: false, message: e.message || "An unexpected error occurred." };
   }
-  revalidatePath('/admin/lms/courses');
-  revalidatePath(`/admin/lms/courses/${id}/content`);
-  revalidatePath(`/admin/lms/courses/${id}/enrollments`);
-  revalidatePath(`/lms/courses/${id}`);
-  revalidatePath('/lms/available-courses');
-  return { ok: true, message: 'Course updated successfully.', course: data as Course };
 }
 
 export async function deleteCourseAction(id: string): Promise<{ ok: boolean; message: string }> {

@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Library, Lock, Unlock, Eye, ShoppingCart, Loader2, Percent } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 import { enrollUserInCourseAction, getAvailableCoursesWithEnrollmentStatusAction } from '@/app/(app)/admin/lms/courses/actions';
 import { Badge } from '@/components/ui/badge';
@@ -147,52 +148,57 @@ export default function AvailableLmsCoursesPage() {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {courses.map((course) => (
-            <Card key={course.id} className="flex flex-col">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                    <CardTitle className="flex items-center"><Library className="mr-2 h-5 w-5 text-primary" />{course.title}</CardTitle>
-                    {course.is_paid ? (
-                        <span className="text-xs font-semibold bg-destructive/20 text-destructive px-2 py-1 rounded-full flex items-center">
-                            <Lock className="mr-1 h-3 w-3"/> Paid
-                        </span>
+            <Card key={course.id} className="flex flex-col overflow-hidden">
+               <div className="relative aspect-video">
+                  <Image 
+                      src={course.feature_image_url || `https://placehold.co/600x400.png`}
+                      alt={course.title}
+                      layout="fill"
+                      objectFit="cover"
+                      data-ai-hint="course cover"
+                  />
+                  <div className="absolute top-2 right-2 flex gap-1">
+                     {course.is_paid ? (
+                        <Badge variant="destructive" className="flex items-center"><Lock className="mr-1 h-3 w-3"/> Paid</Badge>
                     ) : (
-                         <span className="text-xs font-semibold bg-green-500/20 text-green-700 px-2 py-1 rounded-full flex items-center">
-                            <Unlock className="mr-1 h-3 w-3"/> Free
-                        </span>
+                        <Badge className="bg-green-600 hover:bg-green-700 flex items-center"><Unlock className="mr-1 h-3 w-3"/> Free</Badge>
                     )}
+                    {course.school_id ? null : <Badge variant="outline">Global</Badge>}
+                  </div>
+              </div>
+              <div className="flex flex-col flex-grow p-6">
+                <CardTitle className="flex items-center mb-2"><Library className="mr-2 h-5 w-5 text-primary shrink-0" />{course.title}</CardTitle>
+                <CardDescription className="line-clamp-3 flex-grow">{course.description || "No description available."}</CardDescription>
+                <div className="mt-4">
+                  {getPriceDisplay(course)}
                 </div>
-                <CardDescription className="line-clamp-3">{course.description || "No description available."}</CardDescription>
-                 {course.school_id ? null : <Badge variant="outline" className="mt-1 w-fit">Global Course</Badge>}
-              </CardHeader>
-              <CardContent className="flex-grow">
-                 {getPriceDisplay(course)}
-              </CardContent>
-              <CardFooter>
-                {canEnroll && course.isEnrolled ? (
-                   <Button asChild className="w-full" variant="secondary">
-                     <Link href={`/lms/courses/${course.id}`}>
-                       <Eye className="mr-2 h-4 w-4"/> View Course
-                     </Link>
-                   </Button>
-                ) : canEnroll && course.is_paid ? (
-                  <Button asChild className="w-full">
-                    <Link href={`/student/lms/activate?courseId=${course.id}`}>
-                       <ShoppingCart className="mr-2 h-4 w-4"/> Activate Course
-                    </Link>
-                  </Button>
-                ) : canEnroll && !course.is_paid ? (
-                  <Button onClick={() => handleEnrollUnpaid(course.id)} className="w-full" disabled={isEnrolling[course.id] || !currentUserProfileId}>
-                    {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
-                    {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
-                  </Button>
-                ) : ( // Admin/Superadmin view or user cannot enroll
-                   <Button asChild className="w-full" variant="outline">
-                     <Link href={`/admin/lms/courses/${course.id}/content`}> {/* Admins likely go to admin view */}
-                       <Eye className="mr-2 h-4 w-4"/> View Details
-                     </Link>
-                   </Button>
-                )}
-              </CardFooter>
+                <CardFooter className="p-0 pt-4">
+                  {canEnroll && course.isEnrolled ? (
+                     <Button asChild className="w-full" variant="secondary">
+                       <Link href={`/lms/courses/${course.id}`}>
+                         <Eye className="mr-2 h-4 w-4"/> View Course
+                       </Link>
+                     </Button>
+                  ) : canEnroll && course.is_paid ? (
+                    <Button asChild className="w-full">
+                      <Link href={`/student/lms/activate?courseId=${course.id}`}>
+                         <ShoppingCart className="mr-2 h-4 w-4"/> Activate Course
+                      </Link>
+                    </Button>
+                  ) : canEnroll && !course.is_paid ? (
+                    <Button onClick={() => handleEnrollUnpaid(course.id)} className="w-full" disabled={isEnrolling[course.id] || !currentUserProfileId}>
+                      {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
+                      {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
+                    </Button>
+                  ) : ( // Admin/Superadmin view or user cannot enroll
+                     <Button asChild className="w-full" variant="outline">
+                       <Link href={`/admin/lms/courses/${course.id}/content`}> {/* Admins likely go to admin view */}
+                         <Eye className="mr-2 h-4 w-4"/> View Details
+                       </Link>
+                     </Button>
+                  )}
+                </CardFooter>
+              </div>
             </Card>
           ))}
         </div>
