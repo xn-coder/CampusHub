@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -16,8 +17,8 @@ import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
-import { createCourseAction, updateCourseAction, deleteCourseAction, generateActivationCodesAction } from './actions';
-import { PlusCircle, Edit2, Trash2, Save, Library, Settings, UserPlus, KeyRound, Copy, Loader2, BookUser, Users as UsersIcon } from 'lucide-react';
+import { createCourseAction, updateCourseAction, deleteCourseAction, generateActivationCodesAction } from '@/app/(app)/admin/lms/courses/actions';
+import { PlusCircle, Edit2, Trash2, Save, Library, Settings, UserPlus, KeyRound, Copy, Loader2, BookUser, Users as UsersIcon, Percent, Upload } from 'lucide-react';
 
 
 async function fetchAdminSchoolIdAndRole(adminUserId: string): Promise<{ schoolId: string | null, role: UserRole | null }> {
@@ -33,6 +34,12 @@ async function fetchAdminSchoolIdAndRole(adminUserId: string): Promise<{ schoolI
   }
   return { schoolId: user.school_id, role: user.role as UserRole };
 }
+
+const currencySymbols = {
+    INR: '₹',
+    USD: '$',
+    EUR: '€',
+};
 
 export default function ManageCoursesPage() {
   const { toast } = useToast();
@@ -58,8 +65,11 @@ export default function ManageCoursesPage() {
   // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [featureImageFile, setFeatureImageFile] = useState<File | null>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState<number | ''>('');
+  const [currency, setCurrency] = useState<'INR' | 'USD' | 'EUR'>('INR');
+  const [discount, setDiscount] = useState<number | ''>('');
   const [selectedTargetAudience, setSelectedTargetAudience] = useState<'student' | 'teacher' | 'both' | ''>('');
   const [selectedTargetClassId, setSelectedTargetClassId] = useState<string>(''); 
 
@@ -138,8 +148,11 @@ export default function ManageCoursesPage() {
   const resetCourseForm = () => {
     setTitle('');
     setDescription('');
+    setFeatureImageFile(null);
     setIsPaid(false);
     setPrice('');
+    setCurrency('INR');
+    setDiscount('');
     setSelectedTargetAudience('');
     setSelectedTargetClassId('');
     setEditingCourse(null);
@@ -150,14 +163,28 @@ export default function ManageCoursesPage() {
       setEditingCourse(course);
       setTitle(course.title);
       setDescription(course.description || '');
+      setFeatureImageFile(null);
       setIsPaid(course.is_paid);
       setPrice(course.price ?? '');
+      setCurrency(course.currency || 'INR');
+      setDiscount(course.discount_percentage ?? '');
       setSelectedTargetAudience(course.target_audience || '');
       setSelectedTargetClassId(course.target_class_id || ((course.target_audience === 'student' || course.target_audience === 'both') && !course.target_class_id && course.school_id ? 'all_students_in_school' : ''));
     } else {
       resetCourseForm();
     }
     setIsCourseDialogOpen(true);
+  };
+  
+   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file && file.size > 2 * 1024 * 1024) { // 2MB limit
+      toast({ title: "File too large", description: "Feature image should be less than 2MB.", variant: "destructive" });
+      setFeatureImageFile(null);
+      e.target.value = '';
+      return;
+    }
+    setFeatureImageFile(file);
   };
 
   const handleCourseSubmit = async (e: FormEvent) => {
@@ -181,22 +208,29 @@ export default function ManageCoursesPage() {
 
     setIsSubmitting(true);
 
-    const courseData = {
-      title: title.trim(),
-      description: description.trim() || undefined,
-      is_paid: isPaid,
-      price: isPaid ? Number(price) : undefined,
-      school_id: currentUserRole === 'superadmin' && !currentSchoolId ? null : currentSchoolId, 
-      target_audience: selectedTargetAudience as 'student' | 'teacher' | 'both',
-      target_class_id: (selectedTargetAudience === 'student' || selectedTargetAudience === 'both') ? (selectedTargetClassId && selectedTargetClassId !== 'all_students_in_school' ? selectedTargetClassId : null) : null,
-      created_by_user_id: currentAdminUserId,
-    };
-
+    const formData = new FormData();
+    formData.append('title', title.trim());
+    formData.append('description', description.trim());
+    formData.append('is_paid', String(isPaid));
+    if (isPaid) {
+      formData.append('price', String(price));
+      formData.append('currency', currency);
+      formData.append('discount_percentage', String(discount || 0));
+    }
+    formData.append('school_id', currentUserRole === 'superadmin' && !currentSchoolId ? '' : currentSchoolId || '');
+    formData.append('target_audience', selectedTargetAudience);
+    const targetClassIdValue = (selectedTargetAudience === 'student' || selectedTargetAudience === 'both') ? (selectedTargetClassId && selectedTargetClassId !== 'all_students_in_school' ? selectedTargetClassId : '') : '';
+    formData.append('target_class_id', targetClassIdValue);
+    formData.append('created_by_user_id', currentAdminUserId);
+    if(featureImageFile) {
+        formData.append('feature_image_url', featureImageFile);
+    }
+    
     let result;
     if (editingCourse) {
-      result = await updateCourseAction(editingCourse.id, courseData);
+      result = await updateCourseAction(editingCourse.id, formData);
     } else {
-      result = await createCourseAction(courseData);
+      result = await createCourseAction(formData);
     }
 
     if (result.ok) {
@@ -283,6 +317,25 @@ export default function ManageCoursesPage() {
     }
     return course.school_id ? 'All Students (School)' : 'All Students (Global)';
   };
+  
+  const getPriceDisplay = (course: Course) => {
+    if (!course.is_paid || !course.price) return 'N/A';
+    const symbol = currencySymbols[course.currency || 'INR'];
+    const originalPrice = course.price.toFixed(2);
+    
+    if (course.discount_percentage && course.discount_percentage > 0) {
+        const discountedPrice = (course.price * (1 - course.discount_percentage / 100)).toFixed(2);
+        return (
+            <div className="flex flex-col">
+                <span>{symbol}{discountedPrice}</span>
+                <span className="text-xs text-muted-foreground line-through">{symbol}{originalPrice}</span>
+            </div>
+        );
+    }
+    
+    return `${symbol}${originalPrice}`;
+  };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -325,7 +378,7 @@ export default function ManageCoursesPage() {
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
                     <TableCell>{course.is_paid ? 'Paid' : 'Free'}</TableCell>
-                    <TableCell>{course.is_paid && course.price ? <span className="font-mono">₹</span>: ''}{course.is_paid && course.price ? course.price.toFixed(2) : 'N/A'}</TableCell>
+                    <TableCell>{getPriceDisplay(course)}</TableCell>
                     <TableCell>{course.school_id ? 'School-Specific' : 'Global'}</TableCell>
                     <TableCell>{getTargetAudienceDisplay(course.target_audience)}</TableCell>
                     <TableCell>{getTargetClassDisplay(course)}</TableCell>
@@ -376,6 +429,10 @@ export default function ManageCoursesPage() {
                 <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief overview of the course" disabled={isSubmitting}/>
               </div>
               <div>
+                <Label htmlFor="feature_image_url">Feature Image (Optional, &lt;2MB)</Label>
+                <Input id="feature_image_url" type="file" onChange={handleFileChange} accept="image/png, image/jpeg, image/webp" disabled={isSubmitting}/>
+              </div>
+              <div>
                 <Label>Course Type</Label>
                 <RadioGroup value={isPaid ? "paid" : "unpaid"} onValueChange={(val) => setIsPaid(val === "paid")} className="flex space-x-4 mt-1" disabled={isSubmitting}>
                   <div className="flex items-center space-x-2">
@@ -389,9 +446,29 @@ export default function ManageCoursesPage() {
                 </RadioGroup>
               </div>
               {isPaid && (
-                <div>
-                  <Label htmlFor="price">Price (<span className="font-mono">₹</span>)</Label>
-                  <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 49.99" step="0.01" min="0.01" required={isPaid} disabled={isSubmitting}/>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border p-4 rounded-md">
+                    <div>
+                        <Label htmlFor="currency">Currency</Label>
+                        <Select value={currency} onValueChange={(val) => setCurrency(val as any)} disabled={isSubmitting}>
+                            <SelectTrigger id="currency"><SelectValue/></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="INR">INR (₹)</SelectItem>
+                                <SelectItem value="USD">USD ($)</SelectItem>
+                                <SelectItem value="EUR">EUR (€)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="price">Price</Label>
+                      <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 499" step="0.01" min="0.01" required={isPaid} disabled={isSubmitting}/>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label htmlFor="discount">Discount Percentage (Optional)</Label>
+                      <div className="relative">
+                        <Input id="discount" type="number" value={discount} onChange={(e) => setDiscount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 10" step="1" min="0" max="100" disabled={isSubmitting}/>
+                        <Percent className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </div>
                 </div>
               )}
               <div>
@@ -490,3 +567,5 @@ export default function ManageCoursesPage() {
     </div>
   );
 }
+
+    
