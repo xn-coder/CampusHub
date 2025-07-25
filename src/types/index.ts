@@ -367,7 +367,7 @@ export interface Course {
   feature_image_url?: string | null;
   is_paid: boolean;
   price?: number | null;
-  currency?: 'INR' | 'USD' | 'EUR';
+  currency?: 'INR' | 'USD' | 'EUR' | null;
   discount_percentage?: number | null;
   school_id?: string | null;
   target_audience?: 'student' | 'teacher' | 'both' | null;

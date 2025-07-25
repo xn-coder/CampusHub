@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { Course, UserRole } from '@/types';
-import { useState, useEffect, type FormEvent, useCallback, Suspense } from 'react';
+import { useState, useEffect, type FormEvent, useCallback, Suspense, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { KeyRound, CheckCircle, XCircle, Loader2, CreditCard } from 'lucide-react';
@@ -173,6 +173,13 @@ function ActivateLmsForm() {
     rzp.open();
     setIsLoading(false);
   };
+  
+  const finalPrice = useMemo(() => {
+    if (!targetCourse?.price) return 0;
+    const discount = targetCourse.discount_percentage || 0;
+    return targetCourse.price * (1 - discount / 100);
+  }, [targetCourse]);
+
 
   if (isPageLoading) {
     return (
@@ -228,7 +235,10 @@ function ActivateLmsForm() {
                       </div>
                       <Button type="button" onClick={handlePayment} className="w-full" disabled={isLoading || isPageLoading || !targetCourse}>
                           {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
-                          Pay <span className="font-mono mx-1">₹</span>{targetCourse?.price?.toFixed(2)} and Enroll
+                          Pay <span className="font-mono mx-1">₹</span>{finalPrice.toFixed(2)} and Enroll
+                           {targetCourse.discount_percentage && targetCourse.discount_percentage > 0 && targetCourse.price && (
+                                <span className="ml-2 line-through text-xs text-muted-foreground">₹{targetCourse.price.toFixed(2)}</span>
+                            )}
                       </Button>
                   </>
               )}
