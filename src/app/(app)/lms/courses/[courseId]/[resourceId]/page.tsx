@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCourseForViewingAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource } from '@/types';
@@ -177,6 +177,10 @@ export default function CourseResourcePage() {
         }
     }, [courseId, resourceId]);
 
+    const pdfFile = useMemo(() => (
+      resource?.url_or_content ? { url: resource.url_or_content } : null
+    ), [resource?.url_or_content]);
+
     const getResourceIcon = (type: string) => {
         const props = { className: "mr-2 h-5 w-5 text-primary" };
         switch(type) {
@@ -296,7 +300,7 @@ export default function CourseResourcePage() {
                     {(resource.type === 'ebook' || (resource.url_or_content && resource.url_or_content.endsWith('.pdf'))) && resource.url_or_content && (
                         <div className="w-full overflow-auto" style={{ height: '70vh' }}>
                             <Document
-                                file={{ url: resource.url_or_content }}
+                                file={pdfFile}
                                 onLoadSuccess={onDocumentLoadSuccess}
                                 loading={<div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
                                 error={<div className="text-destructive text-center p-4">Could not load the PDF file. Please ensure the URL is correct and accessible.</div>}
