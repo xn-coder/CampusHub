@@ -39,7 +39,7 @@ export async function createCourseAction(
   const created_by_user_id = formData.get('created_by_user_id') as string;
   const featureImageFile = formData.get('feature_image_url') as File | null;
   
-  if (target_class_id === '') target_class_id = null;
+  if (target_class_id === '' || target_class_id === 'all_students_in_school') target_class_id = null;
   
   let feature_image_url: string | undefined = undefined;
 
@@ -111,7 +111,7 @@ export async function updateCourseAction(
   let target_class_id = formData.get('target_class_id') as string | null;
   const featureImageFile = formData.get('feature_image_url') as File | null;
   
-  if (target_class_id === '') target_class_id = null;
+  if (target_class_id === '' || target_class_id === 'all_students_in_school') target_class_id = null;
   
   try {
     const updateData: Partial<Course> = {
@@ -133,7 +133,7 @@ export async function updateCourseAction(
 
       const { error: uploadError } = await supabaseAdmin.storage
         .from('campushub')
-        .upload(filePath, featureImageFile);
+        .upload(filePath, featureImageFile, { upsert: true });
 
       if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
@@ -842,7 +842,7 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
     if (!razorpayInstance) return { ok: false, message: "Payment gateway is not configured." };
     
     const supabase = createSupabaseServerClient();
-    const { data: course, error: courseError } = await supabase.from('lms_courses').select('price').eq('id', courseId).single();
+    const { data: course, error: courseError } = await supabase.from('lms_courses').select('price, discount_percentage').eq('id', courseId).single();
     if (courseError || !course || !course.price || course.price <= 0) {
         return { ok: false, message: "Course not found or has no price." };
     }
@@ -850,7 +850,10 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
     const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
     if(userError || !user) return { ok: false, message: "User not found." };
     
-    const amountInPaisa = Math.round(course.price * 100);
+    const discount = course.discount_percentage || 0;
+    const finalPrice = course.price * (1 - discount / 100);
+    const amountInPaisa = Math.round(finalPrice * 100);
+
     const options = {
         amount: amountInPaisa,
         currency: "INR",
