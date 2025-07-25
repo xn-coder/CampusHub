@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -7,12 +8,17 @@ import { Button } from '@/components/ui/button';
 import type { Course, UserRole, CourseWithEnrollmentStatus } from '@/types';
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Library, Lock, Unlock, Eye, ShoppingCart, Loader2 } from 'lucide-react';
+import { Library, Lock, Unlock, Eye, ShoppingCart, Loader2, Percent } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { enrollUserInCourseAction, getAvailableCoursesWithEnrollmentStatusAction } from '@/app/(app)/admin/lms/courses/actions';
 import { Badge } from '@/components/ui/badge';
 
+const currencySymbols = {
+    INR: '₹',
+    USD: '$',
+    EUR: '€',
+};
 
 export default function AvailableLmsCoursesPage() {
   const { toast } = useToast();
@@ -107,6 +113,27 @@ export default function AvailableLmsCoursesPage() {
 
   const canEnroll = currentUserRole === 'student' || currentUserRole === 'teacher';
 
+  const getPriceDisplay = (course: Course) => {
+    if (!course.is_paid || !course.price) return null;
+    const symbol = currencySymbols[course.currency || 'INR'];
+    const originalPrice = course.price;
+    const discount = course.discount_percentage || 0;
+    const finalPrice = originalPrice * (1 - discount / 100);
+
+    return (
+        <div className="text-lg font-semibold text-foreground mb-2 flex items-baseline gap-2">
+            <span>{symbol}{finalPrice.toFixed(2)}</span>
+            {discount > 0 && (
+                 <span className="text-sm text-muted-foreground line-through">{symbol}{originalPrice.toFixed(2)}</span>
+            )}
+            {discount > 0 && (
+                 <Badge variant="destructive" className="flex items-center gap-1"><Percent className="h-3 w-3"/>{discount}% off</Badge>
+            )}
+        </div>
+    );
+  };
+
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -138,9 +165,7 @@ export default function AvailableLmsCoursesPage() {
                  {course.school_id ? null : <Badge variant="outline" className="mt-1 w-fit">Global Course</Badge>}
               </CardHeader>
               <CardContent className="flex-grow">
-                {course.is_paid && course.price && (
-                  <p className="text-lg font-semibold text-foreground mb-2">₹{course.price.toFixed(2)}</p>
-                )}
+                 {getPriceDisplay(course)}
               </CardContent>
               <CardFooter>
                 {canEnroll && course.isEnrolled ? (

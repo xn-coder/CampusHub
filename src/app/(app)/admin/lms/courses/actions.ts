@@ -26,6 +26,8 @@ interface CourseInput {
   description?: string;
   is_paid: boolean;
   price?: number;
+  currency: 'INR' | 'USD' | 'EUR';
+  discount_percentage?: number;
   school_id?: string | null;
   target_audience: 'student' | 'teacher' | 'both';
   target_class_id?: string | null;
@@ -41,7 +43,9 @@ export async function createCourseAction(
   const insertData = {
     ...input,
     id: courseId,
-    price: input.is_paid ? input.price : null, 
+    price: input.is_paid ? input.price : null,
+    discount_percentage: input.is_paid ? (input.discount_percentage || 0) : null,
+    currency: input.is_paid ? (input.currency || 'INR') : null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -70,6 +74,8 @@ export async function updateCourseAction(
    const updateData = {
     ...input,
     price: input.is_paid ? input.price : null,
+    discount_percentage: input.is_paid ? (input.discount_percentage || 0) : null,
+    currency: input.is_paid ? (input.currency || 'INR') : null,
     updated_at: new Date().toISOString(),
   };
   const { error, data } = await supabaseAdmin
