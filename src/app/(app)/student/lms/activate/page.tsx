@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -118,59 +119,74 @@ function ActivateLmsForm() {
     }
     setIsLoading(true);
     const orderResult = await createCoursePaymentOrderAction(targetCourse.id, currentUserId);
-    if(!orderResult.ok || !orderResult.order) {
+    
+    if(!orderResult.ok) {
         toast({ title: "Payment Error", description: orderResult.message || "Could not create payment order.", variant: "destructive" });
         setIsLoading(false);
         return;
     }
 
-    const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: orderResult.order.amount,
-        currency: "INR",
-        name: targetCourse.title,
-        description: `Course Enrollment: ${targetCourse.description || ''}`.substring(0, 255),
-        order_id: orderResult.order.id,
-        handler: async (response: any) => {
-            const verifyResult = await verifyCoursePaymentAndEnrollAction(
-                response.razorpay_payment_id,
-                response.razorpay_order_id,
-                response.razorpay_signature
-            );
-            if (verifyResult.ok) {
-                toast({ title: 'Payment Successful', description: verifyResult.message });
-                setMessage({type: 'success', text: verifyResult.message});
-                setTimeout(() => {
-                    if (verifyResult.courseId) router.push(`/lms/courses/${verifyResult.courseId}`);
-                }, 2000);
-            } else {
-                toast({ title: 'Payment Failed', description: verifyResult.message, variant: 'destructive' });
-                 setMessage({type: 'error', text: verifyResult.message});
-            }
-        },
-        prefill: {
-            name: currentUserName || "Student",
-            email: currentUserEmail || undefined,
-        },
-        notes: {
-            course_id: targetCourse.id,
-        },
-        theme: {
-            color: "#3399cc"
-        }
-    };
+    // Handle mock payment success
+    if (orderResult.isMock) {
+        toast({ title: "Course Activated!", description: orderResult.message });
+        setMessage({type: 'success', text: orderResult.message});
+        setTimeout(() => {
+            router.push(`/lms/courses/${targetCourse.id}`);
+        }, 2000);
+        setIsLoading(false);
+        return;
+    }
 
-    const rzp = new window.Razorpay(options);
-    rzp.on('payment.failed', function (response: any){
-        console.error("Razorpay payment failed:", response.error);
-        toast({
-            title: 'Payment Failed',
-            description: `Code: ${response.error.code}. Reason: ${response.error.reason}`,
-            variant: 'destructive',
+    // Proceed with real Razorpay payment
+    if (orderResult.order) {
+        const options = {
+            key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+            amount: orderResult.order.amount,
+            currency: "INR",
+            name: targetCourse.title,
+            description: `Course Enrollment: ${targetCourse.description || ''}`.substring(0, 255),
+            order_id: orderResult.order.id,
+            handler: async (response: any) => {
+                const verifyResult = await verifyCoursePaymentAndEnrollAction(
+                    response.razorpay_payment_id,
+                    response.razorpay_order_id,
+                    response.razorpay_signature
+                );
+                if (verifyResult.ok) {
+                    toast({ title: 'Payment Successful', description: verifyResult.message });
+                    setMessage({type: 'success', text: verifyResult.message});
+                    setTimeout(() => {
+                        if (verifyResult.courseId) router.push(`/lms/courses/${verifyResult.courseId}`);
+                    }, 2000);
+                } else {
+                    toast({ title: 'Payment Failed', description: verifyResult.message, variant: 'destructive' });
+                    setMessage({type: 'error', text: verifyResult.message});
+                }
+            },
+            prefill: {
+                name: currentUserName || "Student",
+                email: currentUserEmail || undefined,
+            },
+            notes: {
+                course_id: targetCourse.id,
+            },
+            theme: {
+                color: "#3399cc"
+            }
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', function (response: any){
+            console.error("Razorpay payment failed:", response.error);
+            toast({
+                title: 'Payment Failed',
+                description: `Code: ${response.error.code}. Reason: ${response.error.reason}`,
+                variant: 'destructive',
+            });
+            setMessage({type: 'error', text: `Payment failed: ${response.error.reason}`});
         });
-        setMessage({type: 'error', text: `Payment failed: ${response.error.reason}`});
-    });
-    rzp.open();
+        rzp.open();
+    }
     setIsLoading(false);
   };
   

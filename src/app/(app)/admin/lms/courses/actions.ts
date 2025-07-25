@@ -838,17 +838,39 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
     ok: boolean;
     message: string;
     order?: any;
+    isMock?: boolean;
 }> {
+    const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
+
+    const supabase = createSupabaseServerClient();
+    const { data: user, error: userError } = await supabase.from('users').select('id, role').eq('id', userId).single();
+    if(userError || !user) return { ok: false, message: "User not found." };
+    const userRole = user.role as UserRole;
+    const profileTable = userRole === 'student' ? 'students' : 'teachers';
+    const { data: profile, error: profileError } = await supabase.from(profileTable).select('id').eq('user_id', userId).single();
+    if(profileError || !profile) return {ok: false, message: "User profile for enrollment not found."};
+
+    if (!isRazorpayEnabled) {
+        console.log("Razorpay is disabled. Simulating successful payment and enrolling user.");
+        const enrollmentResult = await enrollUserInCourseAction({
+            course_id: courseId,
+            user_profile_id: profile.id,
+            user_type: userRole,
+        });
+        
+        if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
+            return { ok: false, message: `Mock payment failed: Could not enroll user. Reason: ${enrollmentResult.message}` };
+        }
+        revalidatePath('/lms/available-courses');
+        return { ok: true, isMock: true, message: "Mock payment successful and you are now enrolled!" };
+    }
+    
     if (!razorpayInstance) return { ok: false, message: "Payment gateway is not configured." };
     
-    const supabase = createSupabaseServerClient();
     const { data: course, error: courseError } = await supabase.from('lms_courses').select('price, discount_percentage').eq('id', courseId).single();
     if (courseError || !course || !course.price || course.price <= 0) {
         return { ok: false, message: "Course not found or has no price." };
     }
-
-    const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
-    if(userError || !user) return { ok: false, message: "User not found." };
     
     const discount = course.discount_percentage || 0;
     const finalPrice = course.price * (1 - discount / 100);

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -31,7 +32,7 @@ export default function StudentPaymentHistoryPage() {
     const [currentStudentProfileId, setCurrentStudentProfileId] = useState<string | null>(null);
     const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
     const [currentStudentName, setCurrentStudentName] = useState<string | null>(null);
-    const [currentStudentEmail, setCurrentStudentEmail] = useState<string | null>(null);
+    const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
 
     const loadPaymentData = async () => {
@@ -72,7 +73,7 @@ export default function StudentPaymentHistoryPage() {
             setCurrentStudentProfileId(studentProfile.id);
             setCurrentSchoolId(studentProfile.school_id);
             setCurrentStudentName(studentProfile.name);
-            setCurrentStudentEmail(studentProfile.email);
+            setCurrentUserEmail(studentProfile.email);
             
             const paymentResult = await getStudentPaymentHistoryAction(studentProfile.id, studentProfile.school_id);
 
@@ -96,86 +97,78 @@ export default function StudentPaymentHistoryPage() {
     }, [payments]);
 
     const initiatePayment = async (amountToPay: number, feeIds: string[], description: string) => {
-        if (!currentStudentProfileId || !currentSchoolId || !currentStudentName || !currentStudentEmail) {
+        if (!currentStudentProfileId || !currentSchoolId || !currentStudentName || !currentUserEmail) {
             toast({ title: 'Error', description: 'User context is missing.', variant: 'destructive' });
             return;
         }
 
         setIsPaying(true);
 
-        // Check if Razorpay is configured
-        if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) {
-            console.warn("Razorpay KEY_ID not found, using mock payment flow.");
-            toast({
-                title: "Mock Payment Mode",
-                description: "Razorpay is not configured. Simulating a successful payment."
-            });
-            const mockResult = await mockPayFeesAction(currentStudentProfileId, currentSchoolId, feeIds);
-            if (mockResult.ok) {
-                toast({ title: "Mock Payment Successful", description: mockResult.message });
-                await loadPaymentData();
-            } else {
-                toast({ title: "Mock Payment Failed", description: mockResult.message, variant: 'destructive' });
-            }
-            setIsPaying(false);
-            return;
-        }
-
-        // --- Real Razorpay Logic ---
         const amountInPaisa = Math.round(amountToPay * 100);
 
-        const orderResult = await createRazorpayOrderAction(amountInPaisa, feeIds);
+        const orderResult = await createRazorpayOrderAction(amountInPaisa, feeIds, currentStudentProfileId, currentSchoolId);
 
-        if (!orderResult.ok || !orderResult.order) {
+        if (!orderResult.ok) {
             toast({ title: 'Payment Error', description: orderResult.message || 'Could not create payment order.', variant: 'destructive' });
             setIsPaying(false);
             return;
         }
-
-        const options = {
-            key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-            amount: orderResult.order.amount,
-            currency: "INR",
-            name: "CampusHub Fee Payment",
-            description: description,
-            order_id: orderResult.order.id,
-            handler: async (response: any) => {
-                const verifyResult = await verifyRazorpayPaymentAction(
-                    response.razorpay_payment_id,
-                    response.razorpay_order_id,
-                    response.razorpay_signature,
-                    currentSchoolId
-                );
-                if (verifyResult.ok) {
-                    toast({ title: 'Payment Successful', description: verifyResult.message });
-                    await loadPaymentData();
-                } else {
-                    toast({ title: 'Payment Failed', description: verifyResult.message, variant: 'destructive' });
-                }
-            },
-            prefill: {
-                name: currentStudentName,
-                email: currentStudentEmail,
-            },
-            notes: {
-                student_id: currentStudentProfileId,
-            },
-            theme: {
-                color: "#3399cc"
-            }
-        };
-
-        const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', function (response: any){
-            console.error(response);
-            toast({
-                title: 'Payment Failed',
-                description: `Code: ${response.error.code}, Reason: ${response.error.reason}`,
-                variant: 'destructive',
-            });
-        });
         
-        rzp.open();
+        // Handle mock payment success
+        if (orderResult.isMock) {
+            toast({ title: "Payment Successful", description: orderResult.message });
+            await loadPaymentData();
+            setIsPaying(false);
+            return;
+        }
+
+        // Proceed with real Razorpay payment
+        if (orderResult.order) {
+            const options = {
+                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                amount: orderResult.order.amount,
+                currency: "INR",
+                name: "CampusHub Fee Payment",
+                description: description,
+                order_id: orderResult.order.id,
+                handler: async (response: any) => {
+                    const verifyResult = await verifyRazorpayPaymentAction(
+                        response.razorpay_payment_id,
+                        response.razorpay_order_id,
+                        response.razorpay_signature,
+                        currentSchoolId!
+                    );
+                    if (verifyResult.ok) {
+                        toast({ title: 'Payment Successful', description: verifyResult.message });
+                        await loadPaymentData();
+                    } else {
+                        toast({ title: 'Payment Failed', description: verifyResult.message, variant: 'destructive' });
+                    }
+                },
+                prefill: {
+                    name: currentStudentName,
+                    email: currentUserEmail,
+                },
+                notes: {
+                    student_id: currentStudentProfileId,
+                },
+                theme: {
+                    color: "#3399cc"
+                }
+            };
+
+            const rzp = new window.Razorpay(options);
+            rzp.on('payment.failed', function (response: any){
+                console.error(response);
+                toast({
+                    title: 'Payment Failed',
+                    description: `Code: ${response.error.code}, Reason: ${response.error.reason}`,
+                    variant: 'destructive',
+                });
+            });
+            
+            rzp.open();
+        }
         setIsPaying(false);
     };
 

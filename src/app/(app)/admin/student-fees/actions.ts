@@ -511,8 +511,22 @@ if (process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) 
 
 export async function createRazorpayOrderAction(
   amountInPaisa: number,
-  feePaymentIds: string[]
-): Promise<{ ok: boolean, message: string, order?: any }> {
+  feePaymentIds: string[],
+  studentProfileId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string; order?: any, isMock?: boolean }> {
+  const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
+
+  if (!isRazorpayEnabled) {
+      console.log("Razorpay is disabled. Simulating successful payment for student fees.");
+      const mockResult = await mockPayFeesAction(studentProfileId, schoolId, feePaymentIds);
+      if (mockResult.ok) {
+        return { ok: true, isMock: true, message: mockResult.message };
+      } else {
+        return { ok: false, isMock: true, message: mockResult.message };
+      }
+  }
+
   if (!razorpayInstance) {
     return { ok: false, message: "Razorpay is not configured on the server." };
   }
