@@ -39,7 +39,7 @@ export async function createCourseAction(
   const created_by_user_id = formData.get('created_by_user_id') as string;
   const featureImageFile = formData.get('feature_image_url') as File | null;
   
-  if (target_class_id === '' || target_class_id === 'all_students_in_school') target_class_id = null;
+  if (target_class_id === '' || target_class_id === 'all_students_in_school' || target_class_id === 'none') target_class_id = null;
   
   let feature_image_url: string | undefined = undefined;
 
@@ -111,7 +111,7 @@ export async function updateCourseAction(
   let target_class_id = formData.get('target_class_id') as string | null;
   const featureImageFile = formData.get('feature_image_url') as File | null;
   
-  if (target_class_id === '' || target_class_id === 'all_students_in_school') target_class_id = null;
+  if (target_class_id === '' || target_class_id === 'all_students_in_school' || target_class_id === 'none') target_class_id = null;
   
   try {
     const updateData: Partial<Course> = {
@@ -869,7 +869,8 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
         return { ok: true, message: "Order created.", order };
     } catch (error: any) {
         console.error("Razorpay course order creation error:", error);
-        return { ok: false, message: `Failed to create payment order: ${error.message || 'Unknown error'}` };
+        const errorMessage = error?.error?.description || error?.message || 'Unknown error';
+        return { ok: false, message: `Failed to create payment order: ${errorMessage}` };
     }
 }
 
