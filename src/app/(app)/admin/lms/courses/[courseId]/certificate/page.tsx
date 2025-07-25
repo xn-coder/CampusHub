@@ -12,7 +12,7 @@ function CertificateContent() {
     const searchParams = useSearchParams();
 
     const studentName = searchParams.get('studentName') || 'Valued Student';
-    const courseName = searchParams.get('courseName') || 'Your Course';
+    const completionItemName = searchParams.get('courseName') || 'the training'; // Can be course or lesson name
     const schoolName = searchParams.get('schoolName') || 'CampusHub University';
     const completionDateStr = searchParams.get('completionDate');
 
@@ -49,11 +49,11 @@ function CertificateContent() {
                     </h2>
 
                     <p className="mt-6 sm:mt-8 text-lg sm:text-xl">
-                        for successfully completing the online course
+                        for successfully completing the lesson
                     </p>
 
                     <h3 className="text-2xl sm:text-3xl md:text-4xl font-semibold text-blue-800 dark:text-blue-400 mt-2 sm:mt-4 italic">
-                        &ldquo;{courseName}&rdquo;
+                        &ldquo;{completionItemName}&rdquo;
                     </h3>
 
                     <p className="mt-6 sm:mt-8 text-base sm:text-lg">

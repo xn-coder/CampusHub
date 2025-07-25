@@ -264,21 +264,30 @@ export default function CourseResourcePage() {
             />
             <Card>
                 <CardHeader>
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center gap-2 flex-wrap">
                         <CardTitle className="flex items-center">
                             {getResourceIcon(resource.type)}
                             {resource.title}
                         </CardTitle>
-                        <Button 
-                            onClick={handleMarkAsComplete} 
-                            disabled={isCompleted} 
-                            size="sm"
-                            variant={isCompleted ? "secondary" : "default"}
-                            className="shrink-0"
-                        >
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            {isCompleted ? "Completed" : "Mark as Completed"}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button 
+                                onClick={handleMarkAsComplete} 
+                                disabled={isCompleted} 
+                                size="sm"
+                                variant={isCompleted ? "secondary" : "default"}
+                                className="shrink-0"
+                            >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                {isCompleted ? "Completed" : "Mark as Completed"}
+                            </Button>
+                            {isCompleted && (
+                                <Button asChild size="sm">
+                                    <Link href={`/admin/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                                        <Award className="mr-2 h-4 w-4" /> Get Certificate
+                                    </Link>
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent className="min-h-[60vh]">
@@ -415,8 +424,8 @@ export default function CourseResourcePage() {
                     ) : (
                         isCompleted && overallProgress === 100 ? (
                            <Button asChild>
-                                <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
-                                    <Award className="mr-2 h-4 w-4" /> Generate Certificate
+                                <Link href={`/admin/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                                    <Award className="mr-2 h-4 w-4" /> Course Complete! Get Certificate
                                 </Link>
                             </Button>
                         ) : (
