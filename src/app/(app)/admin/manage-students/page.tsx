@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Student, User, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck, FileCertificate } from 'lucide-react';
+import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck, FileText } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
 import { terminateStudentAction, reactivateStudentAction, updateStudentAction, checkFeeStatusAndGenerateTCAction } from './actions';
@@ -377,7 +377,7 @@ export default function ManageStudentsPage() {
                               {student.status === 'Active' || !student.status ? (
                                 <>
                                     <Button variant="outline" size="sm" onClick={() => handleGenerateTC(student)} disabled={isSubmitting}>
-                                        <FileCertificate className="mr-1 h-3 w-3" /> TC
+                                        <FileText className="mr-1 h-3 w-3" /> TC
                                     </Button>
                                     <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isSubmitting}>
                                         <Edit2 className="h-4 w-4" />
