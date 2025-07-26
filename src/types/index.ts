@@ -393,7 +393,7 @@ export interface CourseWithEnrollmentStatus extends Course {
 
 
 // A resource that is a child of a lesson. This is a client-side type
-// used to structure content stored in a JSON blob within a 'lesson' type CourseResource.
+// used to structure content in a JSON blob within a 'lesson' type CourseResource.
 export interface LessonContentResource {
     id: string;
     type: 'ebook' | 'video' | 'note' | 'webinar' | 'quiz';

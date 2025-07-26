@@ -40,7 +40,8 @@ import {
   ScrollText,
   Library,
   KeyRound,
-  BookOpenCheck
+  BookOpenCheck,
+  FileCertificate,
 } from 'lucide-react';
 
 
@@ -112,6 +113,7 @@ const studentNavItems: NavItem[] = [
   { href: '/lms/available-courses', label: 'LMS Courses', icon: Library },
   { href: '/student/lms/activate', label: 'Activate Course', icon: KeyRound },
   { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit },
+  { href: '/student/apply-tc', label: 'Apply for TC', icon: FileCertificate },
   { href: '/student/payment-history', label: 'Payment History', icon: CreditCard },
   { href: '/communication', label: 'View Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
@@ -124,6 +126,7 @@ const lockedStudentFeatures = [
     '/lms/available-courses',
     '/student/lms/activate',
     '/leave-application',
+    '/student/apply-tc',
 ];
 
 export default function SidebarNav() {
