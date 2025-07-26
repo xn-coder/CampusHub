@@ -41,7 +41,6 @@ import {
   Library,
   KeyRound,
   BookOpenCheck,
-  FileCertificate,
 } from 'lucide-react';
 
 
@@ -113,7 +112,7 @@ const studentNavItems: NavItem[] = [
   { href: '/lms/available-courses', label: 'LMS Courses', icon: Library },
   { href: '/student/lms/activate', label: 'Activate Course', icon: KeyRound },
   { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit },
-  { href: '/student/apply-tc', label: 'Apply for TC', icon: FileCertificate },
+  { href: '/student/apply-tc', label: 'Apply for TC', icon: FileText },
   { href: '/student/payment-history', label: 'Payment History', icon: CreditCard },
   { href: '/communication', label: 'View Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
