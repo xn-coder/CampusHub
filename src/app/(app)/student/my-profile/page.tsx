@@ -28,7 +28,7 @@ export default function StudentProfilePage() {
 
   // Edit form state
   const [editGuardianName, setEditGuardianName] = useState('');
-  const [editContactNumber, setEditContactNumber] = useState('');
+  const [editParentContactNumber, setEditParentContactNumber] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editBloodGroup, setEditBloodGroup] = useState('');
   const [editProfilePictureFile, setEditProfilePictureFile] = useState<File | null>(null);
@@ -53,7 +53,7 @@ export default function StudentProfilePage() {
       
       // Pre-fill form state when data is loaded
       setEditGuardianName(studentData.guardian_name || '');
-      setEditContactNumber(studentData.contact_number || '');
+      setEditParentContactNumber(studentData.parent_contact_number || '');
       setEditAddress(studentData.address || '');
       setEditBloodGroup(studentData.blood_group || '');
 
@@ -86,7 +86,7 @@ export default function StudentProfilePage() {
     formData.append('studentId', studentDetails.id);
     formData.append('userId', userDetails.id);
     formData.append('guardianName', editGuardianName);
-    formData.append('contactNumber', editContactNumber);
+    formData.append('parentContactNumber', editParentContactNumber);
     formData.append('address', editAddress);
     formData.append('bloodGroup', editBloodGroup);
     if (editProfilePictureFile) {
@@ -169,8 +169,8 @@ export default function StudentProfilePage() {
                     <Input id="editGuardianName" value={editGuardianName} onChange={(e) => setEditGuardianName(e.target.value)} disabled={isSubmitting}/>
                   </div>
                   <div>
-                    <Label htmlFor="editContactNumber">Contact Number</Label>
-                    <Input id="editContactNumber" type="tel" value={editContactNumber} onChange={(e) => setEditContactNumber(e.target.value)} disabled={isSubmitting}/>
+                    <Label htmlFor="editParentContactNumber">Parent/Guardian Contact Number</Label>
+                    <Input id="editParentContactNumber" type="tel" value={editParentContactNumber} onChange={(e) => setEditParentContactNumber(e.target.value)} disabled={isSubmitting}/>
                   </div>
                   <div>
                     <Label htmlFor="editAddress">Address</Label>
@@ -227,16 +227,26 @@ export default function StudentProfilePage() {
         </Card>
 
         <Card className="md:col-span-2">
-          <CardHeader><CardTitle>Personal Information</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
+          <CardHeader><CardTitle>Profile Information</CardTitle></CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div><Label>Full Name</Label><Input value={studentDetails.name} readOnly /></div>
             <div><Label>Roll Number</Label><Input value={studentDetails.roll_number || 'N/A'} readOnly /></div>
             <div><Label>Email</Label><Input type="email" value={userDetails.email} readOnly /></div>
             <div><Label>Date of Birth</Label><Input value={studentDetails.date_of_birth || 'N/A'} readOnly /></div>
-            <div><Label>Guardian's Name</Label><Input value={studentDetails.guardian_name || 'N/A'} readOnly /></div>
+            <div><Label>Gender</Label><Input value={studentDetails.gender || 'N/A'} readOnly /></div>
+            <div><Label>Nationality</Label><Input value={studentDetails.nationality || 'N/A'} readOnly /></div>
             <div><Label>Contact Number</Label><Input value={studentDetails.contact_number || 'N/A'} readOnly /></div>
-            <div><Label>Address</Label><Input value={studentDetails.address || 'N/A'} readOnly /></div>
             <div><Label>Blood Group</Label><Input value={studentDetails.blood_group || 'N/A'} readOnly /></div>
+            <div className="md:col-span-2"><Label>Address</Label><Textarea value={studentDetails.address || 'N/A'} readOnly /></div>
+            <hr className="md:col-span-2"/>
+            <h4 className="md:col-span-2 text-lg font-medium">Parent/Guardian Details</h4>
+            <div><Label>Father's Name</Label><Input value={studentDetails.father_name || 'N/A'} readOnly /></div>
+            <div><Label>Father's Occupation</Label><Input value={studentDetails.father_occupation || 'N/A'} readOnly /></div>
+            <div><Label>Mother's Name</Label><Input value={studentDetails.mother_name || 'N/A'} readOnly /></div>
+            <div><Label>Mother's Occupation</Label><Input value={studentDetails.mother_occupation || 'N/A'} readOnly /></div>
+            <div><Label>Guardian's Name</Label><Input value={studentDetails.guardian_name || 'N/A'} readOnly /></div>
+            <div><Label>Parent/Guardian Contact</Label><Input value={studentDetails.parent_contact_number || 'N/A'} readOnly /></div>
+            <div><Label>Annual Family Income</Label><Input value={studentDetails.annual_family_income?.toString() || 'N/A'} readOnly /></div>
           </CardContent>
         </Card>
       </div>

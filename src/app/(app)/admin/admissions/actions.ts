@@ -126,15 +126,32 @@ export async function admitNewStudentAction(
 ): Promise<{ ok: boolean; message: string; studentId?: string; userId?: string; admissionRecordId?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   
+  // Personal Info
   const name = formData.get('name') as string;
   const email = formData.get('email') as string;
-  const rollNumber = formData.get('rollNumber') as string | null;
-  const dateOfBirth = formData.get('dateOfBirth') as string | null;
-  const guardianName = formData.get('guardianName') as string | null;
   const contactNumber = formData.get('contactNumber') as string | null;
+  const dateOfBirth = formData.get('dateOfBirth') as string | null;
+  const gender = formData.get('gender') as Student['gender'] | null;
+  const bloodGroup = formData.get('bloodGroup') as string | null;
+  const nationality = formData.get('nationality') as string | null;
   const address = formData.get('address') as string | null;
+  
+  // Parent/Guardian Info
+  const fatherName = formData.get('fatherName') as string | null;
+  const fatherOccupation = formData.get('fatherOccupation') as string | null;
+  const motherName = formData.get('motherName') as string | null;
+  const motherOccupation = formData.get('motherOccupation') as string | null;
+  const guardianName = formData.get('guardianName') as string | null;
+  const parentContactNumber = formData.get('parentContactNumber') as string | null;
+  const annualFamilyIncomeRaw = formData.get('annualFamilyIncome') as string | null;
+  const annualFamilyIncome = annualFamilyIncomeRaw ? Number(annualFamilyIncomeRaw) : null;
+  
+  // School & Class Info
   const classId = formData.get('classId') as string;
+  const rollNumber = formData.get('rollNumber') as string | null;
   const schoolId = formData.get('schoolId') as string;
+  
+  // Fees and Picture
   const feesToAssignJSON = formData.get('feesToAssign') as string | null;
   const feesToAssign: { categoryId: string; amount: number }[] | undefined = feesToAssignJSON ? JSON.parse(feesToAssignJSON) : undefined;
   const profilePictureFile = formData.get('profilePictureFile') as File | null;
@@ -200,9 +217,7 @@ export async function admitNewStudentAction(
     }
 
     const newStudentProfileId = uuidv4();
-    const { error: studentInsertError } = await supabaseAdmin
-      .from('students')
-      .insert({
+    const studentInsertData = {
         id: newStudentProfileId,
         user_id: newUser.id,
         name: name.trim(),
@@ -210,13 +225,28 @@ export async function admitNewStudentAction(
         roll_number: rollNumber || null,
         class_id: classId,
         date_of_birth: dateOfBirth || null,
-        guardian_name: guardianName || null,
-        contact_number: contactNumber || null,
+        gender: gender || null,
+        nationality: nationality || null,
+        blood_group: bloodGroup || null,
         address: address || null,
+        contact_number: contactNumber || null,
+        
+        father_name: fatherName || null,
+        father_occupation: fatherOccupation || null,
+        mother_name: motherName || null,
+        mother_occupation: motherOccupation || null,
+        guardian_name: guardianName || null,
+        parent_contact_number: parentContactNumber || null,
+        annual_family_income: annualFamilyIncome || null,
+
         admission_date: new Date().toISOString().split('T')[0],
         profile_picture_url: profilePictureUrl?.trim() || `https://placehold.co/100x100.png?text=${name.substring(0,1)}`,
         school_id: schoolId,
-      });
+      };
+
+    const { error: studentInsertError } = await supabaseAdmin
+      .from('students')
+      .insert(studentInsertData);
 
     if (studentInsertError) {
       console.error('Error creating student profile:', studentInsertError);

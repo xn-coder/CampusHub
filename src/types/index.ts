@@ -90,10 +90,20 @@ export interface Student {
   class_id?: string | null;
   profile_picture_url?: string | null;
   date_of_birth?: string | null;
+  gender?: 'Male' | 'Female' | 'Other' | null;
+  nationality?: string | null;
+  blood_group?: string | null;
+  
   guardian_name?: string | null;
+  father_name?: string | null;
+  father_occupation?: string | null;
+  mother_name?: string | null;
+  mother_occupation?: string | null;
+  annual_family_income?: number | null;
+  parent_contact_number?: string | null;
+
   contact_number?: string | null;
   address?: string | null;
-  blood_group?: string | null;
   admission_date?: string | null;
   status?: 'Active' | 'Terminated' | 'Graduated';
   school_id: string;
