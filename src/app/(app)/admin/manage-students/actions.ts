@@ -185,3 +185,42 @@ export async function updateStudentAction(
     return { ok: false, message: e.message || 'An unexpected error occurred.' };
   }
 }
+
+
+export async function checkFeeStatusAndGenerateTCAction(
+  studentId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+  if (!studentId || !schoolId) {
+    return { ok: false, message: "Student and School IDs are required." };
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data: pendingFees, error } = await supabase
+      .from('student_fee_payments')
+      .select('id, assigned_amount, paid_amount')
+      .eq('student_id', studentId)
+      .eq('school_id', schoolId)
+      .in('status', ['Pending', 'Partially Paid', 'Overdue']);
+
+    if (error) {
+      console.error("Error fetching student fee status for TC:", error);
+      return { ok: false, message: `Database error checking fees: ${error.message}` };
+    }
+
+    let totalDue = 0;
+    if (pendingFees && pendingFees.length > 0) {
+      totalDue = pendingFees.reduce((acc, fee) => acc + (fee.assigned_amount - fee.paid_amount), 0);
+    }
+    
+    if (totalDue > 0) {
+      return { ok: false, message: `Cannot issue certificate. Student has outstanding dues of ₹${totalDue.toFixed(2)}.` };
+    }
+
+    return { ok: true, message: "Fee status clear. Proceeding to generate certificate." };
+
+  } catch (e: any) {
+    console.error("Unexpected error checking fee status for TC:", e);
+    return { ok: false, message: `Unexpected error: ${e.message}` };
+  }
+}

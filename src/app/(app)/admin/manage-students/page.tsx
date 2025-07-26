@@ -13,10 +13,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Student, User, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck } from 'lucide-react';
+import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck, FileCertificate } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
-import { terminateStudentAction, reactivateStudentAction, updateStudentAction } from './actions';
+import { terminateStudentAction, reactivateStudentAction, updateStudentAction, checkFeeStatusAndGenerateTCAction } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { useRouter } from 'next/navigation';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -46,6 +47,7 @@ async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
 }
 
 export default function ManageStudentsPage() {
+  const router = useRouter();
   const { toast } = useToast();
   const [students, setStudents] = useState<Student[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -257,6 +259,24 @@ export default function ManageStudentsPage() {
     link.click();
     document.body.removeChild(link);
   };
+  
+  const handleGenerateTC = async (student: Student) => {
+    if (!currentSchoolId) return;
+    setIsSubmitting(true);
+    const result = await checkFeeStatusAndGenerateTCAction(student.id, currentSchoolId);
+    setIsSubmitting(false);
+    
+    if (result.ok) {
+      router.push(`/admin/transfer-certificate?studentId=${student.id}`);
+    } else {
+      toast({
+        title: "Cannot Issue Certificate",
+        description: result.message,
+        variant: "destructive",
+        duration: 10000,
+      });
+    }
+  };
 
 
   if (!currentSchoolId && !isLoading) {
@@ -356,6 +376,9 @@ export default function ManageStudentsPage() {
                             <TableCell className="space-x-1 text-right">
                               {student.status === 'Active' || !student.status ? (
                                 <>
+                                    <Button variant="outline" size="sm" onClick={() => handleGenerateTC(student)} disabled={isSubmitting}>
+                                        <FileCertificate className="mr-1 h-3 w-3" /> TC
+                                    </Button>
                                     <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isSubmitting}>
                                         <Edit2 className="h-4 w-4" />
                                     </Button>
