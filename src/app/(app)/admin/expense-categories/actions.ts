@@ -55,7 +55,7 @@ export async function createExpenseCategoryAction(
 
     if (fetchError && fetchError.code !== 'PGRST116') {
       if (fetchError.message.includes('relation "public.expense_categories" does not exist')) {
-          return { ok: false, message: 'Database setup incomplete: Expense Categories table not found.' };
+          return { ok: false, message: 'Database setup incomplete: Expense Categories table not found. Please run the required SQL migration.' };
       }
       throw fetchError;
     }
@@ -97,7 +97,7 @@ export async function updateExpenseCategoryAction(
 
       if (fetchError && fetchError.code !== 'PGRST116') {
         if (fetchError.message.includes('relation "public.expense_categories" does not exist')) {
-          return { ok: false, message: 'Database setup incomplete: Expense Categories table not found.' };
+          return { ok: false, message: 'Database setup incomplete: Expense Categories table not found. Please run the required SQL migration.' };
         }
         throw fetchError;
       }
@@ -152,7 +152,12 @@ export async function deleteExpenseCategoryAction(id: string, schoolId: string):
       .eq('id', id)
       .eq('school_id', schoolId);
 
-    if (error) throw error;
+    if (error) {
+       if (error.message.includes('relation "public.expense_categories" does not exist')) {
+        return { ok: true, message: "Category deleted (table does not exist)." };
+      }
+      throw error;
+    }
     
     revalidatePath('/admin/expense-categories');
     revalidatePath('/admin/expenses');

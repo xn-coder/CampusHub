@@ -67,7 +67,7 @@ export async function createExpenseAction(
 
     if (error) {
       if(error.message.includes('relation "public.expenses" does not exist')) {
-        return { ok: false, message: 'Database setup incomplete: Expenses table not found.' };
+        return { ok: false, message: 'Database setup incomplete: Expenses table not found. Please run the required SQL migration.' };
       }
       throw error;
     }
@@ -147,7 +147,12 @@ export async function updateExpenseAction(
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+       if(error.message.includes('relation "public.expenses" does not exist')) {
+        return { ok: false, message: 'Database setup incomplete: Expenses table not found. Please run the required SQL migration.' };
+      }
+      throw error;
+    }
 
     revalidatePath('/admin/expenses');
     revalidatePath('/dashboard');
@@ -189,7 +194,12 @@ export async function deleteExpenseAction(id: string, schoolId: string): Promise
       .eq('id', id)
       .eq('school_id', schoolId);
 
-    if (error) throw error;
+    if (error) {
+      if(error.message.includes('relation "public.expenses" does not exist')) {
+        return { ok: true, message: "Expense record deleted (table does not exist)." };
+      }
+      throw error;
+    }
 
     revalidatePath('/admin/expenses');
     revalidatePath('/dashboard');
