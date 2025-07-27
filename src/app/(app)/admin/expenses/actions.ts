@@ -58,19 +58,26 @@ export async function createExpenseAction(
   input: ExpenseInput
 ): Promise<{ ok: boolean; message: string; expense?: Expense }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { error, data } = await supabaseAdmin
-    .from('expenses')
-    .insert({ ...input, id: uuidv4() })
-    .select()
-    .single();
+  try {
+    const { error, data } = await supabaseAdmin
+      .from('expenses')
+      .insert({ ...input, id: uuidv4() })
+      .select()
+      .single();
 
-  if (error) {
-    console.error("Error creating expense:", error);
-    return { ok: false, message: `Failed to create expense: ${error.message}` };
+    if (error) {
+      if(error.message.includes('relation "public.expenses" does not exist')) {
+        return { ok: false, message: 'Database setup incomplete: Expenses table not found.' };
+      }
+      throw error;
+    }
+    revalidatePath('/admin/expenses');
+    revalidatePath('/dashboard');
+    return { ok: true, message: 'Expense created successfully.', expense: data as Expense };
+  } catch(e: any) {
+    console.error("Error creating expense:", e);
+    return { ok: false, message: `Failed to create expense: ${e.message}` };
   }
-  revalidatePath('/admin/expenses');
-  revalidatePath('/dashboard');
-  return { ok: true, message: 'Expense created successfully.', expense: data as Expense };
 }
 
 
@@ -131,54 +138,64 @@ export async function updateExpenseAction(
 ): Promise<{ ok: boolean; message: string; expense?: Expense }> {
   const supabaseAdmin = createSupabaseServerClient();
   
-  const { error, data } = await supabaseAdmin
-    .from('expenses')
-    .update(input)
-    .eq('id', id)
-    .eq('school_id', input.school_id)
-    .select()
-    .single();
+  try {
+    const { error, data } = await supabaseAdmin
+      .from('expenses')
+      .update(input)
+      .eq('id', id)
+      .eq('school_id', input.school_id)
+      .select()
+      .single();
 
-  if (error) {
-    console.error("Error updating expense:", error);
-    return { ok: false, message: `Failed to update expense: ${error.message}` };
+    if (error) throw error;
+
+    revalidatePath('/admin/expenses');
+    revalidatePath('/dashboard');
+    return { ok: true, message: 'Expense updated successfully.', expense: data as Expense };
+  } catch (e: any) {
+    console.error("Error updating expense:", e);
+    return { ok: false, message: `Failed to update expense: ${e.message}` };
   }
-  revalidatePath('/admin/expenses');
-  revalidatePath('/dashboard');
-  return { ok: true, message: 'Expense updated successfully.', expense: data as Expense };
 }
 
 
 export async function deleteExpenseAction(id: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-
-  // Optionally delete the associated receipt file from storage
-  const { data: expenseToDelete, error: fetchError } = await supabaseAdmin
-    .from('expenses')
-    .select('receipt_url')
-    .eq('id', id)
-    .single();
-  
-  if (expenseToDelete?.receipt_url && expenseToDelete.receipt_url.includes(process.env.NEXT_PUBLIC_SUPABASE_URL!)) {
-      const filePath = new URL(expenseToDelete.receipt_url).pathname.replace(`/storage/v1/object/public/campushub/`, '');
-      const { error: storageError } = await supabaseAdmin.storage.from('campushub').remove([filePath]);
-      if (storageError) {
-          console.warn(`Failed to delete receipt from storage, but proceeding with DB deletion. Path: ${filePath}, Error: ${storageError.message}`);
+  try {
+    const { data: expenseToDelete, error: fetchError } = await supabaseAdmin
+      .from('expenses')
+      .select('receipt_url')
+      .eq('id', id)
+      .single();
+    
+    if (fetchError) {
+      if (fetchError.message.includes('relation "public.expenses" does not exist')) {
+        return { ok: true, message: "Expense record not found (table might not exist)." };
       }
+      throw fetchError;
+    }
+    
+    if (expenseToDelete?.receipt_url && expenseToDelete.receipt_url.includes(process.env.NEXT_PUBLIC_SUPABASE_URL!)) {
+        const filePath = new URL(expenseToDelete.receipt_url).pathname.replace(`/storage/v1/object/public/campushub/`, '');
+        const { error: storageError } = await supabaseAdmin.storage.from('campushub').remove([filePath]);
+        if (storageError) {
+            console.warn(`Failed to delete receipt from storage, but proceeding with DB deletion. Path: ${filePath}, Error: ${storageError.message}`);
+        }
+    }
+
+    const { error } = await supabaseAdmin
+      .from('expenses')
+      .delete()
+      .eq('id', id)
+      .eq('school_id', schoolId);
+
+    if (error) throw error;
+
+    revalidatePath('/admin/expenses');
+    revalidatePath('/dashboard');
+    return { ok: true, message: 'Expense deleted successfully.' };
+  } catch (e: any) {
+    console.error("Error deleting expense:", e);
+    return { ok: false, message: `Failed to delete expense: ${e.message}` };
   }
-
-
-  const { error } = await supabaseAdmin
-    .from('expenses')
-    .delete()
-    .eq('id', id)
-    .eq('school_id', schoolId);
-
-  if (error) {
-    console.error("Error deleting expense:", error);
-    return { ok: false, message: `Failed to delete expense: ${error.message}` };
-  }
-  revalidatePath('/admin/expenses');
-  revalidatePath('/dashboard');
-  return { ok: true, message: 'Expense deleted successfully.' };
 }
