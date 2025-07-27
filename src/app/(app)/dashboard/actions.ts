@@ -1,8 +1,9 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
-import type { UserRole, AnnouncementDB, CalendarEventDB, Student, Teacher, SchoolEntry as School, ClassData, Assignment, LeaveRequestStatus } from '@/types';
+import type { UserRole, AnnouncementDB, CalendarEventDB, Student, Teacher, SchoolEntry as School, ClassData, Assignment, LeaveRequestStatus, Expense } from '@/types';
 import { subDays, startOfDay, endOfDay, addDays, formatISO } from 'date-fns';
 import { checkStudentFeeStatusAction } from '@/app/(app)/admin/student-fees/actions';
 
@@ -21,6 +22,7 @@ interface DashboardData {
   totalSchoolClasses?: number;
   pendingAdmissionsCount?: number;
   pendingFeesCount?: number;
+  totalExpenses?: number;
   // Superadmin specific
   totalSchools?: number;
   totalUsers?: number;
@@ -177,24 +179,28 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
       }
     } else if (userRole === 'admin') {
         if (effectiveSchoolId) { // Admin has a school context
-            const [studentsRes, teachersRes, classesRes, admissionsRes, feesRes] = await Promise.all([
+            const [studentsRes, teachersRes, classesRes, admissionsRes, feesRes, expensesRes] = await Promise.all([
                 supabase.from('students').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId),
                 supabase.from('teachers').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId),
                 supabase.from('classes').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId),
                 supabase.from('admission_records').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId).eq('status', 'Pending Review'),
-                supabase.from('student_fee_payments').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId).in('status', ['Pending', 'Partially Paid', 'Overdue'])
+                supabase.from('student_fee_payments').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId).in('status', ['Pending', 'Partially Paid', 'Overdue']),
+                supabase.from('expenses').select('amount').eq('school_id', effectiveSchoolId)
             ]);
             dashboardData.totalSchoolStudents = studentsRes.count ?? 0;
             dashboardData.totalSchoolTeachers = teachersRes.count ?? 0;
             dashboardData.totalSchoolClasses = classesRes.count ?? 0;
             dashboardData.pendingAdmissionsCount = admissionsRes.count ?? 0;
             dashboardData.pendingFeesCount = feesRes.count ?? 0;
+            dashboardData.totalExpenses = (expensesRes.data || []).reduce((acc, exp) => acc + exp.amount, 0);
+
         } else { // Admin not linked to any school
             dashboardData.totalSchoolStudents = 0;
             dashboardData.totalSchoolTeachers = 0;
             dashboardData.totalSchoolClasses = 0;
             dashboardData.pendingAdmissionsCount = 0;
             dashboardData.pendingFeesCount = 0;
+            dashboardData.totalExpenses = 0;
         }
     } else if (userRole === 'superadmin') {
       const [schoolsRes, usersRes] = await Promise.all([

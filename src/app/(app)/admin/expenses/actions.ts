@@ -1,0 +1,164 @@
+
+'use server';
+
+import { createSupabaseServerClient } from '@/lib/supabaseClient';
+import { revalidatePath } from 'next/cache';
+import { v4 as uuidv4 } from 'uuid';
+import type { Expense, ExpenseCategory, User } from '@/types';
+
+// Action to create a signed URL for secure, direct-to-storage uploads
+export async function createReceiptUploadUrlAction(
+    schoolId: string,
+    fileName: string,
+): Promise<{ ok: boolean; message: string; signedUrl?: string; publicUrl?: string; }> {
+    const supabase = createSupabaseServerClient();
+    try {
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+        const filePath = `public/expense-receipts/${schoolId}/${uuidv4()}-${sanitizedFileName}`;
+
+        const { data, error } = await supabase.storage
+            .from('campushub')
+            .createSignedUploadUrl(filePath);
+
+        if (error) {
+            throw new Error(`Failed to create signed URL: ${error.message}`);
+        }
+        
+        const { data: publicUrlData } = supabase.storage
+            .from('campushub')
+            .getPublicUrl(filePath);
+
+        if (!publicUrlData?.publicUrl) {
+            throw new Error("Could not determine public URL for the file path.");
+        }
+
+        return {
+            ok: true,
+            message: "Signed URL created successfully.",
+            signedUrl: data.signedUrl,
+            publicUrl: publicUrlData.publicUrl,
+        };
+    } catch (e: any) {
+        return { ok: false, message: e.message || "An unexpected error occurred." };
+    }
+}
+
+interface ExpenseInput {
+  title: string;
+  amount: number;
+  category_id: string;
+  date: string;
+  receipt_url?: string | null;
+  notes?: string | null;
+  school_id: string;
+  recorded_by_user_id: string;
+}
+
+export async function createExpenseAction(
+  input: ExpenseInput
+): Promise<{ ok: boolean; message: string; expense?: Expense }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  const { error, data } = await supabaseAdmin
+    .from('expenses')
+    .insert({ ...input, id: uuidv4() })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error creating expense:", error);
+    return { ok: false, message: `Failed to create expense: ${error.message}` };
+  }
+  revalidatePath('/admin/expenses');
+  revalidatePath('/dashboard');
+  return { ok: true, message: 'Expense created successfully.', expense: data as Expense };
+}
+
+
+export async function getExpensesPageDataAction(schoolId: string): Promise<{
+    ok: boolean;
+    expenses?: Expense[];
+    categories?: ExpenseCategory[];
+    message?: string;
+}> {
+    if (!schoolId) {
+        return { ok: false, message: "School ID is required." };
+    }
+    const supabaseAdmin = createSupabaseServerClient();
+    try {
+        const [expensesRes, categoriesRes] = await Promise.all([
+            supabaseAdmin.from('expenses').select('*, category:category_id(name), recorded_by:recorded_by_user_id(name)').eq('school_id', schoolId).order('date', { ascending: false }),
+            supabaseAdmin.from('expense_categories').select('*').eq('school_id', schoolId).order('name'),
+        ]);
+
+        if (expensesRes.error) throw new Error(`Fetching expenses failed: ${expensesRes.error.message}`);
+        if (categoriesRes.error) throw new Error(`Fetching categories failed: ${categoriesRes.error.message}`);
+
+        return {
+            ok: true,
+            expenses: expensesRes.data as Expense[],
+            categories: categoriesRes.data || [],
+        };
+    } catch (error: any) {
+        console.error("Error in getExpensesPageDataAction:", error);
+        return { ok: false, message: error.message || "An unexpected error occurred." };
+    }
+}
+
+
+export async function updateExpenseAction(
+  id: string,
+  input: Partial<ExpenseInput> & { school_id: string }
+): Promise<{ ok: boolean; message: string; expense?: Expense }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  
+  const { error, data } = await supabaseAdmin
+    .from('expenses')
+    .update(input)
+    .eq('id', id)
+    .eq('school_id', input.school_id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error updating expense:", error);
+    return { ok: false, message: `Failed to update expense: ${error.message}` };
+  }
+  revalidatePath('/admin/expenses');
+  revalidatePath('/dashboard');
+  return { ok: true, message: 'Expense updated successfully.', expense: data as Expense };
+}
+
+
+export async function deleteExpenseAction(id: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+
+  // Optionally delete the associated receipt file from storage
+  const { data: expenseToDelete, error: fetchError } = await supabaseAdmin
+    .from('expenses')
+    .select('receipt_url')
+    .eq('id', id)
+    .single();
+  
+  if (expenseToDelete?.receipt_url && expenseToDelete.receipt_url.includes(process.env.NEXT_PUBLIC_SUPABASE_URL!)) {
+      const filePath = new URL(expenseToDelete.receipt_url).pathname.replace(`/storage/v1/object/public/campushub/`, '');
+      const { error: storageError } = await supabaseAdmin.storage.from('campushub').remove([filePath]);
+      if (storageError) {
+          console.warn(`Failed to delete receipt from storage, but proceeding with DB deletion. Path: ${filePath}, Error: ${storageError.message}`);
+      }
+  }
+
+
+  const { error } = await supabaseAdmin
+    .from('expenses')
+    .delete()
+    .eq('id', id)
+    .eq('school_id', schoolId);
+
+  if (error) {
+    console.error("Error deleting expense:", error);
+    return { ok: false, message: `Failed to delete expense: ${error.message}` };
+  }
+  revalidatePath('/admin/expenses');
+  revalidatePath('/dashboard');
+  return { ok: true, message: 'Expense deleted successfully.' };
+}

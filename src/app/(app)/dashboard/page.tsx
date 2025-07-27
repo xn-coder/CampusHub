@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -7,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { 
     Megaphone, CalendarPlus, UserPlus, FileEdit, Users, Briefcase, Award, FileText as FileTextIcon,
     ClipboardList, Building, Settings, School, UserCog, Library, Receipt, Tags, BarChart3, Clock,
-    ClipboardCheck, CalendarDays, BookOpenText, KeyRound, CreditCard, BookMarked, Loader2, AlertTriangle
+    ClipboardCheck, CalendarDays, BookOpenText, KeyRound, CreditCard, BookMarked, Loader2, AlertTriangle,
+    Wallet,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
@@ -28,6 +30,7 @@ interface DashboardStats {
   totalSchoolClasses?: number;
   pendingAdmissionsCount?: number;
   pendingFeesCount?: number;
+  totalExpenses?: number;
   totalSchools?: number;
   totalUsers?: number;
   recentAnnouncements?: { id: string; title: string; date: string, author_name?: string | null, posted_by_role?: UserRole | null, target_class?: {name: string, division: string} | null }[];
@@ -149,8 +152,8 @@ export default function DashboardPage() {
           <>
             <StatsCard title="Total Students" value={dashboardData.totalSchoolStudents ?? 0} icon={Users} />
             <StatsCard title="Total Teachers" value={dashboardData.totalSchoolTeachers ?? 0} icon={Briefcase} />
-            <StatsCard title="Active Classes" value={dashboardData.totalSchoolClasses ?? 0} icon={School} />
             <StatsCard title="Pending Fees" value={dashboardData.pendingFeesCount ?? 0} icon={Receipt} />
+            <StatsCard title="Total Expenses" value={`₹${(dashboardData.totalExpenses ?? 0).toFixed(2)}`} icon={Wallet} />
           </>
         );
       case 'superadmin':

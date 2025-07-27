@@ -370,6 +370,33 @@ export interface StudentFeePayment {
 }
 
 
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+  description?: string | null;
+  school_id: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Expense {
+  id: string;
+  title: string;
+  amount: number;
+  category_id: string;
+  date: string; // YYYY-MM-DD
+  receipt_url?: string | null;
+  notes?: string | null;
+  school_id: string;
+  recorded_by_user_id: string;
+  created_at?: string;
+  updated_at?: string;
+  // For joined data
+  category?: ExpenseCategory;
+  recorded_by?: { name: string };
+}
+
+
 export interface Course {
   id: string;
   title: string;

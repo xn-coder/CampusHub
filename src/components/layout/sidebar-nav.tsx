@@ -41,6 +41,7 @@ import {
   Library,
   KeyRound,
   BookOpenCheck,
+  Wallet,
 } from 'lucide-react';
 
 
@@ -69,6 +70,8 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
   { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
   { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
+  { href: '/admin/expense-categories', label: 'Expense Categories', icon: Tags },
+  { href: '/admin/expenses', label: 'Expense Management', icon: Wallet },
   { href: '/admin/academic-years', label: 'Academic Years', icon: CalendarRange },
   { href: '/admin/subjects', label: 'Subjects', icon: BookOpenText },
   { href: '/admin/exams', label: 'Exams', icon: FileText },
