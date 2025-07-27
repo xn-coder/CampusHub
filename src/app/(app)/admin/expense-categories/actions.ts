@@ -46,7 +46,7 @@ export async function createExpenseCategoryAction(
 
   if (fetchError && fetchError.code !== 'PGRST116') {
     console.error('Error checking existing expense category:', fetchError);
-    return { ok: false, message: 'Database error while checking category name.' };
+    return { ok: false, message: `Database error: ${fetchError.message}` };
   }
   if (existingCategory) {
     return { ok: false, message: `An expense category with the name "${input.name.trim()}" already exists for this school.` };
@@ -84,7 +84,7 @@ export async function updateExpenseCategoryAction(
 
     if (fetchError && fetchError.code !== 'PGRST116') {
       console.error('Error checking existing expense category name during update:', fetchError);
-      return { ok: false, message: 'Database error while checking category name uniqueness.' };
+      return { ok: false, message: `Database error: ${fetchError.message}` };
     }
     if (existingCategory) {
       return { ok: false, message: `Another expense category with the name "${input.name.trim()}" already exists for this school.` };

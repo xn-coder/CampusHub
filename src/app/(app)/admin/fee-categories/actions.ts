@@ -47,7 +47,7 @@ export async function createFeeCategoryAction(
 
   if (fetchError && fetchError.code !== 'PGRST116') {
     console.error('Error checking existing fee category:', fetchError);
-    return { ok: false, message: 'Database error while checking category name.' };
+    return { ok: false, message: `Database error: ${fetchError.message}` };
   }
   if (existingCategory) {
     return { ok: false, message: `A fee category with the name "${input.name.trim()}" already exists for this school.` };
@@ -84,7 +84,7 @@ export async function updateFeeCategoryAction(
 
     if (fetchError && fetchError.code !== 'PGRST116') {
       console.error('Error checking existing fee category name during update:', fetchError);
-      return { ok: false, message: 'Database error while checking category name uniqueness.' };
+      return { ok: false, message: `Database error: ${fetchError.message}` };
     }
     if (existingCategory) {
       return { ok: false, message: `Another fee category with the name "${input.name.trim()}" already exists for this school.` };
@@ -138,5 +138,4 @@ export async function deleteFeeCategoryAction(id: string, schoolId: string): Pro
   revalidatePath('/admin/fee-categories');
   return { ok: true, message: 'Fee category deleted successfully.' };
 }
-
     
