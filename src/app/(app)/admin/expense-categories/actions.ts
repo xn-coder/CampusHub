@@ -24,6 +24,10 @@ export async function getExpenseCategoriesAction(schoolId: string): Promise<{ ok
     .order('name');
 
   if (error) {
+    if (error.message.includes('relation "public.expense_categories" does not exist')) {
+        console.warn("Expense Categories table does not exist. Returning empty array.");
+        return { ok: true, categories: [] };
+    }
     console.error("Error fetching expense categories:", error);
     return { ok: false, message: `Failed to fetch expense categories: ${error.message}` };
   }
@@ -119,8 +123,12 @@ export async function deleteExpenseCategoryAction(id: string, schoolId: string):
     .eq('school_id', schoolId);
 
   if (depError) {
-    console.error("Error checking expense category dependencies:", depError);
-    return { ok: false, message: `Error checking dependencies: ${depError.message}` };
+    if (depError.message.includes('relation "public.expenses" does not exist')) {
+        console.warn("Expenses table does not exist, proceeding with category deletion.");
+    } else {
+        console.error("Error checking expense category dependencies:", depError);
+        return { ok: false, message: `Error checking dependencies: ${depError.message}` };
+    }
   }
   if (count && count > 0) {
     return { ok: false, message: `Cannot delete: This category is used in ${count} expense record(s).` };

@@ -90,13 +90,33 @@ export async function getExpensesPageDataAction(schoolId: string): Promise<{
             supabaseAdmin.from('expense_categories').select('*').eq('school_id', schoolId).order('name'),
         ]);
 
-        if (expensesRes.error) throw new Error(`Fetching expenses failed: ${expensesRes.error.message}`);
-        if (categoriesRes.error) throw new Error(`Fetching categories failed: ${categoriesRes.error.message}`);
+        let expensesData: Expense[] = [];
+        if (expensesRes.error) {
+            if (expensesRes.error.message.includes('relation "public.expenses" does not exist')) {
+                console.warn("Expenses table does not exist. Returning empty array.");
+            } else {
+                throw new Error(`Fetching expenses failed: ${expensesRes.error.message}`);
+            }
+        } else {
+            expensesData = expensesRes.data as Expense[];
+        }
+
+        let categoriesData: ExpenseCategory[] = [];
+        if (categoriesRes.error) {
+             if (categoriesRes.error.message.includes('relation "public.expense_categories" does not exist')) {
+                console.warn("Expense Categories table does not exist. Returning empty array.");
+            } else {
+                throw new Error(`Fetching expense categories failed: ${categoriesRes.error.message}`);
+            }
+        } else {
+            categoriesData = categoriesRes.data || [];
+        }
+
 
         return {
             ok: true,
-            expenses: expensesRes.data as Expense[],
-            categories: categoriesRes.data || [],
+            expenses: expensesData,
+            categories: categoriesData,
         };
     } catch (error: any) {
         console.error("Error in getExpensesPageDataAction:", error);
