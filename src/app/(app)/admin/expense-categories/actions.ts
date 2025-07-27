@@ -27,7 +27,7 @@ export async function getExpenseCategoriesAction(schoolId: string): Promise<{ ok
     if (error) {
       if (error.message.includes('relation "public.expense_categories" does not exist')) {
           console.warn("Expense Categories table does not exist. Returning empty array.");
-          return { ok: true, categories: [] };
+          return { ok: true, categories: [] }; // Gracefully handle missing table
       }
       throw error;
     }
@@ -55,7 +55,8 @@ export async function createExpenseCategoryAction(
 
     if (fetchError && fetchError.code !== 'PGRST116') {
       if (fetchError.message.includes('relation "public.expense_categories" does not exist')) {
-          return { ok: false, message: 'Database setup incomplete: Expense Categories table not found. Please run the required SQL migration.' };
+          console.warn("Create failed: Expense Categories table not found. Please run the required SQL migration.");
+          return { ok: false, message: 'Database setup incomplete.' };
       }
       throw fetchError;
     }
@@ -97,7 +98,8 @@ export async function updateExpenseCategoryAction(
 
       if (fetchError && fetchError.code !== 'PGRST116') {
         if (fetchError.message.includes('relation "public.expense_categories" does not exist')) {
-          return { ok: false, message: 'Database setup incomplete: Expense Categories table not found. Please run the required SQL migration.' };
+          console.warn("Update failed: Expense Categories table not found.");
+          return { ok: false, message: 'Database setup incomplete.' };
         }
         throw fetchError;
       }
@@ -154,7 +156,8 @@ export async function deleteExpenseCategoryAction(id: string, schoolId: string):
 
     if (error) {
        if (error.message.includes('relation "public.expense_categories" does not exist')) {
-        return { ok: true, message: "Category deleted (table does not exist)." };
+        console.warn("Delete skipped: Expense Categories table not found.");
+        return { ok: true, message: "Category already deleted (table does not exist)." };
       }
       throw error;
     }

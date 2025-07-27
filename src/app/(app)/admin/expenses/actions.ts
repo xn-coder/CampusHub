@@ -67,7 +67,8 @@ export async function createExpenseAction(
 
     if (error) {
       if(error.message.includes('relation "public.expenses" does not exist')) {
-        return { ok: false, message: 'Database setup incomplete: Expenses table not found. Please run the required SQL migration.' };
+        console.warn("Create failed: Expenses table not found. Please run the required SQL migration.");
+        return { ok: false, message: 'Database setup incomplete.' };
       }
       throw error;
     }
@@ -149,7 +150,8 @@ export async function updateExpenseAction(
 
     if (error) {
        if(error.message.includes('relation "public.expenses" does not exist')) {
-        return { ok: false, message: 'Database setup incomplete: Expenses table not found. Please run the required SQL migration.' };
+        console.warn("Update failed: Expenses table not found.");
+        return { ok: false, message: 'Database setup incomplete.' };
       }
       throw error;
     }
@@ -175,7 +177,8 @@ export async function deleteExpenseAction(id: string, schoolId: string): Promise
     
     if (fetchError) {
       if (fetchError.message.includes('relation "public.expenses" does not exist')) {
-        return { ok: true, message: "Expense record not found (table might not exist)." };
+        console.warn("Delete skipped: Expense record not found (table might not exist).");
+        return { ok: true, message: "Expense record already deleted (table does not exist)." };
       }
       throw fetchError;
     }
@@ -196,7 +199,8 @@ export async function deleteExpenseAction(id: string, schoolId: string): Promise
 
     if (error) {
       if(error.message.includes('relation "public.expenses" does not exist')) {
-        return { ok: true, message: "Expense record deleted (table does not exist)." };
+        console.warn("Delete skipped: Expense record not found (table does not exist).");
+        return { ok: true, message: "Expense record already deleted (table does not exist)." };
       }
       throw error;
     }
