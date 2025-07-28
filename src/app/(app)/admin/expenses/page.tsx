@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import type { Expense, ExpenseCategory } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Wallet, Loader2, Search, Download, ExternalLink } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Wallet, Loader2, Search, Download, ExternalLink, FileText } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
@@ -24,6 +24,7 @@ import {
     createReceiptUploadUrlAction
 } from './actions';
 import { Progress } from '@/components/ui/progress';
+import Link from 'next/link';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -249,6 +250,9 @@ export default function ExpensesPage() {
                                         </TableCell>
                                         <TableCell className="text-right font-mono">₹{expense.amount.toFixed(2)}</TableCell>
                                         <TableCell className="text-right space-x-1">
+                                            <Button asChild variant="outline" size="icon" title="View Voucher">
+                                              <Link href={`/admin/expenses/${expense.id}/voucher`}><FileText className="h-4 w-4" /></Link>
+                                            </Button>
                                             <Button variant="outline" size="icon" onClick={() => handleOpenDialog(expense)} disabled={isSubmitting}><Edit2 className="h-4 w-4" /></Button>
                                             <Button variant="destructive" size="icon" onClick={() => handleDelete(expense.id)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                                         </TableCell>

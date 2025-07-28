@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Expense, ExpenseCategory, User } from '@/types';
+import type { Expense, ExpenseCategory, User, SchoolDetails } from '@/types';
 
 // Action to create a signed URL for secure, direct-to-storage uploads
 export async function createReceiptUploadUrlAction(
@@ -211,5 +211,44 @@ export async function deleteExpenseAction(id: string, schoolId: string): Promise
   } catch (e: any) {
     console.error("Error deleting expense:", e);
     return { ok: false, message: `Failed to delete expense: ${e.message}` };
+  }
+}
+
+export async function getExpenseVoucherDataAction(expenseId: string): Promise<{
+  ok: boolean;
+  expense?: Expense;
+  school?: SchoolDetails;
+  message?: string;
+}> {
+  if (!expenseId) {
+    return { ok: false, message: "Expense ID is required." };
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data: expense, error: expenseError } = await supabase
+      .from('expenses')
+      .select('*, category:category_id(name)')
+      .eq('id', expenseId)
+      .single();
+      
+    if (expenseError) throw new Error(`Fetching expense failed: ${expenseError.message}`);
+    if (!expense) throw new Error("Expense record not found.");
+    
+    const { data: school, error: schoolError } = await supabase
+      .from('schools')
+      .select('*')
+      .eq('id', expense.school_id)
+      .single();
+
+    if (schoolError) throw new Error(`Fetching school details failed: ${schoolError.message}`);
+    
+    return {
+      ok: true,
+      expense: expense as Expense,
+      school: school as SchoolDetails,
+    };
+  } catch (error: any) {
+    console.error("Error in getExpenseVoucherDataAction:", error);
+    return { ok: false, message: error.message || "An unexpected error occurred." };
   }
 }
