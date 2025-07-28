@@ -30,9 +30,11 @@ export default function AdminNewAdmissionPage() {
   const [email, setEmail] = useState('');
   const [rollNumber, setRollNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  const [admissionDate, setAdmissionDate] = useState('');
   const [gender, setGender] = useState('');
   const [bloodGroup, setBloodGroup] = useState('');
   const [nationality, setNationality] = useState('');
+  const [category, setCategory] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [address, setAddress] = useState('');
   const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
@@ -141,9 +143,11 @@ export default function AdminNewAdmissionPage() {
     formData.append('email', email);
     formData.append('contactNumber', contactNumber);
     if(dateOfBirth) formData.append('dateOfBirth', dateOfBirth);
+    if(admissionDate) formData.append('admissionDate', admissionDate);
     if(gender) formData.append('gender', gender);
     if(bloodGroup) formData.append('bloodGroup', bloodGroup);
     if(nationality) formData.append('nationality', nationality);
+    if(category) formData.append('category', category);
     if(address) formData.append('address', address);
     
     if(fatherName) formData.append('fatherName', fatherName);
@@ -166,7 +170,7 @@ export default function AdminNewAdmissionPage() {
     if (result.ok) {
       toast({ title: "Student Admitted", description: result.message });
       // Reset form
-      setName(''); setEmail(''); setContactNumber(''); setDateOfBirth(''); setGender(''); setBloodGroup(''); setNationality(''); setAddress('');
+      setName(''); setEmail(''); setContactNumber(''); setDateOfBirth(''); setAdmissionDate(''); setGender(''); setBloodGroup(''); setNationality(''); setCategory(''); setAddress('');
       setFatherName(''); setFatherOccupation(''); setMotherName(''); setMotherOccupation(''); setGuardianName(''); setParentContactNumber(''); setAnnualFamilyIncome('');
       setSelectedClassId(''); setRollNumber('');
       setProfilePictureFile(null);
@@ -232,6 +236,7 @@ export default function AdminNewAdmissionPage() {
                 <div><Label htmlFor="email">Email Address (Login ID)</Label><Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="student@example.com" required disabled={isLoading}/></div>
                 <div><Label htmlFor="contactNumber">Contact Number</Label><Input id="contactNumber" type="tel" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} placeholder="Student's contact no." required disabled={isLoading}/></div>
                 <div><Label htmlFor="dateOfBirth">Date of Birth</Label><Input id="dateOfBirth" type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} disabled={isLoading}/></div>
+                <div><Label htmlFor="admissionDate">Date of First Admission</Label><Input id="admissionDate" type="date" value={admissionDate} onChange={(e) => setAdmissionDate(e.target.value)} disabled={isLoading}/></div>
                 <div>
                     <Label>Gender</Label>
                     <RadioGroup value={gender} onValueChange={setGender} className="flex gap-4 pt-2">
@@ -247,6 +252,18 @@ export default function AdminNewAdmissionPage() {
                     </Select>
                  </div>
                  <div><Label htmlFor="nationality">Nationality</Label><Input id="nationality" value={nationality} onChange={(e) => setNationality(e.target.value)} placeholder="e.g., Indian" disabled={isLoading}/></div>
+                 <div>
+                    <Label htmlFor="category">Category</Label>
+                    <Select value={category} onValueChange={setCategory}>
+                        <SelectTrigger id="category"><SelectValue placeholder="Select Category" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="General">General</SelectItem>
+                            <SelectItem value="OBC">OBC</SelectItem>
+                            <SelectItem value="SC">SC</SelectItem>
+                            <SelectItem value="ST">ST</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
                  <div className="md:col-span-2"><Label htmlFor="address">Full Address</Label><Textarea id="address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, City, State, Zip Code" disabled={isLoading}/></div>
                  <div><Label htmlFor="profilePictureFile">Profile Picture (Optional, &lt;2MB)</Label><Input id="profilePictureFile" type="file" onChange={handleFileChange} accept="image/png, image/jpeg" disabled={isLoading}/></div>
               </div>

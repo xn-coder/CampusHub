@@ -135,6 +135,8 @@ export async function admitNewStudentAction(
   const bloodGroup = formData.get('bloodGroup') as string | null;
   const nationality = formData.get('nationality') as string | null;
   const address = formData.get('address') as string | null;
+  const category = formData.get('category') as string | null;
+  const admissionDate = formData.get('admissionDate') as string | null;
   
   // Parent/Guardian Info
   const fatherName = formData.get('fatherName') as string | null;
@@ -230,6 +232,7 @@ export async function admitNewStudentAction(
         blood_group: bloodGroup || null,
         address: address || null,
         contact_number: contactNumber || null,
+        category: category || null,
         
         father_name: fatherName || null,
         father_occupation: fatherOccupation || null,
@@ -239,7 +242,7 @@ export async function admitNewStudentAction(
         parent_contact_number: parentContactNumber || null,
         annual_family_income: annualFamilyIncome || null,
 
-        admission_date: new Date().toISOString().split('T')[0],
+        admission_date: admissionDate || new Date().toISOString().split('T')[0],
         profile_picture_url: profilePictureUrl?.trim() || `https://placehold.co/100x100.png?text=${name.substring(0,1)}`,
         school_id: schoolId,
       };

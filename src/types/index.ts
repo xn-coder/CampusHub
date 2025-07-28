@@ -95,6 +95,7 @@ export interface Student {
   gender?: 'Male' | 'Female' | 'Other' | null;
   nationality?: string | null;
   blood_group?: string | null;
+  category?: string | null; // For SC/ST/OBC
   
   guardian_name?: string | null;
   father_name?: string | null;
