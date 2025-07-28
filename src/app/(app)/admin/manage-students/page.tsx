@@ -385,33 +385,33 @@ export default function ManageStudentsPage() {
                                 }
                             </TableCell>
                             <TableCell className="text-right">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" disabled={isSubmitting}>
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                  <DropdownMenuSeparator />
-                                  {student.status === 'Active' || !student.status ? (
-                                    <>
-                                      <DropdownMenuItem onSelect={() => handleOpenEditDialog(student)}><Edit2 className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem>
-                                      <DropdownMenuItem onSelect={() => handleGenerateTC(student)}><FileText className="mr-2 h-4 w-4"/>Generate TC</DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <AlertDialogTrigger asChild>
-                                        <DropdownMenuItem className="text-destructive" onSelect={(e) => e.preventDefault()}><UserX className="mr-2 h-4 w-4"/>Terminate</DropdownMenuItem>
-                                      </AlertDialogTrigger>
-                                    </>
-                                  ) : (
-                                    <AlertDialogTrigger asChild>
-                                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}><UserCheck className="mr-2 h-4 w-4"/>Reactivate</DropdownMenuItem>
-                                    </AlertDialogTrigger>
-                                  )}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-
                               <AlertDialog>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    {student.status === 'Active' || !student.status ? (
+                                      <>
+                                        <DropdownMenuItem onSelect={() => handleOpenEditDialog(student)}><Edit2 className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem>
+                                        <DropdownMenuItem onSelect={() => handleGenerateTC(student)}><FileText className="mr-2 h-4 w-4"/>Generate TC</DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <AlertDialogTrigger asChild>
+                                          <DropdownMenuItem className="text-destructive" onSelect={(e) => e.preventDefault()}><UserX className="mr-2 h-4 w-4"/>Terminate</DropdownMenuItem>
+                                        </AlertDialogTrigger>
+                                      </>
+                                    ) : (
+                                      <AlertDialogTrigger asChild>
+                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}><UserCheck className="mr-2 h-4 w-4"/>Reactivate</DropdownMenuItem>
+                                      </AlertDialogTrigger>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+
                                 {student.status === 'Active' || !student.status ? (
                                     <AlertDialogContent>
                                       <AlertDialogHeader><AlertDialogTitle>Terminate {student.name}?</AlertDialogTitle><AlertDialogDescription>This will mark the student as 'Terminated', unassign them from their class, and deactivate their login. This action is reversible.</AlertDialogDescription></AlertDialogHeader>
