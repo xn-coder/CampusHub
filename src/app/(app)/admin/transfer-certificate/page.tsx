@@ -7,13 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Download, Loader2 } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
-import type { Student, SchoolDetails, ClassData } from '@/types';
+import type { Student, SchoolDetails, ClassData, Subject } from '@/types';
 import Image from 'next/image';
 
 interface CertificateData {
     student: Student | null;
     school: SchoolDetails | null;
     classInfo: ClassData | null;
+    subjects: Subject[];
+    presentDays: number;
+    totalWorkingDays: number;
 }
 
 // Helper function to convert number to words
@@ -76,6 +79,10 @@ function CertificateContent() {
                 .single();
             
             let classInfo = null;
+            let subjects: Subject[] = [];
+            let presentDays = 0;
+            let totalWorkingDays = 0;
+
             if (classId) {
                 const { data: classData, error: classError } = await supabase
                     .from('classes')
@@ -83,13 +90,42 @@ function CertificateContent() {
                     .eq('id', classId)
                     .single();
                 if (!classError) classInfo = classData;
+
+                const { data: classSubjectsData, error: classSubjectsError } = await supabase
+                    .from('class_subjects')
+                    .select('subject_id')
+                    .eq('class_id', classId);
+                
+                if (!classSubjectsError && classSubjectsData && classSubjectsData.length > 0) {
+                    const subjectIds = classSubjectsData.map(cs => cs.subject_id);
+                    const { data: subjectDetails, error: subjectsError } = await supabase
+                        .from('subjects')
+                        .select('*')
+                        .in('id', subjectIds);
+                    if (!subjectsError) {
+                        subjects = subjectDetails;
+                    }
+                }
+            }
+
+            const { data: attendanceData, error: attendanceError } = await supabase
+                .from('attendance_records')
+                .select('status')
+                .eq('student_id', studentId);
+            
+            if (!attendanceError && attendanceData) {
+                totalWorkingDays = attendanceData.length;
+                presentDays = attendanceData.filter(r => ['Present', 'Late', 'Excused'].includes(r.status)).length;
             }
 
 
             setData({ 
                 student: student as Student, 
                 school: school as SchoolDetails,
-                classInfo: classInfo as ClassData
+                classInfo: classInfo as ClassData,
+                subjects,
+                presentDays,
+                totalWorkingDays
             });
             setIsLoading(false);
         }
@@ -104,7 +140,7 @@ function CertificateContent() {
         return <div className="text-center py-10 text-destructive">Could not load required data to generate the certificate.</div>;
     }
 
-    const { student, school, classInfo } = data;
+    const { student, school, classInfo, subjects, presentDays, totalWorkingDays } = data;
 
     const renderDottedField = (label: string, value?: string | null, isBold = false) => (
       <div className="flex">
@@ -117,6 +153,8 @@ function CertificateContent() {
         </div>
       </div>
     );
+    
+    const subjectList = subjects.length > 0 ? subjects.map(s => s.name).join(', ') : 'Not available';
 
     return (
         <div className="bg-gray-100 dark:bg-gray-900 font-serif p-4 sm:p-8 flex flex-col items-center min-h-screen relative">
@@ -160,12 +198,12 @@ function CertificateContent() {
                     {renderDottedField("   (in words)", classInfo?.name, true)}
                     {renderDottedField("9. School/Board Annual Examination last taken with result:", "PASSED", true)}
                     {renderDottedField("10. Whether the student is failed:", "NO", true)}
-                    {renderDottedField("11. Subject offered:", "ENGLISH, PHYSICS, CHEMISTRY, BIOLOGY, MATHS", true)}
+                    {renderDottedField("11. Subject offered:", subjectList, true)}
                     {renderDottedField("12. Whether qualified for promotion to the next higher class:", "YES", true)}
                     {renderDottedField("13. Whether the pupil has paid all dues to the Vidyalaya:", "YES", true)}
                     {renderDottedField("14. Whether the pupil was in receipt of any fee concession, if so the nature of such concession:", "NO", true)}
-                    {renderDottedField("15. No. of meetings up to date:", "220", true)}
-                    {renderDottedField("16. Total No. of working days pupil present in the school:", "210", true)}
+                    {renderDottedField("15. No. of meetings up to date:", totalWorkingDays.toString(), true)}
+                    {renderDottedField("16. Total No. of working days pupil present in the school:", presentDays.toString(), true)}
                     {renderDottedField("17. Whether the Pupil in NCC Cadet/ Boys Scout/ Girl Guide (give details):", "NO", true)}
                     {renderDottedField("18. Games played or extracurricular activities in which the pupil usually took part (mention achievement level there in):", "NO", true)}
                     {renderDottedField("19. General Conduct:", "GOOD", true)}
