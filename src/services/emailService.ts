@@ -1,3 +1,4 @@
+
 // src/services/emailService.ts
 'use server';
 
@@ -156,4 +157,18 @@ export async function getAllUserEmailsInSchool(schoolId: string, roles?: UserRol
     return [];
   }
   return data.map(u => u.email).filter(email => !!email) as string[];
+}
+
+export async function getAllAdminEmails(): Promise<string[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('users')
+    .select('email')
+    .eq('role', 'admin');
+  
+  if (error || !data) {
+    console.error("[LOG emailService] Error fetching all admin emails:", error);
+    return [];
+  }
+  return data.map(u => u.email).filter(Boolean) as string[];
 }

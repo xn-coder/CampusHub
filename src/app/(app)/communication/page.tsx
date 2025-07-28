@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -8,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { AnnouncementDB as Announcement, UserRole, ClassData, Student, Exam } from '@/types';
+import type { AnnouncementDB as Announcement, UserRole, ClassData, Student, Exam, SchoolEntry } from '@/types';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { PlusCircle, Send, Loader2, Link as LinkIcon, FileText } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
@@ -31,7 +32,7 @@ function CommunicationPageForm() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>([]);
-  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '', linkedExamId: '' });
+  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '', targetSchoolId: '', linkedExamId: '' });
   const [showForm, setShowForm] = useState(false);
   const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false); 
@@ -44,6 +45,7 @@ function CommunicationPageForm() {
 
   const [teacherAssignedClasses, setTeacherAssignedClasses] = useState<ClassData[]>([]);
   const [allSchoolClasses, setAllSchoolClasses] = useState<ClassData[]>([]);
+  const [allSchools, setAllSchools] = useState<SchoolEntry[]>([]); // For superadmin
 
 
   useEffect(() => { 
@@ -74,6 +76,12 @@ function CommunicationPageForm() {
           fetchedSchoolId = userRec.school_id;
           setCurrentSchoolId(fetchedSchoolId);
           setNewAnnouncement(prev => ({ ...prev, authorName: userRec.name }));
+
+          if (fetchedRole === 'superadmin') {
+            const { data: schoolsData, error: schoolsError } = await supabase.from('schools').select('*');
+            if (schoolsError) toast({title: "Error", description: "Failed to fetch schools list for superadmin.", variant: "destructive"});
+            else setAllSchools(schoolsData || []);
+          }
 
           if (fetchedSchoolId) {
             if (fetchedRole === 'teacher') {
@@ -118,13 +126,13 @@ function CommunicationPageForm() {
         getExamDetailsForLinkingAction(examId).then(result => {
             if (result.ok && result.exam) {
                 const exam = result.exam;
-                setShowForm(true); // Automatically open the form
+                setShowForm(true);
                 setNewAnnouncement(prev => ({
                     ...prev,
                     title: `Notification for Exam: ${exam.name}`,
                     content: `This is an official notification regarding an upcoming exam.`,
                     linkedExamId: exam.id,
-                    targetClassId: exam.class_id || '', // Pre-select the target class
+                    targetClassId: exam.class_id || '', 
                 }));
             } else {
                 toast({ title: "Error", description: "Could not fetch details for the linked exam.", variant: "destructive"});
@@ -184,12 +192,17 @@ function CommunicationPageForm() {
 
   const handleSubmitAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUserId || !currentUserRole || !currentSchoolId) {
-      toast({ title: "Error", description: "User or school context is missing. Cannot post.", variant: "destructive" });
+    if (!currentUserId || !currentUserRole) {
+      toast({ title: "Error", description: "User context is missing. Cannot post.", variant: "destructive" });
       return;
     }
     if (!newAnnouncement.title.trim() || !newAnnouncement.content.trim() || !newAnnouncement.authorName.trim()) {
       toast({title: "Error", description: "Title, Content, and Author Name are required.", variant: "destructive"});
+      return;
+    }
+    const isGlobal = newAnnouncement.targetSchoolId === 'global';
+    if (!isGlobal && !currentSchoolId) {
+      toast({ title: "Error", description: "School context is required for non-global announcements.", variant: "destructive" });
       return;
     }
     
@@ -201,34 +214,33 @@ function CommunicationPageForm() {
       posted_by_user_id: currentUserId,
       posted_by_role: currentUserRole,
       target_class_id: newAnnouncement.targetClassId || undefined,
-      school_id: currentSchoolId,
+      school_id: isGlobal ? null : newAnnouncement.targetSchoolId || currentSchoolId,
       linked_exam_id: newAnnouncement.linkedExamId || undefined,
+      is_global: isGlobal,
     });
     setIsSubmitting(false);
 
     if (result.ok) {
       toast({ title: "Announcement Posted", description: `${newAnnouncement.title} has been posted.` });
       
-      if (currentUserRole && (currentSchoolId || currentUserRole === 'superadmin')) {
-          const params: GetAnnouncementsParams = {
-            school_id: currentSchoolId,
-            user_role: currentUserRole,
-            user_id: currentUserId || undefined,
-            student_class_id: studentProfile?.class_id || null,
-            teacher_class_ids: teacherAssignedClasses.map(c => c.id),
-        };
-        const fetchResult = await getAnnouncementsAction(params);
-        if (fetchResult.ok && fetchResult.announcements) setAllAnnouncements(fetchResult.announcements);
-      }
+      const params: GetAnnouncementsParams = {
+        school_id: currentSchoolId,
+        user_role: currentUserRole,
+        user_id: currentUserId,
+        student_class_id: studentProfile?.class_id,
+        teacher_class_ids: teacherAssignedClasses.map(c => c.id),
+      };
+      const fetchResult = await getAnnouncementsAction(params);
+      if (fetchResult.ok && fetchResult.announcements) setAllAnnouncements(fetchResult.announcements);
 
-      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', linkedExamId: '' })); 
+      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', targetSchoolId: '', linkedExamId: '' })); 
       setShowForm(false);
     } else {
       toast({ title: "Error", description: result.message || "Failed to post announcement.", variant: "destructive" });
     }
   };
 
-  const canPostAnnouncement = (currentUserRole === 'superadmin' || currentUserRole === 'admin' || currentUserRole === 'teacher') && !!currentSchoolId;
+  const canPostAnnouncement = currentUserRole === 'superadmin' || ((currentUserRole === 'admin' || currentUserRole === 'teacher') && !!currentSchoolId);
   const availableClassesForTargeting = currentUserRole === 'admin' ? allSchoolClasses : teacherAssignedClasses;
 
   return (
@@ -263,7 +275,25 @@ function CommunicationPageForm() {
                 <Input id="authorName" name="authorName" value={newAnnouncement.authorName} onChange={handleInputChange} placeholder="e.g., Principal's Office, Your Name" required disabled={isSubmitting}/>
               </div>
               
-               <div>
+              {currentUserRole === 'superadmin' && (
+                <div>
+                  <Label htmlFor="targetSchoolId">Target Audience</Label>
+                  <Select value={newAnnouncement.targetSchoolId || "global"} onValueChange={handleSelectChange('targetSchoolId')} disabled={isSubmitting || allSchools.length === 0}>
+                    <SelectTrigger id="targetSchoolId">
+                      <SelectValue placeholder="Select target audience" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="global">All School Admins (Global)</SelectItem>
+                      {allSchools.map(school => (
+                        <SelectItem key={school.id} value={school.id}>School: {school.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
+              {currentUserRole !== 'superadmin' && (
+                <div>
                   <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
                   <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
                     <SelectTrigger id="targetClassId">
@@ -277,6 +307,7 @@ function CommunicationPageForm() {
                     </SelectContent>
                   </Select>
                 </div>
+              )}
 
 
               <div>
@@ -285,7 +316,7 @@ function CommunicationPageForm() {
               </div>
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={isSubmitting || !currentSchoolId}>
+              <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} 
                 Post Announcement
               </Button>
@@ -300,7 +331,7 @@ function CommunicationPageForm() {
         <Card><CardContent className="pt-6 text-center text-muted-foreground">Please ensure you are associated with a school to view or post announcements.</CardContent></Card>
       )}
       
-      {!isLoading && !isContextLoading && ((currentSchoolId && currentUserRole) || currentUserRole === 'superadmin') && (
+      {!isLoading && !isContextLoading && (currentUserRole) && (
         <div className="space-y-6">
           {allAnnouncements.length > 0 ? allAnnouncements.map(announcement => (
             <Card key={announcement.id}>
@@ -309,9 +340,11 @@ function CommunicationPageForm() {
                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span>Posted by {announcement.author_name || announcement.posted_by?.name || 'System'} ({announcement.posted_by_role})</span>
                     <span>{format(parseISO(announcement.date), 'PPpp')}</span>
-                    {announcement.target_class && (
+                    {announcement.school_id === null ? (
+                        <Badge variant="secondary">Global Admin Announcement</Badge>
+                    ) : announcement.target_class ? (
                         <Badge variant="outline">For Class: {announcement.target_class.name} - {announcement.target_class.division}</Badge>
-                    )}
+                    ) : null }
                 </div>
               </CardHeader>
               <CardContent>

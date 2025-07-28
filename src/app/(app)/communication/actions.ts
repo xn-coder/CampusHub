@@ -1,4 +1,5 @@
 
+
 'use server';
 
 console.log('[LOG] Loading src/app/(app)/communication/actions.ts');
@@ -6,7 +7,7 @@ console.log('[LOG] Loading src/app/(app)/communication/actions.ts');
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import type { AnnouncementDB, UserRole, ClassData, Exam } from '@/types';
-import { getStudentEmailsByClassId, getAllUserEmailsInSchool, getTeacherEmailByTeacherProfileId, sendEmail } from '@/services/emailService';
+import { getStudentEmailsByClassId, getAllUserEmailsInSchool, getTeacherEmailByTeacherProfileId, sendEmail, getAllAdminEmails } from '@/services/emailService';
 
 interface PostAnnouncementInput {
   title: string;
@@ -15,8 +16,9 @@ interface PostAnnouncementInput {
   posted_by_user_id: string;
   posted_by_role: UserRole;
   target_class_id?: string;
-  school_id: string;
+  school_id?: string | null; // Can be null for superadmin global announcements
   linked_exam_id?: string;
+  is_global?: boolean;
 }
 
 export async function postAnnouncementAction(
@@ -27,7 +29,6 @@ export async function postAnnouncementAction(
   let emailHtmlBody = `<p>${input.content.replace(/\n/g, '<br>')}</p>`;
 
   try {
-    // If an exam is linked, fetch its details and append them to the content
     if (input.linked_exam_id) {
       const { data: examDetails, error: examError } = await supabase
         .from('exams')
@@ -60,13 +61,13 @@ export async function postAnnouncementAction(
       .from('announcements')
       .insert({
         title: input.title,
-        content: finalContent, // Use the potentially modified content
+        content: finalContent,
         author_name: input.author_name,
         posted_by_user_id: input.posted_by_user_id,
         posted_by_role: input.posted_by_role,
         date: new Date().toISOString(), 
         target_class_id: input.target_class_id || null, 
-        school_id: input.school_id,
+        school_id: input.is_global ? null : input.school_id, // Set school_id to null for global announcements
       })
       .select('*, target_class:target_class_id(name, division, teacher_id)')
       .single();
@@ -92,30 +93,33 @@ export async function postAnnouncementAction(
         <h1>${subject}</h1>
         <p><strong>Posted by:</strong> ${announcement.author_name} (${announcement.posted_by_role})</p>
         <p><strong>Date:</strong> ${new Date(announcement.date).toLocaleString()}</p>
-        ${announcement.target_class_id && announcement.target_class ? `<p><strong>For Class:</strong> ${announcement.target_class.name} - ${announcement.target_class.division}</p>` : '<p>This is a general announcement for the school.</p>'}
+        ${input.is_global ? `<p>This is a global announcement for all school administrators.</p>` : (announcement.target_class_id && announcement.target_class ? `<p><strong>For Class:</strong> ${announcement.target_class.name} - ${announcement.target_class.division}</p>` : '<p>This is a general announcement for the school.</p>')}
         ${emailHtmlBody}
         <p>Please check the communication portal for more details.</p>
       `;
       
       let recipientEmails: string[] = [];
-      const targetClassId = input.target_class_id;
-
-      if (targetClassId && announcement.school_id) {
-        // Class-specific announcement, send to students and the teacher of that class
-        const studentEmails = await getStudentEmailsByClassId(targetClassId, announcement.school_id);
-        recipientEmails.push(...studentEmails);
-        
-        if (announcement.target_class?.teacher_id) {
-            const teacherEmail = await getTeacherEmailByTeacherProfileId(announcement.target_class.teacher_id);
-            if (teacherEmail) recipientEmails.push(teacherEmail);
-        }
+      if (input.is_global) {
+        // Global announcement for all admins
+        recipientEmails = await getAllAdminEmails();
       } else if (announcement.school_id) {
-        // School-wide announcement, send to all relevant roles
-        const rolesToEmail: UserRole[] = ['student', 'teacher', 'admin'];
-        recipientEmails = await getAllUserEmailsInSchool(announcement.school_id, rolesToEmail);
+        const targetClassId = input.target_class_id;
+        if (targetClassId) {
+          // Class-specific announcement, send to students and the teacher of that class
+          const studentEmails = await getStudentEmailsByClassId(targetClassId, announcement.school_id);
+          recipientEmails.push(...studentEmails);
+          
+          if (announcement.target_class?.teacher_id) {
+              const teacherEmail = await getTeacherEmailByTeacherProfileId(announcement.target_class.teacher_id);
+              if (teacherEmail) recipientEmails.push(teacherEmail);
+          }
+        } else {
+          // School-wide announcement, send to all relevant roles in that school
+          const rolesToEmail: UserRole[] = ['student', 'teacher', 'admin'];
+          recipientEmails = await getAllUserEmailsInSchool(announcement.school_id, rolesToEmail);
+        }
       }
       
-      // Remove duplicates
       recipientEmails = [...new Set(recipientEmails)];
 
       if (recipientEmails.length > 0) {
@@ -155,36 +159,36 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
   try {
     let query = supabase
       .from('announcements')
-      .select(`
-        *,
-        posted_by:posted_by_user_id ( name, email ),
-        target_class:target_class_id ( name, division )
-      `)
+      .select(`*, posted_by:posted_by_user_id(name, email), target_class:target_class_id(name, division)`)
       .order('date', { ascending: false });
 
     if (user_role === 'superadmin') {
+      // Superadmin sees all announcements from all schools + global ones
+    } else if (user_role === 'admin') {
+      // Admin sees announcements for their school AND global announcements (school_id is null)
       if (school_id) {
-        query = query.eq('school_id', school_id);
+        query = query.or(`school_id.eq.${school_id},school_id.is.null`);
+      } else {
+        return { ok: false, message: "School context missing for admin." };
       }
-    } else if (school_id) { 
+    } else if (school_id) {
+      // Teacher and Student only see announcements for their school
       query = query.eq('school_id', school_id);
-
       if (user_role === 'student') {
         if (student_class_id) {
-            query = query.or(`target_class_id.eq.${student_class_id},target_class_id.is.null`);
+          query = query.or(`target_class_id.eq.${student_class_id},target_class_id.is.null`);
         } else {
-            query = query.is('target_class_id', null);
+          query = query.is('target_class_id', null);
         }
       } else if (user_role === 'teacher') {
         if (teacher_class_ids && teacher_class_ids.length > 0) {
-            query = query.or(`target_class_id.in.(${teacher_class_ids.join(',')}),target_class_id.is.null`);
+          query = query.or(`target_class_id.in.(${teacher_class_ids.join(',')}),target_class_id.is.null`);
         } else {
-            query = query.is('target_class_id', null);
+          query = query.is('target_class_id', null);
         }
       }
-      // Admins see all announcements for their school, so no further filtering is needed for them.
-    } else { 
-      return {ok: true, announcements: [] };
+    } else {
+      return { ok: true, announcements: [] };
     }
 
     const { data, error } = await query;
@@ -194,8 +198,7 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
       return { ok: false, message: `Database error: ${error.message}` };
     }
     return { ok: true, announcements: (data || []) as AnnouncementDB[] };
-  } catch (e: any)
-     {
+  } catch (e: any) {
     console.error("Unexpected error fetching announcements:", e);
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
