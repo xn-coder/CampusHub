@@ -67,7 +67,7 @@ function VoucherContent() {
 
     return (
         <div className="bg-gray-100 dark:bg-gray-900 flex flex-col items-center p-4 sm:p-8 print:bg-white">
-            <div className="w-full max-w-4xl bg-white dark:bg-card shadow-lg p-8 printable-area">
+            <div className="w-full max-w-4xl bg-white dark:bg-white shadow-lg p-8 printable-area text-black">
                 <header className="flex justify-between items-start pb-4 border-b border-gray-300">
                     <div className="flex items-center gap-4">
                         <Image 
@@ -78,9 +78,9 @@ function VoucherContent() {
                             className="rounded-full"
                         />
                         <div>
-                            <p className="font-bold text-xl text-gray-800 dark:text-gray-200">{school.name}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{school.address}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{school.contact_phone}, {school.contact_email}</p>
+                            <p className="font-bold text-xl">{school.name}</p>
+                            <p className="text-xs">{school.address}</p>
+                            <p className="text-xs">{school.contact_phone}, {school.contact_email}</p>
                         </div>
                     </div>
                     <Button variant="ghost" size="icon" className="print:hidden" onClick={() => window.print()}>

@@ -78,7 +78,7 @@ function VoucherContent() {
 
     return (
         <div className="bg-gray-100 dark:bg-gray-900 flex flex-col items-center p-4 sm:p-8 print:bg-white">
-            <div className="w-full max-w-4xl bg-white dark:bg-card shadow-lg p-8 printable-area text-black">
+            <div className="w-full max-w-4xl bg-white dark:bg-white shadow-lg p-8 printable-area text-black">
                 <header className="flex justify-between items-start pb-4 border-b-2 border-black">
                     <div className="flex items-center gap-4">
                         <Image 
