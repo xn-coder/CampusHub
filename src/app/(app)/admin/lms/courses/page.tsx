@@ -18,7 +18,8 @@ import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { createCourseAction, updateCourseAction, deleteCourseAction, generateActivationCodesAction } from './actions';
-import { PlusCircle, Edit2, Trash2, Save, Library, Settings, UserPlus, KeyRound, Copy, Loader2, BookUser, Users as UsersIcon, Percent, Upload, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Library, Settings, UserPlus, KeyRound, Copy, Loader2, BookUser, Users as UsersIcon, Percent, Upload, Eye, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 
 async function fetchAdminSchoolIdAndRole(adminUserId: string): Promise<{ schoolId: string | null, role: UserRole | null }> {
@@ -392,33 +393,45 @@ export default function ManageCoursesPage() {
                     <TableCell>{course.school_id ? 'School-Specific' : 'Global'}</TableCell>
                     <TableCell>{getTargetAudienceDisplay(course.target_audience)}</TableCell>
                     <TableCell>{getTargetClassDisplay(course)}</TableCell>
-                    <TableCell className="space-x-1 text-right">
-                       <Button variant="outline" size="sm" asChild disabled={isSubmitting}>
-                        <Link href={`/lms/courses/${course.id}?preview=true`}>
-                           <Eye className="mr-1 h-3 w-3" /> Preview
-                        </Link>
-                      </Button>
-                      <Button variant="outline" size="sm" asChild disabled={isSubmitting}>
-                        <Link href={`/admin/lms/courses/${course.id}/content`}>
-                           <Settings className="mr-1 h-3 w-3" /> Content
-                        </Link>
-                      </Button>
-                       <Button variant="outline" size="sm" asChild disabled={isSubmitting}>
-                        <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                          <UserPlus className="mr-1 h-3 w-3" /> Enroll
-                        </Link>
-                      </Button>
-                      {course.is_paid && (
-                        <Button variant="outline" size="sm" onClick={() => handleOpenCodeGenerationDialog(course)} disabled={isSubmitting}>
-                          <KeyRound className="mr-1 h-3 w-3" /> Codes
-                        </Button>
-                      )}
-                      <Button variant="outline" size="icon" onClick={() => handleOpenCourseDialog(course)} disabled={isSubmitting}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteCourse(course.id)} disabled={isSubmitting}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <TableCell className="text-right">
+                       <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                             <DropdownMenuSeparator />
+                             <DropdownMenuItem asChild>
+                                <Link href={`/lms/courses/${course.id}?preview=true`}>
+                                   <Eye className="mr-2 h-4 w-4" /> Preview
+                                </Link>
+                              </DropdownMenuItem>
+                             <DropdownMenuItem asChild>
+                                <Link href={`/admin/lms/courses/${course.id}/content`}>
+                                   <Settings className="mr-2 h-4 w-4" /> Content
+                                </Link>
+                              </DropdownMenuItem>
+                               <DropdownMenuItem asChild>
+                                <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
+                                  <UserPlus className="mr-2 h-4 w-4" /> Enroll
+                                </Link>
+                              </DropdownMenuItem>
+                              {course.is_paid && (
+                                <DropdownMenuItem onSelect={() => handleOpenCodeGenerationDialog(course)}>
+                                  <KeyRound className="mr-2 h-4 w-4" /> Codes
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onSelect={() => handleOpenCourseDialog(course)}>
+                                <Edit2 className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleDeleteCourse(course.id)} className="text-destructive">
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              </DropdownMenuItem>
+                          </DropdownMenuContent>
+                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -593,3 +606,4 @@ export default function ManageCoursesPage() {
     </div>
   );
 }
+
