@@ -38,6 +38,18 @@ function VoucherContent() {
                 .finally(() => setIsLoading(false));
         }
     }, [expenseId]);
+    
+    const generateReceiptNumber = (createdAt?: string) => {
+        if (!createdAt) return 'N/A';
+        try {
+            const date = new Date(createdAt);
+            const timestamp = date.getTime();
+            // Create a pseudo-unique number from the timestamp
+            return (timestamp % 100000000).toString().padStart(8, '0');
+        } catch (e) {
+            return 'N/A';
+        }
+    };
 
     if (isLoading) {
         return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -52,6 +64,7 @@ function VoucherContent() {
     }
 
     const { expense, school } = voucherData;
+    const receiptNumber = generateReceiptNumber(expense.created_at);
 
     return (
         <div className="bg-gray-100 dark:bg-gray-900 flex flex-col items-center p-4 sm:p-8 print:bg-white">
@@ -81,7 +94,7 @@ function VoucherContent() {
                     </div>
                     <div className="flex justify-end">
                         <span className="font-semibold w-24">Receipt No.</span>
-                        <span className="border-b border-gray-400 flex-grow text-right">{expense.id.substring(0, 8)}</span>
+                        <span className="border-b border-gray-400 flex-grow text-right">{receiptNumber}</span>
                     </div>
                     <div className="flex">
                         <span className="font-semibold w-32">Payment Date</span>
@@ -136,7 +149,7 @@ function VoucherContent() {
             <div className="mt-8 print:hidden">
                 <Button onClick={() => window.print()}>
                     <Printer className="mr-2 h-4 w-4" />
-                    Print Voucher
+                    Download / Print Voucher
                 </Button>
             </div>
         </div>
