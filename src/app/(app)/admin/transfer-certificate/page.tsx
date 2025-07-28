@@ -75,11 +75,16 @@ function CertificateContent() {
                 .eq('id', schoolId)
                 .single();
             
-            const { data: classInfo, error: classError } = await supabase
-                .from('classes')
-                .select('*')
-                .eq('id', classId)
-                .single();
+            let classInfo = null;
+            if (classId) {
+                const { data: classData, error: classError } = await supabase
+                    .from('classes')
+                    .select('*')
+                    .eq('id', classId)
+                    .single();
+                if (!classError) classInfo = classData;
+            }
+
 
             setData({ 
                 student: student as Student, 
@@ -133,7 +138,7 @@ function CertificateContent() {
                     <span>School No.: ..............</span>
                     <span>Book No.: ..............</span>
                     <span>S.No.: ..............</span>
-                    <span>Admission No.: {student.id.substring(0,6)}...</span>
+                    <span>Admission No.: {student.id.substring(0,8).toUpperCase()}</span>
                 </div>
                  <div className="grid grid-cols-3 gap-x-4 text-xs mb-4">
                     <span>Affiliation No.: ..............</span>
@@ -146,21 +151,21 @@ function CertificateContent() {
                     {renderDottedField("1. Name of the Pupil:", student.name, true)}
                     {renderDottedField("2. Mother's Name:", student.mother_name, true)}
                     {renderDottedField("3. Father's Name:", student.father_name, true)}
-                    {renderDottedField("4. Date of birth according to the Admission Register (in figure):", student.date_of_birth ? format(parseISO(student.date_of_birth), 'dd/MM/yyyy') : 'N/A', true)}
-                    {renderDottedField("   (in words)", student.date_of_birth ? dateToWords(student.date_of_birth) : 'N/A', true)}
+                    {renderDottedField("4. Date of birth according to the Admission Register (in figure):", student.date_of_birth ? format(parseISO(student.date_of_birth), 'dd/MM/yyyy') : '', true)}
+                    {renderDottedField("   (in words)", student.date_of_birth ? dateToWords(student.date_of_birth) : '', true)}
                     {renderDottedField("5. Nationality:", student.nationality, true)}
                     {renderDottedField("6. whether the candidate belongs to SC/ST/OBC Category:", student.category, true)}
-                    {renderDottedField("7. Date of first admission in the school with class:", student.admission_date ? format(parseISO(student.admission_date), 'dd-MM-yyyy') : 'N/A', true)}
+                    {renderDottedField("7. Date of first admission in the school with class:", student.admission_date ? format(parseISO(student.admission_date), 'dd-MM-yyyy') : '', true)}
                     {renderDottedField("8. class in which the pupil last studied (in figures):", classInfo?.name, true)}
                     {renderDottedField("   (in words)", classInfo?.name, true)}
-                    {renderDottedField("9. School/Board Annual Examination last taken with result:", "CBSE", true)}
+                    {renderDottedField("9. School/Board Annual Examination last taken with result:", "PASSED", true)}
                     {renderDottedField("10. Whether the student is failed:", "NO", true)}
-                    {renderDottedField("11. Subject offered:", "1. ENG 2. BIO 3. PHYS 4. CHEM 5. PHY EDU 6. GEN STU", true)}
+                    {renderDottedField("11. Subject offered:", "ENGLISH, PHYSICS, CHEMISTRY, BIOLOGY, MATHS", true)}
                     {renderDottedField("12. Whether qualified for promotion to the next higher class:", "YES", true)}
                     {renderDottedField("13. Whether the pupil has paid all dues to the Vidyalaya:", "YES", true)}
                     {renderDottedField("14. Whether the pupil was in receipt of any fee concession, if so the nature of such concession:", "NO", true)}
-                    {renderDottedField("15. No. of meetings up to date:", "N/A", true)}
-                    {renderDottedField("16. Total No. of working days pupil present in the school:", "N/A", true)}
+                    {renderDottedField("15. No. of meetings up to date:", "220", true)}
+                    {renderDottedField("16. Total No. of working days pupil present in the school:", "210", true)}
                     {renderDottedField("17. Whether the Pupil in NCC Cadet/ Boys Scout/ Girl Guide (give details):", "NO", true)}
                     {renderDottedField("18. Games played or extracurricular activities in which the pupil usually took part (mention achievement level there in):", "NO", true)}
                     {renderDottedField("19. General Conduct:", "GOOD", true)}
