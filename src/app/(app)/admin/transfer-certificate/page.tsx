@@ -114,8 +114,8 @@ function CertificateContent() {
     );
 
     return (
-        <div className="bg-gray-100 dark:bg-gray-900 text-black dark:text-gray-200 font-serif p-4 sm:p-8 flex flex-col items-center min-h-screen relative">
-            <div className="w-full max-w-4xl bg-white p-6 printable-area">
+        <div className="bg-gray-100 dark:bg-gray-900 font-serif p-4 sm:p-8 flex flex-col items-center min-h-screen relative">
+            <div className="w-full max-w-4xl bg-white p-6 printable-area text-black">
                 <header className="flex flex-col items-center justify-center text-center pb-2">
                     <Image src={school.logo_url || "/logo.png"} alt="School Logo" width={80} height={80} className="mb-2 rounded-full" />
                     <h1 className="text-2xl font-bold">{school.name}</h1>
