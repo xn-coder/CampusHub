@@ -53,11 +53,11 @@ export default function ManageSchoolPage() {
             id: item.id,
             name: item.name,
             address: item.address,
-            adminEmail: item.admin_email,
-            adminName: item.admin_name,
+            admin_email: item.admin_email,
+            admin_name: item.admin_name,
             status: item.status as 'Active' | 'Inactive',
-            adminUserId: item.admin_user_id,
-            createdAt: item.created_at, 
+            admin_user_id: item.admin_user_id,
+            created_at: item.created_at, 
           })));
         }
       } catch (error) {
@@ -86,8 +86,8 @@ export default function ManageSchoolPage() {
       const lowercasedTerm = searchTerm.toLowerCase();
       filtered = filtered.filter(school => 
         school.name.toLowerCase().includes(lowercasedTerm) ||
-        school.adminName.toLowerCase().includes(lowercasedTerm) ||
-        school.adminEmail.toLowerCase().includes(lowercasedTerm)
+        (school.admin_name && school.admin_name.toLowerCase().includes(lowercasedTerm)) ||
+        (school.admin_email && school.admin_email.toLowerCase().includes(lowercasedTerm))
       );
     }
 
@@ -156,8 +156,8 @@ export default function ManageSchoolPage() {
                 <TableRow>
                   <SortableHeader column="name" label="School Name" />
                   <SortableHeader column="address" label="Address" />
-                  <SortableHeader column="adminName" label="Administrator Name" />
-                  <SortableHeader column="adminEmail" label="Admin Email" />
+                  <SortableHeader column="admin_name" label="Administrator Name" />
+                  <SortableHeader column="admin_email" label="Admin Email" />
                   <SortableHeader column="status" label="Status" />
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -167,8 +167,8 @@ export default function ManageSchoolPage() {
                   <TableRow key={school.id}>
                     <TableCell className="font-medium">{school.name}</TableCell>
                     <TableCell>{school.address}</TableCell>
-                    <TableCell>{school.adminName}</TableCell>
-                    <TableCell>{school.adminEmail}</TableCell>
+                    <TableCell>{school.admin_name}</TableCell>
+                    <TableCell>{school.admin_email}</TableCell>
                     <TableCell>
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                         school.status === 'Active' 
