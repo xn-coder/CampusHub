@@ -11,9 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord, AcademicYear } from '@/types';
+import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord, AcademicYear, Subject } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
-import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2, ArrowRight, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2, ArrowRight, MoreHorizontal, ChevronLeft, ChevronRight, BookOpenText } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
@@ -24,7 +24,9 @@ import {
   assignStudentsToClassAction, assignTeacherToClassAction,
   getClassNamesAction, getSectionNamesAction, getActiveClassesAction,
   promoteStudentsToNewClassAction,
-  getStudentsWithStatusForPromotionAction
+  getStudentsWithStatusForPromotionAction,
+  getAssignedSubjectsForClassAction,
+  saveClassSubjectAssignmentsAction,
 } from './actions';
 import { Badge } from '@/components/ui/badge';
 
@@ -58,6 +60,7 @@ export default function ClassManagementPage() {
   const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
   const [allStudentsInSchool, setAllStudentsInSchool] = useState<Student[]>([]);
   const [allTeachersInSchool, setAllTeachersInSchool] = useState<Teacher[]>([]);
+  const [allSubjectsInSchool, setAllSubjectsInSchool] = useState<Subject[]>([]);
   const [allAcademicYears, setAllAcademicYears] = useState<AcademicYear[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -65,6 +68,7 @@ export default function ClassManagementPage() {
   const [isActivateClassSectionDialogOpen, setIsActivateClassSectionDialogOpen] = useState(false);
   const [isManageStudentsDialogOpen, setIsManageStudentsDialogOpen] = useState(false);
   const [isAssignTeacherDialogOpen, setIsAssignTeacherDialogOpen] = useState(false);
+  const [isAssignSubjectsDialogOpen, setIsAssignSubjectsDialogOpen] = useState(false);
   const [isEditClassNameDialogOpen, setIsEditClassNameDialogOpen] = useState(false);
   const [isEditSectionNameDialogOpen, setIsEditSectionNameDialogOpen] = useState(false);
   const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
@@ -85,7 +89,9 @@ export default function ClassManagementPage() {
   const [selectedStudentIdsForDialog, setSelectedStudentIdsForDialog] = useState<string[]>([]);
   const [classToAssignTeacher, setClassToAssignTeacher] = useState<ClassData | null>(null);
   const [selectedTeacherIdForDialog, setSelectedTeacherIdForDialog] = useState<string | undefined | null>(undefined);
-  
+  const [classToAssignSubjects, setClassToAssignSubjects] = useState<ClassData | null>(null);
+  const [selectedSubjectIdsForDialog, setSelectedSubjectIdsForDialog] = useState<string[]>([]);
+
   // Promotion Dialog State
   const [classToPromote, setClassToPromote] = useState<ClassData | null>(null);
   const [destinationClassId, setDestinationClassId] = useState<string>('');
@@ -104,14 +110,16 @@ export default function ClassManagementPage() {
             activeClassesResult,
             studentsResult,
             teachersResult,
-            academicYearsResult
+            academicYearsResult,
+            subjectsResult
         ] = await Promise.all([
           getClassNamesAction(schoolId),
           getSectionNamesAction(schoolId),
           getActiveClassesAction(schoolId),
           supabase.from('students').select('*').eq('school_id', schoolId),
           supabase.from('teachers').select('*').eq('school_id', schoolId),
-          supabase.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
+          supabase.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false }),
+          supabase.from('subjects').select('*').eq('school_id', schoolId).order('name'),
         ]);
 
         if (classNamesResult.ok && classNamesResult.classNames) setClassNamesList(classNamesResult.classNames);
@@ -128,6 +136,9 @@ export default function ClassManagementPage() {
 
         if (teachersResult.error) toast({ title: "Error fetching teachers", description: teachersResult.error.message, variant: "destructive" });
         else setAllTeachersInSchool(teachersResult.data || []);
+
+        if (subjectsResult.error) toast({ title: "Error fetching subjects", description: subjectsResult.error.message, variant: "destructive" });
+        else setAllSubjectsInSchool(subjectsResult.data || []);
 
         if (academicYearsResult.error) toast({ title: "Error fetching academic years", description: academicYearsResult.error.message, variant: "destructive" });
         else setAllAcademicYears(academicYearsResult.data || []);
@@ -406,6 +417,39 @@ export default function ClassManagementPage() {
     }
     setIsSubmitting(false);
   };
+  
+  const handleOpenAssignSubjectsDialog = async (cls: ClassData) => {
+    if (!currentSchoolId) return;
+    setClassToAssignSubjects(cls);
+    setIsSubmitting(true); // Use as loading state
+    const result = await getAssignedSubjectsForClassAction(cls.id, currentSchoolId);
+    if(result.ok && result.subjectIds) {
+      setSelectedSubjectIdsForDialog(result.subjectIds);
+    } else {
+      toast({ title: "Error", description: "Could not fetch currently assigned subjects.", variant: "destructive" });
+      setSelectedSubjectIdsForDialog([]);
+    }
+    setIsSubmitting(false);
+    setIsAssignSubjectsDialogOpen(true);
+  };
+
+  const handleSaveSubjectAssignments = async () => {
+    if (!classToAssignSubjects || !currentSchoolId) return;
+    setIsSubmitting(true);
+    const result = await saveClassSubjectAssignmentsAction(classToAssignSubjects.id, selectedSubjectIdsForDialog, currentSchoolId);
+    toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+    if(result.ok && currentSchoolId) {
+        fetchAllData(currentSchoolId);
+        setIsAssignSubjectsDialogOpen(false);
+    }
+    setIsSubmitting(false);
+  };
+
+  const handleSubjectSelectionChange = (subjectId: string, checked: boolean) => {
+    setSelectedSubjectIdsForDialog(prev =>
+      checked ? [...prev, subjectId] : prev.filter(id => id !== subjectId)
+    );
+  };
 
   const destinationClassesForPromotion = useMemo(() => {
     if (!classToPromote) return [];
@@ -554,7 +598,8 @@ export default function ClassManagementPage() {
                       <TableHead>Section/Division</TableHead>
                        <TableHead>Academic Year</TableHead>
                       <TableHead>Teacher</TableHead>
-                      <TableHead>No. of Students</TableHead>
+                      <TableHead>Students</TableHead>
+                      <TableHead>Subjects</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -568,6 +613,7 @@ export default function ClassManagementPage() {
                         <TableCell>{getAcademicYearName(cls.academic_year_id)}</TableCell>
                         <TableCell>{getTeacherName(cls.teacher_id)}</TableCell>
                         <TableCell>{studentCount}</TableCell>
+                        <TableCell>{(cls as any).subjects_count || 0}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -581,6 +627,9 @@ export default function ClassManagementPage() {
                               </DropdownMenuItem>
                               <DropdownMenuItem onSelect={() => handleOpenAssignTeacherDialog(cls)}>
                                 <UserCog className="mr-2 h-4 w-4" /> Assign Teacher
+                              </DropdownMenuItem>
+                               <DropdownMenuItem onSelect={() => handleOpenAssignSubjectsDialog(cls)}>
+                                <BookOpenText className="mr-2 h-4 w-4" /> Assign Subjects
                               </DropdownMenuItem>
                               <DropdownMenuItem onSelect={() => handleOpenPromoteDialog(cls)} disabled={studentCount === 0}>
                                 <ArrowRight className="mr-2 h-4 w-4" /> Promote Class
@@ -696,6 +745,36 @@ export default function ClassManagementPage() {
             </DialogFooter>
           </>
           )}
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={isAssignSubjectsDialogOpen} onOpenChange={setIsAssignSubjectsDialogOpen}>
+        <DialogContent className="max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Assign Subjects to {classToAssignSubjects?.name} - {classToAssignSubjects?.division}</DialogTitle>
+            <CardDescription>Select the subjects to be taught in this class.</CardDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2 overflow-y-auto flex-grow">
+            {allSubjectsInSchool.length > 0 ? allSubjectsInSchool.map(subject => (
+              <div key={subject.id} className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50">
+                <Checkbox
+                  id={`subject-${subject.id}`}
+                  checked={selectedSubjectIdsForDialog.includes(subject.id)}
+                  onCheckedChange={(checked) => handleSubjectSelectionChange(subject.id, !!checked)}
+                  disabled={isSubmitting}
+                />
+                <Label htmlFor={`subject-${subject.id}`} className="flex-grow cursor-pointer">
+                  {subject.name} <span className="text-xs text-muted-foreground">({subject.code})</span>
+                </Label>
+              </div>
+            )) : <p className="text-sm text-muted-foreground text-center py-4">No subjects have been defined for this school yet.</p>}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+            <Button onClick={handleSaveSubjectAssignments} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save Subject Assignments
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

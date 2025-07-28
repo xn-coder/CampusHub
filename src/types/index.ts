@@ -1,5 +1,4 @@
 
-
 import type { LucideIcon } from 'lucide-react';
 
 // ENUMS from DB - Ensure these match your SQL ENUM definitions
@@ -164,6 +163,7 @@ export interface ClassData {
   academic_year_id?: string | null;
   school_id: string;
   studentIds?: string[];
+  subjects_count?: number;
   created_at?: string;
   updated_at?: string;
 }

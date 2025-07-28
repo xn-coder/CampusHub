@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { ClassNameRecord, SectionRecord, ClassData, Student } from '@/types';
+import type { ClassNameRecord, SectionRecord, ClassData, Student, Subject } from '@/types';
 
 // --- Class Name (Standard) Management ---
 
@@ -325,18 +325,29 @@ export async function getActiveClassesAction(schoolId: string): Promise<{ ok: bo
     return { ok: false, message: "School ID is required to fetch active classes." };
   }
   const supabaseAdmin = createSupabaseServerClient();
-  const { data, error } = await supabaseAdmin
+  
+  const { data: classesData, error: classesError } = await supabaseAdmin
     .from('classes')
-    .select('*')
+    .select(`
+      *,
+      class_subjects ( count )
+    `)
     .eq('school_id', schoolId)
     .order('name')
     .order('division');
 
-  if (error) {
-    console.error("Error fetching active classes:", error);
-    return { ok: false, message: `Database error: ${error.message}` };
+  if (classesError) {
+    console.error("Error fetching active classes:", classesError);
+    return { ok: false, message: `Database error: ${classesError.message}` };
   }
-  return { ok: true, activeClasses: (data || []).map(ac => ({...ac, studentIds: []} as ClassData)) };
+  
+  const formattedClasses = (classesData || []).map(ac => ({
+      ...ac,
+      subjects_count: ac.class_subjects[0]?.count || 0, // Extract count
+      studentIds: [] // studentIds will be populated on the client if needed
+  } as ClassData));
+  
+  return { ok: true, activeClasses: formattedClasses };
 }
 
 
@@ -619,3 +630,71 @@ export async function getStudentsWithStatusForPromotionAction(classId: string, s
     }
 }
     
+// --- Subject Assignment ---
+
+export async function getAssignedSubjectsForClassAction(classId: string, schoolId: string): Promise<{ ok: boolean; subjectIds?: string[]; message?: string }> {
+  if (!classId || !schoolId) {
+    return { ok: false, message: "Class ID and School ID are required." };
+  }
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('class_subjects')
+    .select('subject_id')
+    .eq('class_id', classId)
+    .eq('school_id', schoolId);
+
+  if (error) {
+    console.error("Error fetching assigned subjects for class:", error);
+    return { ok: false, message: `Database error: ${error.message}` };
+  }
+  return { ok: true, subjectIds: data.map(item => item.subject_id) };
+}
+
+export async function saveClassSubjectAssignmentsAction(
+  classId: string,
+  subjectIds: string[],
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+  if (!classId || !schoolId) {
+    return { ok: false, message: "Class ID and School ID are required." };
+  }
+  const supabase = createSupabaseServerClient();
+
+  try {
+    // Start a transaction
+    await supabase.rpc('run_as_transaction', {});
+
+    // Delete existing assignments for this class
+    const { error: deleteError } = await supabase
+      .from('class_subjects')
+      .delete()
+      .eq('class_id', classId);
+
+    if (deleteError) {
+      throw new Error(`Failed to clear existing subject assignments: ${deleteError.message}`);
+    }
+
+    // Insert new assignments if any are selected
+    if (subjectIds.length > 0) {
+      const newAssignments = subjectIds.map(subjectId => ({
+        class_id: classId,
+        subject_id: subjectId,
+        school_id: schoolId,
+      }));
+      const { error: insertError } = await supabase
+        .from('class_subjects')
+        .insert(newAssignments);
+      
+      if (insertError) {
+        throw new Error(`Failed to assign new subjects: ${insertError.message}`);
+      }
+    }
+
+    revalidatePath('/class-management');
+    return { ok: true, message: 'Subject assignments have been updated successfully.' };
+
+  } catch (error: any) {
+    console.error("Error in saveClassSubjectAssignmentsAction:", error);
+    return { ok: false, message: error.message || 'An unexpected error occurred during subject assignment.' };
+  }
+}
