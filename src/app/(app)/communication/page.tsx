@@ -32,7 +32,7 @@ function CommunicationPageForm() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>([]);
-  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '', targetSchoolId: '', linkedExamId: '' });
+  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '', linkedExamId: '' });
   const [showForm, setShowForm] = useState(false);
   const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false); 
@@ -45,7 +45,6 @@ function CommunicationPageForm() {
 
   const [teacherAssignedClasses, setTeacherAssignedClasses] = useState<ClassData[]>([]);
   const [allSchoolClasses, setAllSchoolClasses] = useState<ClassData[]>([]);
-  const [allSchools, setAllSchools] = useState<SchoolEntry[]>([]); // For superadmin
 
 
   useEffect(() => { 
@@ -76,12 +75,6 @@ function CommunicationPageForm() {
           fetchedSchoolId = userRec.school_id;
           setCurrentSchoolId(fetchedSchoolId);
           setNewAnnouncement(prev => ({ ...prev, authorName: userRec.name }));
-
-          if (fetchedRole === 'superadmin') {
-            const { data: schoolsData, error: schoolsError } = await supabase.from('schools').select('*');
-            if (schoolsError) toast({title: "Error", description: "Failed to fetch schools list for superadmin.", variant: "destructive"});
-            else setAllSchools(schoolsData || []);
-          }
 
           if (fetchedSchoolId) {
             if (fetchedRole === 'teacher') {
@@ -200,9 +193,9 @@ function CommunicationPageForm() {
       toast({title: "Error", description: "Title, Content, and Author Name are required.", variant: "destructive"});
       return;
     }
-    const isGlobal = newAnnouncement.targetSchoolId === 'global';
-    if (!isGlobal && !currentSchoolId) {
-      toast({ title: "Error", description: "School context is required for non-global announcements.", variant: "destructive" });
+    
+    if (!currentSchoolId) {
+      toast({ title: "Error", description: "School context is required to post an announcement.", variant: "destructive" });
       return;
     }
     
@@ -214,9 +207,8 @@ function CommunicationPageForm() {
       posted_by_user_id: currentUserId,
       posted_by_role: currentUserRole,
       target_class_id: newAnnouncement.targetClassId || undefined,
-      school_id: isGlobal ? null : newAnnouncement.targetSchoolId || currentSchoolId,
+      school_id: currentSchoolId,
       linked_exam_id: newAnnouncement.linkedExamId || undefined,
-      is_global: isGlobal,
     });
     setIsSubmitting(false);
 
@@ -233,14 +225,14 @@ function CommunicationPageForm() {
       const fetchResult = await getAnnouncementsAction(params);
       if (fetchResult.ok && fetchResult.announcements) setAllAnnouncements(fetchResult.announcements);
 
-      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', targetSchoolId: '', linkedExamId: '' })); 
+      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', linkedExamId: '' })); 
       setShowForm(false);
     } else {
       toast({ title: "Error", description: result.message || "Failed to post announcement.", variant: "destructive" });
     }
   };
 
-  const canPostAnnouncement = currentUserRole === 'superadmin' || ((currentUserRole === 'admin' || currentUserRole === 'teacher') && !!currentSchoolId);
+  const canPostAnnouncement = (currentUserRole === 'admin' || currentUserRole === 'teacher') && !!currentSchoolId;
   const availableClassesForTargeting = currentUserRole === 'admin' ? allSchoolClasses : teacherAssignedClasses;
 
   return (
@@ -275,40 +267,20 @@ function CommunicationPageForm() {
                 <Input id="authorName" name="authorName" value={newAnnouncement.authorName} onChange={handleInputChange} placeholder="e.g., Principal's Office, Your Name" required disabled={isSubmitting}/>
               </div>
               
-              {currentUserRole === 'superadmin' && (
-                <div>
-                  <Label htmlFor="targetSchoolId">Target Audience</Label>
-                  <Select value={newAnnouncement.targetSchoolId || "global"} onValueChange={handleSelectChange('targetSchoolId')} disabled={isSubmitting || allSchools.length === 0}>
-                    <SelectTrigger id="targetSchoolId">
-                      <SelectValue placeholder="Select target audience" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="global">All School Admins (Global)</SelectItem>
-                      {allSchools.map(school => (
-                        <SelectItem key={school.id} value={school.id}>School: {school.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              
-              {currentUserRole !== 'superadmin' && (
-                <div>
-                  <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
-                  <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
-                    <SelectTrigger id="targetClassId">
-                      <SelectValue placeholder="General Announcement" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">General Announcement (School-wide)</SelectItem>
-                      {availableClassesForTargeting.map(cls => (
-                        <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
+              <div>
+                <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
+                <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
+                  <SelectTrigger id="targetClassId">
+                    <SelectValue placeholder="General Announcement" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">General Announcement (School-wide)</SelectItem>
+                    {availableClassesForTargeting.map(cls => (
+                      <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div>
                 <Label htmlFor="content">Content</Label>
