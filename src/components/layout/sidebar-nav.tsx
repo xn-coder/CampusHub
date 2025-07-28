@@ -43,6 +43,7 @@ import {
   BookOpenCheck,
   Wallet,
   TextSelect,
+  ReceiptText,
 } from 'lucide-react';
 
 
@@ -71,6 +72,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
   { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
   { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
+  { href: '/admin/receipts', label: 'Receipt Vouchers', icon: ReceiptText },
   { href: '/admin/expense-categories', label: 'Expense Categories', icon: Tags },
   { href: '/admin/expenses', label: 'Expense Management', icon: Wallet },
   { href: '/admin/academic-years', label: 'Academic Years', icon: CalendarRange },
