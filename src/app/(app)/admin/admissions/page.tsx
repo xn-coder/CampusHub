@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -7,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import type { AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, AdmissionStatus } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { ListChecks, CheckSquare, Loader2, UserPlus, FileDown, Search, Receipt } from 'lucide-react';
+import { ListChecks, CheckSquare, Loader2, UserPlus, FileDown, Search, Receipt, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { updateAdmissionStatusAction, fetchAdminSchoolIdForAdmissions, fetchAdmissionPageDataAction } from './actions';
@@ -17,6 +18,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, parseISO } from 'date-fns';
 
+const ITEMS_PER_PAGE = 10;
 
 export default function AdmissionsPage() {
   const { toast } = useToast();
@@ -31,6 +33,7 @@ export default function AdmissionsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [classFilter, setClassFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<AdmissionStatus | 'all'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
 
 
   useEffect(() => {
@@ -110,6 +113,14 @@ export default function AdmissionsPage() {
         return matchesSearch && matchesClass && matchesStatus;
     });
   }, [admissionRecords, searchTerm, classFilter, statusFilter]);
+
+  const paginatedRecords = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return filteredAdmissionRecords.slice(startIndex, endIndex);
+  }, [filteredAdmissionRecords, currentPage]);
+  const totalPages = Math.ceil(filteredAdmissionRecords.length / ITEMS_PER_PAGE);
+
 
   const handleDownloadCsv = () => {
     if (filteredAdmissionRecords.length === 0) {
@@ -214,7 +225,7 @@ export default function AdmissionsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAdmissionRecords.map(record => {
+                  {paginatedRecords.map(record => {
                     const assignedClassDetails = activeClasses.find(c => c.id === record.class_id);
                     const classText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'N/A';
                     
@@ -281,6 +292,17 @@ export default function AdmissionsPage() {
               </Table>
             )}
           </CardContent>
+          {totalPages > 1 && (
+            <CardFooter className="flex justify-end items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => prev - 1)} disabled={currentPage === 1}>
+                    <ChevronLeft className="h-4 w-4" /> Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => prev + 1)} disabled={currentPage === totalPages}>
+                    Next <ChevronRight className="h-4 w-4" />
+                </Button>
+            </CardFooter>
+          )}
         </Card>
     </div>
   );

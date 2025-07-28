@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation } from 'lucide-react';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2 } from 'lucide-react';
 import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
@@ -20,10 +20,9 @@ import {
   getCourseContentForAdminAction,
   addLessonToCourseAction,
   deleteCourseResourceAction,
-  updateLessonContentAction,
+  updateResourceInLessonAction,
   createSignedUploadUrlAction, 
   addResourceToLessonAction,
-  getAllCoursesForAdminNavAction,
 } from '../../actions';
 import { supabase } from '@/lib/supabaseClient';
 import { Progress } from '@/components/ui/progress';
@@ -45,6 +44,7 @@ export default function ManageCourseContentPage() {
   const [newLessonTitle, setNewLessonTitle] = useState('');
 
   const [isResourceFormOpen, setIsResourceFormOpen] = useState<string | null>(null); // Holds lesson ID
+  const [editingResource, setEditingResource] = useState<LessonContentResource | null>(null); // Holds resource being edited
   const [resourceTitle, setResourceTitle] = useState('');
   const [resourceType, setResourceType] = useState<ResourceTabKey>('note');
   const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
@@ -94,28 +94,47 @@ export default function ManageCourseContentPage() {
     setIsSubmitting(false);
   };
   
-  const handleDeleteLesson = async (lessonId: string) => {
-    if (confirm("Are you sure you want to delete this entire lesson and all its contents? This cannot be undone.")) {
-      setIsSubmitting(true);
-      const result = await deleteCourseResourceAction(lessonId);
-      if (result.ok) {
-        toast({ title: "Lesson Deleted", variant: "destructive" });
+  const handleDeleteResource = async (lesson: CourseResource, resourceId: string) => {
+     if (!confirm("Are you sure you want to delete this resource? This cannot be undone.")) return;
+     
+     setIsSubmitting(true);
+     const currentContent: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
+     const updatedContent = currentContent.filter(res => res.id !== resourceId);
+
+     const result = await deleteCourseResourceAction(lesson.id, updatedContent);
+
+     if (result.ok) {
+        toast({title: "Resource Deleted", variant: "destructive"});
         await fetchCourseData();
+     } else {
+        toast({title: "Error", description: result.message, variant: "destructive"});
+     }
+     setIsSubmitting(false);
+  };
+  
+  const handleOpenResourceForm = (lessonId: string, resourceToEdit?: LessonContentResource) => {
+    setIsResourceFormOpen(lessonId);
+    setEditingResource(resourceToEdit || null);
+    
+    if (resourceToEdit) {
+      setResourceTitle(resourceToEdit.title);
+      setResourceType(resourceToEdit.type as ResourceTabKey);
+      if (resourceToEdit.type === 'quiz') {
+        setQuizQuestions(JSON.parse(resourceToEdit.url_or_content || '[]'));
+        setResourceUrlOrContent('');
       } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
+        setResourceUrlOrContent(resourceToEdit.url_or_content);
+        setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
       }
-      setIsSubmitting(false);
+    } else {
+      setResourceTitle('');
+      setResourceType('note');
+      setResourceUrlOrContent('');
+      setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
     }
+    setResourceFile(null);
   };
 
-  const openResourceForm = (lessonId: string) => {
-    setIsResourceFormOpen(lessonId);
-    setResourceTitle('');
-    setResourceType('note');
-    setResourceUrlOrContent('');
-    setResourceFile(null);
-    setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
-  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
@@ -123,7 +142,7 @@ export default function ManageCourseContentPage() {
     if (file) setResourceUrlOrContent(''); 
   };
   
-  const handleAddResourceToLesson = async (e: FormEvent, lesson: CourseResource) => {
+  const handleResourceSubmit = async (e: FormEvent, lesson: CourseResource) => {
     e.preventDefault();
     if (!resourceTitle.trim()) {
       toast({title: "Error", description: "Resource title is required.", variant: "destructive"});
@@ -153,47 +172,17 @@ export default function ManageCourseContentPage() {
 
       if (resourceFile) {
         toast({title:"Preparing to upload file..."});
-        const signedUrlResult = await createSignedUploadUrlAction(
-          courseId,
-          resourceFile.name,
-          resourceFile.type
-        );
-
-        if (!signedUrlResult.ok || !signedUrlResult.signedUrl) {
-          throw new Error(signedUrlResult.message || 'Failed to prepare upload.');
-        }
+        const signedUrlResult = await createSignedUploadUrlAction(courseId, resourceFile.name, resourceFile.type);
+        if (!signedUrlResult.ok || !signedUrlResult.signedUrl) throw new Error(signedUrlResult.message || 'Failed to prepare upload.');
 
         toast({title:"Starting upload... this may take a while."});
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open('PUT', signedUrlResult.signedUrl!, true);
           xhr.setRequestHeader('Content-Type', resourceFile.type);
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-              const percent = Math.round((event.loaded / event.total) * 100);
-              setUploadProgress(percent);
-            }
-          };
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve();
-            } else {
-              let errorMessage = `Upload failed with status ${xhr.status}`;
-              if (xhr.statusText) {
-                errorMessage += ` - ${xhr.statusText}`;
-              }
-              try {
-                const errorResponse = JSON.parse(xhr.responseText);
-                if (errorResponse.message) {
-                  errorMessage += `: ${errorResponse.message}`;
-                }
-              } catch (e) {
-                // Not a JSON response
-              }
-              reject(new Error(errorMessage));
-            }
-          };
-          xhr.onerror = () => reject(new Error('Network error during upload. Please check your internet connection.'));
+          xhr.upload.onprogress = (event) => setUploadProgress(event.lengthComputable ? Math.round((event.loaded / event.total) * 100) : 0);
+          xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error('Upload failed'));
+          xhr.onerror = () => reject(new Error('Network error during upload.'));
           xhr.send(resourceFile);
         });
 
@@ -202,19 +191,30 @@ export default function ManageCourseContentPage() {
       } else if (resourceType === 'quiz') {
         finalUrlOrContent = JSON.stringify(quizQuestions);
       }
-
-      const formData = new FormData();
-      formData.append('lessonId', lesson.id);
-      formData.append('courseId', courseId);
-      formData.append('resourceTitle', resourceTitle);
-      formData.append('resourceType', resourceType);
-      formData.append('urlOrContent', finalUrlOrContent);
       
-      const result = await addResourceToLessonAction(formData);
+      let result;
+      if (editingResource) {
+        result = await updateResourceInLessonAction(lesson.id, editingResource.id, {
+          id: editingResource.id,
+          type: resourceType,
+          title: resourceTitle.trim(),
+          url_or_content: finalUrlOrContent
+        });
+      } else {
+        const formData = new FormData();
+        formData.append('lessonId', lesson.id);
+        formData.append('courseId', courseId);
+        formData.append('resourceTitle', resourceTitle);
+        formData.append('resourceType', resourceType);
+        formData.append('urlOrContent', finalUrlOrContent);
+        result = await addResourceToLessonAction(formData);
+      }
+
 
       if (result.ok) {
-          toast({title: "Resource Added"});
+          toast({title: editingResource ? "Resource Updated" : "Resource Added"});
           setIsResourceFormOpen(null);
+          setEditingResource(null);
           resourceFormRef.current?.reset();
           await fetchCourseData();
       } else {
@@ -229,18 +229,18 @@ export default function ManageCourseContentPage() {
   };
 
 
-  const handleDeleteResourceFromLesson = async (lesson: CourseResource, contentId: string) => {
-     if (!confirm("Are you sure you want to delete this resource?")) return;
-     
-     setIsSubmitting(true);
-     const result = await deleteCourseResourceAction(contentId);
-     if (result.ok) {
-        toast({title: "Resource Deleted", variant: "destructive"});
-        await fetchCourseData();
-     } else {
-        toast({title: "Error", description: result.message, variant: "destructive"});
+  const handleDeleteLesson = async (lessonId: string) => {
+     if (confirm("Are you sure you want to delete this entire lesson and all its contents? This cannot be undone.")) {
+       setIsSubmitting(true);
+       const result = await deleteCourseResourceAction(lessonId);
+       if (result.ok) {
+          toast({title: "Lesson Deleted", variant: "destructive"});
+          await fetchCourseData();
+       } else {
+          toast({title: "Error", description: result.message, variant: "destructive"});
+       }
+       setIsSubmitting(false);
      }
-     setIsSubmitting(false);
   };
   
   const handleAddQuizQuestion = () => {
@@ -326,18 +326,23 @@ export default function ManageCourseContentPage() {
                                                 {getResourceIcon(res.type)}
                                                 <span className="truncate" title={res.title}>{res.title}</span>
                                            </div>
-                                            <Button variant="ghost" size="icon" onClick={() => handleDeleteResourceFromLesson(lesson, res.id)} disabled={isSubmitting}>
-                                                <Trash2 className="h-4 w-4 text-destructive"/>
-                                            </Button>
+                                           <div className="flex items-center gap-1">
+                                                <Button variant="ghost" size="icon" onClick={() => handleOpenResourceForm(lesson.id, res)} disabled={isSubmitting}>
+                                                    <Edit2 className="h-4 w-4"/>
+                                                </Button>
+                                                <Button variant="ghost" size="icon" onClick={() => handleDeleteResource(lesson, res.id)} disabled={isSubmitting}>
+                                                    <Trash2 className="h-4 w-4 text-destructive"/>
+                                                </Button>
+                                           </div>
                                        </div>
                                    )) : <p className="text-sm text-muted-foreground text-center py-2">No resources in this lesson yet.</p>}
                                </div>
                                
                                {isResourceFormOpen === lesson.id ? (
                                    <Card className="mt-4 bg-muted/50">
-                                       <CardHeader><CardTitle className="text-base">Add New Resource to "{lesson.title}"</CardTitle></CardHeader>
+                                       <CardHeader><CardTitle className="text-base">{editingResource ? `Edit Resource in "${lesson.title}"` : `Add New Resource to "${lesson.title}"`}</CardTitle></CardHeader>
                                        <CardContent>
-                                           <form ref={resourceFormRef} onSubmit={(e) => handleAddResourceToLesson(e, lesson)} className="space-y-4">
+                                           <form ref={resourceFormRef} onSubmit={(e) => handleResourceSubmit(e, lesson)} className="space-y-4">
                                                 <div>
                                                    <Label>Resource Type</Label>
                                                    <RadioGroup value={resourceType} onValueChange={(val) => setResourceType(val as ResourceTabKey)} className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
@@ -415,7 +420,7 @@ export default function ManageCourseContentPage() {
 
                                                 <div className="flex gap-2 pt-4">
                                                     <Button type="submit" disabled={isSubmitting}>
-                                                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} Add Resource
+                                                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} {editingResource ? 'Update Resource' : 'Add Resource'}
                                                     </Button>
                                                     <Button type="button" variant="outline" onClick={() => setIsResourceFormOpen(null)} disabled={isSubmitting}>Cancel</Button>
                                                 </div>
@@ -423,7 +428,7 @@ export default function ManageCourseContentPage() {
                                        </CardContent>
                                    </Card>
                                ) : (
-                                  <Button size="sm" variant="outline" className="mt-4" onClick={() => openResourceForm(lesson.id)} disabled={isSubmitting}>
+                                  <Button size="sm" variant="outline" className="mt-4" onClick={() => handleOpenResourceForm(lesson.id)} disabled={isSubmitting}>
                                     <PlusCircle className="mr-2 h-4 w-4"/> Add Resource to this Lesson
                                   </Button>
                                )}

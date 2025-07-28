@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { createCourseAction, updateCourseAction, deleteCourseAction, generateActivationCodesAction } from './actions';
-import { PlusCircle, Edit2, Trash2, Save, Library, Settings, UserPlus, KeyRound, Copy, Loader2, BookUser, Users as UsersIcon, Percent, Upload } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Library, Settings, UserPlus, KeyRound, Copy, Loader2, BookUser, Users as UsersIcon, Percent, Upload, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 
 
 async function fetchAdminSchoolIdAndRole(adminUserId: string): Promise<{ schoolId: string | null, role: UserRole | null }> {
@@ -41,6 +41,8 @@ const currencySymbols = {
     EUR: '€',
 };
 
+const ITEMS_PER_PAGE = 10;
+
 export default function ManageCoursesPage() {
   const { toast } = useToast();
   const [courses, setCourses] = useState<Course[]>([]);
@@ -51,6 +53,8 @@ export default function ManageCoursesPage() {
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [allClassesInSchool, setAllClassesInSchool] = useState<ClassData[]>([]);
+
+  const [currentPage, setCurrentPage] = useState(1);
 
 
   const [isCourseDialogOpen, setIsCourseDialogOpen] = useState(false);
@@ -144,6 +148,12 @@ export default function ManageCoursesPage() {
     setIsLoading(false);
   }
 
+  const paginatedCourses = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return courses.slice(startIndex, endIndex);
+  }, [courses, currentPage]);
+  const totalPages = Math.ceil(courses.length / ITEMS_PER_PAGE);
 
   const resetCourseForm = () => {
     setTitle('');
@@ -374,7 +384,7 @@ export default function ManageCoursesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {courses.map((course) => (
+                {paginatedCourses.map((course) => (
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
                     <TableCell>{course.is_paid ? 'Paid' : 'Free'}</TableCell>
@@ -383,6 +393,11 @@ export default function ManageCoursesPage() {
                     <TableCell>{getTargetAudienceDisplay(course.target_audience)}</TableCell>
                     <TableCell>{getTargetClassDisplay(course)}</TableCell>
                     <TableCell className="space-x-1 text-right">
+                       <Button variant="outline" size="sm" asChild disabled={isSubmitting}>
+                        <Link href={`/lms/courses/${course.id}?preview=true`}>
+                           <Eye className="mr-1 h-3 w-3" /> Preview
+                        </Link>
+                      </Button>
                       <Button variant="outline" size="sm" asChild disabled={isSubmitting}>
                         <Link href={`/admin/lms/courses/${course.id}/content`}>
                            <Settings className="mr-1 h-3 w-3" /> Content
@@ -411,6 +426,17 @@ export default function ManageCoursesPage() {
             </Table>
           )}
         </CardContent>
+        {totalPages > 1 && (
+            <CardFooter className="flex justify-end items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => prev - 1)} disabled={currentPage === 1}>
+                    <ChevronLeft className="h-4 w-4" /> Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => prev + 1)} disabled={currentPage === totalPages}>
+                    Next <ChevronRight className="h-4 w-4" />
+                </Button>
+            </CardFooter>
+        )}
       </Card>
 
       <Dialog open={isCourseDialogOpen} onOpenChange={setIsCourseDialogOpen}>

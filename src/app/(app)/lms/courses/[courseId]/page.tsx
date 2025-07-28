@@ -228,8 +228,10 @@ function ViewCoursePageContent() {
                     value={openLessons}
                     onValueChange={setOpenLessons}
                 >
-                 {lessons.map(lesson => {
+                 {lessons.map((lesson, lessonIndex) => {
                     const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
+                    const isFirstLessonPreview = isPreview && course.is_paid && lessonIndex === 0;
+
                     return (
                         <AccordionItem value={lesson.id} key={lesson.id} className="border rounded-md">
                             <AccordionTrigger className="px-4 hover:no-underline font-semibold text-lg">
@@ -237,22 +239,25 @@ function ViewCoursePageContent() {
                             </AccordionTrigger>
                             <AccordionContent className="px-4 pt-2 border-t">
                                <div className="space-y-2 py-2">
-                                   {lessonContents.length > 0 ? lessonContents.map(res => (
-                                       <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
-                                            <Link href={isPreview ? '#' : `/lms/courses/${courseId}/${res.id}`} className={`flex-grow ${isPreview ? 'cursor-not-allowed' : ''}`}>
-                                                <div className="flex items-center p-1 font-medium">
-                                                    {getResourceIcon(res.type)}
-                                                    <span className={isPreview ? 'text-muted-foreground' : ''}>{res.title}</span>
+                                   {lessonContents.length > 0 ? lessonContents.map(res => {
+                                       const isLocked = isPreview && !isFirstLessonPreview;
+                                       return (
+                                           <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
+                                                <Link href={isLocked ? '#' : `/lms/courses/${courseId}/${res.id}`} className={`flex-grow ${isLocked ? 'cursor-not-allowed' : ''}`}>
+                                                    <div className="flex items-center p-1 font-medium">
+                                                        {getResourceIcon(res.type)}
+                                                        <span className={isLocked ? 'text-muted-foreground' : ''}>{res.title}</span>
+                                                    </div>
+                                                </Link>
+                                                <div className="flex items-center space-x-2 pl-4 shrink-0">
+                                                    {isLocked ? <Lock className="h-5 w-5 text-muted-foreground" /> :
+                                                    !isPreview && completedResources[res.id] && (
+                                                        <CheckCircle className="h-5 w-5 text-green-500" />
+                                                    )}
                                                 </div>
-                                            </Link>
-                                            <div className="flex items-center space-x-2 pl-4 shrink-0">
-                                                {isPreview ? <Lock className="h-5 w-5 text-muted-foreground" /> :
-                                                completedResources[res.id] && (
-                                                    <CheckCircle className="h-5 w-5 text-green-500" />
-                                                )}
-                                            </div>
-                                       </div>
-                                   )) : <p className="text-sm text-muted-foreground text-center py-2">This lesson is empty.</p>}
+                                           </div>
+                                       );
+                                   }) : <p className="text-sm text-muted-foreground text-center py-2">This lesson is empty.</p>}
                                </div>
                             </AccordionContent>
                         </AccordionItem>
