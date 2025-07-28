@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -482,7 +483,7 @@ export default function AdminStudentFeesPage() {
                     </TableCell>
                     <TableCell className="text-right">
                        <Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}>
-                           <FolderOpen className="mr-1 h-3 w-3" /> View & Manage
+                           <FolderOpen className="mr-1 h-3 w-3" /> View Details
                         </Button>
                     </TableCell>
                   </TableRow>
@@ -580,9 +581,9 @@ export default function AdminStudentFeesPage() {
                     <TableRow>
                         <TableHead>Fee Category</TableHead>
                         <TableHead>Assigned (<span className="font-mono">₹</span>)</TableHead>
+                        <TableHead>Paid (<span className="font-mono">₹</span>)</TableHead>
                         <TableHead>Due Date</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -590,15 +591,9 @@ export default function AdminStudentFeesPage() {
                       <TableRow key={fp.id}>
                         <TableCell className="font-medium">{getFeeCategoryName(fp.fee_category_id)}</TableCell>
                         <TableCell><span className="font-mono">₹</span>{fp.assigned_amount.toFixed(2)}</TableCell>
+                        <TableCell><span className="font-mono">₹</span>{fp.paid_amount.toFixed(2)}</TableCell>
                         <TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell>
                         <TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell>
-                        <TableCell className="space-x-1 text-right">
-                          {fp.status !== 'Paid' && (
-                              <Button variant="outline" size="xs" onClick={() => { setIsDetailsDialogOpen(false); handleOpenRecordPaymentDialog(fp); }} disabled={isSubmitting}>Record Payment</Button>
-                          )}
-                          <Button variant="outline" size="xs" onClick={() => { setIsDetailsDialogOpen(false); handleOpenEditFeeDialog(fp); }} disabled={isSubmitting || fp.paid_amount > 0}>Edit</Button>
-                          <Button variant="destructive" size="xs" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}>Delete</Button>
-                        </TableCell>
                       </TableRow>
                   ))}
                 </TableBody>

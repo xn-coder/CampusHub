@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import type { AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, AdmissionStatus } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { ListChecks, CheckSquare, Loader2, UserPlus, FileDown, Search, Receipt, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ListChecks, CheckSquare, Loader2, UserPlus, FileDown, Search, Receipt, ChevronLeft, ChevronRight, Edit2, MoreHorizontal } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { updateAdmissionStatusAction, fetchAdminSchoolIdForAdmissions, fetchAdmissionPageDataAction } from './actions';
@@ -17,6 +17,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, parseISO } from 'date-fns';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -221,7 +229,7 @@ export default function AdmissionsPage() {
                     <TableHead>Class Assigned</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Fees Status</TableHead>
-                    <TableHead>Action</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -275,15 +283,28 @@ export default function AdmissionsPage() {
                           </PopoverContent>
                         </Popover>
                       </TableCell>
-                      <TableCell>
-                        {record.status === 'Admitted' && (
-                           <Button variant="outline" size="sm" onClick={() => handleEnrollStudent(record.id)} disabled={isSubmitting}>
-                             {isSubmitting ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <CheckSquare className="mr-1 h-3 w-3" />} Enroll
-                           </Button>
-                        )}
-                         {record.status === 'Enrolled' && (
-                           <span className="text-sm text-green-600 dark:text-green-400">Enrolled</span>
-                        )}
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                             {record.status === 'Admitted' && (
+                                <DropdownMenuItem onSelect={() => handleEnrollStudent(record.id)} disabled={isSubmitting}>
+                                    <CheckSquare className="mr-2 h-4 w-4"/> Enroll Student
+                                </DropdownMenuItem>
+                             )}
+                            <DropdownMenuItem asChild>
+                                <Link href={`/admin/manage-students/${record.student_profile_id}/edit`}>
+                                    <Edit2 className="mr-2 h-4 w-4"/> Edit Details
+                                </Link>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   );
