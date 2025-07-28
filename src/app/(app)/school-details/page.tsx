@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -8,12 +9,13 @@ import { Button } from '@/components/ui/button';
 import { useState, type ChangeEvent, useEffect, type FormEvent } from 'react';
 import type { SchoolDetails, Holiday, UserRole } from '@/types';
 import { Calendar } from '@/components/ui/calendar';
-import { PlusCircle, Trash2, Loader2, Save, Ban } from 'lucide-react';
+import { PlusCircle, Trash2, Loader2, Save, Ban, UploadCloud } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { getSchoolDetailsAndHolidaysAction, updateSchoolDetailsAction, addHolidayAction, deleteHolidayAction } from './actions';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import Image from 'next/image';
 
 
 async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
@@ -43,6 +45,9 @@ export default function SchoolDetailsPage() {
   const [isSubmittingHoliday, setIsSubmittingHoliday] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -64,6 +69,9 @@ export default function SchoolDetailsPage() {
         if (result.ok) {
           setSchoolDetails(result.details || {});
           setHolidays((result.holidays || []).map(h => ({ ...h, date: new Date(h.date.replace(/-/g, '\/')) })));
+          if (result.details?.logo_url) {
+            setLogoPreview(result.details.logo_url);
+          }
         } else {
           toast({ title: "Error", description: result.message || "Failed to load school data.", variant: "destructive" });
         }
@@ -75,6 +83,24 @@ export default function SchoolDetailsPage() {
     loadData();
   }, [toast]);
 
+  const handleLogoFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+          toast({ title: "File too large", description: "Logo should be less than 2MB.", variant: "destructive" });
+          setLogoFile(null);
+          e.target.value = '';
+          return;
+      }
+      setLogoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleDetailChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setSchoolDetails(prev => ({ ...prev, [name]: value }));
@@ -84,16 +110,26 @@ export default function SchoolDetailsPage() {
     e.preventDefault();
     if (!currentSchoolId || !schoolDetails.name) return;
     setIsSubmittingDetails(true);
-    const result = await updateSchoolDetailsAction({
-        id: currentSchoolId,
-        name: schoolDetails.name,
-        address: schoolDetails.address,
-        contact_email: schoolDetails.contact_email,
-        contact_phone: schoolDetails.contact_phone,
-    });
+    
+    const formData = new FormData();
+    formData.append('id', currentSchoolId);
+    if(schoolDetails.name) formData.append('name', schoolDetails.name);
+    if(schoolDetails.address) formData.append('address', schoolDetails.address);
+    if(schoolDetails.contact_email) formData.append('contact_email', schoolDetails.contact_email);
+    if(schoolDetails.contact_phone) formData.append('contact_phone', schoolDetails.contact_phone);
+    if(logoFile) formData.append('logoFile', logoFile);
+
+    const result = await updateSchoolDetailsAction(formData);
     
     if (result.ok) {
         toast({ title: "School Details Updated", description: result.message });
+        if (currentSchoolId) {
+            const freshData = await getSchoolDetailsAndHolidaysAction(currentSchoolId);
+            if (freshData.ok && freshData.details) {
+                setSchoolDetails(freshData.details);
+                setLogoPreview(freshData.details.logo_url || null);
+            }
+        }
     } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -161,25 +197,51 @@ export default function SchoolDetailsPage() {
       <Card>
         <CardHeader>
           <CardTitle>School Information</CardTitle>
-          <CardDescription>Update the general details for the school.</CardDescription>
+          <CardDescription>Update the general details and logo for the school.</CardDescription>
         </CardHeader>
         <form onSubmit={handleSaveSchoolDetails}>
             <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="name">School Name</Label>
-                <Input id="name" name="name" value={schoolDetails.name || ''} onChange={handleDetailChange} />
+              <div className="grid md:grid-cols-3 gap-6">
+                <div className="md:col-span-2 space-y-4">
+                  <div>
+                    <Label htmlFor="name">School Name</Label>
+                    <Input id="name" name="name" value={schoolDetails.name || ''} onChange={handleDetailChange} />
+                  </div>
+                  <div>
+                    <Label htmlFor="address">Address</Label>
+                    <Input id="address" name="address" value={schoolDetails.address || ''} onChange={handleDetailChange} />
+                  </div>
+                   <div>
+                    <Label htmlFor="admin_email">Admin Login Email (Read-only)</Label>
+                    <Input id="admin_email" name="admin_email" type="email" value={schoolDetails.admin_email || ''} readOnly disabled />
+                  </div>
+                </div>
+                 <div className="md:col-span-1 space-y-2">
+                    <Label>School Logo</Label>
+                    <div className="flex flex-col items-center gap-2">
+                        <div className="w-32 h-32 rounded-lg border border-dashed flex items-center justify-center bg-muted/50">
+                            {logoPreview ? (
+                                <Image src={logoPreview} alt="School Logo Preview" width={128} height={128} className="object-contain rounded-lg"/>
+                            ) : (
+                                <span className="text-xs text-muted-foreground">No Logo</span>
+                            )}
+                        </div>
+                        <Label htmlFor="logoFile" className="w-full text-center cursor-pointer text-sm text-primary hover:underline">
+                            Upload Logo (PNG, JPG &lt;2MB)
+                        </Label>
+                        <Input id="logoFile" name="logoFile" type="file" className="hidden" accept="image/png, image/jpeg" onChange={handleLogoFileChange} />
+                    </div>
+                 </div>
               </div>
-              <div>
-                <Label htmlFor="address">Address</Label>
-                <Input id="address" name="address" value={schoolDetails.address || ''} onChange={handleDetailChange} />
-              </div>
-              <div>
-                <Label htmlFor="contact_email">Contact Email</Label>
-                <Input id="contact_email" name="contact_email" type="email" value={schoolDetails.contact_email || ''} onChange={handleDetailChange} />
-              </div>
-              <div>
-                <Label htmlFor="contact_phone">Contact Phone</Label>
-                <Input id="contact_phone" name="contact_phone" type="tel" value={schoolDetails.contact_phone || ''} onChange={handleDetailChange} />
+              <div className="grid md:grid-cols-2 gap-4">
+                 <div>
+                    <Label htmlFor="contact_email">Public Contact Email</Label>
+                    <Input id="contact_email" name="contact_email" type="email" value={schoolDetails.contact_email || ''} onChange={handleDetailChange} />
+                 </div>
+                 <div>
+                    <Label htmlFor="contact_phone">Public Contact Phone</Label>
+                    <Input id="contact_phone" name="contact_phone" type="tel" value={schoolDetails.contact_phone || ''} onChange={handleDetailChange} />
+                 </div>
               </div>
               <Button type="submit" disabled={isSubmittingDetails}>
                 {isSubmittingDetails && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
