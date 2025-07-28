@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
@@ -32,6 +31,7 @@ function ViewCoursePageContent() {
   const [completedResources, setCompletedResources] = useState<Record<string, boolean>>({});
   const [progress, setProgress] = useState(0);
 
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentStudentName, setCurrentStudentName] = useState<string>('');
   const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
   const [openLessons, setOpenLessons] = useState<string[]>([]);
@@ -53,6 +53,8 @@ function ViewCoursePageContent() {
 
       const userId = localStorage.getItem('currentUserId');
       const role = localStorage.getItem('currentUserRole') as UserRole | null;
+      setCurrentUserRole(role);
+
       if (!userId || !role) {
         setPageError("User session information is missing. Please log in again.");
         setIsLoading(false);
@@ -183,6 +185,7 @@ function ViewCoursePageContent() {
   }
   
   const lessons = course.resources.filter(r => r.type === 'note');
+  const isAdminViewing = currentUserRole === 'admin' || currentUserRole === 'superadmin';
 
   return (
     <div className="flex flex-col gap-6">
@@ -240,7 +243,7 @@ function ViewCoursePageContent() {
                             <AccordionContent className="px-4 pt-2 border-t">
                                <div className="space-y-2 py-2">
                                    {lessonContents.length > 0 ? lessonContents.map(res => {
-                                       const isLocked = isPreview && !isFirstLessonPreview;
+                                       const isLocked = !isAdminViewing && isPreview && !isFirstLessonPreview;
                                        return (
                                            <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
                                                 <Link href={isLocked ? '#' : `/lms/courses/${courseId}/${res.id}`} className={`flex-grow ${isLocked ? 'cursor-not-allowed' : ''}`}>
