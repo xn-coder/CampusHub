@@ -102,12 +102,15 @@ function CertificateContent() {
     const { student, school, classInfo } = data;
 
     const renderDottedField = (label: string, value?: string | null, isBold = false) => (
-        <p className="flex items-end">
-            <span>{label}</span>
-            <span className={`flex-grow border-b border-dotted border-gray-500 mx-2 ${isBold ? 'font-bold' : ''}`}>
-                {value || ''}
-            </span>
-        </p>
+      <div className="flex">
+        <span className="shrink-0">{label}&nbsp;</span>
+        <div className="relative flex-grow">
+          <span className={`absolute bottom-0 w-full text-center ${isBold ? 'font-bold' : ''}`}>
+            {value || ''}
+          </span>
+          <span className="w-full border-b border-dotted border-gray-500">&nbsp;</span>
+        </div>
+      </div>
     );
 
     return (
