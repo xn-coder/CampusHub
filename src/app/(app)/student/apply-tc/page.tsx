@@ -157,7 +157,7 @@ export default function ApplyForTCPage() {
         </CardHeader>
         <CardContent>
             {existingRequest ? renderStatusCard() : (
-                actionResultMessage && (
+                actionResultMessage && actionResultMessage.type === 'error' && (
                     <Alert variant="destructive">
                         <XCircle className="h-4 w-4" />
                         <AlertTitle>Action Required</AlertTitle>
