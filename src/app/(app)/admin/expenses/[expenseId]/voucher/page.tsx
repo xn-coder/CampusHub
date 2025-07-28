@@ -44,7 +44,6 @@ function VoucherContent() {
         try {
             const date = new Date(createdAt);
             const timestamp = date.getTime();
-            // Create a pseudo-unique number from the timestamp
             return (timestamp % 100000000).toString().padStart(8, '0');
         } catch (e) {
             return 'N/A';
@@ -71,7 +70,13 @@ function VoucherContent() {
             <div className="w-full max-w-4xl bg-white dark:bg-card shadow-lg p-8 printable-area">
                 <header className="flex justify-between items-start pb-4 border-b border-gray-300">
                     <div className="flex items-center gap-4">
-                        <Image src="/logo.png" alt="School Logo" width={60} height={60} />
+                        <Image 
+                            src={school.logo_url || "/logo.png"} 
+                            alt={`${school.name} Logo`} 
+                            width={60} 
+                            height={60}
+                            className="rounded-full"
+                        />
                         <div>
                             <p className="font-bold text-xl text-gray-800 dark:text-gray-200">{school.name}</p>
                             <p className="text-xs text-gray-500 dark:text-gray-400">{school.address}</p>

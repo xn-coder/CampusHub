@@ -6,10 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Building, Loader2 } from 'lucide-react';
-import { createSchoolAndAdminAction } from './actions'; // Server Action
+import { Building, Loader2, UploadCloud } from 'lucide-react';
+import { createSchoolAndAdminAction } from './actions'; 
 
 export default function CreateSchoolPage() {
   const { toast } = useToast();
@@ -17,9 +17,21 @@ export default function CreateSchoolPage() {
   const [schoolAddress, setSchoolAddress] = useState('');
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file && file.size > 2 * 1024 * 1024) { // 2MB limit
+      toast({ title: "File too large", description: "Logo should be less than 2MB.", variant: "destructive" });
+      setLogoFile(null);
+      e.target.value = '';
+      return;
+    }
+    setLogoFile(file);
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setIsLoading(true);
 
@@ -29,11 +41,19 @@ export default function CreateSchoolPage() {
       return;
     }
 
+    const formData = new FormData();
+    formData.append('schoolName', schoolName);
+    formData.append('schoolAddress', schoolAddress);
+    formData.append('adminName', adminName);
+    formData.append('adminEmail', adminEmail);
+    if(logoFile) {
+        formData.append('logoFile', logoFile);
+    }
+    
+    // The action now needs to be adapted to handle FormData
+    // For now, passing as an object as the action expects. Let's create an action that can take FormData.
     const result = await createSchoolAndAdminAction({
-      schoolName,
-      schoolAddress,
-      adminName,
-      adminEmail,
+      schoolName, schoolAddress, adminName, adminEmail, logoFile: logoFile || undefined
     });
 
     if (result.ok) {
@@ -45,6 +65,9 @@ export default function CreateSchoolPage() {
       setSchoolAddress('');
       setAdminName('');
       setAdminEmail('');
+      setLogoFile(null);
+      const fileInput = document.getElementById('logoFile') as HTMLInputElement;
+      if(fileInput) fileInput.value = '';
     } else {
       toast({
         title: "Error",
@@ -75,6 +98,10 @@ export default function CreateSchoolPage() {
             <div>
               <Label htmlFor="schoolAddress">School Address</Label>
               <Input id="schoolAddress" name="schoolAddress" value={schoolAddress} onChange={(e) => setSchoolAddress(e.target.value)} placeholder="123 Main Street, Anytown, USA" required disabled={isLoading} />
+            </div>
+            <div>
+              <Label htmlFor="logoFile">School Logo (Optional, &lt;2MB)</Label>
+              <Input id="logoFile" name="logoFile" type="file" onChange={handleFileChange} accept="image/png, image/jpeg" disabled={isLoading}/>
             </div>
             <hr className="my-4"/>
             <h3 className="text-lg font-medium text-foreground">Administrator Credentials</h3>
