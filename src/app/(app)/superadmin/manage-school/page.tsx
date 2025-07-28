@@ -1,83 +1,126 @@
 
+"use client";
+
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Building, Search as SearchIcon } from 'lucide-react'; // Renamed Search to SearchIcon
+import { Building, Search as SearchIcon, ArrowDownUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import type { SchoolEntry as School } from '@/types'; 
 import EditSchoolDialog from './edit-school-dialog'; 
 import DeleteSchoolButton from './delete-school-button';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useState, useEffect, useMemo } from 'react';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
 
-export const revalidate = 0; 
+const ITEMS_PER_PAGE = 10;
 
-async function getSchools(searchTerm?: string): Promise<School[]> {
-  try {
-    let query = supabase.from('schools').select(`
-      id,
-      name,
-      address,
-      admin_email,
-      admin_name,
-      status,
-      admin_user_id,
-      created_at
-    `); 
+export default function ManageSchoolPage() {
+  const { toast } = useToast();
+  const [schools, setSchools] = useState<School[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<keyof School | null>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    async function getSchools() {
+      setIsLoading(true);
+      try {
+        let query = supabase.from('schools').select(`
+          id,
+          name,
+          address,
+          admin_email,
+          admin_name,
+          status,
+          admin_user_id,
+          created_at
+        `); 
+
+        const { data, error } = await query.order('created_at', { ascending: false });
+
+        if (error) {
+          console.error("Failed to fetch schools from Supabase:", error);
+          toast({ title: "Error", description: "Failed to fetch schools.", variant: "destructive"});
+          setSchools([]);
+        } else {
+          setSchools((data || []).map(item => ({
+            id: item.id,
+            name: item.name,
+            address: item.address,
+            adminEmail: item.admin_email,
+            adminName: item.admin_name,
+            status: item.status as 'Active' | 'Inactive',
+            adminUserId: item.admin_user_id,
+            createdAt: item.created_at, 
+          })));
+        }
+      } catch (error) {
+        console.error("Unexpected error fetching schools:", error);
+        toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive"});
+        setSchools([]);
+      }
+      setIsLoading(false);
+    }
+    getSchools();
+  }, [toast]);
+  
+  const handleSort = (column: keyof School) => {
+    if (sortBy === column) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortOrder('asc');
+    }
+  };
+  
+  const filteredAndSortedSchools = useMemo(() => {
+    let filtered = [...schools];
 
     if (searchTerm) {
-      query = query.or(`name.ilike.%${searchTerm}%,admin_email.ilike.%${searchTerm}%,admin_name.ilike.%${searchTerm}%`);
+      const lowercasedTerm = searchTerm.toLowerCase();
+      filtered = filtered.filter(school => 
+        school.name.toLowerCase().includes(lowercasedTerm) ||
+        school.adminName.toLowerCase().includes(lowercasedTerm) ||
+        school.adminEmail.toLowerCase().includes(lowercasedTerm)
+      );
+    }
+
+    if (sortBy) {
+      filtered.sort((a, b) => {
+        const valA = a[sortBy];
+        const valB = b[sortBy];
+        if (typeof valA === 'string' && typeof valB === 'string') {
+          return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        return 0;
+      });
     }
     
-    query = query.order('created_at', { ascending: false });
+    return filtered;
+  }, [schools, searchTerm, sortBy, sortOrder]);
 
-    const { data, error } = await query;
+  const paginatedSchools = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredAndSortedSchools.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredAndSortedSchools, currentPage]);
+  
+  const totalPages = Math.ceil(filteredAndSortedSchools.length / ITEMS_PER_PAGE);
 
-    if (error) {
-      console.error("Failed to fetch schools from Supabase:", error);
-      return [];
-    }
-    return (data || []).map(item => ({
-      id: item.id,
-      name: item.name,
-      address: item.address,
-      adminEmail: item.admin_email,
-      adminName: item.admin_name,
-      status: item.status as 'Active' | 'Inactive',
-      adminUserId: item.admin_user_id,
-      createdAt: item.created_at, 
-    }));
-  } catch (error) {
-    console.error("Unexpected error fetching schools:", error);
-    return [];
-  }
-}
-
-// SearchForm Client Component
-function SearchForm({ initialSearchTerm }: { initialSearchTerm: string }) {
-  return (
-    <form action="/superadmin/manage-school" method="GET" className="mb-4 flex items-center gap-2 max-w-lg">
-      <Input
-        placeholder="Search by school name, admin name, or admin email..."
-        name="search"
-        defaultValue={initialSearchTerm}
-        className="flex-grow"
-      />
-      <Button type="submit"><SearchIcon className="h-4 w-4 mr-2" />Search</Button>
-    </form>
+  const SortableHeader = ({ column, label }: { column: keyof School; label: string }) => (
+    <TableHead onClick={() => handleSort(column)} className="cursor-pointer hover:bg-muted/50">
+      <div className="flex items-center gap-2">
+        {label}
+        {sortBy === column && <ArrowDownUp className="h-4 w-4" />}
+      </div>
+    </TableHead>
   );
-}
 
-
-export default async function ManageSchoolPage({
-  searchParams,
-}: {
-  searchParams?: {
-    search?: string;
-  };
-}) {
-  const searchTerm = searchParams?.search || '';
-  const schools = await getSchools(searchTerm);
 
   return (
     <div className="flex flex-col gap-6">
@@ -88,31 +131,39 @@ export default async function ManageSchoolPage({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><Building className="mr-2 h-5 w-5" /> Registered Schools</CardTitle>
-          <CardDescription>A list of all schools currently in the CampusHub system.
-          </CardDescription>
+          <CardDescription>A list of all schools currently in the CampusHub system.</CardDescription>
         </CardHeader>
         <CardContent>
-          <SearchForm initialSearchTerm={searchTerm} />
-          {schools.length === 0 && !searchTerm && (
-            <p className="text-center text-muted-foreground py-4">No schools registered yet. Create one via 'Create School' page.</p>
-          )}
-          {schools.length === 0 && searchTerm && (
-             <p className="text-center text-muted-foreground py-4">No schools match your search criteria "{searchTerm}".</p>
-          )}
-          {schools.length > 0 && (
+          <div className="mb-4 flex items-center gap-2 max-w-lg">
+            <SearchIcon className="h-5 w-5 text-muted-foreground" />
+            <Input
+              placeholder="Search by school name, admin name, or admin email..."
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+              className="flex-grow"
+              disabled={isLoading}
+            />
+          </div>
+          {isLoading ? (
+             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
+          ) : paginatedSchools.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">
+              {searchTerm ? `No schools match your search for "${searchTerm}".` : 'No schools registered yet.'}
+            </p>
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>School Name</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Administrator Name</TableHead>
-                  <TableHead>Admin Email</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortableHeader column="name" label="School Name" />
+                  <SortableHeader column="address" label="Address" />
+                  <SortableHeader column="adminName" label="Administrator Name" />
+                  <SortableHeader column="adminEmail" label="Admin Email" />
+                  <SortableHeader column="status" label="Status" />
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {schools.map((school) => (
+                {paginatedSchools.map((school) => (
                   <TableRow key={school.id}>
                     <TableCell className="font-medium">{school.name}</TableCell>
                     <TableCell>{school.address}</TableCell>
@@ -137,8 +188,18 @@ export default async function ManageSchoolPage({
             </Table>
           )}
         </CardContent>
+        {totalPages > 1 && (
+            <CardFooter className="flex justify-end items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => prev - 1)} disabled={currentPage === 1}>
+                    <ChevronLeft className="h-4 w-4" /> Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => prev + 1)} disabled={currentPage === totalPages}>
+                    Next <ChevronRight className="h-4 w-4" />
+                </Button>
+            </CardFooter>
+          )}
       </Card>
     </div>
   );
 }
-
