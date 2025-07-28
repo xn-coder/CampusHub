@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
 import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2, ArrowRight, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import {
