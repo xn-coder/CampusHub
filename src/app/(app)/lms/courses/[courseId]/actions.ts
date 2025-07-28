@@ -51,7 +51,8 @@ export async function getCourseForViewingAction(courseId: string): Promise<{
 export async function checkUserEnrollmentForCourseViewAction(
   courseId: string,
   userId: string, // This is users.id
-  userRole: UserRole
+  userRole: UserRole,
+  preview: boolean = false
 ): Promise<{ ok: boolean; isEnrolled: boolean; studentProfileId?: string; message?: string }> {
   if (!courseId || !userId || !userRole) {
     return { ok: false, isEnrolled: false, message: "Course ID, User ID, and User Role are required." };
@@ -59,6 +60,10 @@ export async function checkUserEnrollmentForCourseViewAction(
   const supabase = createSupabaseServerClient();
 
   try {
+    if (preview) { // Allow anyone to preview
+      return { ok: true, isEnrolled: false };
+    }
+    
     if (userRole === 'admin' || userRole === 'superadmin') {
       return { ok: true, isEnrolled: true }; // Admins can view all
     }

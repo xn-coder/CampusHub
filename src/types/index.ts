@@ -9,7 +9,7 @@ export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz';
+export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 
 
@@ -424,7 +424,7 @@ export interface CourseWithEnrollmentStatus extends Course {
 // used to structure content in a JSON blob within a 'lesson' type CourseResource.
 export interface LessonContentResource {
     id: string;
-    type: 'ebook' | 'video' | 'note' | 'webinar' | 'quiz';
+    type: 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt';
     title: string;
     url_or_content: string;
 }

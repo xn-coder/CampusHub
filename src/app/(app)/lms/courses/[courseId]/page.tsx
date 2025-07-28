@@ -2,25 +2,27 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Progress } from '@/components/ui/progress';
-import { Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion, CheckCircle } from 'lucide-react';
+import { Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion, CheckCircle, Presentation, Eye } from 'lucide-react';
 import type { Course, CourseResource, UserRole, LessonContentResource } from '@/types';
 import Link from 'next/link';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from "@/hooks/use-toast";
 
-export default function ViewCourseContentPage() {
+function ViewCoursePageContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const courseId = params.courseId as string;
+  const isPreview = searchParams.get('preview') === 'true';
 
   const [course, setCourse] = useState<(Course & { resources: CourseResource[] }) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,7 +59,7 @@ export default function ViewCourseContentPage() {
         return;
       }
       
-      const enrollmentResult = await checkUserEnrollmentForCourseViewAction(courseId, userId, role);
+      const enrollmentResult = await checkUserEnrollmentForCourseViewAction(courseId, userId, role, isPreview);
       if (!enrollmentResult.ok) {
         setPageError(enrollmentResult.message || "Could not verify enrollment status.");
         setIsLoading(false);
@@ -66,7 +68,7 @@ export default function ViewCourseContentPage() {
 
       setIsEnrolled(enrollmentResult.isEnrolled);
 
-      if (!enrollmentResult.isEnrolled) {
+      if (!enrollmentResult.isEnrolled && !isPreview) {
         setIsLoading(false);
         return;
       }
@@ -89,22 +91,24 @@ export default function ViewCourseContentPage() {
       }
       
       setIsLoading(false);
-  }, [courseId, toast]);
+  }, [courseId, toast, isPreview]);
 
 
   useEffect(() => {
     if (courseId) {
       fetchData();
-      loadProgress();
+      if (!isPreview) {
+        loadProgress();
+      }
     }
-  }, [courseId, fetchData, loadProgress]);
+  }, [courseId, fetchData, loadProgress, isPreview]);
 
   useEffect(() => {
-    if (!course) return;
+    if (!course || isPreview) return;
 
     const lessons = course.resources.filter(r => r.type === 'note');
     if (lessons.length === 0) {
-      setProgress(0); // If no lessons, progress is 0, not 100.
+      setProgress(0);
       return;
     }
 
@@ -118,7 +122,7 @@ export default function ViewCourseContentPage() {
     });
 
     if(allLessonContents.length === 0) {
-        setProgress(0); // If lessons exist but have no content, progress is 0.
+        setProgress(0);
         return;
     }
 
@@ -126,7 +130,7 @@ export default function ViewCourseContentPage() {
     const newProgress = Math.round((completedCount / allLessonContents.length) * 100);
     setProgress(newProgress);
 
-  }, [completedResources, course]);
+  }, [completedResources, course, isPreview]);
 
   const getResourceIcon = (type: string) => {
     const props = { className: "mr-3 h-5 w-5 text-primary shrink-0" };
@@ -136,6 +140,7 @@ export default function ViewCourseContentPage() {
       case 'note': return <FileText {...props} />;
       case 'webinar': return <Users {...props} />;
       case 'quiz': return <FileQuestion {...props} />;
+      case 'ppt': return <Presentation {...props} />;
       default: return null;
     }
   };
@@ -154,7 +159,7 @@ export default function ViewCourseContentPage() {
     return <div className="text-center py-10 text-destructive">{pageError}</div>;
   }
   
-  if (!isEnrolled) {
+  if (!isEnrolled && !isPreview) {
     return (
       <div className="flex flex-col gap-6 items-center justify-center min-h-[60vh]">
         <PageHeader title="Access Denied" />
@@ -185,33 +190,35 @@ export default function ViewCourseContentPage() {
         title={course.title} 
         description={course.description || "No description available."}
         actions={
-            lessons.length > 0 ? <Button onClick={handleStartCourse}>Start Course</Button> : null
+            lessons.length > 0 && !isPreview ? <Button onClick={handleStartCourse}>Start Course</Button> : null
         }
       />
       
-      <Card>
-        <CardHeader>
-            <CardTitle>Course Progress</CardTitle>
-            <div className="flex items-center gap-4 pt-2">
-                <Progress value={progress} className="flex-1"/>
-                <span className="font-bold text-lg">{progress}% Complete</span>
-            </div>
-        </CardHeader>
-        {progress === 100 && (
-            <CardFooter>
-                 <Button asChild>
-                    <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
-                        <Award className="mr-2 h-4 w-4" /> Generate Certificate
-                    </Link>
-                </Button>
-            </CardFooter>
-        )}
-      </Card>
+      {!isPreview && (
+        <Card>
+            <CardHeader>
+                <CardTitle>Course Progress</CardTitle>
+                <div className="flex items-center gap-4 pt-2">
+                    <Progress value={progress} className="flex-1"/>
+                    <span className="font-bold text-lg">{progress}% Complete</span>
+                </div>
+            </CardHeader>
+            {progress === 100 && (
+                <CardFooter>
+                     <Button asChild>
+                        <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                            <Award className="mr-2 h-4 w-4" /> Generate Certificate
+                        </Link>
+                    </Button>
+                </CardFooter>
+            )}
+        </Card>
+      )}
 
       <Card>
           <CardHeader>
-              <CardTitle>Course Content</CardTitle>
-              <CardDescription>Work your way through the lessons below.</CardDescription>
+              <CardTitle>{isPreview ? 'Course Preview' : 'Course Content'}</CardTitle>
+              <CardDescription>{isPreview ? 'This is a preview. Enroll to access the content.' : 'Work your way through the lessons below.'}</CardDescription>
           </CardHeader>
           <CardContent>
             {lessons.length > 0 ? (
@@ -232,14 +239,15 @@ export default function ViewCourseContentPage() {
                                <div className="space-y-2 py-2">
                                    {lessonContents.length > 0 ? lessonContents.map(res => (
                                        <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
-                                            <Link href={`/lms/courses/${courseId}/${res.id}`} className="flex-grow">
+                                            <Link href={isPreview ? '#' : `/lms/courses/${courseId}/${res.id}`} className={`flex-grow ${isPreview ? 'cursor-not-allowed' : ''}`}>
                                                 <div className="flex items-center p-1 font-medium">
                                                     {getResourceIcon(res.type)}
-                                                    <span>{res.title}</span>
+                                                    <span className={isPreview ? 'text-muted-foreground' : ''}>{res.title}</span>
                                                 </div>
                                             </Link>
                                             <div className="flex items-center space-x-2 pl-4 shrink-0">
-                                                {completedResources[res.id] && (
+                                                {isPreview ? <Lock className="h-5 w-5 text-muted-foreground" /> :
+                                                completedResources[res.id] && (
                                                     <CheckCircle className="h-5 w-5 text-green-500" />
                                                 )}
                                             </div>
@@ -262,4 +270,12 @@ export default function ViewCourseContentPage() {
       </Button>
     </div>
   );
+}
+
+export default function ViewCoursePage() {
+    return (
+        <Suspense>
+            <ViewCoursePageContent />
+        </Suspense>
+    )
 }

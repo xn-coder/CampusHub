@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import type { Course, UserRole, CourseWithEnrollmentStatus } from '@/types';
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Library, Lock, Unlock, Eye, ShoppingCart, Loader2, Percent } from 'lucide-react';
+import { Library, Lock, Unlock, Eye, ShoppingCart, Loader2, Percent, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
@@ -172,7 +172,7 @@ export default function AvailableLmsCoursesPage() {
                 <div className="mt-4">
                   {getPriceDisplay(course)}
                 </div>
-                <CardFooter className="p-0 pt-4">
+                <CardFooter className="p-0 pt-4 flex-col sm:flex-row gap-2">
                   {canEnroll && course.isEnrolled ? (
                      <Button asChild className="w-full" variant="secondary">
                        <Link href={`/lms/courses/${course.id}`}>
@@ -186,14 +186,21 @@ export default function AvailableLmsCoursesPage() {
                       </Link>
                     </Button>
                   ) : canEnroll && !course.is_paid ? (
-                    <Button onClick={() => handleEnrollUnpaid(course.id)} className="w-full" disabled={isEnrolling[course.id] || !currentUserProfileId}>
-                      {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
-                      {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
-                    </Button>
+                    <div className="flex w-full gap-2">
+                        <Button onClick={() => handleEnrollUnpaid(course.id)} className="flex-1" disabled={isEnrolling[course.id] || !currentUserProfileId}>
+                          {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
+                          {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
+                        </Button>
+                        <Button asChild variant="outline" className="flex-1">
+                           <Link href={`/lms/courses/${course.id}?preview=true`}>
+                             <BookOpen className="mr-2 h-4 w-4"/> Preview Course
+                           </Link>
+                        </Button>
+                    </div>
                   ) : ( // Admin/Superadmin view or user cannot enroll
                      <Button asChild className="w-full" variant="outline">
-                       <Link href={`/admin/lms/courses/${course.id}/content`}> {/* Admins likely go to admin view */}
-                         <Eye className="mr-2 h-4 w-4"/> View Details
+                       <Link href={`/admin/lms/courses/${course.id}/content`}>
+                         <Settings className="mr-2 h-4 w-4"/> Manage Course
                        </Link>
                      </Button>
                   )}

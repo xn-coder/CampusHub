@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft } from 'lucide-react';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation } from 'lucide-react';
 import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
@@ -28,7 +28,7 @@ import {
 import { supabase } from '@/lib/supabaseClient';
 import { Progress } from '@/components/ui/progress';
 
-type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz';
+type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt';
 
 export default function ManageCourseContentPage() {
   const params = useParams();
@@ -130,7 +130,7 @@ export default function ManageCourseContentPage() {
       return;
     }
     
-    const isFileRequired = resourceType === 'video' || resourceType === 'ebook';
+    const isFileRequired = resourceType === 'video' || resourceType === 'ebook' || resourceType === 'ppt';
     const isUrlOrTextRequired = resourceType === 'note' || resourceType === 'webinar';
     if (isFileRequired && !resourceFile && !resourceUrlOrContent.trim()) {
       toast({ title: "Error", description: "A file upload or a URL is required for this resource type.", variant: "destructive" });
@@ -288,6 +288,7 @@ export default function ManageCourseContentPage() {
       case 'note': return <FileText {...props} />;
       case 'webinar': return <WebinarIcon {...props} />;
       case 'quiz': return <FileQuestion {...props} />;
+      case 'ppt': return <Presentation {...props} />;
       default: return null;
     }
   };
@@ -343,6 +344,7 @@ export default function ManageCourseContentPage() {
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="note" id={`type-note-${lesson.id}`} /><Label htmlFor={`type-note-${lesson.id}`}>Note</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="video" id={`type-video-${lesson.id}`} /><Label htmlFor={`type-video-${lesson.id}`}>Video</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="ebook" id={`type-ebook-${lesson.id}`} /><Label htmlFor={`type-ebook-${lesson.id}`}>E-book</Label></div>
+                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="ppt" id={`type-ppt-${lesson.id}`} /><Label htmlFor={`type-ppt-${lesson.id}`}>PPT</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="webinar" id={`type-webinar-${lesson.id}`} /><Label htmlFor={`type-webinar-${lesson.id}`}>Webinar</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="quiz" id={`type-quiz-${lesson.id}`} /><Label htmlFor={`type-quiz-${lesson.id}`}>Quiz</Label></div>
                                                    </RadioGroup>
@@ -387,7 +389,7 @@ export default function ManageCourseContentPage() {
                                                       <Label htmlFor={`res-content-${lesson.id}`}>Webinar URL</Label>
                                                       <Input id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='https://...' type="url" required disabled={isSubmitting} />
                                                   </div>
-                                                ) : resourceType === 'video' || resourceType === 'ebook' ? (
+                                                ) : resourceType === 'video' || resourceType === 'ebook' || resourceType === 'ppt' ? (
                                                   <div className="space-y-4">
                                                       <div>
                                                           <Label htmlFor={`res-url-${lesson.id}`}>URL (Optional)</Label>

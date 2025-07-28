@@ -5,7 +5,7 @@ import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCourseForViewingAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award } from 'lucide-react';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -189,6 +189,7 @@ export default function CourseResourcePage() {
             case 'note': return <FileText {...props} />;
             case 'webinar': return <Users {...props} />;
             case 'quiz': return <FileQuestion {...props} />;
+            case 'ppt': return <Presentation {...props} />;
             default: return null;
         }
     };
@@ -332,6 +333,18 @@ export default function CourseResourcePage() {
                         </div>
                     )}
                     
+                    {resource.type === 'ppt' && resource.url_or_content && (
+                        <iframe
+                            src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(resource.url_or_content)}`}
+                            width='100%'
+                            height='600px'
+                            frameBorder='0'
+                            className="rounded-md"
+                        >
+                            This is an embedded <a target='_blank' href='http://office.com'>Microsoft Office</a> presentation, powered by <a target='_blank' href='http://office.com/webapps'>Office Online</a>.
+                        </iframe>
+                    )}
+
                     {resource.type === 'webinar' && resource.url_or_content && (
                          <Button asChild variant="link" className="text-lg p-0 h-auto">
                             <a href={resource.url_or_content} target="_blank" rel="noopener noreferrer">
