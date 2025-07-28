@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { FileCertificate, Loader2 } from 'lucide-react';
+import { FileText, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { requestTransferCertificateAction } from './actions';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -92,7 +92,7 @@ export default function ApplyForTCPage() {
       />
       <Card className="max-w-2xl mx-auto w-full">
         <CardHeader>
-          <CardTitle className="flex items-center"><FileCertificate className="mr-2 h-5 w-5" /> TC Request</CardTitle>
+          <CardTitle className="flex items-center"><FileText className="mr-2 h-5 w-5" /> TC Request</CardTitle>
           <CardDescription>
             Before you can apply for a Transfer Certificate, you must ensure all outstanding school fees are cleared.
             Click the button below to check your fee status and submit your request. The administration will be notified.
@@ -108,7 +108,7 @@ export default function ApplyForTCPage() {
         </CardContent>
         <CardFooter>
           <Button onClick={handleRequestTC} disabled={isLoading || isPageLoading || resultMessage?.type === 'success'} className="w-full">
-            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileCertificate className="mr-2 h-4 w-4" />}
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4" />}
             {isLoading ? 'Checking fees and submitting...' : 'Request Transfer Certificate'}
           </Button>
         </CardFooter>
