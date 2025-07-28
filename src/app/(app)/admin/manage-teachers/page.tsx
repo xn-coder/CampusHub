@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Teacher, User } from '@/types'; 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
 import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2, FileDown } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
@@ -71,7 +71,7 @@ export default function ManageTeachersPage() {
   const [newTeacherName, setNewTeacherName] = useState('');
   const [newTeacherEmail, setNewTeacherEmail] = useState('');
   const [newTeacherSubject, setNewTeacherSubject] = useState('');
-  const [newTeacherProfilePicUrl, setNewTeacherProfilePicUrl] = useState('');
+  const [newTeacherProfilePicFile, setNewTeacherProfilePicFile] = useState<File | null>(null);
 
   // For Edit Dialog
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -193,6 +193,17 @@ export default function ManageTeachersPage() {
     }
   };
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.size > 2 * 1024 * 1024) {
+        toast({ title: "File too large", description: "Profile picture must be less than 2MB.", variant: "destructive"});
+        e.target.value = ''; // Reset the input
+        setNewTeacherProfilePicFile(null);
+        return;
+    }
+    setNewTeacherProfilePicFile(file || null);
+  };
+
   const handleCreateTeacherSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTeacherName.trim() || !newTeacherEmail.trim() || !newTeacherSubject.trim()) {
@@ -205,20 +216,26 @@ export default function ManageTeachersPage() {
     }
     setIsSubmitting(true);
 
-    const result = await createTeacherAction({
-      name: newTeacherName,
-      email: newTeacherEmail,
-      subject: newTeacherSubject,
-      profilePictureUrl: newTeacherProfilePicUrl,
-      school_id: currentSchoolId,
-    });
+    const formData = new FormData();
+    formData.append('name', newTeacherName);
+    formData.append('email', newTeacherEmail);
+    formData.append('subject', newTeacherSubject);
+    formData.append('school_id', currentSchoolId);
+    if (newTeacherProfilePicFile) {
+        formData.append('profilePictureFile', newTeacherProfilePicFile);
+    }
+
+    const result = await createTeacherAction(formData);
 
     if (result.ok) {
       toast({ title: "Teacher Created", description: result.message });
       setNewTeacherName('');
       setNewTeacherEmail('');
       setNewTeacherSubject('');
-      setNewTeacherProfilePicUrl('');
+      setNewTeacherProfilePicFile(null);
+      const fileInput = document.getElementById('teacherProfilePicFile') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+
       setActiveTab("list-teachers"); 
       if(currentSchoolId) fetchTeachers(currentSchoolId);
     } else {
@@ -375,8 +392,8 @@ export default function ManageTeachersPage() {
                   <Input id="teacherSubject" value={newTeacherSubject} onChange={(e) => setNewTeacherSubject(e.target.value)} placeholder="e.g., Mathematics, English" required disabled={isSubmitting || !currentSchoolId}/>
                 </div>
                 <div>
-                  <Label htmlFor="teacherProfilePicUrl">Profile Picture URL (Optional)</Label>
-                  <Input id="teacherProfilePicUrl" value={newTeacherProfilePicUrl} onChange={(e) => setNewTeacherProfilePicUrl(e.target.value)} placeholder="https://placehold.co/100x100.png" disabled={isSubmitting || !currentSchoolId}/>
+                  <Label htmlFor="teacherProfilePicFile">Profile Picture (Optional, &lt;2MB)</Label>
+                  <Input id="teacherProfilePicFile" type="file" onChange={handleFileChange} accept="image/png, image/jpeg" disabled={isSubmitting || !currentSchoolId}/>
                 </div>
               </CardContent>
               <CardFooter>

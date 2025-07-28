@@ -8,19 +8,25 @@ import { revalidatePath } from 'next/cache';
 
 const SALT_ROUNDS = 10;
 
-interface CreateTeacherInput {
+interface UpdateTeacherInput {
+  id: string; 
+  userId?: string; 
   name: string;
   email: string;
   subject: string;
   profilePictureUrl?: string;
-  school_id: string; 
+  school_id: string;
 }
 
 export async function createTeacherAction(
-  data: CreateTeacherInput
+  formData: FormData
 ): Promise<{ ok: boolean; message: string; teacherId?: string; userId?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { name, email, subject, profilePictureUrl, school_id } = data;
+  const name = formData.get('name') as string;
+  const email = formData.get('email') as string;
+  const subject = formData.get('subject') as string;
+  const school_id = formData.get('school_id') as string;
+  const profilePictureFile = formData.get('profilePictureFile') as File | null;
   const defaultPassword = "password"; 
 
   try {
@@ -59,6 +65,24 @@ export async function createTeacherAction(
       return { ok: false, message: `Failed to create teacher login: ${userInsertError?.message || 'No user data returned'}` };
     }
 
+    let profilePictureUrl: string | undefined = undefined;
+    if (profilePictureFile && profilePictureFile.size > 0) {
+        const sanitizedFileName = profilePictureFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+        const filePath = `public/teacher-profiles/${school_id}/${uuidv4()}-${sanitizedFileName}`;
+
+        const { error: uploadError } = await supabaseAdmin.storage
+            .from('campushub')
+            .upload(filePath, profilePictureFile);
+        
+        if (uploadError) {
+            await supabaseAdmin.from('users').delete().eq('id', newUserId);
+            throw new Error(`Failed to upload profile picture: ${uploadError.message}`);
+        }
+
+        const { data: publicUrlData } = supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
+        profilePictureUrl = publicUrlData?.publicUrl;
+    }
+
     const newTeacherProfileId = uuidv4();
     const { error: teacherInsertError } = await supabaseAdmin
       .from('teachers')
@@ -89,16 +113,6 @@ export async function createTeacherAction(
     console.error('Unexpected error creating teacher:', error);
     return { ok: false, message: `An unexpected error occurred: ${error.message}` };
   }
-}
-
-interface UpdateTeacherInput {
-  id: string; 
-  userId?: string; 
-  name: string;
-  email: string;
-  subject: string;
-  profilePictureUrl?: string;
-  school_id: string;
 }
 
 export async function updateTeacherAction(
