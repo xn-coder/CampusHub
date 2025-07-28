@@ -30,6 +30,9 @@ export async function getTCRequestsForSchoolAction(schoolId: string): Promise<{
   }
 }
 
+// NOTE: The approval/rejection actions are no longer used in the new automated flow,
+// but are kept here in case a manual override feature is desired in the future.
+
 export async function approveTCRequestAction(requestId: string): Promise<{ ok: boolean; message: string }> {
     const supabase = createSupabaseServerClient();
     const { error } = await supabase

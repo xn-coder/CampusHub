@@ -10,20 +10,10 @@ import type { TCRequest, Student } from '@/types';
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { getTCRequestsForSchoolAction, approveTCRequestAction, rejectTCRequestAction } from './actions';
+import { getTCRequestsForSchoolAction } from './actions';
 import { format, parseISO } from 'date-fns';
-import { CheckCircle, FileText, Loader2, XCircle, Ban, TextSelect } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { CheckCircle, FileText, Loader2, XCircle, Ban, TextSelect, Download } from 'lucide-react';
+import Link from 'next/link';
 
 
 async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
@@ -43,12 +33,7 @@ export default function AdminTCRequestsPage() {
   const { toast } = useToast();
   const [requests, setRequests] = useState<TCRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
-
-  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
-  const [requestToReject, setRequestToReject] = useState<TCRequest | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
 
   const fetchRequests = useCallback(async (schoolId: string) => {
     setIsLoading(true);
@@ -77,56 +62,23 @@ export default function AdminTCRequestsPage() {
       setIsLoading(false);
     }
   }, [fetchRequests, toast]);
-
-  const handleApprove = async (requestId: string) => {
-    setIsSubmitting(true);
-    const result = await approveTCRequestAction(requestId);
-    if (result.ok) {
-        toast({ title: "Request Approved", description: result.message });
-        if(currentSchoolId) fetchRequests(currentSchoolId);
-    } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
-    }
-    setIsSubmitting(false);
-  };
-  
-  const handleOpenRejectDialog = (request: TCRequest) => {
-    setRequestToReject(request);
-    setRejectionReason('');
-    setIsRejectDialogOpen(true);
-  };
-
-  const handleReject = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!requestToReject || !rejectionReason.trim()) return;
-    setIsSubmitting(true);
-    const result = await rejectTCRequestAction({ requestId: requestToReject.id, reason: rejectionReason });
-     if (result.ok) {
-        toast({ title: "Request Rejected", description: result.message, variant: "destructive" });
-        if(currentSchoolId) fetchRequests(currentSchoolId);
-        setIsRejectDialogOpen(false);
-    } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
-    }
-    setIsSubmitting(false);
-  };
   
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Transfer Certificate Requests"
-        description="Review and process TC requests submitted by students."
+        title="Issued Transfer Certificates"
+        description="Review auto-approved Transfer Certificate requests."
       />
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><TextSelect className="mr-2 h-5 w-5" />Pending & Processed Requests</CardTitle>
-          <CardDescription>A log of all TC requests. Approve to allow students to download their certificate.</CardDescription>
+          <CardTitle className="flex items-center"><TextSelect className="mr-2 h-5 w-5" />Certificate Issuance Log</CardTitle>
+          <CardDescription>A log of all TCs that have been automatically issued to students upon request after their fees were cleared.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : requests.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4">No Transfer Certificate requests found.</p>
+            <p className="text-center text-muted-foreground py-4">No Transfer Certificate requests have been made yet.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -152,22 +104,18 @@ export default function AdminTCRequestsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="space-x-1">
-                      {req.status === 'Pending' ? (
-                        <>
-                          <Button variant="outline" size="sm" onClick={() => handleApprove(req.id)} disabled={isSubmitting}>
-                            <CheckCircle className="mr-1 h-3 w-3" /> Approve
-                          </Button>
-                          <Button variant="destructive" size="sm" onClick={() => handleOpenRejectDialog(req)} disabled={isSubmitting}>
-                            <XCircle className="mr-1 h-3 w-3" /> Reject
-                          </Button>
-                        </>
-                      ) : req.status === 'Approved' ? (
-                        <span className="text-sm text-green-600">Approved on {format(parseISO(req.approved_date!), 'PP')}</span>
-                      ) : (
-                        <span className="text-sm text-red-600 truncate" title={req.rejection_reason || ''}>
+                      {req.status === 'Approved' && (
+                         <Button variant="outline" size="sm" asChild>
+                           <Link href={`/admin/transfer-certificate?studentId=${student.id}`}>
+                              <Download className="mr-1 h-3 w-3" /> View Certificate
+                           </Link>
+                         </Button>
+                      )}
+                       {req.status === 'Rejected' && (
+                         <span className="text-sm text-red-600 truncate" title={req.rejection_reason || ''}>
                             Rejected: {req.rejection_reason}
                         </span>
-                      )}
+                       )}
                     </TableCell>
                   </TableRow>
                   )
@@ -177,27 +125,6 @@ export default function AdminTCRequestsPage() {
           )}
         </CardContent>
       </Card>
-      
-      <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
-        <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Reject TC Request for {requestToReject?.student.name}</DialogTitle>
-                <DialogDescription>Please provide a reason for rejecting this request. The reason will be visible to the student.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleReject}>
-                <div className="py-4">
-                    <Label htmlFor="rejectionReason">Reason for Rejection</Label>
-                    <Textarea id="rejectionReason" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} required disabled={isSubmitting} placeholder="e.g., Outstanding library dues."/>
-                </div>
-                 <DialogFooter>
-                    <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                    <Button type="submit" variant="destructive" disabled={isSubmitting || !rejectionReason.trim()}>
-                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <XCircle className="mr-2 h-4 w-4"/>} Reject Request
-                    </Button>
-                </DialogFooter>
-            </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

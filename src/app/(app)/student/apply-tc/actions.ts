@@ -38,6 +38,7 @@ export async function requestTransferCertificateAction(
   }
   const supabase = createSupabaseServerClient();
   try {
+    // 1. Check for outstanding fees
     const { data: pendingFees, error: feesError } = await supabase
       .from('student_fee_payments')
       .select('id, assigned_amount, paid_amount')
@@ -59,18 +60,24 @@ export async function requestTransferCertificateAction(
       return { ok: false, message: `Cannot request certificate. You have outstanding dues of ₹${totalDue.toFixed(2)}. Please clear them first.` };
     }
     
+    // 2. Fees are clear, so auto-approve and create the TC record
     const { error: insertError } = await supabase
         .from('tc_requests')
-        .insert({ student_id: studentId, school_id: schoolId });
+        .insert({ 
+            student_id: studentId, 
+            school_id: schoolId,
+            status: 'Approved', // Auto-approve
+            approved_date: new Date().toISOString()
+        });
     
     if (insertError) {
         if (insertError.code === '23505') { // Unique constraint violation
-            return { ok: false, message: "You already have a pending or processed TC request." };
+            return { ok: false, message: "You already have a processed TC request." };
         }
         return { ok: false, message: `Failed to create request: ${insertError.message}`};
     }
     
-    // Notify admin
+    // Notify admin that a TC has been auto-issued
     const { data: schoolData, error: schoolError } = await supabase
         .from('schools')
         .select('name, admin_email')
@@ -78,7 +85,7 @@ export async function requestTransferCertificateAction(
         .single();
     
     if (schoolError || !schoolData || !schoolData.admin_email) {
-        console.warn("Could not find school admin email for TC request notification:", schoolError);
+        console.warn("Could not find school admin email for TC issuance notification:", schoolError);
     } else {
         const { data: studentData } = await supabase
             .from('students')
@@ -86,8 +93,8 @@ export async function requestTransferCertificateAction(
             .eq('id', studentId)
             .single();
 
-        const emailSubject = `New Transfer Certificate Request from ${studentData?.name || 'a student'}`;
-        const emailBody = `<p>A new request for a Transfer Certificate has been submitted by ${studentData?.name || 'a student'} (ID: ${studentId}). Please log in to the admin dashboard to review and process it.</p>`;
+        const emailSubject = `Notice: Transfer Certificate Issued for ${studentData?.name || 'a student'}`;
+        const emailBody = `<p>A Transfer Certificate has been automatically issued for ${studentData?.name || 'a student'} (ID: ${studentId}) following a request, as all their dues were cleared. This is for your records.</p>`;
 
         await sendEmail({
             to: schoolData.admin_email,
@@ -98,7 +105,7 @@ export async function requestTransferCertificateAction(
 
     revalidatePath('/student/apply-tc');
     revalidatePath('/admin/tc-requests');
-    return { ok: true, message: "Your request for a Transfer Certificate has been submitted successfully. The school administration has been notified." };
+    return { ok: true, message: "Your fees are clear and your Transfer Certificate has been issued successfully. You can now view and download it." };
 
   } catch (e: any) {
     console.error("Unexpected error requesting TC:", e);

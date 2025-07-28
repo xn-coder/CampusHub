@@ -74,7 +74,7 @@ export default function ApplyForTCPage() {
 
     const result = await requestTransferCertificateAction(currentStudentId, currentSchoolId);
     if (result.ok) {
-        toast({ title: "Request Submitted", description: result.message });
+        toast({ title: "Certificate Issued", description: result.message });
         loadStudentAndRequestData(); // Re-fetch the status
     } else {
         toast({ title: "Request Failed", description: result.message, variant: "destructive", duration: 10000 });
@@ -86,12 +86,12 @@ export default function ApplyForTCPage() {
   const renderStatusCard = () => {
     if (!existingRequest) return null;
 
-    if (existingRequest.status === 'Pending') {
+    if (existingRequest.status === 'Pending') { // This case is less likely now but kept for safety
         return (
             <Alert variant="default" className="border-yellow-500 text-yellow-700 dark:border-yellow-700 dark:text-yellow-400">
                 <Clock className="h-4 w-4 !text-yellow-600" />
                 <AlertTitle>Request Pending</AlertTitle>
-                <AlertDescription>Your request has been submitted and is currently pending administrative approval.</AlertDescription>
+                <AlertDescription>Your request is pending administrative approval.</AlertDescription>
             </Alert>
         );
     }
@@ -99,7 +99,7 @@ export default function ApplyForTCPage() {
         return (
              <Alert variant="default" className="border-green-500 text-green-700 dark:border-green-600 dark:text-green-300">
                 <CheckCircle className="h-4 w-4 !text-green-600" />
-                <AlertTitle>Request Approved!</AlertTitle>
+                <AlertTitle>Certificate Issued!</AlertTitle>
                 <AlertDescription>
                     Your Transfer Certificate is ready.
                      <Button 
@@ -145,14 +145,14 @@ export default function ApplyForTCPage() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Apply for Transfer Certificate" 
-        description="Submit a request to the school administration to issue your TC." 
+        description="Submit a request to issue your TC. This will be automatically approved if all your fees are cleared." 
       />
       <Card className="max-w-2xl mx-auto w-full">
         <CardHeader>
           <CardTitle className="flex items-center"><FileText className="mr-2 h-5 w-5" /> TC Request</CardTitle>
           <CardDescription>
             Before you can apply, you must ensure all outstanding school fees are cleared.
-            Click the button below to check your fee status and submit your request.
+            Click the button below to check your fee status and request your certificate.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -170,7 +170,7 @@ export default function ApplyForTCPage() {
           {!existingRequest && (
             <Button onClick={handleRequestTC} disabled={isLoading || isPageLoading} className="w-full">
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileText className="mr-2 h-4 w-4" />}
-              {isLoading ? 'Checking fees and submitting...' : 'Request Transfer Certificate'}
+              {isLoading ? 'Checking fees and issuing...' : 'Request & Generate Certificate'}
             </Button>
           )}
           {existingRequest?.status === 'Approved' && (
