@@ -80,6 +80,7 @@ export default function ExpensesPage() {
     useEffect(() => {
         const adminId = localStorage.getItem('currentUserId');
         setCurrentAdminUserId(adminId);
+        setDate(format(new Date(), 'yyyy-MM-dd')); // Set date on mount
         if (adminId) {
             fetchAdminSchoolId(adminId).then(schoolId => {
                 setCurrentSchoolId(schoolId);
@@ -97,7 +98,7 @@ export default function ExpensesPage() {
     }, [toast, loadPageData]);
     
     const resetForm = () => {
-        setTitle(''); setAmount(''); setCategoryId(''); setDate(''); setNotes(''); setReceiptFile(null);
+        setTitle(''); setAmount(''); setCategoryId(''); setDate(format(new Date(), 'yyyy-MM-dd')); setNotes(''); setReceiptFile(null);
         setEditingExpense(null); setUploadProgress(0);
     };
 
