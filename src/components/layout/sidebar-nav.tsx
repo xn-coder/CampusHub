@@ -42,6 +42,7 @@ import {
   KeyRound,
   BookOpenCheck,
   Wallet,
+  TextSelect,
 } from 'lucide-react';
 
 
@@ -78,6 +79,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/student-scores', label: 'Student Scores', icon: Award },
   { href: '/admin/attendance', label: 'Attendance Records', icon: ClipboardCheck }, 
   { href: '/admin/id-card-printing', label: 'ID Card Printing', icon: Printer },
+  { href: '/admin/tc-requests', label: 'TC Requests', icon: TextSelect },
   { href: '/admin/class-schedule', label: 'Class Schedule', icon: Clock },
   { href: '/communication', label: 'Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'Calendar & Events', icon: CalendarDays },

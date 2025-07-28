@@ -11,6 +11,7 @@ export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
 export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
+export type TCRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 
 
 export interface User {
@@ -507,6 +508,20 @@ export interface Assignment {
   updated_at?: string;
   submission?: AssignmentSubmission | null; // For student view
 }
+
+export interface TCRequest {
+  id: string;
+  student_id: string;
+  school_id: string;
+  request_date: string; // ISO string
+  status: TCRequestStatus;
+  rejection_reason?: string | null;
+  approved_date?: string | null;
+  created_at?: string;
+  // Joined data
+  student: Student;
+}
+
 
 declare global {
   interface Window {
