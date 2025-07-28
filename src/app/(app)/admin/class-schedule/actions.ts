@@ -97,7 +97,7 @@ export async function addClassScheduleAction(
       const announcementContent = `A new class has been scheduled for subject "${subjectName}" in class "${className}".\n\nDetails:\n- Day: ${schedule.day_of_week}\n- Time: ${schedule.start_time} - ${schedule.end_time}\n- Teacher: ${teacherName}`;
 
       await postAnnouncementAction({
-        title: `New Class Scheduled: ${subjectName} for ${className}`,
+        title: `New Class Scheduled: ${subjectName}`,
         content: announcementContent,
         author_name: adminName,
         posted_by_user_id: input.posted_by_user_id,
@@ -158,7 +158,7 @@ export async function updateClassScheduleAction(
       const announcementContent = `The schedule for subject "${subjectName}" in class "${className}" has been updated.\n\nNew Details:\n- Day: ${schedule.day_of_week}\n- Time: ${schedule.start_time} - ${schedule.end_time}\n- Teacher: ${teacherName}`;
 
       await postAnnouncementAction({
-        title: `Schedule Update: ${subjectName} for ${className}`,
+        title: `Schedule Update: ${subjectName}`,
         content: announcementContent,
         author_name: adminName,
         posted_by_user_id: input.posted_by_user_id,

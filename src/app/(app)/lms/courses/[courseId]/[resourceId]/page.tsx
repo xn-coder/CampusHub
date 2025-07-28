@@ -283,7 +283,7 @@ export default function CourseResourcePage() {
                             </Button>
                             {isCompleted && (
                                 <Button asChild size="sm">
-                                    <Link href={`/admin/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                                    <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
                                         <Award className="mr-2 h-4 w-4" /> Get Certificate
                                     </Link>
                                 </Button>
@@ -437,7 +437,7 @@ export default function CourseResourcePage() {
                     ) : (
                         isCompleted && overallProgress === 100 ? (
                            <Button asChild>
-                                <Link href={`/admin/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                                <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
                                     <Award className="mr-2 h-4 w-4" /> Course Complete! Get Certificate
                                 </Link>
                             </Button>
