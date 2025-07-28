@@ -12,14 +12,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Student, User, ClassData } from '@/types';
-import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck, FileText } from 'lucide-react';
+import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
+import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck, FileText, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
 import { terminateStudentAction, reactivateStudentAction, updateStudentAction, checkFeeStatusAndGenerateTCAction } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +33,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useRouter } from 'next/navigation';
+
+const ITEMS_PER_PAGE = 10;
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -67,6 +70,7 @@ export default function ManageStudentsPage() {
   
   const [showTerminated, setShowTerminated] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
 
   const fetchStudents = useCallback(async (schoolId: string) => {
@@ -149,10 +153,17 @@ export default function ManageStudentsPage() {
     return cls ? `${cls.name} - ${cls.division}` : 'N/A';
   };
 
-  const filteredStudents = students.filter(student =>
+  const filteredStudents = useMemo(() => students.filter(student =>
     student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (student.email && student.email.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  ), [students, searchTerm]);
+
+  const paginatedStudents = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredStudents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredStudents, currentPage]);
+  const totalPages = Math.ceil(filteredStudents.length / ITEMS_PER_PAGE);
+
   
   const handleOpenEditDialog = (student: Student) => { 
     setEditingStudent(student);
@@ -341,7 +352,7 @@ export default function ManageStudentsPage() {
                 </Alert>
               ) : (
                 <>
-                  {filteredStudents.length > 0 ? (
+                  {paginatedStudents.length > 0 ? (
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -354,7 +365,7 @@ export default function ManageStudentsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredStudents.map((student) => (
+                        {paginatedStudents.map((student) => (
                           <TableRow key={student.id} className={student.status !== 'Active' && student.status ? 'bg-muted/50' : ''}>
                             <TableCell>
                               <Avatar>
@@ -373,63 +384,46 @@ export default function ManageStudentsPage() {
                                     : getClassDisplayName(student.class_id)
                                 }
                             </TableCell>
-                            <TableCell className="space-x-1 text-right">
-                              {student.status === 'Active' || !student.status ? (
-                                <>
-                                    <Button variant="outline" size="sm" onClick={() => handleGenerateTC(student)} disabled={isSubmitting}>
-                                        <FileText className="mr-1 h-3 w-3" /> TC
-                                    </Button>
-                                    <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} disabled={isSubmitting}>
-                                        <Edit2 className="h-4 w-4" />
-                                    </Button>
-                                    <AlertDialog>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  {student.status === 'Active' || !student.status ? (
+                                    <>
+                                      <DropdownMenuItem onSelect={() => handleOpenEditDialog(student)}><Edit2 className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem>
+                                      <DropdownMenuItem onSelect={() => handleGenerateTC(student)}><FileText className="mr-2 h-4 w-4"/>Generate TC</DropdownMenuItem>
+                                      <DropdownMenuSeparator />
                                       <AlertDialogTrigger asChild>
-                                        <Button variant="destructive" size="icon" disabled={isSubmitting} title="Terminate Student">
-                                            <UserX className="h-4 w-4" />
-                                        </Button>
+                                        <DropdownMenuItem className="text-destructive" onSelect={(e) => e.preventDefault()}><UserX className="mr-2 h-4 w-4"/>Terminate</DropdownMenuItem>
                                       </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                          <AlertDialogHeader>
-                                              <AlertDialogTitle>Are you sure you want to terminate {student.name}?</AlertDialogTitle>
-                                              <AlertDialogDescription>
-                                                  This will mark the student as 'Terminated', unassign them from their class, and deactivate their login. This action is reversible by an administrator.
-                                              </AlertDialogDescription>
-                                          </AlertDialogHeader>
-                                          <AlertDialogFooter>
-                                              <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
-                                              <AlertDialogAction onClick={() => handleTerminateStudent(student)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
-                                                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : null}
-                                                  Terminate
-                                              </AlertDialogAction>
-                                          </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                    </AlertDialog>
-                                </>
-                              ) : student.status === 'Terminated' ? (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="outline" size="icon" disabled={isSubmitting} title="Reactivate Student">
-                                      <UserCheck className="h-4 w-4 text-green-600" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Reactivate Student: {student.name}?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will mark the student's status as 'Active' and re-enable their login. They will not be automatically re-assigned to a class.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleReactivateStudent(student)} disabled={isSubmitting} className="bg-green-600 text-white hover:bg-green-700">
-                                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : "Reactivate"}
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">No actions available</span>
-                              )}
+                                    </>
+                                  ) : (
+                                    <AlertDialogTrigger asChild>
+                                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}><UserCheck className="mr-2 h-4 w-4"/>Reactivate</DropdownMenuItem>
+                                    </AlertDialogTrigger>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+
+                              <AlertDialog>
+                                {student.status === 'Active' || !student.status ? (
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader><AlertDialogTitle>Terminate {student.name}?</AlertDialogTitle><AlertDialogDescription>This will mark the student as 'Terminated', unassign them from their class, and deactivate their login. This action is reversible.</AlertDialogDescription></AlertDialogHeader>
+                                      <AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleTerminateStudent(student)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Terminate</AlertDialogAction></AlertDialogFooter>
+                                    </AlertDialogContent>
+                                ) : (
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader><AlertDialogTitle>Reactivate {student.name}?</AlertDialogTitle><AlertDialogDescription>This will mark the student's status as 'Active' and re-enable their login. They will not be automatically re-assigned to a class.</AlertDialogDescription></AlertDialogHeader>
+                                      <AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleReactivateStudent(student)} disabled={isSubmitting} className="bg-green-600 text-white hover:bg-green-700">{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Reactivate</AlertDialogAction></AlertDialogFooter>
+                                    </AlertDialogContent>
+                                )}
+                              </AlertDialog>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -443,6 +437,17 @@ export default function ManageStudentsPage() {
                 </>
               )}
             </CardContent>
+             {totalPages > 1 && (
+                <CardFooter className="flex justify-end items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>
+                        <ChevronLeft className="h-4 w-4" /> Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>
+                        Next <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </CardFooter>
+            )}
           </Card>
         </TabsContent>
 

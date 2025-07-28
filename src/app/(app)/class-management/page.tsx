@@ -13,7 +13,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ClassData, Student, Teacher, ClassNameRecord, SectionRecord, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
-import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2, ArrowRight } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Users, UserCog, Save, Library, ListPlus, Layers, Combine, Loader2, ArrowRight, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import {
@@ -26,6 +27,8 @@ import {
   getStudentsWithStatusForPromotionAction
 } from './actions';
 import { Badge } from '@/components/ui/badge';
+
+const ITEMS_PER_PAGE = 10;
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -56,6 +59,7 @@ export default function ClassManagementPage() {
   const [allStudentsInSchool, setAllStudentsInSchool] = useState<Student[]>([]);
   const [allTeachersInSchool, setAllTeachersInSchool] = useState<Teacher[]>([]);
   const [allAcademicYears, setAllAcademicYears] = useState<AcademicYear[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Dialog states
   const [isActivateClassSectionDialogOpen, setIsActivateClassSectionDialogOpen] = useState(false);
@@ -135,6 +139,13 @@ export default function ClassManagementPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const paginatedActiveClasses = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return activeClasses.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [activeClasses, currentPage]);
+
+  const totalPages = Math.ceil(activeClasses.length / ITEMS_PER_PAGE);
 
 
   useEffect(() => {
@@ -535,7 +546,7 @@ export default function ClassManagementPage() {
               <Button onClick={handleOpenActivateDialog} className="mt-2 sm:mt-0" disabled={isSubmitting || isLoading}><PlusCircle className="mr-2 h-4 w-4" /> Activate New Class-Section</Button>
             </CardHeader>
             <CardContent>
-             {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : activeClasses.length > 0 ? (
+             {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : paginatedActiveClasses.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -548,7 +559,7 @@ export default function ClassManagementPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {activeClasses.map((cls) => {
+                    {paginatedActiveClasses.map((cls) => {
                        const studentCount = allStudentsInSchool.filter(s => s.class_id === cls.id).length;
                        return (
                       <TableRow key={cls.id}>
@@ -557,11 +568,29 @@ export default function ClassManagementPage() {
                         <TableCell>{getAcademicYearName(cls.academic_year_id)}</TableCell>
                         <TableCell>{getTeacherName(cls.teacher_id)}</TableCell>
                         <TableCell>{studentCount}</TableCell>
-                        <TableCell className="space-x-1 text-right">
-                          <Button variant="outline" size="sm" onClick={() => handleOpenManageStudentsDialog(cls)} disabled={isSubmitting}><Users className="mr-1 h-3 w-3" /> Students</Button>
-                          <Button variant="outline" size="sm" onClick={() => handleOpenAssignTeacherDialog(cls)} disabled={isSubmitting}><UserCog className="mr-1 h-3 w-3" /> Teacher</Button>
-                           <Button variant="outline" size="sm" onClick={() => handleOpenPromoteDialog(cls)} disabled={isSubmitting || studentCount === 0}><ArrowRight className="mr-1 h-3 w-3" /> Promote</Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteActiveClass(cls.id)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => handleOpenManageStudentsDialog(cls)}>
+                                <Users className="mr-2 h-4 w-4" /> Manage Students
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleOpenAssignTeacherDialog(cls)}>
+                                <UserCog className="mr-2 h-4 w-4" /> Assign Teacher
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleOpenPromoteDialog(cls)} disabled={studentCount === 0}>
+                                <ArrowRight className="mr-2 h-4 w-4" /> Promote Class
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onSelect={() => handleDeleteActiveClass(cls.id)} className="text-destructive">
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete Class-Section
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                        );
@@ -570,6 +599,17 @@ export default function ClassManagementPage() {
                 </Table>
               ) : <p className="text-center text-muted-foreground py-4">No class-sections activated yet. Activate one to assign students/teachers.</p>}
             </CardContent>
+            {totalPages > 1 && (
+              <CardFooter className="flex justify-end items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>
+                    <ChevronLeft className="h-4 w-4" /> Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>
+                    Next <ChevronRight className="h-4 w-4" />
+                </Button>
+              </CardFooter>
+            )}
           </Card>
         </TabsContent>
       </Tabs>

@@ -11,11 +11,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Teacher, User } from '@/types'; 
-import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2, FileDown } from 'lucide-react';
+import { useState, useEffect, type FormEvent, type ChangeEvent, useMemo } from 'react';
+import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2, FileDown, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { createTeacherAction, updateTeacherAction, deleteTeacherAction } from './actions';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+
+const ITEMS_PER_PAGE = 10;
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   // First, try to get school_id directly from the user's record
@@ -65,6 +68,7 @@ export default function ManageTeachersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
 
   // For Create Teacher Tab
@@ -84,12 +88,10 @@ export default function ManageTeachersPage() {
 
   useEffect(() => {
     const adminIdFromStorage = localStorage.getItem('currentUserId');
-    console.log('[ManageTeachersPage useEffect] adminIdFromStorage:', adminIdFromStorage);
     setCurrentAdminUserId(adminIdFromStorage);
 
     if (adminIdFromStorage) {
       fetchAdminSchoolId(adminIdFromStorage).then(fetchedSchoolId => {
-        console.log('[ManageTeachersPage useEffect] fetchedSchoolId:', fetchedSchoolId);
         setCurrentSchoolId(fetchedSchoolId);
         if (fetchedSchoolId) {
           fetchTeachers(fetchedSchoolId); 
@@ -107,18 +109,15 @@ export default function ManageTeachersPage() {
 
   async function fetchTeachers(schoolId: string) {
     setIsLoading(true); 
-    console.log('[ManageTeachersPage fetchTeachers] Fetching teachers for schoolId:', schoolId);
     const { data, error } = await supabase 
       .from('teachers')
       .select('id, name, email, subject, profile_picture_url, user_id')
       .eq('school_id', schoolId);
 
     if (error) {
-      console.error("[ManageTeachersPage fetchTeachers] Error fetching teachers:", error);
       toast({ title: "Error", description: `Failed to fetch teacher data: ${error.message}`, variant: "destructive" });
       setTeachers([]);
     } else {
-      console.log('[ManageTeachersPage fetchTeachers] Raw data received:', data);
       const formattedTeachers = data?.map(t => ({
         id: t.id, 
         user_id: t.user_id, 
@@ -128,17 +127,23 @@ export default function ManageTeachersPage() {
         profile_picture_url: t.profile_picture_url,
         school_id: schoolId, 
       })) || [];
-      console.log('[ManageTeachersPage fetchTeachers] Formatted teachers:', formattedTeachers);
       setTeachers(formattedTeachers);
     }
     setIsLoading(false); 
   }
 
-  const filteredTeachers = teachers.filter(teacher =>
+  const filteredTeachers = useMemo(() => teachers.filter(teacher =>
     teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (teacher.email && teacher.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (teacher.subject && teacher.subject.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  ), [teachers, searchTerm]);
+
+  const paginatedTeachers = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredTeachers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredTeachers, currentPage]);
+  const totalPages = Math.ceil(filteredTeachers.length / ITEMS_PER_PAGE);
+
   
   const handleOpenEditDialog = (teacher: Teacher) => { 
     setEditingTeacher(teacher);
@@ -326,12 +331,12 @@ export default function ManageTeachersPage() {
                 </Button>
               </div>
               {isLoading && <p className="text-center text-muted-foreground py-4">Loading teachers...</p>}
-              {!isLoading && currentSchoolId && filteredTeachers.length === 0 && (
+              {!isLoading && currentSchoolId && paginatedTeachers.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">
                   {searchTerm ? "No teachers match your search for this school." : "No teachers found for this school. Add a new teacher to get started."}
                 </p>
               )}
-              {!isLoading && currentSchoolId && filteredTeachers.length > 0 && (
+              {!isLoading && currentSchoolId && paginatedTeachers.length > 0 && (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -343,7 +348,7 @@ export default function ManageTeachersPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredTeachers.map((teacher) => (
+                    {paginatedTeachers.map((teacher) => (
                       <TableRow key={teacher.id}>
                         <TableCell>
                           <Avatar>
@@ -354,13 +359,22 @@ export default function ManageTeachersPage() {
                         <TableCell className="font-medium">{teacher.name}</TableCell>
                         <TableCell>{teacher.email}</TableCell>
                         <TableCell>{teacher.subject}</TableCell>
-                        <TableCell className="space-x-1 text-right">
-                          <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(teacher)} disabled={isLoading || isSubmitting}>
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteTeacher(teacher)} disabled={isLoading || isSubmitting}>
-                             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                          </Button>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" disabled={isSubmitting || isLoading}>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => handleOpenEditDialog(teacher)}>
+                                <Edit2 className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleDeleteTeacher(teacher)} className="text-destructive">
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -368,6 +382,17 @@ export default function ManageTeachersPage() {
                 </Table>
               )}
             </CardContent>
+            {totalPages > 1 && (
+              <CardFooter className="flex justify-end items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1 || isLoading}>
+                    <ChevronLeft className="h-4 w-4" /> Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages || isLoading}>
+                    Next <ChevronRight className="h-4 w-4" />
+                </Button>
+              </CardFooter>
+            )}
           </Card>
         </TabsContent>
 
