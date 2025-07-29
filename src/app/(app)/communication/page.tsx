@@ -154,7 +154,7 @@ function CommunicationPageForm() {
       
       const canFetch = currentUserRole === 'superadmin' || (currentUserRole && currentSchoolId);
 
-      if (canFetch) {
+      if (canFetch || currentUserRole === 'superadmin') {
         const result = await getAnnouncementsAction(params);
         if (result.ok && result.announcements) {
           setAllAnnouncements(result.announcements);
@@ -162,7 +162,7 @@ function CommunicationPageForm() {
           toast({ title: "Error", description: result.message || "Failed to fetch announcements.", variant: "destructive" });
           setAllAnnouncements([]);
         }
-      } else if (currentUserRole && currentUserRole !== 'superadmin' && !currentSchoolId) {
+      } else if (currentUserRole && !currentSchoolId) {
          toast({ title: "Info", description: "No school association found. Cannot load announcements.", variant: "default" });
          setAllAnnouncements([]);
       }
@@ -194,7 +194,10 @@ function CommunicationPageForm() {
       return;
     }
     
-    if (!currentSchoolId) {
+    // Superadmin posts a global announcement (school_id is null)
+    const schoolIdForPost = currentUserRole === 'superadmin' ? null : currentSchoolId;
+
+    if (!schoolIdForPost && currentUserRole !== 'superadmin') {
       toast({ title: "Error", description: "School context is required to post an announcement.", variant: "destructive" });
       return;
     }
@@ -207,7 +210,7 @@ function CommunicationPageForm() {
       posted_by_user_id: currentUserId,
       posted_by_role: currentUserRole,
       target_class_id: newAnnouncement.targetClassId || undefined,
-      school_id: currentSchoolId,
+      school_id: schoolIdForPost,
       linked_exam_id: newAnnouncement.linkedExamId || undefined,
     });
     setIsSubmitting(false);
@@ -232,7 +235,7 @@ function CommunicationPageForm() {
     }
   };
 
-  const canPostAnnouncement = (currentUserRole === 'admin' || currentUserRole === 'teacher') && !!currentSchoolId;
+  const canPostAnnouncement = (currentUserRole === 'admin' || currentUserRole === 'teacher' || currentUserRole === 'superadmin');
   const availableClassesForTargeting = currentUserRole === 'admin' ? allSchoolClasses : teacherAssignedClasses;
 
   return (
@@ -267,20 +270,27 @@ function CommunicationPageForm() {
                 <Input id="authorName" name="authorName" value={newAnnouncement.authorName} onChange={handleInputChange} placeholder="e.g., Principal's Office, Your Name" required disabled={isSubmitting}/>
               </div>
               
-              <div>
-                <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
-                <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
-                  <SelectTrigger id="targetClassId">
-                    <SelectValue placeholder="General Announcement" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">General Announcement (School-wide)</SelectItem>
-                    {availableClassesForTargeting.map(cls => (
-                      <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {currentUserRole !== 'superadmin' && (
+                <div>
+                  <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
+                  <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
+                    <SelectTrigger id="targetClassId">
+                      <SelectValue placeholder="General Announcement" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">General Announcement (School-wide)</SelectItem>
+                      {availableClassesForTargeting.map(cls => (
+                        <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+               {currentUserRole === 'superadmin' && (
+                <div className="p-3 bg-muted/50 rounded-md text-sm text-muted-foreground">
+                    You are posting as a Super Admin. This announcement will be visible to all school owners (Admins) only.
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="content">Content</Label>
@@ -299,7 +309,7 @@ function CommunicationPageForm() {
 
       {isLoading && !isContextLoading && <Card><CardContent className="pt-6 text-center"><Loader2 className="h-6 w-6 animate-spin inline-block mr-2"/>Loading announcements...</CardContent></Card>}
       
-      {!isLoading && !isContextLoading && !currentSchoolId && currentUserRole !== 'superadmin' && (
+      {!isLoading && !isContextLoading && !currentSchoolId && (currentUserRole !== 'superadmin') && (
         <Card><CardContent className="pt-6 text-center text-muted-foreground">Please ensure you are associated with a school to view or post announcements.</CardContent></Card>
       )}
       
@@ -313,7 +323,7 @@ function CommunicationPageForm() {
                     <span>Posted by {announcement.author_name || announcement.posted_by?.name || 'System'} ({announcement.posted_by_role})</span>
                     <span>{format(parseISO(announcement.date), 'PPpp')}</span>
                     {announcement.school_id === null ? (
-                        <Badge variant="secondary">Global Admin Announcement</Badge>
+                        <Badge variant="secondary">Global Announcement</Badge>
                     ) : announcement.target_class ? (
                         <Badge variant="outline">For Class: {announcement.target_class.name} - {announcement.target_class.division}</Badge>
                     ) : null }

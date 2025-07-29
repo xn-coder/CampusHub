@@ -16,7 +16,7 @@ interface PostAnnouncementInput {
   posted_by_user_id: string;
   posted_by_role: UserRole;
   target_class_id?: string;
-  school_id: string; // school_id is now mandatory
+  school_id?: string | null; // Can be null for superadmin global announcements
   linked_exam_id?: string;
 }
 
@@ -66,7 +66,7 @@ export async function postAnnouncementAction(
         posted_by_role: input.posted_by_role,
         date: new Date().toISOString(), 
         target_class_id: input.target_class_id || null, 
-        school_id: input.school_id,
+        school_id: input.school_id || null, // Allow null for global announcements
       })
       .select('*, target_class:target_class_id(name, division, teacher_id)')
       .single();
@@ -92,13 +92,17 @@ export async function postAnnouncementAction(
         <h1>${subject}</h1>
         <p><strong>Posted by:</strong> ${announcement.author_name} (${announcement.posted_by_role})</p>
         <p><strong>Date:</strong> ${new Date(announcement.date).toLocaleString()}</p>
-        ${(announcement.target_class_id && announcement.target_class ? `<p><strong>For Class:</strong> ${announcement.target_class.name} - ${announcement.target_class.division}</p>` : '<p>This is a general announcement for the school.</p>')}
+        ${(announcement.target_class_id && announcement.target_class ? `<p><strong>For Class:</strong> ${announcement.target_class.name} - ${announcement.target_class.division}</p>` : (!announcement.school_id ? '<p>This is a global announcement for all school administrators.</p>' : '<p>This is a general announcement for the school.</p>'))}
         ${emailHtmlBody}
         <p>Please check the communication portal for more details.</p>
       `;
       
       let recipientEmails: string[] = [];
-      if (announcement.school_id) {
+      if (!announcement.school_id && announcement.posted_by_role === 'superadmin') {
+          // Global announcement for all admins
+          recipientEmails = await getAllAdminEmails();
+      } else if (announcement.school_id) {
+        // School-specific announcement
         const targetClassId = input.target_class_id;
         if (targetClassId) {
           // Class-specific announcement, send to students and the teacher of that class
@@ -159,8 +163,8 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
       .order('date', { ascending: false });
 
     if (user_role === 'superadmin') {
-      // Superadmin sees global announcements only (school_id is null)
-      query = query.is('school_id', null);
+      // Superadmin sees all announcements from all schools + global ones
+      // No specific filter needed, fetches everything.
     } else if (user_role === 'admin') {
       // Admin sees announcements for their school AND global announcements
       if (school_id) {
