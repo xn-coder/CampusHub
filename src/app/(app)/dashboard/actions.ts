@@ -64,18 +64,25 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
       }
     }
 
-    // Fetch common data (announcements, events) if a school context (effectiveSchoolId) exists
-    // This applies to students, teachers, and admins who are linked to a school.
+    // Fetch common data (announcements, events)
     if (effectiveSchoolId && (userRole === 'student' || userRole === 'teacher' || userRole === 'admin')) {
       // Fetch recent announcements
-      const { data: announcements, error: annError } = await supabase
+      let announcementQuery = supabase
         .from('announcements')
         .select('id, title, date, author_name, posted_by_role, target_class:target_class_id ( name, division )')
-        .eq('school_id', effectiveSchoolId) // All announcements for this school
         .order('date', { ascending: false })
-        .limit(3);
+        .limit(5); // Fetch more to filter later if needed
+
+      if (userRole === 'admin') {
+          announcementQuery = announcementQuery.or(`school_id.eq.${effectiveSchoolId},school_id.is.null`);
+      } else {
+          // For teachers and students, only show their school's announcements
+          announcementQuery = announcementQuery.eq('school_id', effectiveSchoolId);
+      }
+        
+      const { data: announcements, error: annError } = await announcementQuery;
       if (annError) console.error("Error fetching announcements for dashboard:", annError.message);
-      else dashboardData.recentAnnouncements = announcements || [];
+      else dashboardData.recentAnnouncements = (announcements || []).slice(0, 3); // Limit to 3 for display
 
       // Fetch upcoming events
       const today = formatISO(startOfDay(new Date()), { representation: 'date' });
@@ -93,7 +100,19 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
       else dashboardData.upcomingEvents = events || [];
     } else if (userRole === 'superadmin' || !effectiveSchoolId) {
         // Superadmin or roles without a determined school context see no school-specific common data
-        dashboardData.recentAnnouncements = [];
+        // For superadmin, let's show only global announcements.
+        if (userRole === 'superadmin') {
+             const { data: announcements, error: annError } = await supabase
+                .from('announcements')
+                .select('id, title, date, author_name, posted_by_role, target_class:target_class_id ( name, division )')
+                .is('school_id', null) // Only global announcements
+                .order('date', { ascending: false })
+                .limit(3);
+            if(annError) console.error("Error fetching global announcements for superadmin dashboard:", annError.message);
+            else dashboardData.recentAnnouncements = announcements || [];
+        } else {
+             dashboardData.recentAnnouncements = [];
+        }
         dashboardData.upcomingEvents = [];
     }
 
