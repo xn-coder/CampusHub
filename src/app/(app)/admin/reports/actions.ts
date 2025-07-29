@@ -39,7 +39,7 @@ export async function getAdminReportsDataAction(schoolId: string): Promise<{
       supabase.from('students').select('*').eq('school_id', schoolId).order('name'),
       supabase.from('classes').select('*').eq('school_id', schoolId).order('name'),
       supabase.from('teachers').select('*').eq('school_id', schoolId).order('name'),
-      supabase.from('lms_assignment_submissions').select('student_id', { count: 'exact' }).eq('school_id', schoolId),
+      supabase.from('lms_assignment_submissions').select('student_id').eq('school_id', schoolId),
       supabase.from('attendance_records').select('student_id, status').eq('school_id', schoolId)
     ]);
 
@@ -73,13 +73,19 @@ export async function getAdminReportsDataAction(schoolId: string): Promise<{
       return {
         ...s,
         assignmentsSubmitted: submissionsByStudent[s.id] || 0,
-        attendancePercentage: attendance ? Math.round((attendance.present / attendance.total) * 100) : 100,
+        attendancePercentage: attendance && attendance.total > 0 ? Math.round((attendance.present / attendance.total) * 100) : 100,
       };
     });
     
     // Process teacher activity
-    const assignmentsByTeacher = (await supabase.from('assignments').select('teacher_id', { count: 'exact' }).eq('school_id', schoolId)).data || [];
-    const assignmentsCountByTeacher = assignmentsByTeacher.reduce((acc, item) => {
+    const { data: assignmentsByTeacher, error: teacherAssignmentsError } = await supabase
+        .from('assignments')
+        .select('teacher_id')
+        .eq('school_id', schoolId);
+    
+    if(teacherAssignmentsError) console.warn("Could not fetch assignments by teacher for report:", teacherAssignmentsError.message);
+
+    const assignmentsCountByTeacher = (assignmentsByTeacher || []).reduce((acc, item) => {
         if (item.teacher_id) {
             acc[item.teacher_id] = (acc[item.teacher_id] || 0) + 1;
         }

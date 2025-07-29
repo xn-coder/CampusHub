@@ -287,7 +287,7 @@ export default function AdminReportsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Activity Reports (Admin)" 
-        description="View overall student and teacher activity. All activity data is currently illustrative mock data." 
+        description="View overall student and teacher activity." 
         actions={
           <Button onClick={handleDownloadCsv} disabled={isLoading}>
             <FileDown className="mr-2 h-4 w-4" />
