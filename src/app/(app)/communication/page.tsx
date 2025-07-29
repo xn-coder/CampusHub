@@ -161,18 +161,15 @@ function CommunicationPageForm() {
         teacher_class_ids: teacherAssignedClasses.map(c => c.id),
       };
       
-      const canFetch = currentUserRole === 'superadmin' || (currentUserRole && currentSchoolId);
-
-      if (canFetch) {
-        const result = await getAnnouncementsAction(params);
-        if (result.ok && result.announcements) {
-          setAllAnnouncements(result.announcements);
-        } else {
+      const result = await getAnnouncementsAction(params);
+      if (result.ok && result.announcements) {
+        setAllAnnouncements(result.announcements);
+      } else {
+        // Avoid showing error if context is just not available yet.
+        if (currentUserRole !== null && currentUserId !== null) {
           toast({ title: "Error", description: result.message || "Failed to fetch announcements.", variant: "destructive" });
-          setAllAnnouncements([]);
         }
-      } else if (currentUserRole && !currentSchoolId) {
-         setAllAnnouncements([]);
+        setAllAnnouncements([]);
       }
       setIsLoading(false);
     }
@@ -207,7 +204,6 @@ function CommunicationPageForm() {
       return;
     }
     
-    // Superadmin posts a global announcement (school_id is null)
     const schoolIdForPost = currentUserRole === 'superadmin' ? null : currentSchoolId;
 
     if (!schoolIdForPost && currentUserRole !== 'superadmin') {
@@ -218,6 +214,8 @@ function CommunicationPageForm() {
     setIsSubmitting(true);
     const result = await postAnnouncementAction({
       ...newAnnouncement,
+      posted_by_user_id: currentUserId,
+      posted_by_role: currentUserRole,
       school_id: schoolIdForPost
     });
     setIsSubmitting(false);
