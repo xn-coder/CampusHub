@@ -124,24 +124,21 @@ function CommunicationPageForm() {
   
   const prefillFromUrl = useCallback(() => {
     const examId = searchParams.get('examId');
-    if (examId) {
-        getExamDetailsForLinkingAction(examId).then(result => {
-            if (result.ok && result.exam) {
-                const exam = result.exam;
-                setShowForm(true);
-                setNewAnnouncement(prev => ({
-                    ...prev,
-                    title: `Notification for Exam: ${exam.name}`,
-                    content: `This is an official notification regarding an upcoming exam.`,
-                    linkedExamId: exam.id,
-                    targetClassId: exam.class_id || '', 
-                }));
-            } else {
-                toast({ title: "Error", description: "Could not fetch details for the linked exam.", variant: "destructive"});
-            }
-        });
+    const examName = searchParams.get('examName');
+    const targetClassId = searchParams.get('targetClassId');
+
+    if (examId && examName && targetClassId) {
+        setShowForm(true);
+        setNewAnnouncement(prev => ({
+            ...prev,
+            title: `Re-exam Notification: ${examName}`,
+            content: `This is to inform all eligible students that a re-exam for "${examName}" has been scheduled.\n\nPlease contact the school administration or your class teacher for further details regarding the exact schedule and registration process.`,
+            linkedExamId: examId,
+            targetClassId: targetClassId,
+            targetAudience: 'students',
+        }));
     }
-  }, [searchParams, toast]);
+  }, [searchParams]);
 
   useEffect(() => {
     prefillFromUrl();
