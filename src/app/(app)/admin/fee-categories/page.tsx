@@ -11,10 +11,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import type { FeeCategory } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Tags, Search, Loader2, Eye } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Tags, Loader2, Eye, MoreHorizontal } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { createFeeCategoryAction, updateFeeCategoryAction, deleteFeeCategoryAction, getFeeCategoriesAction } from './actions';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -145,15 +148,14 @@ export default function FeeCategoriesPage() {
         toast({ title: "Error", description: "Cannot delete category without school context.", variant: "destructive"});
         return;
     }
-    if (confirm("Are you sure you want to delete this fee category? This action cannot be undone if payments are associated with it.")) {
-      setIsSubmitting(true);
-      const result = await deleteFeeCategoryAction(categoryId, currentSchoolId);
-      toast({ title: result.ok ? "Fee Category Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
-      if (result.ok && currentSchoolId) {
-        fetchFeeCategories(currentSchoolId); // Re-fetch after action
-      }
-      setIsSubmitting(false);
+    
+    setIsSubmitting(true);
+    const result = await deleteFeeCategoryAction(categoryId, currentSchoolId);
+    toast({ title: result.ok ? "Fee Category Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
+    if (result.ok && currentSchoolId) {
+      fetchFeeCategories(currentSchoolId); // Re-fetch after action
     }
+    setIsSubmitting(false);
   };
   
   const filteredCategories = feeCategories.filter(cat => 
@@ -211,16 +213,45 @@ export default function FeeCategoriesPage() {
                     <TableCell className="font-medium">{category.name}</TableCell>
                     <TableCell className="max-w-xs truncate" title={category.description || ''}>{category.description || 'N/A'}</TableCell>
                     <TableCell>{category.amount !== undefined && category.amount !== null ? <><span className="font-mono">₹</span>{category.amount.toFixed(2)}</> : 'N/A'}</TableCell>
-                    <TableCell className="space-x-1 text-right">
-                      <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(category, 'view')} disabled={isSubmitting} title="View Details">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(category, 'edit')} disabled={isSubmitting} title="Edit Category">
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteCategory(category.id)} disabled={isSubmitting} title="Delete Category">
-                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                      </Button>
+                    <TableCell className="text-right">
+                       <AlertDialog>
+                          <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                                      <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => handleOpenDialog(category, 'view')}>
+                                      <Eye className="mr-2 h-4 w-4" /> View Details
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => handleOpenDialog(category, 'edit')}>
+                                      <Edit2 className="mr-2 h-4 w-4" /> Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <AlertDialogTrigger asChild>
+                                      <DropdownMenuItem className="text-destructive">
+                                          <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                      </DropdownMenuItem>
+                                  </AlertDialogTrigger>
+                              </DropdownMenuContent>
+                          </DropdownMenu>
+                          <AlertDialogContent>
+                              <AlertDialogHeader>
+                                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                      This action cannot be undone. This will permanently delete the "{category.name}" fee category.
+                                      This will fail if the category is already assigned to any student fee records.
+                                  </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteCategory(category.id)} className="bg-destructive hover:bg-destructive/90">
+                                      Delete
+                                  </AlertDialogAction>
+                              </AlertDialogFooter>
+                          </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))}

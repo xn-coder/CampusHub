@@ -54,18 +54,7 @@ export default function ExamsPage() {
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
 
 
-  useEffect(() => {
-    const adminUserId = localStorage.getItem('currentUserId');
-    if (adminUserId) {
-      loadInitialData(adminUserId);
-    } else {
-      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
-      setIsLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function loadInitialData(adminUserId: string) {
+  const loadInitialData = async (adminUserId: string) => {
     setIsLoading(true);
     const result = await getExamsPageDataAction(adminUserId);
     if (result.ok) {
@@ -79,6 +68,17 @@ export default function ExamsPage() {
     }
     setIsLoading(false);
   }
+
+  useEffect(() => {
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (adminUserId) {
+      loadInitialData(adminUserId);
+    } else {
+      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      setIsLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const resetForm = () => {
     setExamName(''); setSelectedClassId(undefined);

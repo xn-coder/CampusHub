@@ -212,7 +212,7 @@ export default function ClassSchedulePage() {
                         <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button variant="destructive" size="icon" onClick={() => handleDeleteItem(item.id)} disabled={isSubmitting}>
-                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
+                        {isSubmitting && editingItem?.id === item.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                       </Button>
                     </TableCell>
                   </TableRow>

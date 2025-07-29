@@ -10,6 +10,17 @@ import { useState, type FormEvent, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { addAcademicYearAction, updateAcademicYearAction, deleteAcademicYearAction } from './actions';
 import { format } from 'date-fns';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // This type should ideally match the structure expected by the actions or a common DTO.
 // For existingYear, it's what the page component provides after fetching.
@@ -86,17 +97,14 @@ export default function AcademicYearActions({ schoolId, existingYear, onActionCo
   const handleDelete = async () => {
     if (!existingYear) return;
     
-    // Using native confirm for simplicity. Replace with AlertDialog for better UX if preferred.
-    if (confirm(`Are you sure you want to delete the academic year "${existingYear.name}"?`)) {
-      setIsSubmitting(true);
-      const result = await deleteAcademicYearAction(existingYear.id);
-      setIsSubmitting(false);
-      if (result.ok) {
-        toast({ title: result.message, variant: "destructive" }); // Changed to destructive for delete success
-        onActionComplete?.();
-      } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
-      }
+    setIsSubmitting(true);
+    const result = await deleteAcademicYearAction(existingYear.id);
+    setIsSubmitting(false);
+    if (result.ok) {
+      toast({ title: result.message, variant: "destructive" }); // Changed to destructive for delete success
+      onActionComplete?.();
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
   };
 
@@ -150,9 +158,25 @@ export default function AcademicYearActions({ schoolId, existingYear, onActionCo
             </form>
             </DialogContent>
         </Dialog>
-        <Button variant="destructive" size="icon" onClick={handleDelete} disabled={isSubmitting} title="Delete Academic Year">
-          {isSubmitting && isEditMode ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" size="icon" title="Delete Academic Year" disabled={isSubmitting}>
+              {isSubmitting && isEditMode ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. Deleting the academic year "{existingYear.name}" will fail if it's currently linked to any subjects, exams, or classes.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Continue</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </>
     );
   }
