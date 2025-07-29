@@ -12,11 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Exam, Subject, ClassData, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, FileTextIcon, BellRing, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, FileTextIcon, BellRing, Loader2, MoreHorizontal } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid } from 'date-fns';
 import { getExamsPageDataAction, addExamAction, updateExamAction, deleteExamAction } from './actions';
 import Link from 'next/link';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 interface ExamGroup {
   id: string; // Using the first exam's ID for keys
@@ -194,16 +196,14 @@ export default function ExamsPage() {
   
   const handleDeleteExamGroup = async (examIds: string[]) => {
     if (!currentSchoolId) return;
-    if (confirm("Are you sure you want to delete this exam schedule and all its associated subjects?")) {
-      setIsSubmitting(true);
-      const result = await deleteExamAction(examIds, currentSchoolId);
-      toast({ title: result.ok ? "Exam Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
-      if (result.ok) {
-        const adminUserId = localStorage.getItem('currentUserId');
-        if (adminUserId) loadInitialData(adminUserId);
-      }
-      setIsSubmitting(false);
+    setIsSubmitting(true);
+    const result = await deleteExamAction(examIds, currentSchoolId);
+    toast({ title: result.ok ? "Exam Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
+    if (result.ok) {
+      const adminUserId = localStorage.getItem('currentUserId');
+      if (adminUserId) loadInitialData(adminUserId);
     }
+    setIsSubmitting(false);
   };
 
   const getClassSectionName = (exam: Exam | ExamGroup) => {
@@ -294,18 +294,44 @@ export default function ExamsPage() {
                     <TableCell>{getClassSectionName(group)}</TableCell>
                     <TableCell>{formatDateString(group.date)}</TableCell>
                     <TableCell>{group.max_marks ?? 'N/A'}</TableCell>
-                    <TableCell className="space-x-1 text-right">
-                       <Button variant="outline" size="sm" asChild disabled={isSubmitting}>
-                        <Link href={`/communication?examId=${group.examIds[0]}&examName=${encodeURIComponent(group.name)}`}>
-                           <BellRing className="mr-1 h-3 w-3" /> Notify
-                        </Link>
-                      </Button>
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(exams.find(e => e.id === group.id))} disabled={isSubmitting}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteExamGroup(group.examIds)} disabled={isSubmitting}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <TableCell className="text-right">
+                      <AlertDialog>
+                        <DropdownMenu>
+                           <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                               <DropdownMenuItem asChild>
+                                <Link href={`/communication?examId=${group.examIds[0]}&examName=${encodeURIComponent(group.name)}`}>
+                                   <BellRing className="mr-2 h-4 w-4" /> Notify
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleOpenDialog(exams.find(e => e.id === group.id))}>
+                                <Edit2 className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator/>
+                               <AlertDialogTrigger asChild>
+                                <DropdownMenuItem className="text-destructive">
+                                  <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                </DropdownMenuItem>
+                              </AlertDialogTrigger>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                         <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the "{group.name}" exam group and all associated student scores.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteExamGroup(group.examIds)} className="bg-destructive hover:bg-destructive/90">Continue</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))}

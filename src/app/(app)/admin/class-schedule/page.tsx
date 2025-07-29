@@ -11,10 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { ClassScheduleDB as ClassScheduleItem, ClassData, Subject, Teacher, DayOfWeek as DayOfWeekType, User } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Clock, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Clock, Loader2, MoreHorizontal } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { addClassScheduleAction, updateClassScheduleAction, deleteClassScheduleAction, fetchClassSchedulePageData } from './actions';
 import { supabase } from '@/lib/supabaseClient'; // For fetching current user's school ID
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -145,16 +148,14 @@ export default function ClassSchedulePage() {
   
   const handleDeleteItem = async (itemId: string) => {
     if (!currentSchoolId) return;
-    if (confirm("Are you sure you want to delete this schedule item?")) {
-      setIsSubmitting(true);
-      const result = await deleteClassScheduleAction(itemId, currentSchoolId);
-      setIsSubmitting(false);
-      if (result.ok) {
-        toast({ title: "Schedule Item Deleted", variant: "destructive" });
-        if (currentSchoolId) loadPageData(currentSchoolId); // Re-fetch
-      } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
-      }
+    setIsSubmitting(true);
+    const result = await deleteClassScheduleAction(itemId, currentSchoolId);
+    setIsSubmitting(false);
+    if (result.ok) {
+      toast({ title: "Schedule Item Deleted", variant: "destructive" });
+      if (currentSchoolId) loadPageData(currentSchoolId); // Re-fetch
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
   };
 
@@ -207,13 +208,38 @@ export default function ClassSchedulePage() {
                     <TableCell>{(item.teacher as Teacher)?.name || getTeacherName(item.teacher_id)}</TableCell>
                     <TableCell>{item.day_of_week}</TableCell>
                     <TableCell>{item.start_time} - {item.end_time}</TableCell>
-                    <TableCell className="space-x-1 text-right">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(item)} disabled={isSubmitting}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteItem(item.id)} disabled={isSubmitting}>
-                        {isSubmitting && editingItem?.id === item.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                      </Button>
+                    <TableCell className="text-right">
+                       <AlertDialog>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => handleOpenDialog(item)}>
+                                  <Edit2 className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                              <AlertDialogTrigger asChild>
+                                  <DropdownMenuItem className="text-destructive">
+                                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                  </DropdownMenuItem>
+                              </AlertDialogTrigger>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This action cannot be undone. This will permanently delete this schedule item.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteItem(item.id)} className="bg-destructive hover:bg-destructive/90">Continue</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))}

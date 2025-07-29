@@ -11,9 +11,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Subject, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, BookOpenText, Loader2, Search } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, BookOpenText, Loader2, Search, MoreHorizontal } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getSubjectsPageDataAction, addSubjectAction, updateSubjectAction, deleteSubjectAction } from './actions';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 export default function SubjectsPage() {
   const { toast } = useToast();
@@ -113,15 +115,13 @@ export default function SubjectsPage() {
   
   const handleDeleteSubject = async (subjectId: string) => {
     if (!currentSchoolId) return;
-    if (confirm("Are you sure you want to delete this subject?")) {
-      setIsSubmitting(true);
-      const result = await deleteSubjectAction(subjectId, currentSchoolId);
-      setIsSubmitting(false);
-      toast({ title: result.ok ? "Subject Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
-      if (result.ok) {
-        const adminUserId = localStorage.getItem('currentUserId');
-        if (adminUserId) loadInitialData(adminUserId);
-      }
+    setIsSubmitting(true);
+    const result = await deleteSubjectAction(subjectId, currentSchoolId);
+    setIsSubmitting(false);
+    toast({ title: result.ok ? "Subject Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
+    if (result.ok) {
+      const adminUserId = localStorage.getItem('currentUserId');
+      if (adminUserId) loadInitialData(adminUserId);
     }
   };
 
@@ -187,13 +187,39 @@ export default function SubjectsPage() {
                     <TableCell className="font-medium">{subject.name}</TableCell>
                     <TableCell>{subject.code}</TableCell>
                     <TableCell>{getAcademicYearName(subject.academic_year_id)}</TableCell>
-                    <TableCell className="space-x-1 text-right">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(subject)} disabled={isSubmitting}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteSubject(subject.id)} disabled={isSubmitting}>
-                         {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                      </Button>
+                    <TableCell className="text-right">
+                       <AlertDialog>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => handleOpenDialog(subject)}>
+                                  <Edit2 className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                              <AlertDialogTrigger asChild>
+                                  <DropdownMenuItem className="text-destructive">
+                                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                  </DropdownMenuItem>
+                              </AlertDialogTrigger>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the "{subject.name}" subject. 
+                                Deletion will fail if it's currently linked to any exams or class schedules.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteSubject(subject.id)} className="bg-destructive hover:bg-destructive/90">Continue</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))}

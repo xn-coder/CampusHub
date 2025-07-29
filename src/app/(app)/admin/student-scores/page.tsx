@@ -12,11 +12,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { Award, Filter, Search, User, BookOpen, CalendarCheck, UserCogIcon, FileText, Loader2, FileDown, TrendingUp, RefreshCcw, Download } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
-import { getStudentScoresPageDataAction, notifyStudentForReExamAction } from './actions';
+import { getStudentScoresPageDataAction } from './actions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type jsPDF from 'jspdf';
 import type { UserOptions } from 'jspdf-autotable';
+import Link from 'next/link';
 
 interface JsPDFWithAutoTable extends jsPDF {
   autoTable: (options: UserOptions) => jsPDF;
@@ -31,6 +32,7 @@ export default function AdminStudentScoresPage() {
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [allTeachers, setAllTeachers] = useState<Pick<Teacher, 'id' | 'name'>[]>([]); // Store only id and name
+  const [schoolDetails, setSchoolDetails] = useState<{ id: string, name: string, logo_url: string | null } | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
@@ -41,7 +43,6 @@ export default function AdminStudentScoresPage() {
   const [selectedExamFilter, setSelectedExamFilter] = useState<string>('all');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
 
-  const [isNotifying, setIsNotifying] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const adminUserId = localStorage.getItem('currentUserId');
@@ -65,6 +66,7 @@ export default function AdminStudentScoresPage() {
       setAllClasses(result.classes || []);
       setAllSubjects(result.subjects || []);
       setAllTeachers(result.teachers || []);
+      setSchoolDetails(result.school || null);
     } else {
       toast({ title: "Error loading data", description: result.message, variant: "destructive" });
     }
@@ -131,23 +133,6 @@ export default function AdminStudentScoresPage() {
     document.body.removeChild(link);
   };
   
-  const handleNotifyForReExam = async (studentId: string, examName: string) => {
-    setIsNotifying(prev => ({ ...prev, [studentId]: true }));
-    const result = await notifyStudentForReExamAction(studentId, examName);
-    if (result.ok) {
-      toast({
-        title: "Notification Sent",
-        description: result.message,
-      });
-    } else {
-      toast({
-        title: "Error Sending Notification",
-        description: result.message,
-        variant: "destructive",
-      });
-    }
-    setIsNotifying(prev => ({ ...prev, [studentId]: false }));
-  };
 
   const handlePrintResult = async (score: StudentScore) => {
     const { default: jsPDF } = await import('jspdf');
@@ -157,7 +142,7 @@ export default function AdminStudentScoresPage() {
     const examName = getExamName(score.exam_id);
     const subjectName = getSubjectName(score.subject_id);
     const maxMarks = score.max_marks ?? allExams.find(e => e.id === score.exam_id)?.max_marks ?? 100;
-    const schoolName = "CampusHub School"; // Mocked for now
+    const schoolName = schoolDetails?.name || "CampusHub School";
 
     const doc = new jsPDF() as JsPDFWithAutoTable;
 
@@ -294,14 +279,10 @@ export default function AdminStudentScoresPage() {
                         );
                     } else {
                         actionButton = (
-                            <Button 
-                              variant="secondary" 
-                              size="sm" 
-                              onClick={() => handleNotifyForReExam(studentId, examName)}
-                              disabled={isNotifying[studentId]}
-                            >
-                                {isNotifying[studentId] ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCcw className="h-3 w-3 mr-1" />} 
-                                Notify for Re-exam
+                           <Button asChild variant="secondary" size="sm">
+                                <Link href={`/communication?examId=${score.exam_id}&examName=${encodeURIComponent(examName)}&targetClassId=${score.class_id}`}>
+                                    <RefreshCcw className="h-3 w-3 mr-1" /> Notify for Re-exam
+                                </Link>
                             </Button>
                         );
                     }
