@@ -65,6 +65,7 @@ export async function postAnnouncementAction(
         author_name: input.author_name,
         posted_by_user_id: input.posted_by_user_id,
         posted_by_role: input.posted_by_role,
+        target_audience: input.target_audience || 'all',
         date: new Date().toISOString(),
         target_class_id: input.target_class_id || null,
         school_id: input.school_id || null,
@@ -174,16 +175,22 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
       } else {
         return { ok: false, message: "School context missing for admin." };
       }
-    } else if (school_id) {
-      // Teacher and Student only see announcements for their school
-      let classFilter = `target_class_id.is.null`; // School-wide announcements
-      if (user_role === 'student' && student_class_id) {
-        classFilter = `target_class_id.eq.${student_class_id},${classFilter}`;
-      } else if (user_role === 'teacher' && teacher_class_ids.length > 0) {
+    } else if (user_role === 'student' && school_id) {
+      // Students see their class-specific announcements, OR school-wide ones for students/all.
+      query = query
+        .eq('school_id', school_id)
+        .or(`target_class_id.eq.${student_class_id},and(target_class_id.is.null,target_audience.in.("all","students"))`);
+
+    } else if (user_role === 'teacher' && school_id) {
+      // Teachers see announcements for their classes, OR school-wide ones for teachers/all.
+      let classFilter = `target_class_id.is.null,and(target_audience.in.("all","teachers"))`;
+      if (teacher_class_ids.length > 0) {
         classFilter = `target_class_id.in.(${teacher_class_ids.join(',')}),${classFilter}`;
       }
-      query = query.eq('school_id', school_id).or(classFilter);
-      
+       query = query
+        .eq('school_id', school_id)
+        .or(classFilter);
+
     } else {
       // User has no school context and is not superadmin, so they see nothing.
       return { ok: true, announcements: [] };

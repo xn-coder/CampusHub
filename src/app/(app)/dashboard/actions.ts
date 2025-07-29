@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { UserRole, AnnouncementDB, CalendarEventDB, Student, Teacher, SchoolEntry as School, ClassData, Assignment, LeaveRequestStatus, Expense } from '@/types';
 import { subDays, startOfDay, endOfDay, addDays, formatISO } from 'date-fns';
 import { checkStudentFeeStatusAction } from '@/app/(app)/admin/student-fees/actions';
+import { getAnnouncementsAction } from '@/app/(app)/communication/actions';
 
 
 interface DashboardData {
@@ -64,27 +65,25 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
       }
     }
 
-    // Fetch common data (announcements, events)
-    if (effectiveSchoolId && (userRole === 'student' || userRole === 'teacher' || userRole === 'admin')) {
-      // Fetch recent announcements
-      let announcementQuery = supabase
-        .from('announcements')
-        .select('id, title, date, author_name, posted_by_role, target_class:target_class_id ( name, division )')
-        .order('date', { ascending: false })
-        .limit(5); // Fetch more to filter later if needed
+    // --- Fetch Common Data (Announcements & Events) ---
+    const { data: studentProfileData, error: studentProfileError } = await supabase.from('students').select('id, class_id').eq('user_id', userId).maybeSingle();
+    const { data: teacherProfileData, error: teacherProfileError } = await supabase.from('teachers').select('id').eq('user_id', userId).maybeSingle();
+    const teacherClassIds = teacherProfileData ? (await supabase.from('classes').select('id').eq('teacher_id', teacherProfileData.id)).data?.map(c => c.id) : [];
 
-      if (userRole === 'admin') {
-          announcementQuery = announcementQuery.or(`school_id.eq.${effectiveSchoolId},school_id.is.null`);
-      } else {
-          // For teachers and students, only show their school's announcements
-          announcementQuery = announcementQuery.eq('school_id', effectiveSchoolId);
-      }
-        
-      const { data: announcements, error: annError } = await announcementQuery;
-      if (annError) console.error("Error fetching announcements for dashboard:", annError.message);
-      else dashboardData.recentAnnouncements = (announcements || []).slice(0, 3); // Limit to 3 for display
-
-      // Fetch upcoming events
+    const announcementsResult = await getAnnouncementsAction({
+        school_id: effectiveSchoolId,
+        user_role: userRole,
+        user_id: userId,
+        student_class_id: studentProfileData?.class_id,
+        teacher_class_ids: teacherClassIds
+    });
+    if (announcementsResult.ok) {
+        dashboardData.recentAnnouncements = (announcementsResult.announcements || []).slice(0, 3);
+    } else {
+        console.error("Error fetching announcements for dashboard:", announcementsResult.message);
+    }
+    
+    if (effectiveSchoolId && userRole !== 'superadmin') {
       const today = formatISO(startOfDay(new Date()), { representation: 'date' });
       const nextWeek = formatISO(endOfDay(addDays(new Date(), 7)), { representation: 'date' });
       const { data: events, error: eventError } = await supabase
@@ -98,39 +97,19 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
         .limit(3);
       if (eventError) console.error("Error fetching events for dashboard:", eventError.message);
       else dashboardData.upcomingEvents = events || [];
-    } else if (userRole === 'superadmin' || !effectiveSchoolId) {
-        // Superadmin or roles without a determined school context see no school-specific common data
-        // For superadmin, let's show only global announcements.
-        if (userRole === 'superadmin') {
-             const { data: announcements, error: annError } = await supabase
-                .from('announcements')
-                .select('id, title, date, author_name, posted_by_role, target_class:target_class_id ( name, division )')
-                .is('school_id', null) // Only global announcements
-                .order('date', { ascending: false })
-                .limit(3);
-            if(annError) console.error("Error fetching global announcements for superadmin dashboard:", annError.message);
-            else dashboardData.recentAnnouncements = announcements || [];
-        } else {
-             dashboardData.recentAnnouncements = [];
-        }
+    } else {
         dashboardData.upcomingEvents = [];
     }
 
 
     // Role-specific data fetching
     if (userRole === 'student' && effectiveSchoolId) {
-      const { data: studentProfile, error: studentError } = await supabase
-        .from('students')
-        .select('id, class_id')
-        .eq('user_id', userId)
-        .single();
-
-      if (studentProfile) {
-        if (studentProfile.class_id) {
+      if (studentProfileData) {
+        if (studentProfileData.class_id) {
             const { count, error: assignmentError } = await supabase
             .from('assignments')
             .select('id', { count: 'exact', head: true })
-            .eq('class_id', studentProfile.class_id)
+            .eq('class_id', studentProfileData.class_id)
             .eq('school_id', effectiveSchoolId)
             .gte('due_date', formatISO(new Date(), { representation: 'date' }));
             if (assignmentError) console.error("Error fetching student assignments count:", assignmentError.message);
@@ -138,20 +117,14 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
         }
 
         // Check fee status
-        const feeStatusResult = await checkStudentFeeStatusAction(studentProfile.id, effectiveSchoolId);
+        const feeStatusResult = await checkStudentFeeStatusAction(studentProfileData.id, effectiveSchoolId);
         if (feeStatusResult.ok) {
             dashboardData.feeStatus = { isDefaulter: feeStatusResult.isDefaulter, message: feeStatusResult.message };
         }
       }
     } else if (userRole === 'teacher' && effectiveSchoolId) {
-      const { data: teacherProfile, error: teacherError } = await supabase
-        .from('teachers')
-        .select('id') 
-        .eq('user_id', userId)
-        .single();
-
-      if (teacherProfile) {
-        const teacherProfileId = teacherProfile.id;
+      if (teacherProfileData) {
+        const teacherProfileId = teacherProfileData.id;
         
         const { data: classes, error: classesError } = await supabase
           .from('classes')

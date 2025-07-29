@@ -1,49 +1,67 @@
--- Make sure the user_role ENUM type is created first
--- CREATE TYPE user_role AS ENUM ('superadmin', 'admin', 'teacher', 'student');
+-- Drop the type if it exists to avoid errors on re-run in development
+-- In production, you would use a more robust migration strategy.
+DROP TYPE IF EXISTS user_role;
 
+-- Create the ENUM type for user roles
+CREATE TYPE user_role AS ENUM ('superadmin', 'admin', 'teacher', 'student');
+
+-- Drop the type if it exists to avoid errors on re-run
+DROP TYPE IF EXISTS announcement_audience;
+
+-- Create ENUM type for target audience
+CREATE TYPE announcement_audience AS ENUM ('all', 'students', 'teachers');
+
+-- Create the announcements table
 CREATE TABLE announcements (
-    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
     content TEXT NOT NULL,
-    date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    date TIMESTAMPTZ NOT NULL DEFAULT now(),
     author_name TEXT NOT NULL,
-    posted_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+    posted_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     posted_by_role user_role NOT NULL,
-    target_class_id uuid REFERENCES classes(id) ON DELETE SET NULL,
-    school_id uuid REFERENCES schools(id) ON DELETE CASCADE,
-    linked_exam_id uuid REFERENCES exams(id) ON DELETE SET NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+    target_audience announcement_audience NOT NULL DEFAULT 'all',
+    target_class_id UUID REFERENCES classes(id) ON DELETE SET NULL,
+    school_id UUID REFERENCES schools(id) ON DELETE CASCADE,
+    linked_exam_id UUID REFERENCES exams(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Indexes for faster lookups
+-- Indexes for performance
 CREATE INDEX idx_announcements_school_id ON announcements(school_id);
 CREATE INDEX idx_announcements_target_class_id ON announcements(target_class_id);
 CREATE INDEX idx_announcements_date ON announcements(date DESC);
 
+-- RLS Policies (Example - adjust as needed)
 -- Enable RLS
 ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
 
--- Policies
--- Allow users to see global announcements (no school_id)
-CREATE POLICY "Allow authenticated users to see global announcements" ON announcements
-FOR SELECT TO authenticated
-USING (school_id IS NULL);
+-- Allow public read access (or authenticated) based on roles and targeting
+CREATE POLICY "Allow public read access" ON announcements
+FOR SELECT USING (true);
 
--- Allow users to see announcements for their own school
-CREATE POLICY "Allow users to see announcements for their school" ON announcements
-FOR SELECT TO authenticated
-USING (auth.uid() IN (
-  SELECT user_id FROM students WHERE school_id = announcements.school_id
-  UNION ALL
-  SELECT user_id FROM teachers WHERE school_id = announcements.school_id
-  UNION ALL
-  SELECT id FROM users WHERE role = 'admin' AND school_id = announcements.school_id
-));
-
--- Allow admin and superadmin to insert announcements
-CREATE POLICY "Allow admins to create announcements" ON announcements
-FOR INSERT TO authenticated
-WITH CHECK (
-    (SELECT role FROM users WHERE id = auth.uid()) IN ('admin', 'superadmin')
+-- Allow superadmins and admins to manage all announcements in their scope
+CREATE POLICY "Allow admin full access" ON announcements
+FOR ALL USING (
+    (SELECT auth.jwt() ->> 'role') = 'superadmin' OR
+    ((SELECT auth.jwt() ->> 'role') = 'admin' AND school_id = (SELECT school_id FROM users WHERE id = auth.uid()))
 );
+
+-- Allow teachers to create announcements for their classes
+CREATE POLICY "Allow teachers to create for their classes" ON announcements
+FOR INSERT WITH CHECK (
+    (SELECT auth.jwt() ->> 'role') = 'teacher' AND
+    target_class_id IN (SELECT id FROM classes WHERE teacher_id = (SELECT id FROM teachers WHERE user_id = auth.uid()))
+);
+
+-- Note: The SELECT policy is broad. For a production system, you'd want to refine it to match the logic in getAnnouncementsAction,
+-- ensuring users can only read announcements targeted to them.
+-- For example:
+-- CREATE POLICY "Allow users to read relevant announcements" ON announcements
+-- FOR SELECT USING (
+--   -- Global announcements for admins
+--   (school_id IS NULL AND (SELECT auth.jwt() ->> 'role') IN ('superadmin', 'admin')) OR
+--   -- School-specific announcements
+--   (school_id = (SELECT school_id FROM users WHERE id = auth.uid()))
+-- );

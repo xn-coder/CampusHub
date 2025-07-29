@@ -1,4 +1,5 @@
 
+
 import type { LucideIcon } from 'lucide-react';
 
 // ENUMS from DB - Ensure these match your SQL ENUM definitions
@@ -177,8 +178,9 @@ export interface AnnouncementDB {
   author_name: string;
   posted_by_user_id: string;
   posted_by_role: UserRole;
+  target_audience: 'students' | 'teachers' | 'all';
   target_class_id?: string | null;
-  school_id: string;
+  school_id: string | null;
   linked_exam_id?: string | null;
   created_at?: string;
   updated_at?: string;
