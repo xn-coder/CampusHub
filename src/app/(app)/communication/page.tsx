@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -154,7 +153,7 @@ function CommunicationPageForm() {
       
       const canFetch = currentUserRole === 'superadmin' || (currentUserRole && currentSchoolId);
 
-      if (canFetch || currentUserRole === 'superadmin') {
+      if (canFetch) {
         const result = await getAnnouncementsAction(params);
         if (result.ok && result.announcements) {
           setAllAnnouncements(result.announcements);
