@@ -15,8 +15,9 @@ interface PostAnnouncementInput {
   author_name: string;
   posted_by_user_id: string;
   posted_by_role: UserRole;
+  target_audience?: 'students' | 'teachers' | 'all';
   target_class_id?: string;
-  school_id?: string | null; // Can be null for superadmin global announcements
+  school_id?: string | null; 
   linked_exam_id?: string;
 }
 
@@ -66,7 +67,7 @@ export async function postAnnouncementAction(
         posted_by_role: input.posted_by_role,
         date: new Date().toISOString(), 
         target_class_id: input.target_class_id || null, 
-        school_id: input.school_id || null, // Allow null for global announcements
+        school_id: input.school_id || null,
       })
       .select('*, target_class:target_class_id(name, division, teacher_id)')
       .single();
@@ -98,26 +99,26 @@ export async function postAnnouncementAction(
       `;
       
       let recipientEmails: string[] = [];
-      if (!announcement.school_id && announcement.posted_by_role === 'superadmin') {
+      if (input.posted_by_role === 'superadmin') {
           // Global announcement for all admins
           recipientEmails = await getAllAdminEmails();
-      } else if (announcement.school_id) {
-        // School-specific announcement
-        const targetClassId = input.target_class_id;
-        if (targetClassId) {
-          // Class-specific announcement, send to students and the teacher of that class
-          const studentEmails = await getStudentEmailsByClassId(targetClassId, announcement.school_id);
-          recipientEmails.push(...studentEmails);
-          
-          if (announcement.target_class?.teacher_id) {
+      } else if (input.posted_by_role === 'admin' && input.school_id) {
+          if (input.target_class_id) {
+            const studentEmails = await getStudentEmailsByClassId(input.target_class_id, input.school_id);
+            recipientEmails.push(...studentEmails);
+            if (announcement.target_class?.teacher_id) {
               const teacherEmail = await getTeacherEmailByTeacherProfileId(announcement.target_class.teacher_id);
               if (teacherEmail) recipientEmails.push(teacherEmail);
+            }
+          } else {
+            const rolesToEmail: UserRole[] = [];
+            if(input.target_audience === 'students') rolesToEmail.push('student');
+            if(input.target_audience === 'teachers') rolesToEmail.push('teacher');
+            if(input.target_audience === 'all') rolesToEmail.push('student', 'teacher');
+            recipientEmails = await getAllUserEmailsInSchool(input.school_id, rolesToEmail);
           }
-        } else {
-          // School-wide announcement, send to all relevant roles in that school
-          const rolesToEmail: UserRole[] = ['student', 'teacher', 'admin'];
-          recipientEmails = await getAllUserEmailsInSchool(announcement.school_id, rolesToEmail);
-        }
+      } else if (input.posted_by_role === 'teacher' && input.school_id && input.target_class_id) {
+          recipientEmails = await getStudentEmailsByClassId(input.target_class_id, input.school_id);
       }
       
       recipientEmails = [...new Set(recipientEmails)];
@@ -225,3 +226,4 @@ export async function getExamDetailsForLinkingAction(examId: string): Promise<{
     }
     return { ok: true, exam: data as Exam };
 }
+

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -17,6 +18,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { format, parseISO } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+
 
 interface GetAnnouncementsParams {
   school_id?: string | null;
@@ -31,7 +34,14 @@ function CommunicationPageForm() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>([]);
-  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', authorName: '', targetClassId: '', linkedExamId: '' });
+  const [newAnnouncement, setNewAnnouncement] = useState({ 
+    title: '', 
+    content: '', 
+    authorName: '', 
+    targetClassId: '', 
+    targetAudience: 'all' as 'students' | 'teachers' | 'all',
+    linkedExamId: '' 
+  });
   const [showForm, setShowForm] = useState(false);
   const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false); 
@@ -162,7 +172,6 @@ function CommunicationPageForm() {
           setAllAnnouncements([]);
         }
       } else if (currentUserRole && !currentSchoolId) {
-         toast({ title: "Info", description: "No school association found. Cannot load announcements.", variant: "default" });
          setAllAnnouncements([]);
       }
       setIsLoading(false);
@@ -181,6 +190,11 @@ function CommunicationPageForm() {
   const handleSelectChange = (name: keyof typeof newAnnouncement) => (value: string) => {
     setNewAnnouncement(prev => ({ ...prev, [name]: value === "none" ? "" : value }));
   };
+  
+   const handleRadioChange = (name: keyof typeof newAnnouncement) => (value: 'students' | 'teachers' | 'all') => {
+    setNewAnnouncement(prev => ({ ...prev, [name]: value }));
+  };
+
 
   const handleSubmitAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,14 +217,8 @@ function CommunicationPageForm() {
     
     setIsSubmitting(true);
     const result = await postAnnouncementAction({
-      title: newAnnouncement.title.trim(),
-      content: newAnnouncement.content.trim(),
-      author_name: newAnnouncement.authorName.trim(),
-      posted_by_user_id: currentUserId,
-      posted_by_role: currentUserRole,
-      target_class_id: newAnnouncement.targetClassId || undefined,
-      school_id: schoolIdForPost,
-      linked_exam_id: newAnnouncement.linkedExamId || undefined,
+      ...newAnnouncement,
+      school_id: schoolIdForPost
     });
     setIsSubmitting(false);
 
@@ -227,7 +235,7 @@ function CommunicationPageForm() {
       const fetchResult = await getAnnouncementsAction(params);
       if (fetchResult.ok && fetchResult.announcements) setAllAnnouncements(fetchResult.announcements);
 
-      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', linkedExamId: '' })); 
+      setNewAnnouncement(prev => ({ title: '', content: '', authorName: prev.authorName, targetClassId: '', targetAudience: 'all', linkedExamId: '' })); 
       setShowForm(false);
     } else {
       toast({ title: "Error", description: result.message || "Failed to post announcement.", variant: "destructive" });
@@ -269,25 +277,37 @@ function CommunicationPageForm() {
                 <Input id="authorName" name="authorName" value={newAnnouncement.authorName} onChange={handleInputChange} placeholder="e.g., Principal's Office, Your Name" required disabled={isSubmitting}/>
               </div>
               
-              {currentUserRole !== 'superadmin' && (
+              {currentUserRole === 'admin' && (
+                 <div>
+                    <Label>Target Audience</Label>
+                    <RadioGroup value={newAnnouncement.targetAudience} onValueChange={handleRadioChange('targetAudience')} className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
+                       <div className="flex items-center space-x-2"><RadioGroupItem value="all" id="target-all"/><Label htmlFor="target-all">All Users</Label></div>
+                       <div className="flex items-center space-x-2"><RadioGroupItem value="students" id="target-students"/><Label htmlFor="target-students">Students Only</Label></div>
+                       <div className="flex items-center space-x-2"><RadioGroupItem value="teachers" id="target-teachers"/><Label htmlFor="target-teachers">Teachers Only</Label></div>
+                    </RadioGroup>
+                 </div>
+              )}
+
+              {(currentUserRole === 'admin' || currentUserRole === 'teacher') && (
                 <div>
                   <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
                   <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
                     <SelectTrigger id="targetClassId">
-                      <SelectValue placeholder="General Announcement" />
+                      <SelectValue placeholder="General Announcement (School-wide)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">General Announcement (School-wide)</SelectItem>
+                      <SelectItem value="none">General (School-wide, respecting audience filter)</SelectItem>
                       {availableClassesForTargeting.map(cls => (
                         <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">Leave as "General" to send to all selected audience members, or pick a class to override.</p>
                 </div>
               )}
                {currentUserRole === 'superadmin' && (
                 <div className="p-3 bg-muted/50 rounded-md text-sm text-muted-foreground">
-                    You are posting as a Super Admin. This announcement will be visible to all school owners (Admins) only.
+                    You are posting as Super Admin. This announcement will be visible only to all school owners (Admins).
                 </div>
               )}
 
