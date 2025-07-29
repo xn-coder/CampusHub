@@ -163,8 +163,8 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
       .order('date', { ascending: false });
 
     if (user_role === 'superadmin') {
-      // Superadmin sees all announcements from all schools + global ones
-      // No specific filter needed, fetches everything.
+      // Superadmin sees ONLY global announcements (school_id is null)
+      query = query.is('school_id', null);
     } else if (user_role === 'admin') {
       // Admin sees announcements for their school AND global announcements
       if (school_id) {
