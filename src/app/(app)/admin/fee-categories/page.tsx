@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { FeeCategory } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Tags, Search, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Tags, Search, Loader2, Eye } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { createFeeCategoryAction, updateFeeCategoryAction, deleteFeeCategoryAction, getFeeCategoriesAction } from './actions';
@@ -37,8 +37,10 @@ export default function FeeCategoriesPage() {
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<FeeCategory | null>(null);
+  const [viewingCategory, setViewingCategory] = useState<FeeCategory | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   const [name, setName] = useState('');
@@ -84,16 +86,21 @@ export default function FeeCategoriesPage() {
     setEditingCategory(null);
   };
 
-  const handleOpenDialog = (category?: FeeCategory) => {
-    if (category) {
-      setEditingCategory(category);
-      setName(category.name);
-      setDescription(category.description || '');
-      setAmount(category.amount ?? '');
-    } else {
-      resetForm();
+  const handleOpenDialog = (category?: FeeCategory, mode: 'edit' | 'view' = 'edit') => {
+    if (mode === 'view') {
+        setViewingCategory(category || null);
+        setIsViewDialogOpen(true);
+    } else { // 'edit' or 'create'
+        if (category) {
+            setEditingCategory(category);
+            setName(category.name);
+            setDescription(category.description || '');
+            setAmount(category.amount ?? '');
+        } else {
+            resetForm();
+        }
+        setIsFormDialogOpen(true);
     }
-    setIsDialogOpen(true);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -125,7 +132,7 @@ export default function FeeCategoriesPage() {
     if (result.ok) {
       toast({ title: editingCategory ? "Fee Category Updated" : "Fee Category Added", description: result.message });
       resetForm();
-      setIsDialogOpen(false);
+      setIsFormDialogOpen(false);
       if (currentSchoolId) fetchFeeCategories(currentSchoolId); // Re-fetch after action
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -138,7 +145,7 @@ export default function FeeCategoriesPage() {
         toast({ title: "Error", description: "Cannot delete category without school context.", variant: "destructive"});
         return;
     }
-    if (confirm("Are you sure you want to delete this fee category?")) {
+    if (confirm("Are you sure you want to delete this fee category? This action cannot be undone if payments are associated with it.")) {
       setIsSubmitting(true);
       const result = await deleteFeeCategoryAction(categoryId, currentSchoolId);
       toast({ title: result.ok ? "Fee Category Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
@@ -202,13 +209,16 @@ export default function FeeCategoriesPage() {
                 {filteredCategories.map((category) => (
                   <TableRow key={category.id}>
                     <TableCell className="font-medium">{category.name}</TableCell>
-                    <TableCell>{category.description || 'N/A'}</TableCell>
+                    <TableCell className="max-w-xs truncate" title={category.description || ''}>{category.description || 'N/A'}</TableCell>
                     <TableCell>{category.amount !== undefined && category.amount !== null ? <><span className="font-mono">₹</span>{category.amount.toFixed(2)}</> : 'N/A'}</TableCell>
                     <TableCell className="space-x-1 text-right">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(category)} disabled={isSubmitting}>
+                      <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(category, 'view')} disabled={isSubmitting} title="View Details">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(category, 'edit')} disabled={isSubmitting} title="Edit Category">
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteCategory(category.id)} disabled={isSubmitting}>
+                      <Button variant="destructive" size="icon" onClick={() => handleDeleteCategory(category.id)} disabled={isSubmitting} title="Delete Category">
                         {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                       </Button>
                     </TableCell>
@@ -220,7 +230,7 @@ export default function FeeCategoriesPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingCategory ? 'Edit' : 'Add New'} Fee Category</DialogTitle>
@@ -248,6 +258,32 @@ export default function FeeCategoriesPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>View Fee Category</DialogTitle>
+            <DialogDescription>Details for fee category: {viewingCategory?.name}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+              <div>
+                <Label>Category Name</Label>
+                <p className="font-semibold text-lg">{viewingCategory?.name}</p>
+              </div>
+              <div>
+                <Label>Amount</Label>
+                <p className="font-mono text-base">{viewingCategory?.amount !== undefined && viewingCategory?.amount !== null ? `₹${viewingCategory.amount.toFixed(2)}` : 'Not set (Varies per assignment)'}</p>
+              </div>
+              <div>
+                <Label>Description</Label>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingCategory?.description || 'No description provided.'}</p>
+              </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
