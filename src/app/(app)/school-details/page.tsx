@@ -7,13 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useState, type ChangeEvent, useEffect, type FormEvent } from 'react';
-import type { SchoolDetails, Holiday, UserRole } from '@/types';
-import { Calendar } from '@/components/ui/calendar';
-import { PlusCircle, Trash2, Loader2, Save, Ban, UploadCloud } from 'lucide-react';
-import { format, parseISO, isValid } from 'date-fns';
+import type { SchoolDetails, UserRole } from '@/types';
+import { Loader2, Ban, UploadCloud } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { getSchoolDetailsAndHolidaysAction, updateSchoolDetailsAction, addHolidayAction, deleteHolidayAction } from './actions';
+import { getSchoolDetailsAction, updateSchoolDetailsAction } from './actions';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Image from 'next/image';
 
@@ -36,13 +34,9 @@ async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
 export default function SchoolDetailsPage() {
   const { toast } = useToast();
   const [schoolDetails, setSchoolDetails] = useState<Partial<SchoolDetails>>({});
-  const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const [newHolidayName, setNewHolidayName] = useState('');
-  const [newHolidayDate, setNewHolidayDate] = useState<Date | undefined>(new Date());
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmittingDetails, setIsSubmittingDetails] = useState(false);
-  const [isSubmittingHoliday, setIsSubmittingHoliday] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   
@@ -65,10 +59,9 @@ export default function SchoolDetailsPage() {
       setCurrentSchoolId(schoolId);
 
       if (schoolId) {
-        const result = await getSchoolDetailsAndHolidaysAction(schoolId);
+        const result = await getSchoolDetailsAction(schoolId);
         if (result.ok) {
           setSchoolDetails(result.details || {});
-          setHolidays((result.holidays || []).map(h => ({ ...h, date: new Date(h.date.replace(/-/g, '\/')) })));
           if (result.details?.logo_url) {
             setLogoPreview(result.details.logo_url);
           }
@@ -124,7 +117,7 @@ export default function SchoolDetailsPage() {
     if (result.ok) {
         toast({ title: "School Details Updated", description: result.message });
         if (currentSchoolId) {
-            const freshData = await getSchoolDetailsAndHolidaysAction(currentSchoolId);
+            const freshData = await getSchoolDetailsAction(currentSchoolId);
             if (freshData.ok && freshData.details) {
                 setSchoolDetails(freshData.details);
                 setLogoPreview(freshData.details.logo_url || null);
@@ -134,41 +127,6 @@ export default function SchoolDetailsPage() {
         toast({ title: "Error", description: result.message, variant: "destructive" });
     }
     setIsSubmittingDetails(false);
-  };
-
-  const handleAddHoliday = async () => {
-    if (!newHolidayName || !newHolidayDate || !isValid(newHolidayDate) || !currentSchoolId) {
-      toast({ title: "Error", description: "Please provide a valid name and date.", variant: "destructive" });
-      return;
-    }
-    setIsSubmittingHoliday(true);
-    const result = await addHolidayAction({
-      name: newHolidayName,
-      date: format(newHolidayDate, 'yyyy-MM-dd'),
-      school_id: currentSchoolId,
-    });
-
-    if (result.ok) {
-      toast({ title: "Holiday Added", description: result.message });
-      setNewHolidayName('');
-      setNewHolidayDate(new Date());
-      // Re-fetch holidays
-      const holidaysRes = await getSchoolDetailsAndHolidaysAction(currentSchoolId);
-      if (holidaysRes.ok) setHolidays((holidaysRes.holidays || []).map(h => ({ ...h, date: new Date(h.date.replace(/-/g, '\/')) })));
-    } else {
-       toast({ title: "Error", description: result.message, variant: "destructive" });
-    }
-    setIsSubmittingHoliday(false);
-  };
-  
-  const handleRemoveHoliday = async (id: string) => {
-    const result = await deleteHolidayAction(id);
-    if (result.ok) {
-      toast({ title: "Holiday Removed", variant: "destructive" });
-      setHolidays(prev => prev.filter(h => h.id !== id));
-    } else {
-       toast({ title: "Error", description: result.message, variant: "destructive" });
-    }
   };
 
   if (isLoading) {
@@ -192,7 +150,7 @@ export default function SchoolDetailsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="School Details" description="Manage school-wide information and holiday schedule." />
+      <PageHeader title="School Details" description="Manage school-wide information." />
 
       <Card>
         <CardHeader>
@@ -227,6 +185,7 @@ export default function SchoolDetailsPage() {
                             )}
                         </div>
                         <Label htmlFor="logoFile" className="w-full text-center cursor-pointer text-sm text-primary hover:underline">
+                            <UploadCloud className="w-5 h-5 mr-2 inline-block"/>
                             Upload Logo (PNG, JPG &lt;2MB)
                         </Label>
                         <Input id="logoFile" name="logoFile" type="file" className="hidden" accept="image/png, image/jpeg" onChange={handleLogoFileChange} />
@@ -249,60 +208,6 @@ export default function SchoolDetailsPage() {
               </Button>
             </CardContent>
         </form>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Holiday Schedule</CardTitle>
-          <CardDescription>Manage the school's holiday calendar. Newest holidays are listed first.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-2 space-y-4">
-                <div>
-                    <Label htmlFor="newHolidayName">Holiday Name</Label>
-                    <Input id="newHolidayName" value={newHolidayName} onChange={(e) => setNewHolidayName(e.target.value)} placeholder="e.g. Winter Break" />
-                </div>
-                 <div>
-                    <Label>Selected Date: {newHolidayDate ? format(newHolidayDate, 'PPP') : 'None'}</Label>
-                    <div className="mt-2">
-                        <Button onClick={handleAddHoliday} className="w-full" disabled={isSubmittingHoliday}>
-                            {isSubmittingHoliday ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />} 
-                            Add Holiday
-                        </Button>
-                    </div>
-                 </div>
-            </div>
-             <div className="md:col-span-1 flex justify-center">
-                <Calendar 
-                    mode="single" 
-                    selected={newHolidayDate} 
-                    onSelect={setNewHolidayDate} 
-                    className="rounded-md border p-3 inline-block"
-                    initialFocus
-                />
-            </div>
-          </div>
-          <h4 className="text-lg font-medium mt-6 mb-2">Current Holidays:</h4>
-          {isLoading ? (
-             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
-          ) : holidays.length > 0 ? (
-            <ul className="space-y-2">
-              {holidays.map(holiday => (
-                <li key={holiday.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
-                  <div>
-                    <span className="font-medium">{holiday.name}</span> - <span className="text-sm text-muted-foreground">{format(new Date(holiday.date), "MMMM d, yyyy")}</span>
-                  </div>
-                  <Button variant="ghost" size="icon" onClick={() => handleRemoveHoliday(holiday.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-muted-foreground text-center py-4">No holidays added yet.</p>
-          )}
-        </CardContent>
       </Card>
     </div>
   );

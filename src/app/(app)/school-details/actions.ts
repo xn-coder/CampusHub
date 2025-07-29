@@ -3,34 +3,20 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { Holiday, SchoolDetails } from '@/types';
+import type { SchoolDetails } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
-export async function getSchoolDetailsAndHolidaysAction(schoolId: string): Promise<{
-    ok: boolean; message?: string; details?: SchoolDetails | null; holidays?: Holiday[];
+export async function getSchoolDetailsAction(schoolId: string): Promise<{
+    ok: boolean; message?: string; details?: SchoolDetails | null;
 }> {
     if (!schoolId) return { ok: false, message: "School ID is required." };
     const supabase = createSupabaseServerClient();
     try {
-        const [detailsRes, holidaysRes] = await Promise.all([
-            supabase.from('schools').select('*').eq('id', schoolId).single(),
-            supabase.from('holidays').select('*').eq('school_id', schoolId).order('date', { ascending: false })
-        ]);
+        const { data, error } = await supabase.from('schools').select('*').eq('id', schoolId).single();
 
-        if (detailsRes.error) throw new Error(`Fetching school details failed: ${detailsRes.error.message}`);
+        if (error) throw new Error(`Fetching school details failed: ${error.message}`);
         
-        let holidaysData: Holiday[] = [];
-        if (holidaysRes.error) {
-            if (holidaysRes.error.message.includes('relation "public.holidays" does not exist')) {
-                console.warn("Holidays table does not exist. Returning empty array.");
-            } else {
-                throw new Error(`Fetching holidays failed: ${holidaysRes.error.message}`);
-            }
-        } else {
-            holidaysData = holidaysRes.data;
-        }
-        
-        return { ok: true, details: detailsRes.data, holidays: holidaysData };
+        return { ok: true, details: data };
 
     } catch (e: any) {
         return { ok: false, message: e.message || "An unexpected error occurred." };
@@ -68,7 +54,7 @@ export async function updateSchoolDetailsAction(formData: FormData): Promise<{ o
 
             if (oldLogoUrl && oldLogoUrl.includes(process.env.NEXT_PUBLIC_SUPABASE_URL!)) {
                 const oldFilePath = new URL(oldLogoUrl).pathname.replace(`/storage/v1/object/public/campushub/`, '');
-                const { error: deleteError } = await supabase.storage.from('campushub').remove([oldFilePath]);
+                const { error: deleteError } = await supabase.storage.from('campushub').remove([oldFilePath.replace('/public/','')]);
                 if (deleteError) {
                     console.warn(`Failed to delete old school logo: ${deleteError.message}`);
                 }
@@ -85,33 +71,4 @@ export async function updateSchoolDetailsAction(formData: FormData): Promise<{ o
         console.error("Error updating school details:", e);
         return { ok: false, message: `Database error: ${e.message}` };
     }
-}
-
-
-export async function addHolidayAction(holiday: Omit<Holiday, 'id'>): Promise<{ ok: boolean; message: string }> {
-    const supabase = createSupabaseServerClient();
-    const { error } = await supabase.from('holidays').insert({ ...holiday, id: uuidv4() });
-    
-    if (error) {
-        console.error("Error adding holiday:", error);
-        return { ok: false, message: `Database error: ${error.message}` };
-    }
-    revalidatePath('/school-details');
-    revalidatePath('/admin/attendance');
-    revalidatePath('/teacher/attendance');
-    return { ok: true, message: 'Holiday added successfully.' };
-}
-
-export async function deleteHolidayAction(id: string): Promise<{ ok: boolean; message: string }> {
-    const supabase = createSupabaseServerClient();
-    const { error } = await supabase.from('holidays').delete().eq('id', id);
-
-    if (error) {
-        console.error("Error deleting holiday:", error);
-        return { ok: false, message: `Database error: ${error.message}` };
-    }
-    revalidatePath('/school-details');
-    revalidatePath('/admin/attendance');
-    revalidatePath('/teacher/attendance');
-    return { ok: true, message: 'Holiday deleted successfully.' };
 }
