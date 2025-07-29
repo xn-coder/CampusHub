@@ -81,7 +81,9 @@ export default function ManageStudentsPage() {
       .select('id, name, email, class_id, profile_picture_url, user_id, school_id, status, roll_number')
       .eq('school_id', schoolId);
 
-    if (!showTerminated) {
+    if (showTerminated) {
+      query = query.eq('status', 'Terminated');
+    } else {
       query = query.or('status.eq.Active,status.is.null');
     }
 
