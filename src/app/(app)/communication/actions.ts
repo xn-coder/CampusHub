@@ -68,6 +68,7 @@ export async function postAnnouncementAction(
         date: new Date().toISOString(),
         target_class_id: input.target_class_id || null,
         school_id: input.school_id || null,
+        linked_exam_id: input.linked_exam_id || null,
       })
       .select('*, target_class:target_class_id(name, division, teacher_id)')
       .single();
@@ -114,7 +115,7 @@ export async function postAnnouncementAction(
             const rolesToEmail: UserRole[] = [];
             if(input.target_audience === 'students') rolesToEmail.push('student');
             if(input.target_audience === 'teachers') rolesToEmail.push('teacher');
-            if(input.target_audience === 'all') rolesToEmail.push('student', 'teacher');
+            if(input.target_audience === 'all') rolesToEmail.push('student', 'teacher', 'admin'); // Admin should also get general school announcements
             recipientEmails = await getAllUserEmailsInSchool(input.school_id, rolesToEmail);
           }
       } else if (input.posted_by_role === 'teacher' && input.school_id && input.target_class_id) {
@@ -175,20 +176,14 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
       }
     } else if (school_id) {
       // Teacher and Student only see announcements for their school
-      query = query.eq('school_id', school_id);
-      if (user_role === 'student') {
-        if (student_class_id) {
-          query = query.or(`target_class_id.eq.${student_class_id},target_class_id.is.null`);
-        } else {
-          query = query.is('target_class_id', null);
-        }
-      } else if (user_role === 'teacher') {
-        if (teacher_class_ids && teacher_class_ids.length > 0) {
-          query = query.or(`target_class_id.in.(${teacher_class_ids.join(',')}),target_class_id.is.null`);
-        } else {
-          query = query.is('target_class_id', null);
-        }
+      let classFilter = `target_class_id.is.null`; // School-wide announcements
+      if (user_role === 'student' && student_class_id) {
+        classFilter = `target_class_id.eq.${student_class_id},${classFilter}`;
+      } else if (user_role === 'teacher' && teacher_class_ids.length > 0) {
+        classFilter = `target_class_id.in.(${teacher_class_ids.join(',')}),${classFilter}`;
       }
+      query = query.eq('school_id', school_id).or(classFilter);
+      
     } else {
       // User has no school context and is not superadmin, so they see nothing.
       return { ok: true, announcements: [] };
