@@ -1,4 +1,5 @@
 
+
 'use server';
 
 console.log('[LOG] Loading src/app/(app)/admin/class-schedule/actions.ts');
@@ -102,6 +103,8 @@ export async function addClassScheduleAction(
         author_name: adminName,
         posted_by_user_id: input.posted_by_user_id,
         posted_by_role: 'admin',
+        target_audience: 'all',
+        target_class_id: schedule.class_id,
         school_id: input.school_id,
       });
     }
@@ -163,6 +166,8 @@ export async function updateClassScheduleAction(
         author_name: adminName,
         posted_by_user_id: input.posted_by_user_id,
         posted_by_role: 'admin',
+        target_audience: 'all',
+        target_class_id: schedule.class_id,
         school_id: input.school_id,
       });
     }

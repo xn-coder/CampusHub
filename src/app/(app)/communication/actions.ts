@@ -17,7 +17,7 @@ interface PostAnnouncementInput {
   posted_by_role: UserRole;
   target_audience?: 'students' | 'teachers' | 'all';
   target_class_id?: string;
-  school_id?: string | null; 
+  school_id?: string | null;
   linked_exam_id?: string;
 }
 
@@ -65,8 +65,8 @@ export async function postAnnouncementAction(
         author_name: input.author_name,
         posted_by_user_id: input.posted_by_user_id,
         posted_by_role: input.posted_by_role,
-        date: new Date().toISOString(), 
-        target_class_id: input.target_class_id || null, 
+        date: new Date().toISOString(),
+        target_class_id: input.target_class_id || null,
         school_id: input.school_id || null,
       })
       .select('*, target_class:target_class_id(name, division, teacher_id)')
@@ -93,7 +93,7 @@ export async function postAnnouncementAction(
         <h1>${subject}</h1>
         <p><strong>Posted by:</strong> ${announcement.author_name} (${announcement.posted_by_role})</p>
         <p><strong>Date:</strong> ${new Date(announcement.date).toLocaleString()}</p>
-        ${(announcement.target_class_id && announcement.target_class ? `<p><strong>For Class:</strong> ${announcement.target_class.name} - ${announcement.target_class.division}</p>` : (!announcement.school_id ? '<p>This is a global announcement for all school administrators.</p>' : '<p>This is a general announcement for the school.</p>'))}
+        ${(announcement.target_class_id && announcement.target_class ? `<p><strong>For Class:</strong> ${announcement.target_class.name} - ${announcement.target_class.division}</p>` : (announcement.school_id ? '<p>This is a general announcement for the school.</p>' : '<p>This is a global announcement for all school administrators.</p>'))}
         ${emailHtmlBody}
         <p>Please check the communication portal for more details.</p>
       `;
@@ -146,10 +146,10 @@ export async function postAnnouncementAction(
 }
 
 interface GetAnnouncementsParams {
-  school_id?: string | null; 
+  school_id?: string | null;
   user_role: UserRole;
-  user_id?: string; 
-  student_class_id?: string | null; 
+  user_id?: string;
+  student_class_id?: string | null;
   teacher_class_ids?: string[];
 }
 
@@ -226,4 +226,3 @@ export async function getExamDetailsForLinkingAction(examId: string): Promise<{
     }
     return { ok: true, exam: data as Exam };
 }
-
