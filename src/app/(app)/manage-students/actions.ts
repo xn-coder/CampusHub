@@ -1,0 +1,276 @@
+
+'use server';
+
+import { createSupabaseServerClient } from '@/lib/supabaseClient';
+import { revalidatePath } from 'next/cache';
+
+export async function terminateStudentAction(
+  studentId: string,
+  userId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+  if (!studentId || !userId || !schoolId) {
+    return { ok: false, message: 'Student ID, User ID, and School ID are required.' };
+  }
+
+  const supabase = createSupabaseServerClient();
+  try {
+    // Step 1: Update student profile
+    const { error: studentUpdateError } = await supabase
+      .from('students')
+      .update({ status: 'Terminated', class_id: null })
+      .eq('id', studentId)
+      .eq('school_id', schoolId);
+
+    if (studentUpdateError) {
+      console.error('Error terminating student profile:', studentUpdateError);
+      if (studentUpdateError.message.includes('column "status" does not exist')) {
+        return {
+          ok: false,
+          message: "Database migration needed: 'status' column is missing from the 'students' table. Please run the required SQL migration.",
+        };
+      }
+      return { ok: false, message: `Database error on student profile: ${studentUpdateError.message}` };
+    }
+
+    // Step 2: Deactivate user account
+    const { error: userUpdateError } = await supabase
+      .from('users')
+      .update({ status: 'Inactive' })
+      .eq('id', userId);
+
+    if (userUpdateError) {
+      console.error('Error deactivating user account:', userUpdateError);
+      if (userUpdateError.message.includes('column "status" does not exist')) {
+        return {
+          ok: false,
+          message: "Database migration needed: 'status' column is missing from the 'users' table. Please run the required SQL migration.",
+        };
+      }
+      return {
+        ok: false,
+        message: `Student profile terminated, but failed to deactivate user login: ${userUpdateError.message}`,
+      };
+    }
+
+    // Step 3: Revalidate paths and return success
+    revalidatePath('/admin/manage-students');
+    revalidatePath('/class-management');
+    revalidatePath('/admin/attendance');
+
+    return { ok: true, message: 'Student terminated and account deactivated successfully.' };
+  } catch (e: any) {
+    console.error('Unexpected error terminating student:', e);
+    return { ok: false, message: e.message || 'An unexpected error occurred.' };
+  }
+}
+
+export async function reactivateStudentAction(
+  studentId: string,
+  userId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+  if (!studentId || !userId || !schoolId) {
+    return { ok: false, message: 'Student ID, User ID, and School ID are required.' };
+  }
+
+  const supabase = createSupabaseServerClient();
+  try {
+    // Step 1: Reactivate student profile
+    const { error: studentUpdateError } = await supabase
+      .from('students')
+      .update({ status: 'Active' })
+      .eq('id', studentId)
+      .eq('school_id', schoolId);
+
+    if (studentUpdateError) {
+      console.error('Error reactivating student profile:', studentUpdateError);
+      return { ok: false, message: `Database error on student profile: ${studentUpdateError.message}` };
+    }
+
+    // Step 2: Reactivate user account
+    const { error: userUpdateError } = await supabase
+      .from('users')
+      .update({ status: 'Active' })
+      .eq('id', userId);
+
+    if (userUpdateError) {
+      console.error('Error reactivating user account:', userUpdateError);
+      return {
+        ok: false,
+        message: `Student profile reactivated, but failed to reactivate user login: ${userUpdateError.message}`,
+      };
+    }
+
+    // Step 3: Revalidate paths and return success
+    revalidatePath('/admin/manage-students');
+
+    return { ok: true, message: 'Student reactivated and account enabled successfully.' };
+  } catch (e: any) {
+    console.error('Unexpected error reactivating student:', e);
+    return { ok: false, message: e.message || 'An unexpected error occurred.' };
+  }
+}
+
+interface UpdateStudentInput {
+  studentId: string;
+  userId: string;
+  schoolId: string;
+  name: string;
+  email: string;
+  roll_number: string | null;
+  class_id: string | null;
+}
+
+export async function updateStudentAction(
+  input: UpdateStudentInput
+): Promise<{ ok: boolean; message: string }> {
+  const supabase = createSupabaseServerClient();
+  const { studentId, userId, schoolId, name, email, roll_number, class_id } = input;
+
+  try {
+    // 1. Check if the new email is already taken by another user in the same school
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email.trim())
+      .eq('school_id', schoolId)
+      .neq('id', userId)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Error checking for existing user by email:', fetchError);
+      return { ok: false, message: 'Database error checking email uniqueness.' };
+    }
+    if (existingUser) {
+      return { ok: false, message: `Another user with the email ${email.trim()} already exists in this school.` };
+    }
+
+    // 2. Update the student's profile in the 'students' table
+    const { error: studentUpdateError } = await supabase
+      .from('students')
+      .update({
+        name: name.trim(),
+        email: email.trim(),
+        roll_number: roll_number || null,
+        class_id: class_id,
+      })
+      .eq('id', studentId)
+      .eq('school_id', schoolId);
+
+    if (studentUpdateError) {
+      console.error('Error updating student profile:', studentUpdateError);
+      return { ok: false, message: `Failed to update student profile: ${studentUpdateError.message}` };
+    }
+
+    // 3. Update the corresponding user record in the 'users' table
+    const { error: userUpdateError } = await supabase
+      .from('users')
+      .update({
+        name: name.trim(),
+        email: email.trim(),
+      })
+      .eq('id', userId);
+
+    if (userUpdateError) {
+      // This is not a critical failure; the main student profile was updated. Log a warning.
+      console.warn(`Student profile ${studentId} updated, but failed to associated user login ${userId}: ${userUpdateError.message}`);
+    }
+
+    revalidatePath('/admin/manage-students');
+    return { ok: true, message: 'Student details updated successfully.' };
+
+  } catch (e: any) {
+    console.error('Unexpected error updating student:', e);
+    return { ok: false, message: e.message || 'An unexpected error occurred.' };
+  }
+}
+
+
+export async function checkFeeStatusAndGenerateTCAction(
+  studentId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+  if (!studentId || !schoolId) {
+    return { ok: false, message: "Student and School IDs are required." };
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data: pendingFees, error } = await supabase
+      .from('student_fee_payments')
+      .select('id, assigned_amount, paid_amount')
+      .eq('student_id', studentId)
+      .eq('school_id', schoolId)
+      .in('status', ['Pending', 'Partially Paid', 'Overdue']);
+
+    if (error) {
+      console.error("Error fetching student fee status for TC:", error);
+      return { ok: false, message: `Database error checking fees: ${error.message}` };
+    }
+
+    let totalDue = 0;
+    if (pendingFees && pendingFees.length > 0) {
+      totalDue = pendingFees.reduce((acc, fee) => acc + (fee.assigned_amount - fee.paid_amount), 0);
+    }
+    
+    if (totalDue > 0) {
+      return { ok: false, message: `Cannot issue certificate. Student has outstanding dues of ₹${totalDue.toFixed(2)}.` };
+    }
+
+    return { ok: true, message: "Fee status clear. Proceeding to generate certificate." };
+
+  } catch (e: any) {
+    console.error("Unexpected error checking fee status for TC:", e);
+    return { ok: false, message: `Unexpected error: ${e.message}` };
+  }
+}
+
+export async function getStudentActivityData(schoolId: string) {
+    if (!schoolId) {
+        return { ok: false, message: "School ID is required." };
+    }
+    const supabase = createSupabaseServerClient();
+    try {
+        const [studentsRes, submissionsRes, attendanceRes, usersRes] = await Promise.all([
+            supabase.from('students').select('id, name, email, class_id').eq('school_id', schoolId),
+            supabase.from('lms_assignment_submissions').select('student_id').eq('school_id', schoolId),
+            supabase.from('attendance_records').select('student_id, status').eq('school_id', schoolId),
+            supabase.from('users').select('id, last_sign_in_at').eq('school_id', schoolId).eq('role', 'student'),
+        ]);
+
+        if (studentsRes.error) throw new Error(studentsRes.error.message);
+
+        const submissionsByStudent = (submissionsRes.data || []).reduce((acc, sub) => {
+            acc[sub.student_id] = (acc[sub.student_id] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+
+        const attendanceByStudent = (attendanceRes.data || []).reduce((acc, rec) => {
+            if (!acc[rec.student_id]) {
+                acc[rec.student_id] = { present: 0, total: 0 };
+            }
+            if (['Present', 'Late', 'Excused'].includes(rec.status)) {
+                acc[rec.student_id].present++;
+            }
+            acc[rec.student_id].total++;
+            return acc;
+        }, {} as Record<string, { present: number, total: number }>);
+        
+        const studentsWithActivity = (studentsRes.data || []).map(s => {
+            const attendance = attendanceByStudent[s.id];
+            const user = usersRes.data?.find(u => u.id === (s as any).user_id);
+            return {
+                ...s,
+                assignmentsSubmitted: submissionsByStudent[s.id] || 0,
+                attendancePercentage: attendance ? Math.round((attendance.present / attendance.total) * 100) : 100,
+                lastLogin: user?.last_sign_in_at,
+            };
+        });
+
+        return { ok: true, data: studentsWithActivity };
+
+    } catch (e: any) {
+        console.error("Error fetching student activity data:", e);
+        return { ok: false, message: e.message || "An unexpected error occurred." };
+    }
+}

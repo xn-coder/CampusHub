@@ -257,35 +257,23 @@ export default function SchoolDetailsPage() {
           <CardDescription>Manage the school's holiday calendar. Newest holidays are listed first.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-              <div className="space-y-1">
-                <Label htmlFor="newHolidayName">Holiday Name</Label>
-                <Input id="newHolidayName" value={newHolidayName} onChange={(e) => setNewHolidayName(e.target.value)} placeholder="e.g. Winter Break" />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="newHolidayDate">Holiday Date</Label>
-                 <Input 
-                  type="date" 
-                  id="newHolidayDate" 
-                  value={newHolidayDate ? format(newHolidayDate, 'yyyy-MM-dd') : ''} 
-                  onChange={(e) => {
-                    const parsedDate = parseISO(e.target.value);
-                    if (isValid(parsedDate)) {
-                      setNewHolidayDate(parsedDate);
-                    } else {
-                      setNewHolidayDate(undefined);
-                    }
-                  }}
-                  className="w-full"
-                />
-              </div>
-              <Button onClick={handleAddHoliday} className="self-end mt-2 md:mt-0" disabled={isSubmittingHoliday}>
-                {isSubmittingHoliday ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />} 
-                Add Holiday
-              </Button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2 space-y-4">
+                <div>
+                    <Label htmlFor="newHolidayName">Holiday Name</Label>
+                    <Input id="newHolidayName" value={newHolidayName} onChange={(e) => setNewHolidayName(e.target.value)} placeholder="e.g. Winter Break" />
+                </div>
+                 <div>
+                    <Label>Selected Date: {newHolidayDate ? format(newHolidayDate, 'PPP') : 'None'}</Label>
+                    <div className="mt-2">
+                        <Button onClick={handleAddHoliday} className="w-full" disabled={isSubmittingHoliday}>
+                            {isSubmittingHoliday ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />} 
+                            Add Holiday
+                        </Button>
+                    </div>
+                 </div>
             </div>
-             <div className="md:col-span-3 flex justify-center md:justify-start">
+             <div className="md:col-span-1 flex justify-center">
                 <Calendar 
                     mode="single" 
                     selected={newHolidayDate} 
