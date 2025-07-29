@@ -107,7 +107,7 @@ export default function AdminStudentScoresPage() {
             const isPass = score.score !== null && score.score !== undefined && !isNaN(Number(score.score)) && Number(score.score) >= (maxMarks * 0.4);
             const row = [
                 `"${getStudentName(score.student_id).replace(/"/g, '""')}"`,
-                `"${getStudentRollNumber(score.student_id)}"`
+                `"${getStudentRollNumber(score.student_id)}"`,
                 `"${getClassName(score.class_id).replace(/"/g, '""')}"`,
                 `"${getExamName(score.exam_id).replace(/"/g, '""')}"`,
                 `"${getSubjectName(score.subject_id).replace(/"/g, '""')}"`,
