@@ -172,6 +172,11 @@ export default function StudentAssignmentsPage() {
               </CardHeader>
               <CardContent className="flex-grow space-y-3">
                 <p className="text-sm whitespace-pre-wrap">{assignment.description}</p>
+                 {assignment.attachment_url && (
+                    <a href={assignment.attachment_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
+                        <Paperclip className="mr-2 h-4 w-4"/> View Attachment ({assignment.attachment_name || 'Link'})
+                    </a>
+                 )}
                 <div className="flex items-center text-sm text-muted-foreground">
                   <CalendarClock className="mr-2 h-4 w-4" />
                   Due: {format(parseISO(assignment.due_date), 'PPpp')}
@@ -274,5 +279,3 @@ export default function StudentAssignmentsPage() {
     </div>
   );
 }
-
-    

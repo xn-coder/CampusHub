@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { Assignment, ClassData, Subject, UserRole } from '@/types'; // Added Subject
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { ClipboardPlus, Send, Loader2 } from 'lucide-react';
+import { ClipboardPlus, Send, Loader2, Paperclip } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { postAssignmentAction } from './actions';
 
@@ -31,7 +31,8 @@ export default function PostAssignmentsPage() {
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(NO_SUBJECT_VALUE); // Optional subject, default to no subject
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(NO_SUBJECT_VALUE);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
 
   useEffect(() => {
     const teacherUserId = localStorage.getItem('currentUserId');
@@ -77,6 +78,20 @@ export default function PostAssignmentsPage() {
     setDueDate('');
     setSelectedClassId('');
     setSelectedSubjectId(NO_SUBJECT_VALUE);
+    setAttachmentFile(null);
+    const fileInput = document.getElementById('attachmentFile') as HTMLInputElement;
+    if(fileInput) fileInput.value = '';
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    if (file && file.size > 10 * 1024 * 1024) { // 10MB limit
+      toast({ title: "File too large", description: "Attachment must be smaller than 10MB.", variant: "destructive" });
+      setAttachmentFile(null);
+      event.target.value = '';
+      return;
+    }
+    setAttachmentFile(file);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -87,15 +102,19 @@ export default function PostAssignmentsPage() {
     }
     
     setIsLoading(true);
-    const result = await postAssignmentAction({
-      title,
-      description,
-      due_date: dueDate,
-      class_id: selectedClassId,
-      teacher_id: currentTeacherId,
-      subject_id: selectedSubjectId === NO_SUBJECT_VALUE ? undefined : selectedSubjectId,
-      school_id: currentSchoolId,
-    });
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('description', description);
+    formData.append('due_date', dueDate);
+    formData.append('class_id', selectedClassId);
+    formData.append('teacher_id', currentTeacherId);
+    formData.append('subject_id', selectedSubjectId);
+    formData.append('school_id', currentSchoolId);
+    if (attachmentFile) {
+        formData.append('attachment', attachmentFile);
+    }
+    
+    const result = await postAssignmentAction(formData);
     setIsLoading(false);
 
     if (result.ok) {
@@ -146,6 +165,10 @@ export default function PostAssignmentsPage() {
               <Label htmlFor="dueDate">Due Date</Label>
               <Input id="dueDate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required disabled={isLoading}/>
             </div>
+             <div>
+                <Label htmlFor="attachmentFile">Attach File (Optional, max 10MB)</Label>
+                <Input id="attachmentFile" type="file" onChange={handleFileChange} disabled={isLoading}/>
+             </div>
             <div>
               <Label htmlFor="classSelect">Target Class</Label>
               <Select value={selectedClassId} onValueChange={setSelectedClassId} required disabled={isLoading}>

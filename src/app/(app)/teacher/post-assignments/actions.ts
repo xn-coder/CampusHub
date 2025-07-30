@@ -11,75 +11,101 @@ import { getStudentEmailsByClassId, sendEmail } from '@/services/emailService';
 
 const NO_SUBJECT_VALUE_INTERNAL = "__NO_SUBJECT__";
 
-interface PostAssignmentInput {
-  title: string;
-  description?: string;
-  due_date: string; // YYYY-MM-DD
-  class_id: string;
-  teacher_id: string; 
-  subject_id?: string; 
-  school_id: string;
-}
-
 export async function postAssignmentAction(
-  input: PostAssignmentInput
+  formData: FormData
 ): Promise<{ ok: boolean; message: string; assignment?: Assignment }> {
   const supabase = createSupabaseServerClient();
   const assignmentId = uuidv4();
   
-  const { data, error } = await supabase
-    .from('assignments')
-    .insert({ 
-        id: assignmentId, 
-        ...input,
-        subject_id: (input.subject_id === NO_SUBJECT_VALUE_INTERNAL || !input.subject_id) ? null : input.subject_id,
-    })
-    .select('*, class:class_id(name,division), subject:subject_id(name)')
-    .single();
-
-  if (error) {
-    console.error("Error posting assignment:", error);
-    return { ok: false, message: `Database error: ${error.message}` };
-  }
-  revalidatePath('/teacher/post-assignments');
-  revalidatePath('/teacher/assignment-history');
-  revalidatePath('/student/assignments'); 
-
-  if (data && data.class_id && data.school_id) {
-    const assignment = data as Assignment & { class?: { name: string, division: string }, subject?: { name: string | null } };
-    const studentEmails = await getStudentEmailsByClassId(assignment.class_id, assignment.school_id);
-    
-    if (studentEmails.length > 0) {
-      const className = assignment.class ? `${assignment.class.name} - ${assignment.class.division}` : 'your class';
-      const emailSubject = `New Assignment Posted: ${assignment.title}`;
-      const emailBody = `
-        <h1>New Assignment Posted</h1>
-        <p>A new assignment has been posted by your teacher:</p>
-        <ul>
-          <li><strong>Title:</strong> ${assignment.title}</li>
-          <li><strong>For Class:</strong> ${className}</li>
-          ${assignment.subject?.name ? `<li><strong>Subject:</strong> ${assignment.subject.name}</li>` : ''}
-          <li><strong>Due Date:</strong> ${new Date(assignment.due_date).toLocaleDateString()}</li>
-        </ul>
-        <p>Please log in to CampusHub to view the details and submit your work.</p>
-        <p>Description: ${assignment.description || 'No description provided.'}</p>
-      `;
+  const title = formData.get('title') as string;
+  const description = formData.get('description') as string;
+  const due_date = formData.get('due_date') as string;
+  const class_id = formData.get('class_id') as string;
+  const teacher_id = formData.get('teacher_id') as string;
+  const subject_id = formData.get('subject_id') as string;
+  const school_id = formData.get('school_id') as string;
+  const attachment = formData.get('attachment') as File | null;
+  
+  let attachment_url: string | undefined = undefined;
+  let attachment_name: string | undefined = undefined;
+  
+  try {
+    if (attachment && attachment.size > 0) {
+      const sanitizedFileName = attachment.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const filePath = `public/assignment-attachments/${school_id}/${class_id}/${assignmentId}/${sanitizedFileName}`;
       
-      try {
-        console.log(`[postAssignmentAction] Attempting to send assignment notification via email service to: ${studentEmails.join(', ')}`);
-        const result = await sendEmail({ to: studentEmails, subject: emailSubject, html: emailBody });
-        if (!result.ok) {
-          console.error(`[postAssignmentAction] Failed to send email via service: ${result.message}`);
-        } else {
-          console.log(`[postAssignmentAction] Email successfully dispatched via service: ${result.message}`);
+      const { error: uploadError } = await supabase.storage
+        .from('campushub')
+        .upload(filePath, attachment);
+
+      if (uploadError) {
+        throw new Error(`Attachment upload failed: ${uploadError.message}`);
+      }
+
+      const { data: publicUrlData } = supabase.storage.from('campushub').getPublicUrl(filePath);
+      attachment_url = publicUrlData?.publicUrl;
+      attachment_name = sanitizedFileName;
+    }
+  
+    const { data, error } = await supabase
+      .from('assignments')
+      .insert({ 
+          id: assignmentId, 
+          title, description, due_date, class_id, teacher_id, school_id,
+          subject_id: (subject_id === NO_SUBJECT_VALUE_INTERNAL || !subject_id) ? null : subject_id,
+          attachment_url: attachment_url,
+          attachment_name: attachment_name,
+      })
+      .select('*, class:class_id(name,division), subject:subject_id(name)')
+      .single();
+
+    if (error) {
+      console.error("Error posting assignment:", error);
+      return { ok: false, message: `Database error: ${error.message}` };
+    }
+    revalidatePath('/teacher/post-assignments');
+    revalidatePath('/teacher/assignment-history');
+    revalidatePath('/student/assignments'); 
+
+    if (data && data.class_id && data.school_id) {
+      const assignment = data as Assignment & { class?: { name: string, division: string }, subject?: { name: string | null } };
+      const studentEmails = await getStudentEmailsByClassId(assignment.class_id, assignment.school_id);
+      
+      if (studentEmails.length > 0) {
+        const className = assignment.class ? `${assignment.class.name} - ${assignment.class.division}` : 'your class';
+        const emailSubject = `New Assignment Posted: ${assignment.title}`;
+        const emailBody = `
+          <h1>New Assignment Posted</h1>
+          <p>A new assignment has been posted by your teacher:</p>
+          <ul>
+            <li><strong>Title:</strong> ${assignment.title}</li>
+            <li><strong>For Class:</strong> ${className}</li>
+            ${assignment.subject?.name ? `<li><strong>Subject:</strong> ${assignment.subject.name}</li>` : ''}
+            <li><strong>Due Date:</strong> ${new Date(assignment.due_date).toLocaleDateString()}</li>
+          </ul>
+          <p>Please log in to CampusHub to view the details and submit your work.</p>
+          <p>Description: ${assignment.description || 'No description provided.'}</p>
+        `;
+        
+        try {
+          console.log(`[postAssignmentAction] Attempting to send assignment notification via email service to: ${studentEmails.join(', ')}`);
+          const result = await sendEmail({ to: studentEmails, subject: emailSubject, html: emailBody });
+          if (!result.ok) {
+            console.error(`[postAssignmentAction] Failed to send email via service: ${result.message}`);
+          } else {
+            console.log(`[postAssignmentAction] Email successfully dispatched via service: ${result.message}`);
+          }
+        } catch (apiError: any) {
+          console.error(`[postAssignmentAction] Error calling email service: ${apiError.message}`);
         }
-      } catch (apiError: any) {
-        console.error(`[postAssignmentAction] Error calling email service: ${apiError.message}`);
       }
     }
-  }
 
-  return { ok: true, message: 'Assignment posted successfully.', assignment: data as Assignment };
+    return { ok: true, message: 'Assignment posted successfully.', assignment: data as Assignment };
+  } catch (e: any) {
+    console.error("Unexpected error in postAssignmentAction:", e);
+    return { ok: false, message: e.message || "An unexpected error occurred." };
+  }
 }
 
 
@@ -99,7 +125,7 @@ export async function getTeacherAssignmentsAction(teacherId: string, schoolId: s
     return { ok: true, assignments: (data || []) as Assignment[] };
 }
 
-interface UpdateAssignmentInput extends Omit<Partial<PostAssignmentInput>, 'teacher_id' | 'school_id'> {
+interface UpdateAssignmentInput extends Omit<Partial<any>, 'teacher_id' | 'school_id'> {
   id: string;
   teacher_id: string;
   school_id: string;
