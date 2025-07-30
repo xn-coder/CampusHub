@@ -87,11 +87,11 @@ export default function StudentLeaveHistoryPage() {
                 <AccordionItem value={request.id} key={request.id}>
                   <AccordionTrigger>
                     <div className="flex justify-between items-center w-full pr-4">
-                        <span className="font-medium text-left truncate" title={request.reason}>
+                        <span className="font-medium text-left truncate basis-1/2" title={request.reason}>
                             {request.reason}
                         </span>
                         <div className="flex items-center gap-4 ml-4 shrink-0">
-                            <span className="text-sm text-muted-foreground">{format(parseISO(request.submission_date), 'PP')}</span>
+                            <span className="text-sm text-muted-foreground hidden sm:inline">{format(parseISO(request.submission_date), 'PP')}</span>
                              <Badge variant={request.status === 'Approved' ? 'default' : request.status === 'Rejected' ? 'destructive' : 'secondary'}>
                                 {request.status === 'Approved' ? <CheckCircle className="mr-1 h-3 w-3" /> : request.status === 'Rejected' ? <XCircle className="mr-1 h-3 w-3" /> : <Loader2 className="mr-1 h-3 w-3 animate-spin"/>}
                                 {request.status}
