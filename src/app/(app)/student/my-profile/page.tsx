@@ -11,11 +11,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { Student, User, ClassData } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { KeyRound, School, Loader2, UserCog, Save, UploadCloud } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { updateStudentProfileAction } from './actions';
+import { updateUserPasswordAction } from '@/actions/userActions';
 
 export default function StudentProfilePage() {
   const { toast } = useToast();
@@ -25,6 +26,7 @@ export default function StudentProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
 
   // Edit form state
   const [editGuardianName, setEditGuardianName] = useState('');
@@ -32,8 +34,12 @@ export default function StudentProfilePage() {
   const [editAddress, setEditAddress] = useState('');
   const [editBloodGroup, setEditBloodGroup] = useState('');
   const [editProfilePictureFile, setEditProfilePictureFile] = useState<File | null>(null);
+  
+  // Password form state
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-  async function fetchProfileData() {
+  const fetchProfileData = useCallback(async () => {
     setIsLoading(true);
     const currentUserId = localStorage.getItem('currentUserId');
     if (!currentUserId) {
@@ -51,7 +57,6 @@ export default function StudentProfilePage() {
       if (studentError || !studentData) throw studentError || new Error("Student profile not found.");
       setStudentDetails(studentData as Student);
       
-      // Pre-fill form state when data is loaded
       setEditGuardianName(studentData.guardian_name || '');
       setEditParentContactNumber(studentData.parent_contact_number || '');
       setEditAddress(studentData.address || '');
@@ -67,12 +72,12 @@ export default function StudentProfilePage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [toast]);
+
 
   useEffect(() => {
     fetchProfileData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchProfileData]);
 
   const handleEditSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -98,9 +103,32 @@ export default function StudentProfilePage() {
     if (result.ok) {
       toast({ title: "Profile Updated", description: result.message });
       setIsEditDialogOpen(false);
-      await fetchProfileData(); // Re-fetch to show updated data
+      await fetchProfileData(); 
     } else {
       toast({ title: "Update Failed", description: result.message, variant: "destructive" });
+    }
+    setIsSubmitting(false);
+  };
+  
+  const handlePasswordSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+        toast({title: "Error", description: "Passwords do not match.", variant: "destructive"});
+        return;
+    }
+    if (!userDetails?.id) {
+        toast({title: "Error", description: "User session not found.", variant: "destructive"});
+        return;
+    }
+    setIsSubmitting(true);
+    const result = await updateUserPasswordAction(userDetails.id, newPassword);
+    if (result.ok) {
+        toast({title: "Success", description: "Password updated successfully."});
+        setIsPasswordDialogOpen(false);
+        setNewPassword('');
+        setConfirmPassword('');
+    } else {
+        toast({title: "Error", description: result.message, variant: "destructive"});
     }
     setIsSubmitting(false);
   };
@@ -115,14 +143,7 @@ export default function StudentProfilePage() {
     }
     setEditProfilePictureFile(file);
   };
-
-  const handleMockPasswordReset = () => {
-    toast({
-      title: "Password Reset (Mock)",
-      description: "In a real application, a password reset link would be sent or a modal would appear to change your password.",
-    });
-  };
-
+  
   if (isLoading) {
     return (
       <div className="flex flex-col gap-6">
@@ -159,7 +180,7 @@ export default function StudentProfilePage() {
                 <DialogDescription>Make changes to your editable profile details below. Click save when you're done.</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleEditSubmit}>
-                <div className="space-y-4 py-4">
+                <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto px-1">
                   <div>
                     <Label htmlFor="profilePictureFile">Profile Picture (Optional, &lt;2MB)</Label>
                     <Input id="profilePictureFile" type="file" onChange={handleFileChange} accept="image/png, image/jpeg" disabled={isSubmitting}/>
@@ -183,14 +204,10 @@ export default function StudentProfilePage() {
                             <SelectValue placeholder="Select blood group" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="A+">A+</SelectItem>
-                            <SelectItem value="A-">A-</SelectItem>
-                            <SelectItem value="B+">B+</SelectItem>
-                            <SelectItem value="B-">B-</SelectItem>
-                            <SelectItem value="AB+">AB+</SelectItem>
-                            <SelectItem value="AB-">AB-</SelectItem>
-                            <SelectItem value="O+">O+</SelectItem>
-                            <SelectItem value="O-">O-</SelectItem>
+                            <SelectItem value="A+">A+</SelectItem><SelectItem value="A-">A-</SelectItem>
+                            <SelectItem value="B+">B+</SelectItem><SelectItem value="B-">B-</SelectItem>
+                            <SelectItem value="AB+">AB+</SelectItem><SelectItem value="AB-">AB-</SelectItem>
+                            <SelectItem value="O+">O+</SelectItem><SelectItem value="O-">O-</SelectItem>
                             <SelectItem value="Unknown">Unknown</SelectItem>
                         </SelectContent>
                     </Select>
@@ -220,9 +237,26 @@ export default function StudentProfilePage() {
             <CardDescription className="flex items-center justify-center"><School className="mr-1 h-4 w-4"/> {classDisplayText}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="outline" className="w-full" onClick={handleMockPasswordReset}>
-              <KeyRound className="mr-2 h-4 w-4" /> Reset Password
-            </Button>
+            <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
+                <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full"><KeyRound className="mr-2 h-4 w-4" /> Reset Password</Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Reset Your Password</DialogTitle></DialogHeader>
+                    <form onSubmit={handlePasswordSubmit}>
+                        <div className="space-y-4 py-4">
+                            <div><Label htmlFor="newPassword">New Password</Label><Input id="newPassword" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required disabled={isSubmitting}/></div>
+                            <div><Label htmlFor="confirmPassword">Confirm New Password</Label><Input id="confirmPassword" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required disabled={isSubmitting}/></div>
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                            <Button type="submit" disabled={isSubmitting || newPassword.length < 6 || newPassword !== confirmPassword}>
+                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Set New Password
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
 
