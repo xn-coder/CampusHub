@@ -8,15 +8,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { Student, ClassData } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2, Users, Briefcase } from 'lucide-react';
+import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getTeacherStudentsAndClassesAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
 import { format, parseISO, isValid } from 'date-fns';
 
+type StudentWithActivity = Student & {
+    lastLogin?: string;
+    assignmentsSubmitted?: number;
+    attendancePercentage?: number;
+};
+
 export default function TeacherReportsPage() {
   const { toast } = useToast();
-  const [teacherStudents, setTeacherStudents] = useState<Student[]>([]);
+  const [teacherStudents, setTeacherStudents] = useState<StudentWithActivity[]>([]);
   const [teacherClasses, setTeacherClasses] = useState<ClassData[]>([]);
   const [currentTeacherProfileId, setCurrentTeacherProfileId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
@@ -24,7 +30,7 @@ export default function TeacherReportsPage() {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<keyof Student | ''>('name');
+  const [sortBy, setSortBy] = useState<keyof StudentWithActivity | ''>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
@@ -54,7 +60,7 @@ export default function TeacherReportsPage() {
       if (teacherProfile.id && teacherProfile.school_id) {
         const result = await getTeacherStudentsAndClassesAction(teacherProfile.id, teacherProfile.school_id);
         if (result.ok) {
-          setTeacherStudents(result.students || []);
+          setTeacherStudents(result.students as StudentWithActivity[] || []);
           setTeacherClasses(result.classes || []);
         } else {
           toast({ title: "Error loading report data", description: result.message, variant: "destructive" });
@@ -67,7 +73,7 @@ export default function TeacherReportsPage() {
     loadInitialData();
   }, [toast]);
 
-  const handleSort = (column: keyof Student | '') => {
+  const handleSort = (column: keyof StudentWithActivity | '') => {
     if (sortBy === column) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
@@ -100,26 +106,31 @@ export default function TeacherReportsPage() {
       students = students.filter(s => s.class_id === selectedClassFilter);
     }
     if (sortBy) {
-      students.sort((a, b) => {
-        let valA = a[sortBy as keyof Student];
-        let valB = b[sortBy as keyof Student];
-        
-        if (valA === undefined || valA === null) valA = '' as any;
-        if (valB === undefined || valB === null) valB = '' as any;
+        students.sort((a, b) => {
+            let valA = a[sortBy as keyof StudentWithActivity];
+            let valB = b[sortBy as keyof StudentWithActivity];
+            
+            if (valA === undefined || valA === null) valA = sortOrder === 'asc' ? Number.MAX_SAFE_INTEGER as any : Number.MIN_SAFE_INTEGER as any;
+            if (valB === undefined || valB === null) valB = sortOrder === 'asc' ? Number.MAX_SAFE_INTEGER as any : Number.MIN_SAFE_INTEGER as any;
 
-        if (typeof valA === 'string' && typeof valB === 'string') {
-          return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-        }
-        if (typeof valA === 'number' && typeof valB === 'number') {
-          return sortOrder === 'asc' ? valA - valB : valB - valA;
-        }
-        return 0;
-      });
+            if (typeof valA === 'string' && typeof valB === 'string') {
+                return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            }
+            if (typeof valA === 'number' && typeof valB === 'number') {
+                return sortOrder === 'asc' ? valA - valB : valB - valA;
+            }
+            if(sortBy === 'lastLogin') {
+                const dateA = valA ? new Date(valA).getTime() : 0;
+                const dateB = valB ? new Date(valB).getTime() : 0;
+                return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+            }
+            return 0;
+        });
     }
     return students;
   }, [teacherStudents, searchTerm, selectedClassFilter, sortBy, sortOrder]);
 
-  const SortableHeader = ({ column, label, align = 'left' }: { column: keyof Student; label: string, align?: 'left' | 'right' }) => (
+  const SortableHeader = ({ column, label, align = 'left' }: { column: keyof StudentWithActivity; label: string, align?: 'left' | 'right' }) => (
     <TableHead onClick={() => handleSort(column)} className={`cursor-pointer hover:bg-muted/50 text-${align}`}>
       <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
         {label}
@@ -144,12 +155,12 @@ export default function TeacherReportsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Student Activity Reports" 
-        description="View student information and mock activity for your assigned classes." 
+        description="View student information and activity for your assigned classes." 
       />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-5 w-5" />Student Roster & Activity</CardTitle>
-          <CardDescription>An overview of students you teach. Activity data is illustrative.</CardDescription>
+          <CardDescription>An overview of students you teach.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4">
@@ -190,9 +201,9 @@ export default function TeacherReportsPage() {
                   <SortableHeader column="name" label="Student Name" />
                   <SortableHeader column="email" label="Email" />
                   <SortableHeader column="class_id" label="Class" />
-                  <SortableHeader column="lastLogin" label="Last Login (Mock)" />
-                  <SortableHeader column="assignmentsSubmitted" label="Assignments Submitted (Mock)" align="right" />
-                  <SortableHeader column="attendancePercentage" label="Attendance % (Mock)" align="right" />
+                  <SortableHeader column="lastLogin" label="Last Login" />
+                  <SortableHeader column="assignmentsSubmitted" label="Assignments Submitted" align="right" />
+                  <SortableHeader column="attendancePercentage" label="Attendance %" align="right" />
                 </TableRow>
               </TableHeader>
               <TableBody>
