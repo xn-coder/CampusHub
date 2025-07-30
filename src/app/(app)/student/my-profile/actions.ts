@@ -4,6 +4,8 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
+import type { Student } from '@/types';
+
 
 export async function updateStudentProfileAction(
   formData: FormData
@@ -12,10 +14,19 @@ export async function updateStudentProfileAction(
   
   const studentId = formData.get('studentId') as string;
   const userId = formData.get('userId') as string;
-  const guardianName = formData.get('guardianName') as string | null;
+
+  // Fields from the form
   const contactNumber = formData.get('contactNumber') as string | null;
-  const address = formData.get('address') as string | null;
   const bloodGroup = formData.get('bloodGroup') as string | null;
+  const address = formData.get('address') as string | null;
+  
+  const fatherName = formData.get('fatherName') as string | null;
+  const fatherOccupation = formData.get('fatherOccupation') as string | null;
+  const motherName = formData.get('motherName') as string | null;
+  const motherOccupation = formData.get('motherOccupation') as string | null;
+  const guardianName = formData.get('guardianName') as string | null;
+  const parentContactNumber = formData.get('parentContactNumber') as string | null;
+  
   const profilePictureFile = formData.get('profilePictureFile') as File | null;
 
   if (!studentId || !userId) {
@@ -23,16 +34,21 @@ export async function updateStudentProfileAction(
   }
 
   try {
-    const { data: user, error: userError } = await supabase.from('users').select('id').eq('id', userId).single();
+    const { data: user, error: userError } = await supabase.from('users').select('id, school_id').eq('id', userId).single();
     if (userError || !user) {
         return { ok: false, message: "Unauthorized or invalid user."};
     }
 
-    const updates: any = {
-      guardian_name: guardianName,
+    const updates: Partial<Student> = {
       contact_number: contactNumber,
-      address: address,
       blood_group: bloodGroup,
+      address: address,
+      father_name: fatherName,
+      father_occupation: fatherOccupation,
+      mother_name: motherName,
+      mother_occupation: motherOccupation,
+      guardian_name: guardianName,
+      parent_contact_number: parentContactNumber,
     };
 
     if (profilePictureFile && profilePictureFile.size > 0) {
@@ -46,12 +62,12 @@ export async function updateStudentProfileAction(
       const oldFileUrl = studentData?.profile_picture_url;
 
       const sanitizedFileName = profilePictureFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const schoolId = (await supabase.from('students').select('school_id').eq('id', studentId).single()).data?.school_id || 'unknown-school';
+      const schoolId = user.school_id || 'unknown-school';
       const filePath = `public/student-profiles/${schoolId}/${studentId}-${uuidv4()}-${sanitizedFileName}`;
       
       const { error: uploadError } = await supabase.storage
         .from('campushub')
-        .upload(filePath, profilePictureFile);
+        .upload(filePath, profilePictureFile, { upsert: true });
 
       if (uploadError) {
         throw new Error(`Failed to upload new profile picture: ${uploadError.message}`);

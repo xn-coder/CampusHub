@@ -29,10 +29,15 @@ export default function StudentProfilePage() {
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
 
   // Edit form state
-  const [editGuardianName, setEditGuardianName] = useState('');
-  const [editParentContactNumber, setEditParentContactNumber] = useState('');
+  const [editContactNumber, setEditContactNumber] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editBloodGroup, setEditBloodGroup] = useState('');
+  const [editFatherName, setEditFatherName] = useState('');
+  const [editFatherOccupation, setEditFatherOccupation] = useState('');
+  const [editMotherName, setEditMotherName] = useState('');
+  const [editMotherOccupation, setEditMotherOccupation] = useState('');
+  const [editGuardianName, setEditGuardianName] = useState('');
+  const [editParentContactNumber, setEditParentContactNumber] = useState('');
   const [editProfilePictureFile, setEditProfilePictureFile] = useState<File | null>(null);
   
   // Password form state
@@ -57,10 +62,16 @@ export default function StudentProfilePage() {
       if (studentError || !studentData) throw studentError || new Error("Student profile not found.");
       setStudentDetails(studentData as Student);
       
-      setEditGuardianName(studentData.guardian_name || '');
-      setEditParentContactNumber(studentData.parent_contact_number || '');
+      // Pre-fill edit form state
+      setEditContactNumber(studentData.contact_number || '');
       setEditAddress(studentData.address || '');
       setEditBloodGroup(studentData.blood_group || '');
+      setEditFatherName(studentData.father_name || '');
+      setEditFatherOccupation(studentData.father_occupation || '');
+      setEditMotherName(studentData.mother_name || '');
+      setEditMotherOccupation(studentData.mother_occupation || '');
+      setEditGuardianName(studentData.guardian_name || '');
+      setEditParentContactNumber(studentData.parent_contact_number || '');
 
       if (studentData.class_id) {
         const { data: classData, error: classError } = await supabase.from('classes').select('*').eq('id', studentData.class_id).single();
@@ -90,10 +101,15 @@ export default function StudentProfilePage() {
     const formData = new FormData();
     formData.append('studentId', studentDetails.id);
     formData.append('userId', userDetails.id);
-    formData.append('guardianName', editGuardianName);
-    formData.append('parentContactNumber', editParentContactNumber);
+    formData.append('contactNumber', editContactNumber);
     formData.append('address', editAddress);
     formData.append('bloodGroup', editBloodGroup);
+    formData.append('fatherName', editFatherName);
+    formData.append('fatherOccupation', editFatherOccupation);
+    formData.append('motherName', editMotherName);
+    formData.append('motherOccupation', editMotherOccupation);
+    formData.append('guardianName', editGuardianName);
+    formData.append('parentContactNumber', editParentContactNumber);
     if (editProfilePictureFile) {
       formData.append('profilePictureFile', editProfilePictureFile);
     }
@@ -174,47 +190,73 @@ export default function StudentProfilePage() {
             <DialogTrigger asChild>
               <Button><UserCog className="mr-2 h-4 w-4"/> Edit Profile</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Edit Your Profile</DialogTitle>
                 <DialogDescription>Make changes to your editable profile details below. Click save when you're done.</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleEditSubmit}>
-                <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto px-1">
-                  <div>
-                    <Label htmlFor="profilePictureFile">Profile Picture (Optional, &lt;2MB)</Label>
-                    <Input id="profilePictureFile" type="file" onChange={handleFileChange} accept="image/png, image/jpeg" disabled={isSubmitting}/>
+                <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto px-4">
+                  <h4 className="font-semibold text-lg border-b pb-2">Personal & Contact</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="profilePictureFile">Profile Picture (Optional, &lt;2MB)</Label>
+                        <Input id="profilePictureFile" type="file" onChange={handleFileChange} accept="image/png, image/jpeg" disabled={isSubmitting}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editContactNumber">Your Contact Number</Label>
+                        <Input id="editContactNumber" type="tel" value={editContactNumber} onChange={(e) => setEditContactNumber(e.target.value)} disabled={isSubmitting}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editBloodGroup">Blood Group</Label>
+                        <Select value={editBloodGroup} onValueChange={setEditBloodGroup} disabled={isSubmitting}>
+                            <SelectTrigger id="editBloodGroup"><SelectValue placeholder="Select blood group" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="A+">A+</SelectItem><SelectItem value="A-">A-</SelectItem>
+                                <SelectItem value="B+">B+</SelectItem><SelectItem value="B-">B-</SelectItem>
+                                <SelectItem value="AB+">AB+</SelectItem><SelectItem value="AB-">AB-</SelectItem>
+                                <SelectItem value="O+">O+</SelectItem><SelectItem value="O-">O-</SelectItem>
+                                <SelectItem value="Unknown">Unknown</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="md:col-span-2">
+                        <Label htmlFor="editAddress">Full Address</Label>
+                        <Textarea id="editAddress" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} disabled={isSubmitting}/>
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="editGuardianName">Guardian's Name</Label>
-                    <Input id="editGuardianName" value={editGuardianName} onChange={(e) => setEditGuardianName(e.target.value)} disabled={isSubmitting}/>
-                  </div>
-                  <div>
-                    <Label htmlFor="editParentContactNumber">Parent/Guardian Contact Number</Label>
-                    <Input id="editParentContactNumber" type="tel" value={editParentContactNumber} onChange={(e) => setEditParentContactNumber(e.target.value)} disabled={isSubmitting}/>
-                  </div>
-                  <div>
-                    <Label htmlFor="editAddress">Address</Label>
-                    <Textarea id="editAddress" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} disabled={isSubmitting}/>
-                  </div>
-                  <div>
-                    <Label htmlFor="editBloodGroup">Blood Group</Label>
-                    <Select value={editBloodGroup} onValueChange={setEditBloodGroup} disabled={isSubmitting}>
-                        <SelectTrigger id="editBloodGroup">
-                            <SelectValue placeholder="Select blood group" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="A+">A+</SelectItem><SelectItem value="A-">A-</SelectItem>
-                            <SelectItem value="B+">B+</SelectItem><SelectItem value="B-">B-</SelectItem>
-                            <SelectItem value="AB+">AB+</SelectItem><SelectItem value="AB-">AB-</SelectItem>
-                            <SelectItem value="O+">O+</SelectItem><SelectItem value="O-">O-</SelectItem>
-                            <SelectItem value="Unknown">Unknown</SelectItem>
-                        </SelectContent>
-                    </Select>
-                  </div>
+                  
+                  <h4 className="font-semibold text-lg border-b pb-2 pt-4">Parent/Guardian Information</h4>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <Label htmlFor="editFatherName">Father's Name</Label>
+                            <Input id="editFatherName" value={editFatherName} onChange={(e) => setEditFatherName(e.target.value)} disabled={isSubmitting}/>
+                        </div>
+                        <div>
+                            <Label htmlFor="editFatherOccupation">Father's Occupation</Label>
+                            <Input id="editFatherOccupation" value={editFatherOccupation} onChange={(e) => setEditFatherOccupation(e.target.value)} disabled={isSubmitting}/>
+                        </div>
+                        <div>
+                            <Label htmlFor="editMotherName">Mother's Name</Label>
+                            <Input id="editMotherName" value={editMotherName} onChange={(e) => setEditMotherName(e.target.value)} disabled={isSubmitting}/>
+                        </div>
+                        <div>
+                            <Label htmlFor="editMotherOccupation">Mother's Occupation</Label>
+                            <Input id="editMotherOccupation" value={editMotherOccupation} onChange={(e) => setEditMotherOccupation(e.target.value)} disabled={isSubmitting}/>
+                        </div>
+                        <div>
+                            <Label htmlFor="editGuardianName">Guardian's Name</Label>
+                            <Input id="editGuardianName" value={editGuardianName} onChange={(e) => setEditGuardianName(e.target.value)} disabled={isSubmitting}/>
+                        </div>
+                        <div>
+                            <Label htmlFor="editParentContactNumber">Parent/Guardian Contact</Label>
+                            <Input id="editParentContactNumber" type="tel" value={editParentContactNumber} onChange={(e) => setEditParentContactNumber(e.target.value)} disabled={isSubmitting}/>
+                        </div>
+                   </div>
+
                 </div>
                 <DialogFooter>
-                  <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                  <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
                     Save Changes
@@ -263,24 +305,24 @@ export default function StudentProfilePage() {
         <Card className="md:col-span-2">
           <CardHeader><CardTitle>Profile Information</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><Label>Full Name</Label><Input value={studentDetails.name} readOnly /></div>
-            <div><Label>Roll Number</Label><Input value={studentDetails.roll_number || 'N/A'} readOnly /></div>
-            <div><Label>Email</Label><Input type="email" value={userDetails.email} readOnly /></div>
-            <div><Label>Date of Birth</Label><Input value={studentDetails.date_of_birth || 'N/A'} readOnly /></div>
-            <div><Label>Gender</Label><Input value={studentDetails.gender || 'N/A'} readOnly /></div>
-            <div><Label>Nationality</Label><Input value={studentDetails.nationality || 'N/A'} readOnly /></div>
-            <div><Label>Contact Number</Label><Input value={studentDetails.contact_number || 'N/A'} readOnly /></div>
-            <div><Label>Blood Group</Label><Input value={studentDetails.blood_group || 'N/A'} readOnly /></div>
-            <div className="md:col-span-2"><Label>Address</Label><Textarea value={studentDetails.address || 'N/A'} readOnly /></div>
+            <div><Label>Full Name</Label><Input value={studentDetails.name} readOnly disabled /></div>
+            <div><Label>Roll Number</Label><Input value={studentDetails.roll_number || 'N/A'} readOnly disabled /></div>
+            <div><Label>Email</Label><Input type="email" value={userDetails.email} readOnly disabled /></div>
+            <div><Label>Date of Birth</Label><Input value={studentDetails.date_of_birth || 'N/A'} readOnly disabled /></div>
+            <div><Label>Gender</Label><Input value={studentDetails.gender || 'N/A'} readOnly disabled /></div>
+            <div><Label>Nationality</Label><Input value={studentDetails.nationality || 'N/A'} readOnly disabled /></div>
+            <div><Label>Your Contact Number</Label><Input value={studentDetails.contact_number || 'N/A'} readOnly disabled /></div>
+            <div><Label>Blood Group</Label><Input value={studentDetails.blood_group || 'N/A'} readOnly disabled /></div>
+            <div className="md:col-span-2"><Label>Address</Label><Textarea value={studentDetails.address || 'N/A'} readOnly disabled /></div>
             <hr className="md:col-span-2"/>
             <h4 className="md:col-span-2 text-lg font-medium">Parent/Guardian Details</h4>
-            <div><Label>Father's Name</Label><Input value={studentDetails.father_name || 'N/A'} readOnly /></div>
-            <div><Label>Father's Occupation</Label><Input value={studentDetails.father_occupation || 'N/A'} readOnly /></div>
-            <div><Label>Mother's Name</Label><Input value={studentDetails.mother_name || 'N/A'} readOnly /></div>
-            <div><Label>Mother's Occupation</Label><Input value={studentDetails.mother_occupation || 'N/A'} readOnly /></div>
-            <div><Label>Guardian's Name</Label><Input value={studentDetails.guardian_name || 'N/A'} readOnly /></div>
-            <div><Label>Parent/Guardian Contact</Label><Input value={studentDetails.parent_contact_number || 'N/A'} readOnly /></div>
-            <div><Label>Annual Family Income</Label><Input value={studentDetails.annual_family_income?.toString() || 'N/A'} readOnly /></div>
+            <div><Label>Father's Name</Label><Input value={studentDetails.father_name || 'N/A'} readOnly disabled /></div>
+            <div><Label>Father's Occupation</Label><Input value={studentDetails.father_occupation || 'N/A'} readOnly disabled /></div>
+            <div><Label>Mother's Name</Label><Input value={studentDetails.mother_name || 'N/A'} readOnly disabled /></div>
+            <div><Label>Mother's Occupation</Label><Input value={studentDetails.mother_occupation || 'N/A'} readOnly disabled /></div>
+            <div><Label>Guardian's Name</Label><Input value={studentDetails.guardian_name || 'N/A'} readOnly disabled /></div>
+            <div><Label>Parent/Guardian Contact</Label><Input value={studentDetails.parent_contact_number || 'N/A'} readOnly disabled /></div>
+            <div><Label>Annual Family Income</Label><Input value={studentDetails.annual_family_income?.toString() || 'N/A'} readOnly disabled /></div>
           </CardContent>
         </Card>
       </div>
