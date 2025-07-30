@@ -12,14 +12,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CheckCircle, XCircle, Loader2, UploadCloud } from 'lucide-react';
-import type { User, Student, UserRole, SchoolEntry, StoredLeaveApplicationDB } from '@/types';
+import type { User, Student, UserRole, SchoolEntry, StoredLeaveApplicationDB, Teacher } from '@/types';
 import { submitLeaveApplicationAction } from '@/actions/leaveActions';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { fileToDataUri } from '@/lib/utils';
 
 const formSchema = z.object({
-  studentName: z.string().min(1, "Student name is required"),
+  applicantName: z.string().min(1, "Applicant name is required"),
   reason: z.string().min(10, "Reason must be at least 10 characters long"),
   medicalNotes: z.any().optional(),
 });
@@ -35,14 +35,15 @@ export default function LeaveForm() {
   
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
-  const [studentProfile, setStudentProfile] = useState<Student | null>(null); // For logged-in student
+  const [studentProfile, setStudentProfile] = useState<Student | null>(null);
+  const [teacherProfile, setTeacherProfile] = useState<Teacher | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
 
-  const { control, handleSubmit, register, formState: { errors }, reset, watch, setValue } = useForm<LeaveFormValues>({
+  const { control, handleSubmit, register, formState: { errors }, reset, setValue } = useForm<LeaveFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      studentName: '',
+      applicantName: '',
       reason: '',
     }
   });
@@ -56,30 +57,28 @@ export default function LeaveForm() {
         setCurrentUserId(userId);
 
         if (userId) {
-          // Fetch school_id from the user's record
-          const { data: userRec, error: userErr } = await supabase
-            .from('users')
-            .select('school_id, name')
-            .eq('id', userId)
-            .single();
-          
+          const { data: userRec, error: userErr } = await supabase.from('users').select('school_id, name').eq('id', userId).single();
           if (userErr || !userRec) {
             toast({title: "Error", description: "Could not determine user's school.", variant: "destructive"});
             return;
           }
           setCurrentSchoolId(userRec.school_id);
-
+          
           if (role === 'student') {
-            const { data: studentData, error: studentError } = await supabase
-              .from('students')
-              .select('*')
-              .eq('user_id', userId) // Student profile linked by User.id
-              .single();
+            const { data: studentData, error: studentError } = await supabase.from('students').select('*').eq('user_id', userId).single();
             if (studentError || !studentData) {
               toast({title: "Error", description: "Could not load student profile.", variant: "destructive"});
             } else {
               setStudentProfile(studentData as Student);
-              setValue('studentName', studentData.name); // Pre-fill student name
+              setValue('applicantName', studentData.name);
+            }
+          } else if (role === 'teacher') {
+            const { data: teacherData, error: teacherError } = await supabase.from('teachers').select('*').eq('user_id', userId).single();
+            if (teacherError || !teacherData) {
+              toast({title: "Error", description: "Could not load teacher profile.", variant: "destructive"});
+            } else {
+              setTeacherProfile(teacherData as Teacher);
+              setValue('applicantName', teacherData.name);
             }
           }
         }
@@ -114,7 +113,7 @@ export default function LeaveForm() {
       }
 
       const result = await submitLeaveApplicationAction({
-        student_name: data.studentName,
+        student_name: data.applicantName, // This field serves as the applicant's name
         reason: data.reason,
         medical_notes_data_uri: medicalNotesDataUri,
         student_profile_id: studentProfile?.id,
@@ -127,12 +126,8 @@ export default function LeaveForm() {
         setSubmissionResult(result.application);
         toast({ title: "Application Submitted", description: result.message});
         
-        const resetValues = { reason: '', medicalNotes: undefined };
-        if(currentUserRole === 'student' && studentProfile) {
-          reset({...resetValues, studentName: studentProfile.name });
-        } else {
-          reset({...resetValues, studentName: ''});
-        }
+        const resetValues = { reason: '', medicalNotes: undefined, applicantName: data.applicantName };
+        reset(resetValues);
         setFileName(null); 
       } else {
         setError(result.message || "Failed to save application to database.");
@@ -167,13 +162,13 @@ export default function LeaveForm() {
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div>
-            <Label htmlFor="studentName">Student Name</Label>
+            <Label htmlFor="applicantName">Applicant Name</Label>
             <Controller
-              name="studentName"
+              name="applicantName"
               control={control}
-              render={({ field }) => <Input id="studentName" placeholder="Enter student's full name" {...field} disabled={currentUserRole === 'student' && !!studentProfile} />}
+              render={({ field }) => <Input id="applicantName" placeholder="Enter your full name" {...field} disabled={(currentUserRole === 'student' && !!studentProfile) || (currentUserRole === 'teacher' && !!teacherProfile)} />}
             />
-            {errors.studentName && <p className="text-sm text-destructive mt-1">{errors.studentName.message}</p>}
+            {errors.applicantName && <p className="text-sm text-destructive mt-1">{errors.applicantName.message}</p>}
           </div>
 
           <div>
