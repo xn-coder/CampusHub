@@ -10,13 +10,15 @@ import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import type { CalendarEventDB as CalendarEvent, UserRole, User } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Loader2, MoreHorizontal } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { format, parseISO, isValid } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { addCalendarEventAction, updateCalendarEventAction, deleteCalendarEventAction, getCalendarEventsAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 export default function CalendarEventsPage() {
   const { toast } = useToast();
@@ -253,25 +255,23 @@ export default function CalendarEventsPage() {
         toast({title: "Error", description: "Action not permitted.", variant: "destructive"});
         return;
     }
-    if (confirm("Are you sure you want to delete this event?")) {
-      setIsSubmitting(true);
-      const result = await deleteCalendarEventAction(id, currentSchoolId);
-      setIsSubmitting(false);
-      if (result.ok) {
-        toast({ title: "Event Deleted", variant: "destructive" });
-         if (currentSchoolId && currentUserId && currentUserRole) {
-            const fetchResult = await getCalendarEventsAction(currentSchoolId, currentUserId, currentUserRole);
-            if (fetchResult.ok && fetchResult.events) {
-                setEvents(fetchResult.events);
-                const datesWithEvents = fetchResult.events
-                  .map(event => parseISO(event.date))
-                  .filter(date => isValid(date));
-                setEventDates(datesWithEvents);
-            }
-        }
-      } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
+    setIsSubmitting(true);
+    const result = await deleteCalendarEventAction(id, currentSchoolId);
+    setIsSubmitting(false);
+    if (result.ok) {
+      toast({ title: "Event Deleted", variant: "destructive" });
+        if (currentSchoolId && currentUserId && currentUserRole) {
+          const fetchResult = await getCalendarEventsAction(currentSchoolId, currentUserId, currentUserRole);
+          if (fetchResult.ok && fetchResult.events) {
+              setEvents(fetchResult.events);
+              const datesWithEvents = fetchResult.events
+                .map(event => parseISO(event.date))
+                .filter(date => isValid(date));
+              setEventDates(datesWithEvents);
+          }
       }
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
   };
 
@@ -359,14 +359,35 @@ export default function CalendarEventsPage() {
                               </CardDescription>
                             </div>
                             {canManageEvents && (
-                              <div className="flex gap-1 shrink-0">
-                                <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(event)} disabled={isSubmitting}>
-                                  <Edit2 className="h-4 w-4" />
-                                </Button>
-                                <Button variant="destructive" size="icon" onClick={() => handleDeleteEvent(event.id)} disabled={isSubmitting}>
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
+                               <AlertDialog>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onSelect={() => handleOpenFormDialog(event)}>
+                                          <Edit2 className="mr-2 h-4 w-4" /> Edit
+                                      </DropdownMenuItem>
+                                      <AlertDialogTrigger asChild>
+                                          <DropdownMenuItem className="text-destructive">
+                                              <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                          </DropdownMenuItem>
+                                      </AlertDialogTrigger>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                                 <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                      <AlertDialogDescription>This action cannot be undone. This will permanently delete the event "{event.title}".</AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleDeleteEvent(event.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                              </AlertDialog>
                             )}
                           </div>
                         </CardHeader>

@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import type { Expense, ExpenseCategory } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Wallet, Loader2, Search, Download, ExternalLink, FileText } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Wallet, Loader2, Search, Download, ExternalLink, FileText, MoreHorizontal } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
@@ -25,6 +25,8 @@ import {
 } from './actions';
 import { Progress } from '@/components/ui/progress';
 import Link from 'next/link';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -175,7 +177,7 @@ export default function ExpensesPage() {
     };
     
     const handleDelete = async (expenseId: string) => {
-        if (!currentSchoolId || !confirm("Are you sure you want to delete this expense record?")) return;
+        if (!currentSchoolId) return;
         setIsSubmitting(true);
         const result = await deleteExpenseAction(expenseId, currentSchoolId);
         toast({ title: result.ok ? "Expense Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
@@ -250,12 +252,39 @@ export default function ExpensesPage() {
                                             ) : 'None'}
                                         </TableCell>
                                         <TableCell className="text-right font-mono">₹{expense.amount.toFixed(2)}</TableCell>
-                                        <TableCell className="text-right space-x-1">
-                                            <Button asChild variant="outline" size="icon" title="View Voucher">
-                                              <Link href={`/admin/expenses/${expense.id}/voucher`}><FileText className="h-4 w-4" /></Link>
-                                            </Button>
-                                            <Button variant="outline" size="icon" onClick={() => handleOpenDialog(expense)} disabled={isSubmitting}><Edit2 className="h-4 w-4" /></Button>
-                                            <Button variant="destructive" size="icon" onClick={() => handleDelete(expense.id)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
+                                        <TableCell className="text-right">
+                                            <AlertDialog>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem asChild>
+                                                          <Link href={`/admin/expenses/${expense.id}/voucher`}><FileText className="mr-2 h-4 w-4" /> View Voucher</Link>
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onSelect={() => handleOpenDialog(expense)}>
+                                                            <Edit2 className="mr-2 h-4 w-4" /> Edit
+                                                        </DropdownMenuItem>
+                                                        <AlertDialogTrigger asChild>
+                                                            <DropdownMenuItem className="text-destructive">
+                                                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                                            </DropdownMenuItem>
+                                                        </AlertDialogTrigger>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                        <AlertDialogDescription>This action cannot be undone. This will permanently delete the expense record for "{expense.title}".</AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => handleDelete(expense.id)} className="bg-destructive hover:bg-destructive/90">Continue</AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
                                         </TableCell>
                                     </TableRow>
                                 ))}

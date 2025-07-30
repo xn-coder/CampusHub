@@ -8,13 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import type { ExpenseCategory } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Tags, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Tags, Loader2, MoreHorizontal, Eye } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { createExpenseCategoryAction, updateExpenseCategoryAction, deleteExpenseCategoryAction, getExpenseCategoriesAction } from './actions';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: school, error } = await supabase
@@ -36,8 +38,10 @@ export default function ExpenseCategoriesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
+  const [viewingCategory, setViewingCategory] = useState<ExpenseCategory | null>(null);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -79,15 +83,20 @@ export default function ExpenseCategoriesPage() {
     setEditingCategory(null);
   };
 
-  const handleOpenDialog = (category?: ExpenseCategory) => {
-    if (category) {
-      setEditingCategory(category);
-      setName(category.name);
-      setDescription(category.description || '');
+  const handleOpenDialog = (category?: ExpenseCategory, mode: 'edit' | 'view' = 'edit') => {
+    if (mode === 'view') {
+        setViewingCategory(category || null);
+        setIsViewDialogOpen(true);
     } else {
-      resetForm();
+        if (category) {
+            setEditingCategory(category);
+            setName(category.name);
+            setDescription(category.description || '');
+        } else {
+            resetForm();
+        }
+        setIsFormDialogOpen(true);
     }
-    setIsDialogOpen(true);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -118,7 +127,7 @@ export default function ExpenseCategoriesPage() {
     if (result.ok) {
       toast({ title: editingCategory ? "Category Updated" : "Category Added", description: result.message });
       resetForm();
-      setIsDialogOpen(false);
+      setIsFormDialogOpen(false);
       if (currentSchoolId) fetchExpenseCategories(currentSchoolId);
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -131,15 +140,13 @@ export default function ExpenseCategoriesPage() {
         toast({ title: "Error", description: "Cannot delete category without school context.", variant: "destructive"});
         return;
     }
-    if (confirm("Are you sure you want to delete this expense category?")) {
-      setIsSubmitting(true);
-      const result = await deleteExpenseCategoryAction(categoryId, currentSchoolId);
-      toast({ title: result.ok ? "Category Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
-      if (result.ok && currentSchoolId) {
-        fetchExpenseCategories(currentSchoolId);
-      }
-      setIsSubmitting(false);
+    setIsSubmitting(true);
+    const result = await deleteExpenseCategoryAction(categoryId, currentSchoolId);
+    toast({ title: result.ok ? "Category Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
+    if (result.ok && currentSchoolId) {
+      fetchExpenseCategories(currentSchoolId);
     }
+    setIsSubmitting(false);
   };
   
   return (
@@ -180,14 +187,45 @@ export default function ExpenseCategoriesPage() {
                 {expenseCategories.map((category) => (
                   <TableRow key={category.id}>
                     <TableCell className="font-medium">{category.name}</TableCell>
-                    <TableCell>{category.description || 'N/A'}</TableCell>
-                    <TableCell className="space-x-1 text-right">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenDialog(category)} disabled={isSubmitting}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteCategory(category.id)} disabled={isSubmitting}>
-                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                      </Button>
+                    <TableCell className="max-w-xs truncate" title={category.description}>{category.description || 'N/A'}</TableCell>
+                    <TableCell className="text-right">
+                       <AlertDialog>
+                          <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                                      <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => handleOpenDialog(category, 'view')}>
+                                      <Eye className="mr-2 h-4 w-4" /> View Details
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => handleOpenDialog(category, 'edit')}>
+                                      <Edit2 className="mr-2 h-4 w-4" /> Edit
+                                  </DropdownMenuItem>
+                                  <AlertDialogTrigger asChild>
+                                      <DropdownMenuItem className="text-destructive">
+                                          <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                      </DropdownMenuItem>
+                                  </AlertDialogTrigger>
+                              </DropdownMenuContent>
+                          </DropdownMenu>
+                           <AlertDialogContent>
+                              <AlertDialogHeader>
+                                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                      This action cannot be undone. This will permanently delete the "{category.name}" expense category.
+                                      This will fail if the category is already assigned to any expense records.
+                                  </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                  <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteCategory(category.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
+                                      Delete
+                                  </AlertDialogAction>
+                              </AlertDialogFooter>
+                          </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -197,7 +235,7 @@ export default function ExpenseCategoriesPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingCategory ? 'Edit' : 'Add New'} Expense Category</DialogTitle>
@@ -220,6 +258,28 @@ export default function ExpenseCategoriesPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>View Expense Category</DialogTitle>
+            <DialogDescription>Details for expense category: {viewingCategory?.name}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+              <div>
+                <Label>Category Name</Label>
+                <p className="font-semibold text-lg">{viewingCategory?.name}</p>
+              </div>
+              <div>
+                <Label>Description</Label>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingCategory?.description || 'No description provided.'}</p>
+              </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

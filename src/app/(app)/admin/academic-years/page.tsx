@@ -4,13 +4,15 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CalendarRange, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader2, CalendarRange, MoreHorizontal, Edit2, Trash2 } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import AcademicYearActions from './academic-year-actions';
 import type { AcademicYear } from '@/types';
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { getAdminSchoolIdAction, getAcademicYearsForSchoolAction } from './actions';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export default function AcademicYearsPage() {
   const { toast } = useToast();
@@ -104,8 +106,8 @@ export default function AcademicYearsPage() {
                     <TableCell className="font-medium">{year.name}</TableCell>
                     <TableCell>{formatDateString(year.start_date)}</TableCell>
                     <TableCell>{formatDateString(year.end_date)}</TableCell>
-                    <TableCell className="space-x-1 text-right">
-                      <AcademicYearActions
+                    <TableCell className="text-right">
+                       <AcademicYearActions
                         schoolId={schoolId}
                         existingYear={{
                           id: year.id,

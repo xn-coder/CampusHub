@@ -7,6 +7,7 @@ interface IdCardPreviewProps {
   student: Student;
   schoolName: string | null;
   className: string | null;
+  schoolLogoUrl?: string | null;
 }
 
 function formatDateSafe(dateString?: string | null): string {
@@ -15,12 +16,12 @@ function formatDateSafe(dateString?: string | null): string {
     return isValid(date) ? format(date, 'MM/dd/yyyy') : 'N/A';
 }
 
-export function IdCardPreview({ student, schoolName, className }: IdCardPreviewProps) {
+export function IdCardPreview({ student, schoolName, className, schoolLogoUrl }: IdCardPreviewProps) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg w-full max-w-xs aspect-[54/86] p-3 flex flex-col text-gray-800 dark:text-gray-200 print:shadow-none print:border print:border-gray-300">
       {/* Header */}
       <div className="flex items-center gap-2 pb-2 border-b-2 border-primary/80">
-        <Image src="/logo.png" alt="School Logo" width={30} height={30} className="rounded-full" />
+        <Image src={schoolLogoUrl || "/logo.png"} alt="School Logo" width={30} height={30} className="rounded-full object-contain" />
         <h2 className="text-xs font-bold text-center flex-grow uppercase truncate text-primary/90">{schoolName || 'CampusHub School'}</h2>
       </div>
 

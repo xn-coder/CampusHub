@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import type { Student, ClassData } from '@/types';
+import type { Student, ClassData, SchoolDetails } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Download, Printer } from 'lucide-react';
@@ -13,13 +13,14 @@ import { getStudentDataExportPageDataAction } from './actions';
 import { format, parseISO } from 'date-fns';
 import { IdCardPreview } from '@/components/shared/id-card-preview';
 import { Checkbox } from '@/components/ui/checkbox';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function AdminIdCardPrintingPage() {
   const { toast } = useToast();
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [currentSchoolId, setCurrentSchoolId] = useState<string|null>(null);
-  const [currentSchoolName, setCurrentSchoolName] = useState<string|null>(null);
+  const [schoolDetails, setSchoolDetails] = useState<SchoolDetails | null>(null);
   const [isLoadingPage, setIsLoadingPage] = useState(true);
 
   const [selectedClassId, setSelectedClassId] = useState<string>('all'); 
@@ -35,17 +36,22 @@ export default function AdminIdCardPrintingPage() {
         setIsLoadingPage(false);
         return;
       }
+      
+      const { data: school, error: schoolError } = await supabase.from('schools').select('*').eq('admin_user_id', adminUserId).single();
+      if(schoolError || !school) {
+        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+        setIsLoadingPage(false);
+        return;
+      }
+      setSchoolDetails(school as SchoolDetails);
+      setCurrentSchoolId(school.id);
 
       const result = await getStudentDataExportPageDataAction(adminUserId);
       if (result.ok) {
-        setCurrentSchoolId(result.schoolId || null);
-        setCurrentSchoolName(result.schoolName || null);
         setAllStudents(result.students || []);
         setAllClasses(result.classes || []);
       } else {
         toast({ title: "Error loading data", description: result.message, variant: "destructive" });
-        setCurrentSchoolId(null);
-        setCurrentSchoolName(null);
         setAllStudents([]);
         setAllClasses([]);
       }
@@ -96,7 +102,7 @@ export default function AdminIdCardPrintingPage() {
                 `"${(student.email || '').replace(/"/g, '""')}"`,
                 `"${student.roll_number || ''}"`,
                 `"${className}"`,
-                `"${(currentSchoolName || 'N/A').replace(/"/g, '""')}"`,
+                `"${(schoolDetails?.name || 'N/A').replace(/"/g, '""')}"`,
                 `"${(student.guardian_name || '').replace(/"/g, '""')}"`,
                 `"${student.contact_number || ''}"`,
                 `"${(student.address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
@@ -216,7 +222,7 @@ export default function AdminIdCardPrintingPage() {
                                 checked={selectedStudentsForPrint.includes(student.id)}
                                 onCheckedChange={(checked) => handleSelectStudentForPrint(student.id, Boolean(checked))}
                             />
-                            <IdCardPreview student={student} schoolName={currentSchoolName} className={getStudentClassName(student)} />
+                            <IdCardPreview student={student} schoolName={schoolDetails?.name || null} className={getStudentClassName(student)} schoolLogoUrl={schoolDetails?.logo_url}/>
                         </div>
                     ))
                 ) : (
