@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ListChecks, CheckSquare, Loader2, UserPlus, FileDown, Search, Receipt, ChevronLeft, ChevronRight, Edit2, MoreHorizontal } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { updateAdmissionStatusAction, fetchAdminSchoolIdForAdmissions, fetchAdmissionPageDataAction } from './actions';
+import { fetchAdminSchoolIdForAdmissions, fetchAdmissionPageDataAction } from './actions';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
@@ -257,7 +257,7 @@ export default function AdmissionsPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem asChild>
+                            <DropdownMenuItem asChild disabled={!record.student_profile_id}>
                                 <Link href={`/admin/manage-students/${record.student_profile_id}/edit`}>
                                     <Edit2 className="mr-2 h-4 w-4"/> Edit Details
                                 </Link>

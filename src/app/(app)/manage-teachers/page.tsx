@@ -429,6 +429,7 @@ export default function ManageTeachersPage() {
             </form>
           </Card>
         </TabsContent>
+
       </Tabs>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>

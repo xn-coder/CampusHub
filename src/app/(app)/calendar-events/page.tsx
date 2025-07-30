@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -172,7 +173,7 @@ export default function CalendarEventsPage() {
   };
 
   const handleOpenFormDialog = (eventToEdit?: CalendarEvent) => {
-    if (currentUserRole === 'student' || (currentUserRole === 'superadmin' && !currentSchoolId)) {
+    if (currentUserRole === 'student' || currentUserRole === 'teacher' || (currentUserRole === 'superadmin' && !currentSchoolId)) {
         toast({ title: "Permission Denied", description: "You do not have permission to add or edit events.", variant: "destructive"});
         return;
     }
@@ -251,7 +252,7 @@ export default function CalendarEventsPage() {
   };
 
   const handleDeleteEvent = async (id: string) => {
-    if (currentUserRole === 'student' || !currentSchoolId || (currentUserRole === 'superadmin' && !currentSchoolId) ) {
+    if (currentUserRole !== 'admin' || !currentSchoolId) {
         toast({title: "Error", description: "Action not permitted.", variant: "destructive"});
         return;
     }
@@ -286,7 +287,7 @@ export default function CalendarEventsPage() {
     hasEvents: eventDates,
   };
 
-  const canManageEvents = (currentUserRole === 'admin' || currentUserRole === 'teacher') && !!currentSchoolId;
+  const canManageEvents = currentUserRole === 'admin' && !!currentSchoolId;
 
   return (
     <div className="flex flex-col gap-6">
@@ -461,5 +462,4 @@ export default function CalendarEventsPage() {
     </div>
   );
 }
-
     
