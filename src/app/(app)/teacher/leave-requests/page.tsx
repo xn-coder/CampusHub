@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -9,9 +10,10 @@ import type { UserRole, Student, StoredLeaveApplicationDB, User } from '@/types'
 import { useState, useEffect } from 'react';
 import { ClipboardCheck, ExternalLink, User as UserIcon, CalendarDays, MessageSquare, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { getLeaveRequestsAction } from '@/actions/leaveActions';
+import { getLeaveRequestsAction, updateLeaveStatusAction } from '@/actions/leaveActions';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
+import { Button } from '@/components/ui/button';
 
 
 export default function TeacherLeaveRequestsPage() {
@@ -21,51 +23,64 @@ export default function TeacherLeaveRequestsPage() {
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchTeacherAndLeaveData() {
-      setIsLoading(true);
-      if (typeof window !== 'undefined') {
-        const teacherUserId = localStorage.getItem('currentUserId'); // This is User.id
+  async function fetchTeacherAndLeaveData() {
+    setIsLoading(true);
+    if (typeof window !== 'undefined') {
+      const teacherUserId = localStorage.getItem('currentUserId'); 
+      if (!teacherUserId) {
+        toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
+      
+      const { data: teacherProfile, error: profileError } = await supabase
+        .from('teachers')
+        .select('id, school_id') 
+        .eq('user_id', teacherUserId)
+        .single();
 
-        if (!teacherUserId) {
-          toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
-          setIsLoading(false);
-          return;
-        }
-        
-        // Get Teacher Profile ID and School ID
-        const { data: teacherProfile, error: profileError } = await supabase
-          .from('teachers')
-          .select('id, school_id') // 'id' here is the teacher's profile ID
-          .eq('user_id', teacherUserId)
-          .single();
+      if (profileError || !teacherProfile) {
+        toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
+      setCurrentTeacherId(teacherProfile.id);
+      setCurrentSchoolId(teacherProfile.school_id);
 
-        if (profileError || !teacherProfile) {
-          toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
-          setIsLoading(false);
-          return;
-        }
-        setCurrentTeacherId(teacherProfile.id);
-        setCurrentSchoolId(teacherProfile.school_id);
-
-        if (teacherProfile.id && teacherProfile.school_id) {
-          const result = await getLeaveRequestsAction({ 
-              school_id: teacherProfile.school_id, 
-              teacher_id: teacherProfile.id, 
-              target_role: 'student' 
-          });
-          if (result.ok && result.applications) {
-            setLeaveRequests(result.applications);
-          } else {
-            toast({ title: "Error", description: result.message || "Failed to fetch leave requests.", variant: "destructive" });
-            setLeaveRequests([]);
-          }
+      if (teacherProfile.id && teacherProfile.school_id) {
+        const result = await getLeaveRequestsAction({ 
+            school_id: teacherProfile.school_id, 
+            teacher_id: teacherProfile.id, 
+            target_role: 'student' 
+        });
+        if (result.ok && result.applications) {
+          setLeaveRequests(result.applications);
+        } else {
+          toast({ title: "Error", description: result.message || "Failed to fetch leave requests.", variant: "destructive" });
+          setLeaveRequests([]);
         }
       }
-      setIsLoading(false);
     }
+    setIsLoading(false);
+  }
+
+  useEffect(() => {
     fetchTeacherAndLeaveData();
   }, [toast]);
+  
+  const handleUpdateStatus = async (requestId: string, status: 'Approved' | 'Rejected') => {
+    if (!currentSchoolId) return;
+    setIsLoading(true); // Consider a more granular loading state if needed
+    const result = await updateLeaveStatusAction({ requestId, status, schoolId: currentSchoolId });
+    if (result.ok) {
+        toast({ title: "Status Updated", description: result.message });
+        await fetchTeacherAndLeaveData(); // Refresh the list
+    } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsLoading(false);
+  }
+
 
   if (isLoading && !currentTeacherId) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading data...</span></div>;
@@ -91,7 +106,7 @@ export default function TeacherLeaveRequestsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><ClipboardCheck className="mr-2 h-5 w-5" />Leave Applications for Your Students</CardTitle>
-          <CardDescription>Review leave requests. For overrides or issues, contact administration.</CardDescription>
+          <CardDescription>Review and approve or reject leave requests from your students.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -107,7 +122,7 @@ export default function TeacherLeaveRequestsPage() {
                   <TableHead><MessageSquare className="inline-block mr-1 h-4 w-4"/>Reason</TableHead>
                   <TableHead>Medical Note</TableHead>
                   <TableHead className="text-center">Status</TableHead>
-                  <TableHead>Admin Reasoning</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -133,7 +148,14 @@ export default function TeacherLeaveRequestsPage() {
                         {req.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="max-w-sm truncate text-xs">{req.ai_reasoning || 'N/A'}</TableCell>
+                     <TableCell className="text-right space-x-2">
+                        {req.status === 'Pending' && (
+                            <>
+                                <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(req.id, 'Approved')} disabled={isLoading}>Approve</Button>
+                                <Button size="sm" variant="destructive" onClick={() => handleUpdateStatus(req.id, 'Rejected')} disabled={isLoading}>Reject</Button>
+                            </>
+                        )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -141,7 +163,7 @@ export default function TeacherLeaveRequestsPage() {
           )}
         </CardContent>
          <CardFooter>
-            <p className="text-xs text-muted-foreground">Leave applications are reviewed by administration. Teachers can view the status here.</p>
+            <p className="text-xs text-muted-foreground">Approve or reject leave applications from students assigned to your classes.</p>
         </CardFooter>
       </Card>
     </div>

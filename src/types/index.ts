@@ -507,6 +507,8 @@ export interface Assignment {
   teacher_id: string;
   subject_id?: string | null;
   school_id: string;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
   created_at?: string;
   updated_at?: string;
   submission?: AssignmentSubmission | null; // For student view

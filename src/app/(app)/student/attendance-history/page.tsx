@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -112,80 +113,83 @@ export default function StudentAttendanceHistoryPage() {
         title="My Attendance History" 
         description="View your attendance records and summary." 
       />
+      
+      <div className="mb-4 max-w-xs">
+          <Label htmlFor="month-filter">Filter by Month</Label>
+          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger id="month-filter">
+                  <SelectValue placeholder="Select a month" />
+              </SelectTrigger>
+              <SelectContent>
+                  {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+              </SelectContent>
+          </Select>
+      </div>
 
-      <Card>
+      <div className="grid lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-1">
+            <CardHeader>
+                <CardTitle>Attendance Summary</CardTitle>
+                <CardDescription>Overview for the selected period.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoading ? (
+                    <div className="flex justify-center items-center h-48"><Loader2 className="h-8 w-8 animate-spin" /></div>
+                ) : attendance.length > 0 ? (
+                    <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
+                        <BarChart accessibilityLayer data={summary} layout="vertical" margin={{ left: 10 }}>
+                            <CartesianGrid horizontal={false} />
+                            <YAxis dataKey="status" type="category" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => chartConfig[value as keyof typeof chartConfig]?.label} />
+                            <XAxis dataKey="count" type="number" hide />
+                            <Tooltip cursor={{ fill: "hsl(var(--muted))" }} content={<ChartTooltipContent indicator="line" />} />
+                            <Bar dataKey="count" layout="vertical" radius={5}>
+                              {summary.map((entry) => (
+                                  <Cell key={`cell-${entry.status}`} fill={chartConfig[entry.status as keyof typeof chartConfig].color} />
+                              ))}
+                            </Bar>
+                        </BarChart>
+                    </ChartContainer>
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">No attendance data to display.</p>
+                )}
+            </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
           <CardHeader>
-              <CardTitle>Attendance Summary</CardTitle>
-              <CardDescription>A visual overview of your attendance record for the selected period.</CardDescription>
+            <CardTitle className="flex items-center"><ClipboardCheck className="mr-2 h-5 w-5" />Attendance Log</CardTitle>
+            <CardDescription>A detailed log of your attendance, sorted by most recent.</CardDescription>
           </CardHeader>
           <CardContent>
-              <div className="mb-4 max-w-xs">
-                <Label htmlFor="month-filter">Filter by Month</Label>
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                    <SelectTrigger id="month-filter">
-                        <SelectValue placeholder="Select a month" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                    </SelectContent>
-                </Select>
-              </div>
-              {isLoading ? (
-                  <div className="flex justify-center items-center h-48"><Loader2 className="h-8 w-8 animate-spin" /></div>
-              ) : attendance.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-                      <BarChart accessibilityLayer data={summary} layout="vertical" margin={{ left: 10 }}>
-                          <CartesianGrid horizontal={false} />
-                          <YAxis dataKey="status" type="category" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => chartConfig[value as keyof typeof chartConfig]?.label} />
-                          <XAxis dataKey="count" type="number" hide />
-                          <Tooltip cursor={{ fill: "hsl(var(--muted))" }} content={<ChartTooltipContent indicator="line" />} />
-                          <Bar dataKey="count" layout="vertical" radius={5}>
-                            {summary.map((entry) => (
-                                <Cell key={`cell-${entry.status}`} fill={chartConfig[entry.status as keyof typeof chartConfig].color} />
-                            ))}
-                          </Bar>
-                      </BarChart>
-                  </ChartContainer>
-              ) : (
-                <p className="text-muted-foreground text-center py-4">No attendance data to display.</p>
-              )}
-          </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center"><ClipboardCheck className="mr-2 h-5 w-5" />Attendance Log</CardTitle>
-          <CardDescription>A detailed log of your attendance, sorted by most recent.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading records...</div>
-          ) : filteredAttendance.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">{selectedMonth === 'all' ? 'No attendance records found.' : 'No attendance records found for the selected month.'}</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAttendance.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell className="font-medium">{formatDateSafe(record.date)}</TableCell>
-                    <TableCell>
-                      <Badge variant={record.status === 'Present' ? 'default' : record.status === 'Absent' ? 'destructive' : 'secondary'}>
-                        {record.status}
-                      </Badge>
-                    </TableCell>
+            {isLoading ? (
+              <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading records...</div>
+            ) : filteredAttendance.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">{selectedMonth === 'all' ? 'No attendance records found.' : 'No attendance records found for the selected month.'}</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {filteredAttendance.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell className="font-medium">{formatDateSafe(record.date)}</TableCell>
+                      <TableCell>
+                        <Badge variant={record.status === 'Present' ? 'default' : record.status === 'Absent' ? 'destructive' : 'secondary'}>
+                          {record.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
