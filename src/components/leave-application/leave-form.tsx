@@ -157,7 +157,7 @@ export default function LeaveForm() {
     <Card>
       <CardHeader>
         <CardTitle>Submit Leave Application</CardTitle>
-        <CardDescription>Fill in the details for your leave request. Your application will be processed by our AI system based on school policy.</CardDescription>
+        <CardDescription>Fill in the details for your leave request. Your application will be reviewed by the administration.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -211,7 +211,7 @@ export default function LeaveForm() {
                 Submitting...
               </>
             ) : (
-              'Submit for AI Review'
+              'Submit Application'
             )}
           </Button>
         </form>
@@ -227,10 +227,9 @@ export default function LeaveForm() {
         {submissionResult && (
           <Alert className="mt-6" variant={submissionResult.status === 'Approved' ? "default" : "destructive"}>
              {submissionResult.status === 'Approved' ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4"/>}
-            <AlertTitle>AI Decision: {submissionResult.status}</AlertTitle>
+            <AlertTitle>Application Status: {submissionResult.status}</AlertTitle>
             <AlertDescription>
-                <p className="font-semibold">Reasoning:</p>
-                <p>{submissionResult.ai_reasoning}</p>
+                <p>Your application has been submitted and is now pending review.</p>
             </AlertDescription>
           </Alert>
         )}
