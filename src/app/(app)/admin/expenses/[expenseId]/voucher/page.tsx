@@ -114,7 +114,7 @@ function VoucherContent() {
                 <div className="border border-gray-400">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="bg-gray-100 dark:bg-muted">
+                            <tr className="bg-white">
                                 <th className="p-2 text-left font-semibold border-b border-r border-gray-400">Ledgers</th>
                                 <th className="p-2 text-left font-semibold border-b border-r border-gray-400">Description</th>
                                 <th className="p-2 text-right font-semibold border-b border-gray-400">Amount (Rs.)</th>

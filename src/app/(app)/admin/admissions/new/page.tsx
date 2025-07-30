@@ -218,7 +218,7 @@ export default function AdminNewAdmissionPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="New Student Admission"
-        description="Fill in the details to admit a new student. This will create their account and profile with an 'Admitted' status. You can then mark them as 'Enrolled' from the admissions list after fee payment."
+        description="Fill in the details to admit a new student. This will create their profile and login credentials."
       />
       <Card className="max-w-4xl mx-auto w-full">
         <CardHeader>

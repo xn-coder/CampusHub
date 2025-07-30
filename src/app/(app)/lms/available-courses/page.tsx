@@ -180,11 +180,18 @@ export default function AvailableLmsCoursesPage() {
                        </Link>
                      </Button>
                   ) : canEnroll && course.is_paid ? (
-                     <Button asChild className="w-full" variant="outline">
-                        <Link href={`/lms/courses/${course.id}?preview=true`}>
-                            <Eye className="mr-2 h-4 w-4"/> Preview
-                        </Link>
-                    </Button>
+                     <div className="flex w-full gap-2">
+                        <Button asChild className="flex-1" variant="outline">
+                            <Link href={`/lms/courses/${course.id}?preview=true`}>
+                                <Eye className="mr-2 h-4 w-4"/> Preview
+                            </Link>
+                        </Button>
+                        <Button asChild className="flex-1">
+                           <Link href={`/lms/activate?courseId=${course.id}`}>
+                            <ShoppingCart className="mr-2 h-4 w-4"/> Buy Course
+                           </Link>
+                        </Button>
+                     </div>
                   ) : canEnroll && !course.is_paid ? (
                     <div className="flex w-full gap-2">
                         <Button onClick={() => handleEnrollUnpaid(course.id)} className="flex-1" disabled={isEnrolling[course.id] || !currentUserProfileId}>

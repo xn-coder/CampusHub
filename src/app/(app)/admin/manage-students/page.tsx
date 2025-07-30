@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Student, User, ClassData } from '@/types';
@@ -54,7 +53,6 @@ export default function ManageStudentsPage() {
   const { toast } = useToast();
   const [students, setStudents] = useState<Student[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState("list-students");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
@@ -308,163 +306,142 @@ export default function ManageStudentsPage() {
         description="Administer enrolled student profiles and records." 
       />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2"> 
-          <TabsTrigger value="list-students"><Users className="mr-2 h-4 w-4" />List Students</TabsTrigger>
-          <TabsTrigger value="student-activity"><Activity className="mr-2 h-4 w-4" />Student Activity</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="list-students">
-          <Card>
-            <CardHeader>
-              <CardTitle>Student Roster</CardTitle>
-              <CardDescription>View, search, and manage enrolled student profiles. New students are registered by teachers or admins.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4 flex flex-wrap items-center gap-4">
-                <div className="flex-grow flex items-center gap-2">
-                    <Search className="h-5 w-5 text-muted-foreground" />
-                    <Input 
-                    placeholder="Search students by name or email..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="max-w-sm"
-                    disabled={isLoading}
-                    />
-                </div>
-                 <div className="flex items-center space-x-2">
-                    <Checkbox id="showTerminated" checked={showTerminated} onCheckedChange={(checked) => setShowTerminated(!!checked)} />
-                    <Label htmlFor="showTerminated">Show Terminated Students</Label>
-                </div>
-                <Button onClick={handleDownloadCsv} disabled={isLoading || filteredStudents.length === 0} className="ml-auto">
-                    <FileDown className="mr-2 h-4 w-4"/>
-                    Download Report
-                </Button>
+        <Card>
+          <CardHeader>
+            <CardTitle>Student Roster</CardTitle>
+            <CardDescription>View, search, and manage enrolled student profiles. New students are registered by teachers or admins.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-4 flex flex-wrap items-center gap-4">
+              <div className="flex-grow flex items-center gap-2">
+                  <Search className="h-5 w-5 text-muted-foreground" />
+                  <Input 
+                  placeholder="Search students by name or email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="max-w-sm"
+                  disabled={isLoading}
+                  />
               </div>
-              {isLoading ? (
-                 <p className="text-center text-muted-foreground py-4">Loading students...</p>
-              ) : pageError ? (
-                <Alert variant="destructive" className="my-4">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Error Loading Student Data</AlertTitle>
-                  <AlertDescription>
-                    <p>{pageError}</p>
-                    <p className="mt-2 text-xs">This page cannot function correctly until the database schema is updated. Please refer to the instructions provided.</p>
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <>
-                  {paginatedStudents.length > 0 ? (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Avatar</TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Roll Number</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Class / Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {paginatedStudents.map((student) => (
-                          <TableRow key={student.id} className={student.status !== 'Active' && student.status ? 'bg-muted/50' : ''}>
-                            <TableCell>
-                              <Avatar>
-                                <AvatarImage src={student.profile_picture_url || `https://placehold.co/40x40.png?text=${student.name.substring(0,2).toUpperCase()}`} alt={student.name} data-ai-hint="person portrait" />
-                                <AvatarFallback>{student.name.substring(0,2).toUpperCase()}</AvatarFallback>
-                              </Avatar>
-                            </TableCell>
-                            <TableCell className="font-medium">{student.name}</TableCell>
-                            <TableCell>
-                                <span className="font-mono text-xs">{student.roll_number || 'N/A'}</span>
-                            </TableCell>
-                            <TableCell>{student.email}</TableCell>
-                            <TableCell>
-                                {student.status && student.status !== 'Active' ? 
-                                    <Badge variant="destructive">{student.status}</Badge> 
-                                    : getClassDisplayName(student.class_id)
-                                }
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <AlertDialog>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" disabled={isSubmitting}>
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                    <DropdownMenuSeparator />
-                                    {student.status === 'Active' || !student.status ? (
-                                      <>
-                                        <DropdownMenuItem onSelect={() => handleOpenEditDialog(student)}><Edit2 className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem>
-                                        <DropdownMenuItem onSelect={() => handleGenerateTC(student)}><FileText className="mr-2 h-4 w-4"/>Generate TC</DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <AlertDialogTrigger asChild>
-                                          <DropdownMenuItem className="text-destructive" onSelect={(e) => e.preventDefault()}><UserX className="mr-2 h-4 w-4"/>Terminate</DropdownMenuItem>
-                                        </AlertDialogTrigger>
-                                      </>
-                                    ) : (
+               <div className="flex items-center space-x-2">
+                  <Checkbox id="showTerminated" checked={showTerminated} onCheckedChange={(checked) => setShowTerminated(!!checked)} />
+                  <Label htmlFor="showTerminated">Show Terminated Students</Label>
+              </div>
+              <Button onClick={handleDownloadCsv} disabled={isLoading || filteredStudents.length === 0} className="ml-auto">
+                  <FileDown className="mr-2 h-4 w-4"/>
+                  Download Report
+              </Button>
+            </div>
+            {isLoading ? (
+               <p className="text-center text-muted-foreground py-4">Loading students...</p>
+            ) : pageError ? (
+              <Alert variant="destructive" className="my-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Error Loading Student Data</AlertTitle>
+                <AlertDescription>
+                  <p>{pageError}</p>
+                  <p className="mt-2 text-xs">This page cannot function correctly until the database schema is updated. Please refer to the instructions provided.</p>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <>
+                {paginatedStudents.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Avatar</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Roll Number</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Class / Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedStudents.map((student) => (
+                        <TableRow key={student.id} className={student.status !== 'Active' && student.status ? 'bg-muted/50' : ''}>
+                          <TableCell>
+                            <Avatar>
+                              <AvatarImage src={student.profile_picture_url || `https://placehold.co/40x40.png?text=${student.name.substring(0,2).toUpperCase()}`} alt={student.name} data-ai-hint="person portrait" />
+                              <AvatarFallback>{student.name.substring(0,2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                          </TableCell>
+                          <TableCell className="font-medium">{student.name}</TableCell>
+                          <TableCell>
+                              <span className="font-mono text-xs">{student.roll_number || 'N/A'}</span>
+                          </TableCell>
+                          <TableCell>{student.email}</TableCell>
+                          <TableCell>
+                              {student.status && student.status !== 'Active' ? 
+                                  <Badge variant="destructive">{student.status}</Badge> 
+                                  : getClassDisplayName(student.class_id)
+                              }
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <AlertDialog>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" disabled={isSubmitting}>
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  {student.status === 'Active' || !student.status ? (
+                                    <>
+                                      <DropdownMenuItem onSelect={() => handleOpenEditDialog(student)}><Edit2 className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem>
+                                      <DropdownMenuItem onSelect={() => handleGenerateTC(student)}><FileText className="mr-2 h-4 w-4"/>Generate TC</DropdownMenuItem>
+                                      <DropdownMenuSeparator />
                                       <AlertDialogTrigger asChild>
-                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}><UserCheck className="mr-2 h-4 w-4"/>Reactivate</DropdownMenuItem>
+                                        <DropdownMenuItem className="text-destructive" onSelect={(e) => e.preventDefault()}><UserX className="mr-2 h-4 w-4"/>Terminate</DropdownMenuItem>
                                       </AlertDialogTrigger>
-                                    )}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                    </>
+                                  ) : (
+                                    <AlertDialogTrigger asChild>
+                                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}><UserCheck className="mr-2 h-4 w-4"/>Reactivate</DropdownMenuItem>
+                                    </AlertDialogTrigger>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
 
-                                {student.status === 'Active' || !student.status ? (
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader><AlertDialogTitle>Terminate {student.name}?</AlertDialogTitle><AlertDialogDescription>This will mark the student as 'Terminated', unassign them from their class, and deactivate their login. This action is reversible.</AlertDialogDescription></AlertDialogHeader>
-                                      <AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleTerminateStudent(student)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Terminate</AlertDialogAction></AlertDialogFooter>
-                                    </AlertDialogContent>
-                                ) : (
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader><AlertDialogTitle>Reactivate {student.name}?</AlertDialogTitle><AlertDialogDescription>This will mark the student's status as 'Active' and re-enable their login. They will not be automatically re-assigned to a class.</AlertDialogDescription></AlertDialogHeader>
-                                      <AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleReactivateStudent(student)} disabled={isSubmitting} className="bg-green-600 text-white hover:bg-green-700">{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Reactivate</AlertDialogAction></AlertDialogFooter>
-                                    </AlertDialogContent>
-                                )}
-                              </AlertDialog>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  ) : (
-                    <p className="text-center text-muted-foreground py-4">
-                      {searchTerm ? "No students match your search." : (showTerminated ? "No terminated students found." : "No active students found for this school.")}
-                    </p>
-                  )}
-                </>
-              )}
-            </CardContent>
-             {totalPages > 1 && (
-                <CardFooter className="flex justify-end items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>
-                        <ChevronLeft className="h-4 w-4" /> Previous
-                    </Button>
-                    <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
-                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>
-                        Next <ChevronRight className="h-4 w-4" />
-                    </Button>
-                </CardFooter>
+                              {student.status === 'Active' || !student.status ? (
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader><AlertDialogTitle>Terminate {student.name}?</AlertDialogTitle><AlertDialogDescription>This will mark the student as 'Terminated', unassign them from their class, and deactivate their login. This action is reversible.</AlertDialogDescription></AlertDialogHeader>
+                                    <AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleTerminateStudent(student)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Terminate</AlertDialogAction></AlertDialogFooter>
+                                  </AlertDialogContent>
+                              ) : (
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader><AlertDialogTitle>Reactivate {student.name}?</AlertDialogTitle><AlertDialogDescription>This will mark the student's status as 'Active' and re-enable their login. They will not be automatically re-assigned to a class.</AlertDialogDescription></AlertDialogHeader>
+                                    <AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleReactivateStudent(student)} disabled={isSubmitting} className="bg-green-600 text-white hover:bg-green-700">{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Reactivate</AlertDialogAction></AlertDialogFooter>
+                                  </AlertDialogContent>
+                              )}
+                            </AlertDialog>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-center text-muted-foreground py-4">
+                    {searchTerm ? "No students match your search." : (showTerminated ? "No terminated students found." : "No active students found for this school.")}
+                  </p>
+                )}
+              </>
             )}
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="student-activity">
-          <Card>
-            <CardHeader>
-              <CardTitle>Student Activity</CardTitle>
-              <CardDescription>Overview of student activities and engagement.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">Student activity tracking and reporting will be implemented here.</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          </CardContent>
+           {totalPages > 1 && (
+              <CardFooter className="flex justify-end items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>
+                      <ChevronLeft className="h-4 w-4" /> Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>
+                      Next <ChevronRight className="h-4 w-4" />
+                  </Button>
+              </CardFooter>
+          )}
+        </Card>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-[480px]">

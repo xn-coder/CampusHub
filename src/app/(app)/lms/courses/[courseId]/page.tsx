@@ -273,8 +273,8 @@ function ViewCoursePageContent() {
           </CardContent>
       </Card>
 
-      <Button variant="outline" onClick={() => router.push('/lms/available-courses')} className="mt-4 self-start">
-        Back to Available Courses
+      <Button variant="outline" onClick={() => router.push(isAdminViewing ? '/admin/lms/courses' : '/lms/available-courses')} className="mt-4 self-start">
+        Back to Courses
       </Button>
     </div>
   );

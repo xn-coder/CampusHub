@@ -78,40 +78,6 @@ export default function AdmissionsPage() {
     }
     loadInitialData();
   }, [toast]);
-
-  async function refreshAdmissionData() {
-    if (!currentSchoolId) return;
-    setIsLoading(true);
-    const pageDataResult = await fetchAdmissionPageDataAction(currentSchoolId);
-    if (pageDataResult.ok) {
-        setAdmissionRecords(pageDataResult.admissions || []);
-        setActiveClasses(pageDataResult.classes || []);
-        setFeePayments(pageDataResult.feePayments || []);
-        setFeeCategories(pageDataResult.feeCategories || []);
-    } else {
-        toast({ title: "Error refreshing data", description: pageDataResult.message, variant: "destructive" });
-    }
-    setIsLoading(false);
-  }
-
-  const handleEnrollStudent = async (admissionId: string) => {
-    if (!currentSchoolId) {
-        toast({title: "Error", description: "School context missing.", variant: "destructive"});
-        return;
-    }
-    setIsSubmitting(true);
-    const admission = admissionRecords.find(ar => ar.id === admissionId);
-    if (admission) {
-        const result = await updateAdmissionStatusAction(admissionId, 'Enrolled', currentSchoolId);
-        if (result.ok) {
-            toast({ title: "Student Enrolled", description: `${admission.name} is now marked as enrolled.` });
-            refreshAdmissionData();
-        } else {
-            toast({ title: "Error", description: result.message, variant: "destructive" });
-        }
-    }
-    setIsSubmitting(false);
-  };
   
   const filteredAdmissionRecords = useMemo(() => {
     return admissionRecords.filter(record => {
@@ -171,7 +137,7 @@ export default function AdmissionsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="View Admission Records"
-        description="Review admitted students. After fee payment is confirmed, mark the student as 'Enrolled' to finalize their admission."
+        description="Review and manage student admission records."
         actions={
           <Button asChild>
             <Link href="/admin/admissions/new">
@@ -183,7 +149,7 @@ export default function AdmissionsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center"><ListChecks className="mr-2 h-5 w-5" />Admission Records</CardTitle>
-            <CardDescription>List of all admissions. Once a student is 'Admitted', you can finalize the process by marking them as 'Enrolled'.</CardDescription>
+            <CardDescription>List of all student admissions.</CardDescription>
           </CardHeader>
           <CardContent>
              <div className="mb-4 flex flex-col md:flex-row gap-4">
@@ -206,7 +172,6 @@ export default function AdmissionsPage() {
                         <SelectItem value="all">All Statuses</SelectItem>
                         <SelectItem value="Pending Review">Pending Review</SelectItem>
                         <SelectItem value="Admitted">Admitted</SelectItem>
-                        <SelectItem value="Enrolled">Enrolled</SelectItem>
                         <SelectItem value="Rejected">Rejected</SelectItem>
                     </SelectContent>
                 </Select>
@@ -247,8 +212,7 @@ export default function AdmissionsPage() {
                       <TableCell>{classText}</TableCell>
                       <TableCell>
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          record.status === 'Enrolled' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                          record.status === 'Admitted' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                          record.status === 'Admitted' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                           record.status === 'Pending Review' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
                           'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                         }`}>
@@ -293,11 +257,6 @@ export default function AdmissionsPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                             {record.status === 'Admitted' && (
-                                <DropdownMenuItem onSelect={() => handleEnrollStudent(record.id)} disabled={isSubmitting}>
-                                    <CheckSquare className="mr-2 h-4 w-4"/> Enroll Student
-                                </DropdownMenuItem>
-                             )}
                             <DropdownMenuItem asChild>
                                 <Link href={`/admin/manage-students/${record.student_profile_id}/edit`}>
                                     <Edit2 className="mr-2 h-4 w-4"/> Edit Details

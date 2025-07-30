@@ -12,20 +12,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Teacher, User } from '@/types'; 
 import { useState, useEffect, type FormEvent, type ChangeEvent, useMemo } from 'react';
-import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2, FileDown, MoreHorizontal, ChevronLeft, ChevronRight, ArrowDownUp } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2, FileDown, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { createTeacherAction, updateTeacherAction, deleteTeacherAction, getTeacherActivityData } from './actions';
+import { createTeacherAction, updateTeacherAction, deleteTeacherAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { format, isValid, parseISO } from 'date-fns';
 
 const ITEMS_PER_PAGE = 10;
-
-type TeacherWithActivity = Teacher & {
-    lastLogin?: string;
-    assignmentsPosted?: number;
-    classesTaught?: number;
-};
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   // First, try to get school_id directly from the user's record
@@ -69,7 +62,6 @@ async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
 export default function ManageTeachersPage() {
   const { toast } = useToast();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [teacherActivityData, setTeacherActivityData] = useState<TeacherWithActivity[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState("list-teachers");
   const [isLoading, setIsLoading] = useState(true); 
@@ -77,9 +69,6 @@ export default function ManageTeachersPage() {
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortBy, setSortBy] = useState<keyof TeacherWithActivity | ''>('name');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-
 
 
   // For Create Teacher Tab
@@ -142,60 +131,18 @@ export default function ManageTeachersPage() {
     }
     setIsLoading(false); 
   }
-  
-  useEffect(() => {
-    if (activeTab === 'teacher-activity' && currentSchoolId) {
-      setIsLoading(true);
-      getTeacherActivityData(currentSchoolId).then(res => {
-        if (res.ok && res.data) {
-          setTeacherActivityData(res.data as TeacherWithActivity[]);
-        } else {
-          toast({ title: "Error fetching activity data", description: res.message, variant: "destructive" });
-        }
-        setIsLoading(false);
-      });
-    }
-  }, [activeTab, currentSchoolId, toast]);
 
   const filteredTeachers = useMemo(() => teachers.filter(teacher =>
     teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (teacher.email && teacher.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (teacher.subject && teacher.subject.toLowerCase().includes(searchTerm.toLowerCase()))
   ), [teachers, searchTerm]);
-  
-  const filteredActivityData = useMemo(() => teacherActivityData.filter(teacher =>
-    teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (teacher.email && teacher.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (teacher.subject && teacher.subject.toLowerCase().includes(searchTerm.toLowerCase()))
-  ), [teacherActivityData, searchTerm]);
 
-
-  const paginatedData = useMemo(() => {
-    const dataToPaginate = activeTab === 'list-teachers' ? filteredTeachers : filteredActivityData;
-    
-    if (sortBy) {
-        dataToPaginate.sort((a, b) => {
-            const valA = a[sortBy as keyof TeacherWithActivity];
-            const valB = b[sortBy as keyof TeacherWithActivity];
-
-            if (valA === undefined || valA === null) return 1;
-            if (valB === undefined || valB === null) return -1;
-            
-            if (typeof valA === 'string' && typeof valB === 'string') {
-                return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-            }
-            if (typeof valA === 'number' && typeof valB === 'number') {
-                return sortOrder === 'asc' ? valA - valB : valB - valA;
-            }
-            return 0;
-        });
-    }
-
+  const paginatedTeachers = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return dataToPaginate.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredTeachers, filteredActivityData, currentPage, activeTab, sortBy, sortOrder]);
-
-  const totalPages = Math.ceil((activeTab === 'list-teachers' ? filteredTeachers.length : filteredActivityData.length) / ITEMS_PER_PAGE);
+    return filteredTeachers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredTeachers, currentPage]);
+  const totalPages = Math.ceil(filteredTeachers.length / ITEMS_PER_PAGE);
 
   
   const handleOpenEditDialog = (teacher: Teacher) => { 
@@ -303,34 +250,19 @@ export default function ManageTeachersPage() {
   };
 
   const handleDownloadCsv = () => {
-    const dataToDownload = activeTab === 'list-teachers' ? filteredTeachers : filteredActivityData;
-    if (dataToDownload.length === 0) {
+    if (filteredTeachers.length === 0) {
         toast({ title: "No Data", description: "There are no teachers to download for the current filter.", variant: "destructive"});
         return;
     }
-
-    const isActivityTab = activeTab === 'teacher-activity';
-
-    const headers = isActivityTab 
-        ? ["Name", "Email", "Subject", "Last Login", "Assignments Posted", "Classes Taught"]
-        : ["Name", "Email", "Subject"];
-
+    const headers = ["Name", "Email", "Subject"];
     const csvRows = [
         headers.join(','),
-        ...dataToDownload.map(teacher => {
-            let row = [
+        ...filteredTeachers.map(teacher => {
+            const row = [
                 `"${teacher.name.replace(/"/g, '""')}"`,
                 `"${(teacher.email || 'N/A').replace(/"/g, '""')}"`,
                 `"${(teacher.subject || 'N/A').replace(/"/g, '""')}"`
             ];
-            if (isActivityTab) {
-                const activityTeacher = teacher as TeacherWithActivity;
-                row.push(
-                    `"${formatDateSafe(activityTeacher.lastLogin)}"`,
-                    String(activityTeacher.assignmentsPosted || 0),
-                    String(activityTeacher.classesTaught || 0)
-                );
-            }
             return row.join(',');
         })
     ];
@@ -339,36 +271,11 @@ export default function ManageTeachersPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `teacher_roster_${activeTab}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `teacher_roster_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
-  
-  const handleSort = (column: keyof TeacherWithActivity) => {
-    if (sortBy === column) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(column);
-      setSortOrder('asc');
-    }
-  };
-  
-  const formatDateSafe = (dateString?: string | null) => {
-    if (!dateString) return 'N/A';
-    const dateObj = parseISO(dateString);
-    return isValid(dateObj) ? format(dateObj, 'PPpp') : 'N/A';
-  };
-  
-  const SortableHeader = ({ column, label, align = 'left' }: { column: keyof TeacherWithActivity; label: string, align?: 'left' | 'right' }) => (
-    <TableHead onClick={() => handleSort(column)} className={`cursor-pointer hover:bg-muted/50 text-${align}`}>
-      <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
-        {label}
-        {sortBy === column && <ArrowDownUp className="h-3 w-3" />}
-      </div>
-    </TableHead>
-  );
-
 
   
   if (!currentSchoolId && !isLoading) { 
@@ -394,10 +301,9 @@ export default function ManageTeachersPage() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="list-teachers"><Briefcase className="mr-2 h-4 w-4" />List Teachers</TabsTrigger>
           <TabsTrigger value="create-teacher"><UserPlus className="mr-2 h-4 w-4" />Create Teacher</TabsTrigger>
-          <TabsTrigger value="teacher-activity"><Activity className="mr-2 h-4 w-4" />Teacher Activity</TabsTrigger>
         </TabsList>
 
         <TabsContent value="list-teachers">
@@ -424,12 +330,12 @@ export default function ManageTeachersPage() {
                 </Button>
               </div>
               {isLoading && <p className="text-center text-muted-foreground py-4">Loading teachers...</p>}
-              {!isLoading && currentSchoolId && paginatedData.length === 0 && (
+              {!isLoading && currentSchoolId && paginatedTeachers.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">
                   {searchTerm ? "No teachers match your search for this school." : "No teachers found for this school. Add a new teacher to get started."}
                 </p>
               )}
-              {!isLoading && currentSchoolId && paginatedData.length > 0 && (
+              {!isLoading && currentSchoolId && paginatedTeachers.length > 0 && (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -441,7 +347,7 @@ export default function ManageTeachersPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedData.map((teacher) => (
+                    {paginatedTeachers.map((teacher) => (
                       <TableRow key={teacher.id}>
                         <TableCell>
                           <Avatar>
@@ -522,69 +428,6 @@ export default function ManageTeachersPage() {
               </CardFooter>
             </form>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="teacher-activity">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Teacher Activity Overview</CardTitle>
-                    <CardDescription>Review key engagement metrics for teachers in your school.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="mb-4 flex flex-wrap items-center gap-2">
-                        <div className="flex-grow flex items-center gap-2">
-                            <Search className="h-5 w-5 text-muted-foreground" />
-                            <Input 
-                            placeholder="Search teachers..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="max-w-sm"
-                            disabled={isLoading}
-                            />
-                        </div>
-                        <Button onClick={handleDownloadCsv} disabled={isLoading || filteredActivityData.length === 0} className="ml-auto">
-                            <FileDown className="mr-2 h-4 w-4"/>
-                            Download Activity Report
-                        </Button>
-                    </div>
-                     {isLoading ? <p className="text-center text-muted-foreground py-4">Loading activity...</p> : 
-                     paginatedData.length > 0 ? (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <SortableHeader column="name" label="Teacher Name" />
-                                    <SortableHeader column="email" label="Email" />
-                                    <SortableHeader column="lastLogin" label="Last Login" />
-                                    <SortableHeader column="assignmentsPosted" label="Assignments Posted" align="right" />
-                                    <SortableHeader column="classesTaught" label="Classes Taught" align="right" />
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {paginatedData.map(teacher => (
-                                    <TableRow key={teacher.id}>
-                                        <TableCell className="font-medium">{teacher.name}</TableCell>
-                                        <TableCell>{teacher.email}</TableCell>
-                                        <TableCell>{formatDateSafe((teacher as TeacherWithActivity).lastLogin)}</TableCell>
-                                        <TableCell className="text-right">{(teacher as TeacherWithActivity).assignmentsPosted}</TableCell>
-                                        <TableCell className="text-right">{(teacher as TeacherWithActivity).classesTaught}</TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                     ) : <p className="text-center text-muted-foreground py-4">No teacher activity data available.</p>}
-                </CardContent>
-                 {totalPages > 1 && (
-                    <CardFooter className="flex justify-end items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}>
-                            <ChevronLeft className="h-4 w-4" /> Previous
-                        </Button>
-                        <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
-                        <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}>
-                            Next <ChevronRight className="h-4 w-4" />
-                        </Button>
-                    </CardFooter>
-                )}
-            </Card>
         </TabsContent>
       </Tabs>
 
