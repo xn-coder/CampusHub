@@ -180,21 +180,23 @@ export default function AvailableLmsCoursesPage() {
                        </Link>
                      </Button>
                   ) : canEnroll && course.is_paid ? (
-                    <Button asChild className="w-full">
-                      <Link href={`/student/lms/activate?courseId=${course.id}`}>
-                         <ShoppingCart className="mr-2 h-4 w-4"/> Activate Course
-                      </Link>
-                    </Button>
-                  ) : canEnroll && !course.is_paid ? (
-                    <div className="flex w-full gap-2">
-                        <Button onClick={() => handleEnrollUnpaid(course.id)} className="flex-1" disabled={isEnrolling[course.id] || !currentUserProfileId}>
-                          {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
-                          {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
+                     <div className="flex w-full gap-2">
+                        <Button asChild className="flex-1">
+                          <Link href={`/student/lms/activate?courseId=${course.id}`}>
+                             <ShoppingCart className="mr-2 h-4 w-4"/> Activate Course
+                          </Link>
                         </Button>
                         <Button asChild variant="outline" className="flex-1">
                            <Link href={`/lms/courses/${course.id}?preview=true`}>
                              <BookOpen className="mr-2 h-4 w-4"/> Preview Course
                            </Link>
+                        </Button>
+                    </div>
+                  ) : canEnroll && !course.is_paid ? (
+                    <div className="flex w-full gap-2">
+                        <Button onClick={() => handleEnrollUnpaid(course.id)} className="flex-1" disabled={isEnrolling[course.id] || !currentUserProfileId}>
+                          {isEnrolling[course.id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
+                          {isEnrolling[course.id] ? 'Enrolling...' : 'Enroll Now (Free)'}
                         </Button>
                     </div>
                   ) : ( // Admin/Superadmin view or user cannot enroll

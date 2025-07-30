@@ -243,7 +243,7 @@ function ViewCoursePageContent() {
                             <AccordionContent className="px-4 pt-2 border-t">
                                <div className="space-y-2 py-2">
                                    {lessonContents.length > 0 ? lessonContents.map(res => {
-                                       const isLocked = !isAdminViewing && isPreview && !isFirstLessonPreview;
+                                       const isLocked = !isAdminViewing && isPreview && course.is_paid && !isFirstLessonPreview;
                                        return (
                                            <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
                                                 <Link href={isLocked ? '#' : `/lms/courses/${courseId}/${res.id}`} className={`flex-grow ${isLocked ? 'cursor-not-allowed' : ''}`}>
