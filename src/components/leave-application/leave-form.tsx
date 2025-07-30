@@ -17,6 +17,7 @@ import { submitLeaveApplicationAction } from '@/actions/leaveActions';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { fileToDataUri } from '@/lib/utils';
+import { DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 
 const formSchema = z.object({
   applicantName: z.string().min(1, "Applicant name is required"),
@@ -26,7 +27,11 @@ const formSchema = z.object({
 
 type LeaveFormValues = z.infer<typeof formSchema>;
 
-export default function LeaveForm() {
+interface LeaveFormProps {
+    onApplicationSubmitted?: () => void;
+}
+
+export default function LeaveForm({ onApplicationSubmitted }: LeaveFormProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [submissionResult, setSubmissionResult] = useState<StoredLeaveApplicationDB | null>(null);
@@ -128,7 +133,8 @@ export default function LeaveForm() {
         
         const resetValues = { reason: '', medicalNotes: undefined, applicantName: data.applicantName };
         reset(resetValues);
-        setFileName(null); 
+        setFileName(null);
+        onApplicationSubmitted?.();
       } else {
         setError(result.message || "Failed to save application to database.");
         toast({ title: "Submission Error", description: result.message || "Failed to save application.", variant: "destructive"});
@@ -152,88 +158,112 @@ export default function LeaveForm() {
     }
   };
 
+  const formInDialog = !!onApplicationSubmitted;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Submit Leave Application</CardTitle>
-        <CardDescription>Fill in the details for your leave request. Your application will be reviewed by the administration.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <div>
-            <Label htmlFor="applicantName">Applicant Name</Label>
-            <Controller
-              name="applicantName"
-              control={control}
-              render={({ field }) => <Input id="applicantName" placeholder="Enter your full name" {...field} disabled={(currentUserRole === 'student' && !!studentProfile) || (currentUserRole === 'teacher' && !!teacherProfile)} />}
-            />
-            {errors.applicantName && <p className="text-sm text-destructive mt-1">{errors.applicantName.message}</p>}
-          </div>
-
-          <div>
-            <Label htmlFor="reason">Reason for Absence</Label>
-            <Controller
-              name="reason"
-              control={control}
-              render={({ field }) => <Textarea id="reason" placeholder="Explain the reason for absence..." {...field} />}
-            />
-            {errors.reason && <p className="text-sm text-destructive mt-1">{errors.reason.message}</p>}
-          </div>
-
-          <div>
-            <Label htmlFor="medicalNotes">Upload Document (Optional)</Label>
-            <div className="flex items-center space-x-2">
-              <Label 
-                htmlFor="medicalNotes-upload" 
-                className="flex items-center justify-center w-full px-4 py-2 border border-dashed rounded-md cursor-pointer hover:border-primary"
-              >
-                <UploadCloud className="w-5 h-5 mr-2 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">
-                  {fileName || "Click to upload a file (PDF, JPG, PNG)"}
-                </span>
-              </Label>
-              <Input 
-                id="medicalNotes-upload" 
-                type="file"
-                className="hidden"
-                accept=".pdf,.jpg,.jpeg,.png"
-                {...register("medicalNotes", { onChange: handleFileChange })}
-              />
+    <>
+    {formInDialog ? (
+      <>
+        <DialogHeader>
+            <DialogTitle>New Leave Application</DialogTitle>
+            <DialogDescription>Fill in the details for your leave request. It will be sent to the administration for review.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-4">
+            <div>
+                <Label htmlFor="applicantName">Applicant Name</Label>
+                <Controller name="applicantName" control={control} render={({ field }) => <Input id="applicantName" {...field} disabled />} />
             </div>
-            {errors.medicalNotes && <p className="text-sm text-destructive mt-1">{errors.medicalNotes.message?.toString()}</p>}
-          </div>
-
-          <Button type="submit" disabled={isLoading || !currentSchoolId} className="w-full">
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              'Submit Application'
-            )}
-          </Button>
+            <div>
+                <Label htmlFor="reason">Reason for Absence</Label>
+                <Controller name="reason" control={control} render={({ field }) => <Textarea id="reason" placeholder="Explain the reason..." {...field} />} />
+                {errors.reason && <p className="text-sm text-destructive mt-1">{errors.reason.message}</p>}
+            </div>
+            <div>
+                <Label htmlFor="medicalNotes-upload-dialog">Upload Document (Optional)</Label>
+                <Input id="medicalNotes-upload-dialog" type="file" className="w-full" accept=".pdf,.jpg,.jpeg,.png" {...register("medicalNotes", { onChange: handleFileChange })} />
+            </div>
+            {error && <Alert variant="destructive"><XCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
+            <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isLoading || !currentSchoolId}>
+                    {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</> : 'Submit Application'}
+                </Button>
+            </DialogFooter>
         </form>
+      </>
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>Submit Leave Application</CardTitle>
+          <CardDescription>Fill in the details for your leave request. Your application will be reviewed by the administration.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <div>
+              <Label htmlFor="applicantName">Applicant Name</Label>
+              <Controller
+                name="applicantName"
+                control={control}
+                render={({ field }) => <Input id="applicantName" placeholder="Enter your full name" {...field} disabled={(currentUserRole === 'student' && !!studentProfile) || (currentUserRole === 'teacher' && !!teacherProfile)} />}
+              />
+              {errors.applicantName && <p className="text-sm text-destructive mt-1">{errors.applicantName.message}</p>}
+            </div>
 
-        {error && (
-          <Alert variant="destructive" className="mt-6">
-            <XCircle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+            <div>
+              <Label htmlFor="reason">Reason for Absence</Label>
+              <Controller
+                name="reason"
+                control={control}
+                render={({ field }) => <Textarea id="reason" placeholder="Explain the reason for absence..." {...field} />}
+              />
+              {errors.reason && <p className="text-sm text-destructive mt-1">{errors.reason.message}</p>}
+            </div>
 
-        {submissionResult && (
-          <Alert className="mt-6" variant={submissionResult.status === 'Approved' ? "default" : "destructive"}>
-             {submissionResult.status === 'Approved' ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4"/>}
-            <AlertTitle>Application Status: {submissionResult.status}</AlertTitle>
-            <AlertDescription>
-                <p>Your application has been submitted and is now pending review.</p>
-            </AlertDescription>
-          </Alert>
-        )}
-      </CardContent>
-    </Card>
+            <div>
+              <Label htmlFor="medicalNotes">Upload Document (Optional)</Label>
+              <div className="flex items-center space-x-2">
+                <Label 
+                  htmlFor="medicalNotes-upload" 
+                  className="flex items-center justify-center w-full px-4 py-2 border border-dashed rounded-md cursor-pointer hover:border-primary"
+                >
+                  <UploadCloud className="w-5 h-5 mr-2 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    {fileName || "Click to upload a file (PDF, JPG, PNG)"}
+                  </span>
+                </Label>
+                <Input 
+                  id="medicalNotes-upload" 
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  {...register("medicalNotes", { onChange: handleFileChange })}
+                />
+              </div>
+              {errors.medicalNotes && <p className="text-sm text-destructive mt-1">{errors.medicalNotes.message?.toString()}</p>}
+            </div>
+
+            <Button type="submit" disabled={isLoading || !currentSchoolId} className="w-full">
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                'Submit Application'
+              )}
+            </Button>
+          </form>
+
+          {error && (
+            <Alert variant="destructive" className="mt-6">
+              <XCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+    )}
+    </>
   );
 }
