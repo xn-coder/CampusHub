@@ -3,7 +3,6 @@
 
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { StoredLeaveApplicationDB } from '@/types';
 import { useState, useEffect } from 'react';
@@ -11,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { getLeaveRequestsAction } from '@/actions/leaveActions';
 import { format, parseISO, isValid } from 'date-fns';
-import { History, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { History, Loader2, CheckCircle, XCircle, ExternalLink } from 'lucide-react';
 import {
   Accordion,
   AccordionContent,
@@ -94,7 +93,7 @@ export default function StudentLeaveHistoryPage() {
                         <div className="flex items-center gap-4 ml-4 shrink-0">
                             <span className="text-sm text-muted-foreground">{format(parseISO(request.submission_date), 'PP')}</span>
                              <Badge variant={request.status === 'Approved' ? 'default' : request.status === 'Rejected' ? 'destructive' : 'secondary'}>
-                                {request.status === 'Approved' ? <CheckCircle className="mr-1 h-3 w-3" /> : <XCircle className="mr-1 h-3 w-3" />}
+                                {request.status === 'Approved' ? <CheckCircle className="mr-1 h-3 w-3" /> : request.status === 'Rejected' ? <XCircle className="mr-1 h-3 w-3" /> : <Loader2 className="mr-1 h-3 w-3 animate-spin"/>}
                                 {request.status}
                             </Badge>
                         </div>
@@ -104,8 +103,7 @@ export default function StudentLeaveHistoryPage() {
                     <div className="space-y-2 text-sm text-muted-foreground px-4 py-2 border-l-2 ml-2">
                         <p><strong>Submitted On:</strong> {formatDateSafe(request.submission_date)}</p>
                         <p><strong>Reason Provided:</strong> {request.reason}</p>
-                        <p><strong>AI Reasoning:</strong> {request.ai_reasoning || 'N/A'}</p>
-                        <p><strong>Medical Note:</strong> {request.medical_notes_data_uri ? <a href={request.medical_notes_data_uri} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">View Note</a> : 'Not provided'}</p>
+                        <p><strong>Medical Note:</strong> {request.medical_notes_data_uri ? <a href={request.medical_notes_data_uri} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">View Note <ExternalLink className="inline h-3 w-3"/></a> : 'Not provided'}</p>
                     </div>
                   </AccordionContent>
                 </AccordionItem>

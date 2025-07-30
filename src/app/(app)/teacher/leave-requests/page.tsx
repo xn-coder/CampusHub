@@ -66,6 +66,7 @@ export default function TeacherLeaveRequestsPage() {
 
   useEffect(() => {
     fetchTeacherAndLeaveData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast]);
   
   const handleUpdateStatus = async (requestId: string, status: 'Approved' | 'Rejected') => {
