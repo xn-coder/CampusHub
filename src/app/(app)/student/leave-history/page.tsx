@@ -87,7 +87,7 @@ export default function StudentLeaveHistoryPage() {
                 <AccordionItem value={request.id} key={request.id}>
                   <AccordionTrigger>
                     <div className="flex justify-between items-center w-full pr-4">
-                        <span className="font-medium text-left truncate basis-1/2" title={request.reason}>
+                        <span className="font-medium text-left basis-1/2 truncate" title={request.reason}>
                             {request.reason}
                         </span>
                         <div className="flex items-center gap-4 ml-4 shrink-0">
@@ -102,7 +102,7 @@ export default function StudentLeaveHistoryPage() {
                   <AccordionContent>
                     <div className="space-y-2 text-sm text-muted-foreground px-4 py-2 border-l-2 ml-2">
                         <p><strong>Submitted On:</strong> {formatDateSafe(request.submission_date)}</p>
-                        <p><strong>Reason Provided:</strong> {request.reason}</p>
+                        <p className="whitespace-pre-wrap"><strong>Reason Provided:</strong> {request.reason}</p>
                         <p><strong>Medical Note:</strong> {request.medical_notes_data_uri ? <a href={request.medical_notes_data_uri} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">View Note <ExternalLink className="inline h-3 w-3"/></a> : 'Not provided'}</p>
                     </div>
                   </AccordionContent>
