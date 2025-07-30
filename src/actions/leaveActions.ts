@@ -1,9 +1,9 @@
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { StoredLeaveApplicationDB, UserRole } from '@/types';
-import { leaveApplicationApproval } from '@/ai/flows/leave-application-approval';
+import type { StoredLeaveApplicationDB, UserRole, LeaveRequestStatus } from '@/types';
 
 interface SubmitLeaveApplicationInput {
   student_profile_id?: string;
@@ -20,12 +20,6 @@ export async function submitLeaveApplicationAction(
 ): Promise<{ ok: boolean; message: string; application?: StoredLeaveApplicationDB }> {
   const supabase = createSupabaseServerClient();
   try {
-    // Call the AI flow to get approval status
-    const aiResult = await leaveApplicationApproval({
-      reason: input.reason,
-      medicalNotesDataUri: input.medical_notes_data_uri,
-    });
-
     const { data, error } = await supabase
       .from('leave_applications')
       .insert({
@@ -34,8 +28,7 @@ export async function submitLeaveApplicationAction(
         reason: input.reason,
         medical_notes_data_uri: input.medical_notes_data_uri,
         submission_date: new Date().toISOString(),
-        status: aiResult.approved ? 'Approved' : 'Rejected',
-        ai_reasoning: aiResult.reasoning,
+        status: 'Pending', // All requests are now pending admin approval
         applicant_user_id: input.applicant_user_id,
         applicant_role: input.applicant_role,
         school_id: input.school_id,
@@ -50,26 +43,26 @@ export async function submitLeaveApplicationAction(
     revalidatePath('/leave-application');
     revalidatePath('/teacher/leave-requests');
     revalidatePath('/student/leave-history');
-    return { ok: true, message: 'Leave application submitted successfully.', application: data as StoredLeaveApplicationDB };
+    revalidatePath('/admin/leave-management');
+    return { ok: true, message: 'Leave application submitted successfully for review.', application: data as StoredLeaveApplicationDB };
   } catch (e: any) {
     console.error("Unexpected error submitting leave application:", e);
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
 }
 
-
 interface GetLeaveRequestsParams {
   school_id: string;
   teacher_id?: string; // For teacher role to get students in their classes
   student_profile_id?: string; // For student role
+  applicant_user_id?: string; // For fetching a specific user's own requests (e.g., a teacher)
   target_role?: 'student' | 'teacher';
 }
 
-// Fetches leave requests. For teachers, it fetches for students in their classes.
-// For students, it fetches their own. For admins, it fetches all for the school.
+// Fetches leave requests.
 export async function getLeaveRequestsAction(params: GetLeaveRequestsParams): Promise<{ ok: boolean; message?: string; applications?: StoredLeaveApplicationDB[] }> {
   const supabase = createSupabaseServerClient();
-  const { school_id, teacher_id, student_profile_id, target_role = 'student' } = params;
+  const { school_id, teacher_id, student_profile_id, applicant_user_id, target_role } = params;
 
   try {
     let query = supabase
@@ -82,18 +75,17 @@ export async function getLeaveRequestsAction(params: GetLeaveRequestsParams): Pr
       .eq('school_id', school_id)
       .order('submission_date', { ascending: false });
 
-    // Filter by the role of the applicant (student or teacher)
     if (target_role) {
       query = query.eq('applicant_role', target_role);
     }
+    if(applicant_user_id) {
+        query = query.eq('applicant_user_id', applicant_user_id);
+    }
 
-    // Additional filtering for fetching student leaves specifically
     if (target_role === 'student') {
       if (student_profile_id) {
-        // A student fetching their own history
         query = query.eq('student_profile_id', student_profile_id);
       } else if (teacher_id) {
-        // A teacher fetching leave requests for students in their classes
         const { data: teacherClasses, error: classesError } = await supabase
           .from('classes')
           .select('id')
@@ -102,10 +94,7 @@ export async function getLeaveRequestsAction(params: GetLeaveRequestsParams): Pr
 
         if (classesError) throw classesError;
         const teacherClassIds = (teacherClasses || []).map(c => c.id);
-
-        if (teacherClassIds.length === 0) {
-          return { ok: true, applications: [] }; // Teacher has no classes
-        }
+        if (teacherClassIds.length === 0) return { ok: true, applications: [] };
 
         const { data: studentsInClasses, error: studentsError } = await supabase
           .from('students')
@@ -115,15 +104,11 @@ export async function getLeaveRequestsAction(params: GetLeaveRequestsParams): Pr
         
         if (studentsError) throw studentsError;
         const studentProfileIdsInTeacherClasses = (studentsInClasses || []).map(s => s.id);
+        if (studentProfileIdsInTeacherClasses.length === 0) return { ok: true, applications: [] };
 
-        if (studentProfileIdsInTeacherClasses.length === 0) {
-          return { ok: true, applications: [] }; // No students in teacher's classes
-        }
         query = query.in('student_profile_id', studentProfileIdsInTeacherClasses);
       }
     }
-    // For an admin fetching teacher leaves, no further filters are needed beyond school_id and target_role.
-    // For an admin fetching all student leaves, no further filters are needed either.
 
     const { data, error } = await query;
 
@@ -136,4 +121,33 @@ export async function getLeaveRequestsAction(params: GetLeaveRequestsParams): Pr
     console.error("Unexpected error fetching leave applications:", e);
     return { ok: false, message: `Unexpected error: ${e.message}` };
   }
+}
+
+interface UpdateLeaveStatusInput {
+  requestId: string;
+  status: 'Approved' | 'Rejected';
+  schoolId: string;
+}
+
+export async function updateLeaveStatusAction(input: UpdateLeaveStatusInput): Promise<{ ok: boolean; message: string }> {
+  const supabase = createSupabaseServerClient();
+  const { requestId, status, schoolId } = input;
+  
+  const { error } = await supabase
+    .from('leave_applications')
+    .update({ status })
+    .eq('id', requestId)
+    .eq('school_id', schoolId);
+    
+  if (error) {
+    console.error("Error updating leave status:", error);
+    return { ok: false, message: `Database error: ${error.message}` };
+  }
+
+  revalidatePath('/admin/leave-management');
+  revalidatePath('/teacher/leave-requests');
+  revalidatePath('/student/leave-history');
+  revalidatePath('/leave-application'); // For the applicant
+
+  return { ok: true, message: `Leave request status updated to ${status}.` };
 }

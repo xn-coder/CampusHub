@@ -13,10 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { Assignment, ClassData, Subject, UserRole } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { ScrollText, CalendarDays, ClipboardList, Info, Edit2, Save, Trash2, Loader2 } from 'lucide-react';
+import { ScrollText, CalendarDays, ClipboardList, Info, Edit2, Save, Trash2, Loader2, MoreHorizontal } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { getTeacherAssignmentsAction, updateAssignmentAction, deleteAssignmentAction } from '../post-assignments/actions';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 const NO_SUBJECT_VALUE = "__NO_SUBJECT__";
 
@@ -26,6 +27,7 @@ export default function TeacherAssignmentHistoryPage() {
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
@@ -106,7 +108,7 @@ export default function TeacherAssignmentHistoryPage() {
       toast({ title: "Error", description: "Title, Description, Due Date and context are required.", variant: "destructive"});
       return;
     }
-    setIsLoading(true);
+    setIsSubmitting(true);
     const result = await updateAssignmentAction({
       id: editingAssignment.id,
       title: editTitle.trim(),
@@ -117,7 +119,7 @@ export default function TeacherAssignmentHistoryPage() {
       school_id: currentSchoolId,   
       class_id: editingAssignment.class_id, // Pass class_id for context if action uses it
     });
-    setIsLoading(false);
+    setIsSubmitting(false);
 
     if (result.ok) {
       toast({ title: "Assignment Updated", description: `"${result.assignment?.title}" has been updated.`});
@@ -132,9 +134,9 @@ export default function TeacherAssignmentHistoryPage() {
   const handleDeleteAssignment = async (assignmentId: string) => {
     if (!currentTeacherId || !currentSchoolId) return;
     if (confirm("Are you sure you want to delete this assignment? This action cannot be undone.")) {
-        setIsLoading(true);
+        setIsSubmitting(true);
         const result = await deleteAssignmentAction(assignmentId, currentTeacherId, currentSchoolId);
-        setIsLoading(false);
+        setIsSubmitting(false);
         if (result.ok) {
             toast({title: "Assignment Deleted", description: result.message, variant: "destructive"});
             setPostedAssignments(prev => prev.filter(asm => asm.id !== assignmentId));
@@ -197,13 +199,22 @@ export default function TeacherAssignmentHistoryPage() {
                     <TableCell>{getSubjectName(assignment.subject_id)}</TableCell>
                     <TableCell>{format(parseISO(assignment.due_date), 'PP')}</TableCell>
                     <TableCell className="max-w-xs truncate">{assignment.description}</TableCell>
-                    <TableCell className="text-right space-x-1">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(assignment)} disabled={isLoading}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                       <Button variant="destructive" size="icon" onClick={() => handleDeleteAssignment(assignment.id)} disabled={isLoading}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <TableCell className="text-right">
+                       <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" disabled={isSubmitting || isLoading}>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => handleOpenEditDialog(assignment)}>
+                              <Edit2 className="mr-2 h-4 w-4" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => handleDeleteAssignment(assignment.id)} className="text-destructive">
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -213,7 +224,7 @@ export default function TeacherAssignmentHistoryPage() {
         </CardContent>
         {postedAssignments.length > 0 && (
             <CardFooter>
-                <p className="text-xs text-muted-foreground">This log helps you keep track of all assignments created. Use the edit button to update details.</p>
+                <p className="text-xs text-muted-foreground">This log helps you keep track of all assignments created. Use the actions menu to manage them.</p>
             </CardFooter>
         )}
       </Card>
@@ -227,19 +238,19 @@ export default function TeacherAssignmentHistoryPage() {
             <div className="grid gap-4 py-4">
               <div>
                 <Label htmlFor="editTitle">Title</Label>
-                <Input id="editTitle" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required disabled={isLoading}/>
+                <Input id="editTitle" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required disabled={isSubmitting}/>
               </div>
               <div>
                 <Label htmlFor="editDescription">Description</Label>
-                <Textarea id="editDescription" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={5} required disabled={isLoading}/>
+                <Textarea id="editDescription" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={5} required disabled={isSubmitting}/>
               </div>
               <div>
                 <Label htmlFor="editDueDate">Due Date</Label>
-                <Input id="editDueDate" type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} required disabled={isLoading}/>
+                <Input id="editDueDate" type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} required disabled={isSubmitting}/>
               </div>
               <div>
                  <Label htmlFor="editSubjectId">Subject (Optional)</Label>
-                 <Select value={editSubjectId} onValueChange={setEditSubjectId} disabled={isLoading}>
+                 <Select value={editSubjectId} onValueChange={setEditSubjectId} disabled={isSubmitting}>
                     <SelectTrigger id="editSubjectId"><SelectValue placeholder="Select subject (optional)"/></SelectTrigger>
                     <SelectContent>
                         <SelectItem value={NO_SUBJECT_VALUE}>None</SelectItem>
@@ -253,9 +264,9 @@ export default function TeacherAssignmentHistoryPage() {
               </div>
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Changes
+              <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Changes
               </Button>
             </DialogFooter>
           </form>
@@ -264,4 +275,3 @@ export default function TeacherAssignmentHistoryPage() {
     </div>
   );
 }
-

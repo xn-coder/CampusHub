@@ -49,7 +49,11 @@ export default function TeacherLeaveRequestsPage() {
         setCurrentSchoolId(teacherProfile.school_id);
 
         if (teacherProfile.id && teacherProfile.school_id) {
-          const result = await getLeaveRequestsAction({ school_id: teacherProfile.school_id, teacher_id: teacherProfile.id });
+          const result = await getLeaveRequestsAction({ 
+              school_id: teacherProfile.school_id, 
+              teacher_id: teacherProfile.id, 
+              target_role: 'student' 
+          });
           if (result.ok && result.applications) {
             setLeaveRequests(result.applications);
           } else {
@@ -87,7 +91,7 @@ export default function TeacherLeaveRequestsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><ClipboardCheck className="mr-2 h-5 w-5" />Leave Applications for Your Students</CardTitle>
-          <CardDescription>Review AI-processed leave requests. For overrides or issues, contact administration.</CardDescription>
+          <CardDescription>Review leave requests. For overrides or issues, contact administration.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -102,8 +106,8 @@ export default function TeacherLeaveRequestsPage() {
                   <TableHead><CalendarDays className="inline-block mr-1 h-4 w-4"/>Submitted</TableHead>
                   <TableHead><MessageSquare className="inline-block mr-1 h-4 w-4"/>Reason</TableHead>
                   <TableHead>Medical Note</TableHead>
-                  <TableHead className="text-center">AI Decision</TableHead>
-                  <TableHead>AI Reasoning</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                  <TableHead>Admin Reasoning</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -125,6 +129,7 @@ export default function TeacherLeaveRequestsPage() {
                       <Badge variant={req.status === 'Approved' ? 'default' : req.status === 'Rejected' ? 'destructive' : 'secondary'}>
                         {req.status === 'Approved' && <CheckCircle className="inline-block mr-1 h-3 w-3"/>}
                         {req.status === 'Rejected' && <XCircle className="inline-block mr-1 h-3 w-3"/>}
+                        {req.status === 'Pending' && <Loader2 className="inline-block mr-1 h-3 w-3 animate-spin"/>}
                         {req.status}
                       </Badge>
                     </TableCell>
@@ -136,7 +141,7 @@ export default function TeacherLeaveRequestsPage() {
           )}
         </CardContent>
          <CardFooter>
-            <p className="text-xs text-muted-foreground">Leave applications are automatically processed by an AI based on school policy. Teachers can view the status here.</p>
+            <p className="text-xs text-muted-foreground">Leave applications are reviewed by administration. Teachers can view the status here.</p>
         </CardFooter>
       </Card>
     </div>
