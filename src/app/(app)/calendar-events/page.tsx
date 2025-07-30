@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { addCalendarEventAction, updateCalendarEventAction, deleteCalendarEventAction, getCalendarEventsAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 export default function CalendarEventsPage() {
   const { toast } = useToast();
@@ -461,3 +461,5 @@ export default function CalendarEventsPage() {
     </div>
   );
 }
+
+    
