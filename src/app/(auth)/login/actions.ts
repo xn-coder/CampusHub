@@ -85,6 +85,9 @@ export async function attemptLogin(
     }
 
     if (userRecord.status !== 'Active') {
+        if (userRecord.role === 'admin') {
+            return { ok: false, message: 'Your admin account has been deactivated by the superadmin. Please contact support.' };
+        }
         return { ok: false, message: 'Your user account is inactive. Please contact administration.' };
     }
 
