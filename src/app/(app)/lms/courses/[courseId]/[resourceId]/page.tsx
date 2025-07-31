@@ -263,6 +263,9 @@ export default function CourseResourcePage() {
         return <div className="text-center py-10 text-destructive">Resource not found.</div>;
     }
 
+    const isAdmin = currentUserRole === 'admin' || currentUserRole === 'superadmin';
+    const isNextDisabled = !isAdmin && (isPreviewing || !isCompleted);
+
     return (
         <div className="flex flex-col gap-6">
             <PageHeader
@@ -437,16 +440,16 @@ export default function CourseResourcePage() {
                          <Button
                             asChild
                             variant="outline"
-                            disabled={isPreviewing || !isCompleted}
-                            title={isPreviewing ? "Enroll to access next lesson" : !isCompleted ? "Complete this lesson to proceed" : ""}
+                            disabled={isNextDisabled}
+                            title={isNextDisabled ? (isPreviewing ? "Enroll to access next lesson" : "Complete this lesson to proceed") : ""}
                         >
-                            <Link href={(isPreviewing || !isCompleted) ? "#" : `/lms/courses/${courseId}/${nextResourceId}`} className={`max-w-xs ${(isPreviewing || !isCompleted) ? 'cursor-not-allowed' : ''}`}>
-                                {(isPreviewing || !isCompleted) && <Lock className="mr-2 h-4 w-4 shrink-0" />}
+                            <Link href={isNextDisabled ? "#" : `/lms/courses/${courseId}/${nextResourceId}`} className={`max-w-xs ${isNextDisabled ? 'cursor-not-allowed' : ''}`}>
+                                {isNextDisabled && <Lock className="mr-2 h-4 w-4 shrink-0" />}
                                 <div className="flex flex-col items-end">
                                     <span className="text-xs text-muted-foreground">Next</span>
                                     <span className="truncate">{nextResourceTitle || '...'}</span>
                                 </div>
-                                {!((isPreviewing || !isCompleted)) && <ArrowRight className="ml-2 h-4 w-4 shrink-0" />}
+                                {!isNextDisabled && <ArrowRight className="ml-2 h-4 w-4 shrink-0" />}
                             </Link>
                         </Button>
                     ) : (
