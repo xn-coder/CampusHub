@@ -434,7 +434,7 @@ export default function CourseResourcePage() {
                             disabled={isPreviewing ? true : !isCompleted}
                             title={isPreviewing ? "Enroll to access next lesson" : !isCompleted ? "Complete this lesson to proceed" : ""}
                         >
-                            <Link href={isPreviewing ? "#" : `/lms/courses/${courseId}/${nextResourceId}`} className="max-w-xs">
+                            <Link href={isPreviewing ? "#" : `/lms/courses/${courseId}/${nextResourceId}`} className={`max-w-xs ${isPreviewing ? 'cursor-not-allowed' : ''}`}>
                                 {isPreviewing && <Lock className="mr-2 h-4 w-4 shrink-0" />}
                                 <div className="flex flex-col items-end">
                                     <span className="text-xs text-muted-foreground">Next</span>
