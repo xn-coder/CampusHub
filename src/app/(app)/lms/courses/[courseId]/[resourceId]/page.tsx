@@ -5,7 +5,7 @@ import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCourseForViewingAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation } from 'lucide-react';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -25,9 +25,6 @@ pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
 export default function CourseResourcePage() {
     const params = useParams();
     const router = useRouter();
-    const courseId = params.courseId as string;
-    const resourceId = params.resourceId as string;
-
     const [course, setCourse] = useState<(Course & { resources: CourseResource[] }) | null>(null);
     const [resource, setResource] = useState<LessonContentResource | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -47,6 +44,9 @@ export default function CourseResourcePage() {
     const [currentStudentName, setCurrentStudentName] = useState<string>('');
     const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
 
+    // isPreview state
+    const [isPreviewing, setIsPreviewing] = useState(false);
+
 
     // PDF viewer state
     const [numPages, setNumPages] = useState<number | null>(null);
@@ -56,6 +56,10 @@ export default function CourseResourcePage() {
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
     const [quizResult, setQuizResult] = useState<{ score: number; total: number; passed: boolean; } | null>(null);
+
+    const courseId = params.courseId as string;
+    const resourceId = params.resourceId as string;
+
 
     const calculateProgress = (completedResources: Record<string, boolean>) => {
         if (!course) return 0;
@@ -84,6 +88,8 @@ export default function CourseResourcePage() {
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
+          const searchParams = new URLSearchParams(window.location.search);
+          setIsPreviewing(searchParams.get('preview') === 'true');
           const storedProgressString = localStorage.getItem(`progress_${courseId}`);
           const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
           setIsCompleted(!!storedProgress[resourceId]);
@@ -181,8 +187,6 @@ export default function CourseResourcePage() {
       resource?.url_or_content ? { url: resource.url_or_content } : null
     ), [resource?.url_or_content]);
     
-    const isPreviewing = new URLSearchParams(window.location.search).get('preview') === 'true';
-
     const getResourceIcon = (type: string) => {
         const props = { className: "mr-2 h-5 w-5 text-primary" };
         switch(type) {
@@ -424,14 +428,15 @@ export default function CourseResourcePage() {
                     </Button>
                     
                     {nextResourceId ? (
-                        <Button 
-                            variant="outline" 
-                            asChild 
-                            disabled={!isCompleted || isPreviewing}
-                            title={!isCompleted ? "Complete this lesson to proceed" : isPreviewing ? "Enroll to access next lesson" : ""}
+                         <Button
+                            asChild
+                            variant="outline"
+                            disabled={isPreviewing ? true : !isCompleted}
+                            title={isPreviewing ? "Enroll to access next lesson" : !isCompleted ? "Complete this lesson to proceed" : ""}
                         >
-                            <Link href={`/lms/courses/${courseId}/${nextResourceId}`} className="max-w-xs">
-                                 <div className="flex flex-col items-end">
+                            <Link href={isPreviewing ? "#" : `/lms/courses/${courseId}/${nextResourceId}`} className="max-w-xs">
+                                {isPreviewing && <Lock className="mr-2 h-4 w-4 shrink-0" />}
+                                <div className="flex flex-col items-end">
                                     <span className="text-xs text-muted-foreground">Next</span>
                                     <span className="truncate">{nextResourceTitle || '...'}</span>
                                 </div>
