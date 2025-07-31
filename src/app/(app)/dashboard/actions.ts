@@ -30,12 +30,19 @@ interface DashboardData {
   // Common
   recentAnnouncements?: Pick<AnnouncementDB, 'id' | 'title' | 'date' | 'author_name' | 'posted_by_role' | 'target_class'>[];
   upcomingEvents?: Pick<CalendarEventDB, 'id' | 'title' | 'date' | 'start_time' | 'is_all_day'>[];
+  // Counts for sidebar
+  sidebarCounts?: {
+      pendingLeaveRequests?: number;
+      pendingTCRequests?: number;
+      pendingAssignments?: number;
+      pendingFeePayments?: number;
+  }
 }
 
 
 export async function getDashboardDataAction(userId: string, userRole: UserRole): Promise<{ ok: boolean; data?: DashboardData; message?: string }> {
   const supabase = createSupabaseServerClient();
-  const dashboardData: DashboardData = {};
+  const dashboardData: DashboardData = { sidebarCounts: {} };
 
   try {
     // Fetch common user details and school context
@@ -113,7 +120,10 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
             .eq('school_id', effectiveSchoolId)
             .gte('due_date', formatISO(new Date(), { representation: 'date' }));
             if (assignmentError) console.error("Error fetching student assignments count:", assignmentError.message);
-            else dashboardData.upcomingAssignmentsCount = count ?? 0;
+            else {
+                dashboardData.upcomingAssignmentsCount = count ?? 0;
+                dashboardData.sidebarCounts!.pendingAssignments = count ?? 0;
+            }
         }
 
         // Check fee status
@@ -121,6 +131,16 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
         if (feeStatusResult.ok) {
             dashboardData.feeStatus = { isDefaulter: feeStatusResult.isDefaulter, message: feeStatusResult.message };
         }
+        const { count: pendingFeeCount, error: feeCountError } = await supabase
+          .from('student_fee_payments')
+          .select('id', { count: 'exact', head: true })
+          .eq('student_id', studentProfileData.id)
+          .eq('school_id', effectiveSchoolId)
+          .in('status', ['Pending', 'Partially Paid', 'Overdue']);
+        if (!feeCountError) {
+          dashboardData.sidebarCounts!.pendingFeePayments = pendingFeeCount ?? 0;
+        }
+
       }
     } else if (userRole === 'teacher' && effectiveSchoolId) {
       if (teacherProfileData) {
@@ -171,13 +191,15 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
       }
     } else if (userRole === 'admin') {
         if (effectiveSchoolId) { // Admin has a school context
-            const [studentsRes, teachersRes, classesRes, admissionsRes, feesRes, expensesRes] = await Promise.all([
+            const [studentsRes, teachersRes, classesRes, admissionsRes, feesRes, expensesRes, leaveRes, tcRes] = await Promise.all([
                 supabase.from('students').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId),
                 supabase.from('teachers').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId),
                 supabase.from('classes').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId),
                 supabase.from('admission_records').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId).eq('status', 'Pending Review'),
                 supabase.from('student_fee_payments').select('id', { count: 'exact', head: true }).eq('school_id', effectiveSchoolId).in('status', ['Pending', 'Partially Paid', 'Overdue']),
-                supabase.from('expenses').select('amount').eq('school_id', effectiveSchoolId)
+                supabase.from('expenses').select('amount').eq('school_id', effectiveSchoolId),
+                supabase.from('leave_applications').select('id', {count: 'exact', head: true}).eq('school_id', effectiveSchoolId).eq('status', 'Pending'),
+                supabase.from('tc_requests').select('id', {count: 'exact', head: true}).eq('school_id', effectiveSchoolId).eq('status', 'Pending'),
             ]);
             dashboardData.totalSchoolStudents = studentsRes.count ?? 0;
             dashboardData.totalSchoolTeachers = teachersRes.count ?? 0;
@@ -185,6 +207,8 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
             dashboardData.pendingAdmissionsCount = admissionsRes.count ?? 0;
             dashboardData.pendingFeesCount = feesRes.count ?? 0;
             dashboardData.totalExpenses = (expensesRes.data || []).reduce((acc, exp) => acc + exp.amount, 0);
+            dashboardData.sidebarCounts!.pendingLeaveRequests = leaveRes.count ?? 0;
+            dashboardData.sidebarCounts!.pendingTCRequests = tcRes.count ?? 0;
 
         } else { // Admin not linked to any school
             dashboardData.totalSchoolStudents = 0;

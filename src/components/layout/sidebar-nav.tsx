@@ -52,6 +52,7 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton'; 
 import { getStudentPendingFeeCountAction, checkStudentFeeStatusAction } from '@/app/(app)/admin/student-fees/actions';
+import { getDashboardDataAction } from '@/app/(app)/dashboard/actions';
 import { supabase } from '@/lib/supabaseClient';
 
 
@@ -81,12 +82,12 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/student-scores', label: 'Student Scores', icon: Award },
   { href: '/admin/attendance', label: 'Attendance Records', icon: ClipboardCheck }, 
   { href: '/admin/id-card-printing', label: 'ID Card Printing', icon: Printer },
-  { href: '/admin/tc-requests', label: 'TC Requests', icon: TextSelect },
+  { href: '/admin/tc-requests', label: 'TC Requests', icon: TextSelect, badgeId: 'pendingTCRequests' },
   { href: '/admin/class-schedule', label: 'Class Schedule', icon: Clock },
   { href: '/communication', label: 'Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'Calendar & Events', icon: CalendarDays },
   { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/admin/leave-management', label: 'Leave Management', icon: ClipboardEdit }, 
+  { href: '/admin/leave-management', label: 'Leave Management', icon: ClipboardEdit, badgeId: 'pendingLeaveRequests' }, 
 ];
 
 const teacherNavItems: NavItem[] = [
@@ -112,7 +113,7 @@ const studentNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/student/my-profile', label: 'My Profile', icon: UserCircle },
   { href: '/student/subjects', label: 'My Subjects', icon: BookOpenText }, 
-  { href: '/student/assignments', label: 'My Assignments', icon: ClipboardList }, 
+  { href: '/student/assignments', label: 'My Assignments', icon: ClipboardList, badgeId: 'pendingAssignments' }, 
   { href: '/student/my-scores', label: 'My Scores', icon: Award },
   { href: '/student/attendance-history', label: 'My Attendance', icon: ClipboardCheck },
   { href: '/student/leave-history', label: 'My Leave History', icon: History },
@@ -120,7 +121,7 @@ const studentNavItems: NavItem[] = [
   { href: '/student/lms/activate', label: 'Activate Course', icon: KeyRound },
   { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit },
   { href: '/student/apply-tc', label: 'Apply for TC', icon: FileText },
-  { href: '/student/payment-history', label: 'Payment History', icon: CreditCard },
+  { href: '/student/payment-history', label: 'Payment History', icon: CreditCard, badgeId: 'pendingFeePayments' },
   { href: '/communication', label: 'View Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
 ];
@@ -139,7 +140,7 @@ export default function SidebarNav() {
   const pathname = usePathname();
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null); 
   const [isMounted, setIsMounted] = useState(false); 
-  const [pendingFeeCount, setPendingFeeCount] = useState<number | null>(null);
+  const [sidebarCounts, setSidebarCounts] = useState<Record<string, number>>({});
   const [isFeeDefaulter, setIsFeeDefaulter] = useState(false);
   const [lockoutMessage, setLockoutMessage] = useState('');
 
@@ -156,29 +157,16 @@ export default function SidebarNav() {
   }, []);
 
   useEffect(() => {
-    async function fetchStudentStatus() {
-        if (currentUserRole === 'student') {
-            const userId = localStorage.getItem('currentUserId');
-            if (userId) {
-                const { data: studentProfile, error } = await supabase
-                    .from('students')
-                    .select('id, school_id')
-                    .eq('user_id', userId)
-                    .single();
-                
-                if (studentProfile && studentProfile.school_id) {
-                    const [feeCountResult, feeStatusResult] = await Promise.all([
-                        getStudentPendingFeeCountAction(studentProfile.id, studentProfile.school_id),
-                        checkStudentFeeStatusAction(studentProfile.id, studentProfile.school_id)
-                    ]);
-                    
-                    if (feeCountResult.ok) {
-                        setPendingFeeCount(feeCountResult.count);
-                    }
-                    if (feeStatusResult.ok) {
-                        setIsFeeDefaulter(feeStatusResult.isDefaulter);
-                        setLockoutMessage(feeStatusResult.message);
-                    }
+    async function fetchCountsAndStatus() {
+        const userId = localStorage.getItem('currentUserId');
+        const role = localStorage.getItem('currentUserRole') as UserRole | null;
+        if (userId && role) {
+            const result = await getDashboardDataAction(userId, role);
+            if (result.ok && result.data) {
+                setSidebarCounts(result.data.sidebarCounts || {});
+                 if(role === 'student' && result.data.feeStatus) {
+                    setIsFeeDefaulter(result.data.feeStatus.isDefaulter);
+                    setLockoutMessage(result.data.feeStatus.message);
                 }
             }
         } else {
@@ -186,7 +174,9 @@ export default function SidebarNav() {
             setLockoutMessage('');
         }
     }
-    fetchStudentStatus();
+    fetchCountsAndStatus();
+    const interval = setInterval(fetchCountsAndStatus, 60000); // Refresh counts every minute
+    return () => clearInterval(interval);
   }, [currentUserRole]);
 
 
@@ -237,12 +227,6 @@ export default function SidebarNav() {
       break;
     case 'student':
       {
-        const paymentHistoryItem = studentNavItems.find(item => item.href === '/student/payment-history');
-        if (paymentHistoryItem && pendingFeeCount !== null && pendingFeeCount > 0) {
-            paymentHistoryItem.badge = pendingFeeCount;
-        } else if (paymentHistoryItem) {
-            delete paymentHistoryItem.badge; 
-        }
         navItems = studentNavItems.map(item => ({
             ...item,
             disabled: isFeeDefaulter && lockedStudentFeatures.includes(item.href)
@@ -272,7 +256,7 @@ export default function SidebarNav() {
               </a>
             </SidebarMenuButton>
           </Link>
-          {item.badge && item.badge > 0 && <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>}
+          {item.badgeId && sidebarCounts[item.badgeId] > 0 && <SidebarMenuBadge>{sidebarCounts[item.badgeId]}</SidebarMenuBadge>}
         </SidebarMenuItem>
       ))}
     </SidebarMenu>

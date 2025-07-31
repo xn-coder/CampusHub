@@ -180,6 +180,8 @@ export default function CourseResourcePage() {
     const pdfFile = useMemo(() => (
       resource?.url_or_content ? { url: resource.url_or_content } : null
     ), [resource?.url_or_content]);
+    
+    const isPreviewing = new URLSearchParams(window.location.search).get('preview') === 'true';
 
     const getResourceIcon = (type: string) => {
         const props = { className: "mr-2 h-5 w-5 text-primary" };
@@ -270,25 +272,27 @@ export default function CourseResourcePage() {
                             {getResourceIcon(resource.type)}
                             {resource.title}
                         </CardTitle>
-                        <div className="flex items-center gap-2">
-                            <Button 
-                                onClick={handleMarkAsComplete} 
-                                disabled={isCompleted} 
-                                size="sm"
-                                variant={isCompleted ? "secondary" : "default"}
-                                className="shrink-0"
-                            >
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                {isCompleted ? "Completed" : "Mark as Completed"}
-                            </Button>
-                            {isCompleted && (
-                                <Button asChild size="sm">
-                                    <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
-                                        <Award className="mr-2 h-4 w-4" /> Get Certificate
-                                    </Link>
-                                </Button>
-                            )}
-                        </div>
+                        {!isPreviewing && (
+                          <div className="flex items-center gap-2">
+                              <Button 
+                                  onClick={handleMarkAsComplete} 
+                                  disabled={isCompleted} 
+                                  size="sm"
+                                  variant={isCompleted ? "secondary" : "default"}
+                                  className="shrink-0"
+                              >
+                                  <CheckCircle className="mr-2 h-4 w-4" />
+                                  {isCompleted ? "Completed" : "Mark as Completed"}
+                              </Button>
+                              {isCompleted && (
+                                  <Button asChild size="sm">
+                                      <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                                          <Award className="mr-2 h-4 w-4" /> Get Certificate
+                                      </Link>
+                                  </Button>
+                              )}
+                          </div>
+                        )}
                     </div>
                 </CardHeader>
                 <CardContent className="min-h-[60vh]">
@@ -423,8 +427,8 @@ export default function CourseResourcePage() {
                         <Button 
                             variant="outline" 
                             asChild 
-                            disabled={!isCompleted}
-                            title={!isCompleted ? "Complete this lesson to proceed" : ""}
+                            disabled={!isCompleted || isPreviewing}
+                            title={!isCompleted ? "Complete this lesson to proceed" : isPreviewing ? "Enroll to access next lesson" : ""}
                         >
                             <Link href={`/lms/courses/${courseId}/${nextResourceId}`} className="max-w-xs">
                                  <div className="flex flex-col items-end">

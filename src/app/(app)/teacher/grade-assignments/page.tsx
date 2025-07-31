@@ -10,9 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Assignment, AssignmentSubmission } from '@/types';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Edit, Save, BookOpenCheck, Loader2, Download, FileText, User } from 'lucide-react';
+import { Edit, Save, BookOpenCheck, Loader2, Download, FileText, User, ArrowDownUp } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient'; 
 import { 
@@ -25,6 +25,8 @@ interface EnrichedSubmissionClient extends AssignmentSubmission {
   student_name: string;
   student_email: string;
 }
+
+type SortKey = 'student_name' | 'submission_date' | 'grade';
 
 export default function TeacherGradeAssignmentsPage() {
   const { toast } = useToast();
@@ -43,6 +45,10 @@ export default function TeacherGradeAssignmentsPage() {
   const [selectedSubmissionForGrading, setSelectedSubmissionForGrading] = useState<EnrichedSubmissionClient | null>(null);
   const [gradeInput, setGradeInput] = useState('');
   const [feedbackInput, setFeedbackInput] = useState('');
+
+  // Sorting state
+  const [sortBy, setSortBy] = useState<SortKey>('student_name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const fetchInitialData = useCallback(async () => {
     setIsLoadingAssignments(true);
@@ -135,6 +141,28 @@ export default function TeacherGradeAssignmentsPage() {
     const { data } = supabase.storage.from('assignment_submissions').getPublicUrl(filePath);
     return data.publicUrl;
   };
+  
+  const sortedSubmissions = useMemo(() => {
+    const sorted = [...submissions];
+    sorted.sort((a, b) => {
+      if (sortBy === 'student_name') {
+        return sortOrder === 'asc' ? a.student_name.localeCompare(b.student_name) : b.student_name.localeCompare(a.student_name);
+      }
+      if (sortBy === 'submission_date') {
+        return sortOrder === 'asc'
+          ? new Date(a.submission_date).getTime() - new Date(b.submission_date).getTime()
+          : new Date(b.submission_date).getTime() - new Date(a.submission_date).getTime();
+      }
+      if (sortBy === 'grade') {
+        const gradeA = a.grade || '';
+        const gradeB = b.grade || '';
+        return sortOrder === 'asc' ? gradeA.localeCompare(gradeB) : gradeB.localeCompare(gradeA);
+      }
+      return 0;
+    });
+    return sorted;
+  }, [submissions, sortBy, sortOrder]);
+
 
   const selectedAssignmentDetails = teacherAssignments.find(asm => asm.id === selectedAssignmentId);
 
@@ -179,9 +207,27 @@ export default function TeacherGradeAssignmentsPage() {
               <p className="text-muted-foreground text-center py-4">No submissions yet for "{selectedAssignmentDetails?.title}".</p>
             ) : (
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Submissions for: {selectedAssignmentDetails?.title}</h3>
+                <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold">Submissions for: {selectedAssignmentDetails?.title}</h3>
+                    <div className="flex items-center gap-2">
+                        <Label htmlFor="sort-submissions">Sort By:</Label>
+                         <Select value={sortBy} onValueChange={(val) => setSortBy(val as SortKey)}>
+                            <SelectTrigger id="sort-submissions" className="w-[180px]">
+                                <SelectValue placeholder="Sort by" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="student_name">Student Name</SelectItem>
+                                <SelectItem value="submission_date">Submission Date</SelectItem>
+                                <SelectItem value="grade">Grade</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Button variant="ghost" size="icon" onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}>
+                            <ArrowDownUp className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {submissions.map(sub => (
+                  {sortedSubmissions.map(sub => (
                     <Card key={sub.id}>
                       <CardHeader>
                         <CardTitle className="text-base flex items-center"><User className="mr-2 h-4 w-4"/>{sub.student_name}</CardTitle>
@@ -261,4 +307,3 @@ export default function TeacherGradeAssignmentsPage() {
     </div>
   );
 }
-

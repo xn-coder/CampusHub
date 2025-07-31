@@ -33,7 +33,7 @@ export type NavItem = {
   disabled?: boolean;
   external?: boolean;
   children?: NavItem[];
-  badge?: React.ReactNode;
+  badgeId?: string; // ID to match with a count from the backend
 };
 
 export interface SchoolEntry {

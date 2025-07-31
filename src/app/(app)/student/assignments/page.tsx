@@ -6,8 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { Assignment, AssignmentSubmission } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
-import { ClipboardList, CalendarClock, Upload, Loader2, CheckCircle, Paperclip, ExternalLink, Award, MessageSquare } from 'lucide-react';
+import { useState, useEffect, type FormEvent, useMemo } from 'react';
+import { ClipboardList, CalendarClock, Upload, Loader2, CheckCircle, Paperclip, ExternalLink, Award, MessageSquare, ArrowDownUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, isPast, differenceInDays, isToday } from 'date-fns';
 import { getStudentAssignmentsAction, submitAssignmentFileAction } from './actions';
@@ -16,12 +16,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/lib/supabaseClient';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface EnrichedAssignmentClient extends Assignment {
   teacherName?: string;
   subjectName?: string;
   submission?: AssignmentSubmission | null;
 }
+
+type SortKey = 'due_date' | 'status' | 'title';
 
 export default function StudentAssignmentsPage() {
   const { toast } = useToast();
@@ -36,6 +39,10 @@ export default function StudentAssignmentsPage() {
   const [submissionFile, setSubmissionFile] = useState<File | null>(null);
   const [submissionNotes, setSubmissionNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sorting state
+  const [sortBy, setSortBy] = useState<SortKey>('due_date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   async function fetchAssignmentsData() {
     setIsLoading(true);
@@ -144,6 +151,35 @@ export default function StudentAssignmentsPage() {
     }
     return <Badge variant="outline">Upcoming</Badge>; // Fallback, though should be covered
   };
+  
+  const getStatusValue = (assignment: EnrichedAssignmentClient) => {
+    const dueDate = parseISO(assignment.due_date);
+    if (assignment.submission) return 4; // Submitted
+    if (isPast(dueDate) && !isToday(dueDate)) return 0; // Past Due
+    if (isToday(dueDate)) return 1; // Due Today
+    return 2; // Upcoming
+  }
+
+  const sortedAssignments = useMemo(() => {
+    const sorted = [...myAssignments];
+    sorted.sort((a, b) => {
+      if (sortBy === 'due_date') {
+        const dateA = new Date(a.due_date).getTime();
+        const dateB = new Date(b.due_date).getTime();
+        return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+      }
+      if (sortBy === 'status') {
+        const statusA = getStatusValue(a);
+        const statusB = getStatusValue(b);
+        return sortOrder === 'asc' ? statusA - statusB : statusB - statusA;
+      }
+      if (sortBy === 'title') {
+        return sortOrder === 'asc' ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title);
+      }
+      return 0;
+    });
+    return sorted;
+  }, [myAssignments, sortBy, sortOrder]);
 
 
   return (
@@ -157,81 +193,99 @@ export default function StudentAssignmentsPage() {
       ) : pageMessage ? (
          <Card><CardContent className="pt-6 text-center text-muted-foreground">{pageMessage}</CardContent></Card>
       ) : (
-        <div className="grid md:grid-cols-2 gap-6">
-          {myAssignments.map((assignment) => (
-            <Card key={assignment.id} className="flex flex-col">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <CardTitle>{assignment.title}</CardTitle>
-                  {getStatusBadge(assignment)}
-                </div>
-                <CardDescription>
-                  Posted by: {assignment.teacherName}
-                  {assignment.subjectName && <span className="block text-xs">Subject: {assignment.subjectName}</span>}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-grow space-y-3">
-                <p className="text-sm whitespace-pre-wrap">{assignment.description}</p>
-                 {assignment.attachment_url && (
-                    <a href={assignment.attachment_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
-                        <Paperclip className="mr-2 h-4 w-4"/> View Attachment ({assignment.attachment_name || 'Link'})
-                    </a>
-                 )}
-                <div className="flex items-center text-sm text-muted-foreground">
-                  <CalendarClock className="mr-2 h-4 w-4" />
-                  Due: {format(parseISO(assignment.due_date), 'PPpp')}
-                </div>
-                
-                {assignment.submission && assignment.submission.grade && (
-                  <div className="mt-2 p-3 bg-muted/50 rounded-md border border-dashed">
-                    <h4 className="text-sm font-semibold flex items-center"><Award className="mr-2 h-4 w-4 text-primary"/>Grade:</h4>
-                    <p className="text-lg font-bold text-primary ml-1">{assignment.submission.grade}</p>
+        <>
+          <div className="flex justify-end items-center gap-2">
+            <Label htmlFor="sort-by">Sort By:</Label>
+            <Select value={sortBy} onValueChange={(val) => setSortBy(val as SortKey)}>
+              <SelectTrigger id="sort-by" className="w-[180px]">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="due_date">Due Date</SelectItem>
+                <SelectItem value="status">Status</SelectItem>
+                <SelectItem value="title">Title</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="ghost" size="icon" onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}>
+                <ArrowDownUp className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            {sortedAssignments.map((assignment) => (
+              <Card key={assignment.id} className="flex flex-col">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <CardTitle>{assignment.title}</CardTitle>
+                    {getStatusBadge(assignment)}
                   </div>
-                )}
-                 {assignment.submission && assignment.submission.feedback && (
-                  <div className="mt-2 p-3 bg-muted/50 rounded-md border border-dashed">
-                    <h4 className="text-sm font-semibold flex items-center"><MessageSquare className="mr-2 h-4 w-4 text-secondary-foreground"/>Teacher Feedback:</h4>
-                    <p className="text-sm text-secondary-foreground whitespace-pre-wrap ml-1">{assignment.submission.feedback}</p>
+                  <CardDescription>
+                    Posted by: {assignment.teacherName}
+                    {assignment.subjectName && <span className="block text-xs">Subject: {assignment.subjectName}</span>}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex-grow space-y-3">
+                  <p className="text-sm whitespace-pre-wrap">{assignment.description}</p>
+                   {assignment.attachment_url && (
+                      <a href={assignment.attachment_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center">
+                          <Paperclip className="mr-2 h-4 w-4"/> View Attachment ({assignment.attachment_name || 'Link'})
+                      </a>
+                   )}
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <CalendarClock className="mr-2 h-4 w-4" />
+                    Due: {format(parseISO(assignment.due_date), 'PPpp')}
                   </div>
-                )}
+                  
+                  {assignment.submission && assignment.submission.grade && (
+                    <div className="mt-2 p-3 bg-muted/50 rounded-md border border-dashed">
+                      <h4 className="text-sm font-semibold flex items-center"><Award className="mr-2 h-4 w-4 text-primary"/>Grade:</h4>
+                      <p className="text-lg font-bold text-primary ml-1">{assignment.submission.grade}</p>
+                    </div>
+                  )}
+                   {assignment.submission && assignment.submission.feedback && (
+                    <div className="mt-2 p-3 bg-muted/50 rounded-md border border-dashed">
+                      <h4 className="text-sm font-semibold flex items-center"><MessageSquare className="mr-2 h-4 w-4 text-secondary-foreground"/>Teacher Feedback:</h4>
+                      <p className="text-sm text-secondary-foreground whitespace-pre-wrap ml-1">{assignment.submission.feedback}</p>
+                    </div>
+                  )}
 
-                {assignment.submission && (
-                  <div className="text-sm text-green-600 dark:text-green-400 pt-2">
-                    <p className="font-semibold flex items-center">
-                        <CheckCircle className="mr-2 h-4 w-4"/> Submitted: {assignment.submission.file_name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">On: {format(parseISO(assignment.submission.submission_date), 'PPpp')}</p>
-                    {assignment.submission.notes && <p className="text-xs text-muted-foreground mt-1">Your Notes: {assignment.submission.notes}</p>}
-                     <a 
-                        href={getPublicUrl(assignment.submission.file_path)} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="text-xs text-primary hover:underline flex items-center mt-1"
-                     >
-                       View Submitted File <ExternalLink className="ml-1 h-3 w-3"/>
-                    </a>
-                  </div>
-                )}
-              </CardContent>
-              <CardFooter>
-                {!assignment.submission ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOpenSubmitDialog(assignment)}
-                    disabled={isPast(parseISO(assignment.due_date)) && !isToday(parseISO(assignment.due_date))}
-                  >
-                    <Upload className="mr-2 h-4 w-4" /> Submit Assignment
-                  </Button>
-                ) : (
-                   <Button variant="secondary" size="sm" disabled>
-                     <CheckCircle className="mr-2 h-4 w-4" /> Already Submitted
-                   </Button>
-                )}
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
+                  {assignment.submission && (
+                    <div className="text-sm text-green-600 dark:text-green-400 pt-2">
+                      <p className="font-semibold flex items-center">
+                          <CheckCircle className="mr-2 h-4 w-4"/> Submitted: {assignment.submission.file_name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">On: {format(parseISO(assignment.submission.submission_date), 'PPpp')}</p>
+                      {assignment.submission.notes && <p className="text-xs text-muted-foreground mt-1">Your Notes: {assignment.submission.notes}</p>}
+                       <a 
+                          href={getPublicUrl(assignment.submission.file_path)} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-xs text-primary hover:underline flex items-center mt-1"
+                       >
+                         View Submitted File <ExternalLink className="ml-1 h-3 w-3"/>
+                      </a>
+                    </div>
+                  )}
+                </CardContent>
+                <CardFooter>
+                  {!assignment.submission ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenSubmitDialog(assignment)}
+                      disabled={isPast(parseISO(assignment.due_date)) && !isToday(parseISO(assignment.due_date))}
+                    >
+                      <Upload className="mr-2 h-4 w-4" /> Submit Assignment
+                    </Button>
+                  ) : (
+                     <Button variant="secondary" size="sm" disabled>
+                       <CheckCircle className="mr-2 h-4 w-4" /> Already Submitted
+                     </Button>
+                  )}
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
 
       <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
