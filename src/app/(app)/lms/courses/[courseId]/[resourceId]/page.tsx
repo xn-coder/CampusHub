@@ -427,7 +427,7 @@ export default function CourseResourcePage() {
                 </CardContent>
                  <CardFooter className="flex justify-between items-center flex-wrap gap-2">
                     <Button variant="outline" asChild disabled={!previousResourceId}>
-                        <Link href={previousResourceId ? `/lms/courses/${courseId}/${previousResourceId}${isPreview ? '?preview=true' : ''}` : '#'} className="max-w-xs">
+                        <Link href={previousResourceId ? `/lms/courses/${courseId}/${previousResourceId}${isPreviewing ? '?preview=true' : ''}` : '#'} className="max-w-xs">
                             <ArrowLeft className="mr-2 h-4 w-4 shrink-0" />
                             <div className="flex flex-col items-start">
                                 <span className="text-xs text-muted-foreground">Previous</span>
@@ -443,7 +443,7 @@ export default function CourseResourcePage() {
                             disabled={isNextDisabled}
                             title={isNextDisabled ? (isPreviewing ? "Enroll to access next lesson" : "Complete this lesson to proceed") : ""}
                         >
-                            <Link href={isNextDisabled ? "#" : `/lms/courses/${courseId}/${nextResourceId}${isPreview ? '?preview=true' : ''}`} className={`max-w-xs ${isNextDisabled ? 'cursor-not-allowed' : ''}`}>
+                            <Link href={isNextDisabled ? "#" : `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true' : ''}`} className={`max-w-xs ${isNextDisabled ? 'cursor-not-allowed' : ''}`}>
                                 {isNextDisabled && <Lock className="mr-2 h-4 w-4 shrink-0" />}
                                 <div className="flex flex-col items-end">
                                     <span className="text-xs text-muted-foreground">Next</span>
@@ -473,3 +473,4 @@ export default function CourseResourcePage() {
         </div>
     );
 }
+
