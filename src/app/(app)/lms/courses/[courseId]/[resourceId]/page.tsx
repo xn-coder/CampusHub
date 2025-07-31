@@ -1,10 +1,11 @@
 
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getCourseForViewingAction } from '../actions';
-import type { LessonContentResource, QuizQuestion, Course, CourseResource } from '@/types';
+import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole } from '@/types';
 import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
@@ -43,6 +44,7 @@ export default function CourseResourcePage() {
     // Certificate state
     const [currentStudentName, setCurrentStudentName] = useState<string>('');
     const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
+    const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
 
     // isPreview state
     const [isPreviewing, setIsPreviewing] = useState(false);
@@ -89,7 +91,11 @@ export default function CourseResourcePage() {
     useEffect(() => {
         if (typeof window !== 'undefined') {
           const searchParams = new URLSearchParams(window.location.search);
-          setIsPreviewing(searchParams.get('preview') === 'true');
+          const role = localStorage.getItem('currentUserRole') as UserRole | null;
+          setCurrentUserRole(role);
+          const isAdmin = role === 'admin' || role === 'superadmin';
+          setIsPreviewing(!isAdmin && searchParams.get('preview') === 'true');
+
           const storedProgressString = localStorage.getItem(`progress_${courseId}`);
           const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
           setIsCompleted(!!storedProgress[resourceId]);
@@ -164,7 +170,7 @@ export default function CourseResourcePage() {
                         }
 
                         const prevResource = currentIndex > 0 ? allFlattenedResources[currentIndex - 1] : null;
-                        const nextResource = currentIndex < allFlattenedResources.length - 1 ? allFlattenedResources[currentIndex + 1] : null;
+                        const nextResource = currentIndex < allLessonContents.length - 1 ? allFlattenedResources[currentIndex + 1] : null;
 
                         setPreviousResourceId(prevResource ? prevResource.id : null);
                         setPreviousResourceTitle(prevResource ? prevResource.title : null);

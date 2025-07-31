@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
@@ -233,7 +234,7 @@ function ViewCoursePageContent() {
                 >
                  {lessons.map((lesson, lessonIndex) => {
                     const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
-                    const isLessonLockedInPreview = isPreview && course.is_paid && lessonIndex > 0;
+                    const isLessonLockedInPreview = !isAdminViewing && isPreview && course.is_paid && lessonIndex > 0;
 
                     return (
                         <AccordionItem value={lesson.id} key={lesson.id} className="border rounded-md">
@@ -246,7 +247,7 @@ function ViewCoursePageContent() {
                                        const isLocked = !isAdminViewing && isLessonLockedInPreview;
                                        return (
                                            <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
-                                                <Link href={isLocked ? '#' : `/lms/courses/${courseId}/${res.id}`} className={`flex-grow ${isLocked ? 'cursor-not-allowed' : ''}`}>
+                                                <Link href={isLocked ? '#' : `/lms/courses/${courseId}/${res.id}${isPreview ? '?preview=true' : ''}`} className={`flex-grow ${isLocked ? 'cursor-not-allowed' : ''}`}>
                                                     <div className="flex items-center p-1 font-medium">
                                                         {getResourceIcon(res.type)}
                                                         <span className={isLocked ? 'text-muted-foreground' : ''}>{res.title}</span>
