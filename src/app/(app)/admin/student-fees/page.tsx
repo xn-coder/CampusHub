@@ -328,7 +328,7 @@ export default function AdminStudentFeesPage() {
       
       return summary;
     }).sort((a,b) => a.studentName.localeCompare(b.studentName));
-  }, [feePayments, students, academicYears]);
+  }, [feePayments, students, academicYears, getAcademicYearName]);
 
 
   const filteredSummaries = useMemo(() => {
@@ -584,6 +584,7 @@ export default function AdminStudentFeesPage() {
                         <TableHead>Paid (<span className="font-mono">₹</span>)</TableHead>
                         <TableHead>Due Date</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -594,6 +595,13 @@ export default function AdminStudentFeesPage() {
                         <TableCell><span className="font-mono">₹</span>{fp.paid_amount.toFixed(2)}</TableCell>
                         <TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell>
                         <TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell>
+                        <TableCell className="text-right space-x-1">
+                          {fp.status !== 'Paid' && (
+                            <Button variant="outline" size="sm" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}><DollarSign className="mr-1 h-3 w-3"/>Record Pay</Button>
+                          )}
+                           <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}><Edit2 className="h-4 w-4"/></Button>
+                           <Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}><Trash2 className="h-4 w-4"/></Button>
+                        </TableCell>
                       </TableRow>
                   ))}
                 </TableBody>

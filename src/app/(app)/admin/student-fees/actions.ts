@@ -168,7 +168,7 @@ export async function assignMultipleFeesToClassAction(
     
     const feeAssignments = [];
     for (const student of students) {
-        for (const category of categoriesData) {
+        for (const category of categoriesData || []) {
             const assignmentKey = `${student.id}-${category.id}`;
             if (!existingSet.has(assignmentKey)) {
                 feeAssignments.push({
