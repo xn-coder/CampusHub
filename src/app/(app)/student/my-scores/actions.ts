@@ -2,7 +2,7 @@
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
-import type { Exam, Subject, StudentScore, ExamWithStudentScore } from '@/types';
+import type { Exam, Subject, StudentScore, ExamWithStudentScore, SchoolDetails } from '@/types';
 
 const PASS_PERCENTAGE = 40;
 
@@ -12,6 +12,7 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
   message?: string;
   studentProfileId?: string | null;
   studentSchoolId?: string | null;
+  school?: SchoolDetails | null;
 }> {
   if (!userId) {
     return { ok: false, message: "User not identified." };
@@ -52,23 +53,33 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
 
     const examIds = examsData.map(e => e.id);
 
-    const { data: scoresData, error: scoresError } = await supabase
-      .from('student_scores')
-      .select('exam_id, subject_id, score, max_marks')
-      .eq('student_id', studentProfileId)
-      .in('exam_id', examIds);
-    
-    if (scoresError) {
-      console.warn("Failed to fetch student scores:", scoresError.message);
-    }
-    
-    const { data: subjectsData, error: subjectsError } = await supabase
+    const [scoresData, subjectsData, schoolData] = await Promise.all([
+      supabase
+        .from('student_scores')
+        .select('exam_id, subject_id, score, max_marks')
+        .eq('student_id', studentProfileId)
+        .in('exam_id', examIds),
+      supabase
         .from('subjects')
         .select('id, name')
-        .eq('school_id', studentSchoolId);
+        .eq('school_id', studentSchoolId),
+      supabase
+        .from('schools')
+        .select('*')
+        .eq('id', studentSchoolId)
+        .single()
+    ]);
     
-    if (subjectsError) {
-        console.warn("Failed to fetch subjects:", subjectsError.message);
+    if (scoresData.error) {
+      console.warn("Failed to fetch student scores:", scoresData.error.message);
+    }
+    
+    if (subjectsData.error) {
+        console.warn("Failed to fetch subjects:", subjectsData.error.message);
+    }
+
+    if (schoolData.error) {
+        console.warn("Failed to fetch school details:", schoolData.error.message);
     }
 
     const examGroups: Record<string, Exam[]> = {};
@@ -87,12 +98,12 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
         const groupName = representativeExam.name.split(' - ')[0];
 
         const studentScoresForGroup = group.map(examInGroup => {
-            const score = scoresData?.find(s => s.exam_id === examInGroup.id);
+            const score = scoresData.data?.find(s => s.exam_id === examInGroup.id);
             if (!score) return null;
 
             return {
                 subject_id: examInGroup.subject_id,
-                subjectName: subjectsData?.find(sub => sub.id === examInGroup.subject_id)?.name || 'Unknown Subject',
+                subjectName: subjectsData.data?.find(sub => sub.id === examInGroup.subject_id)?.name || 'Unknown Subject',
                 score: score.score,
                 max_marks: score.max_marks ?? examInGroup.max_marks ?? 100,
             };
@@ -129,6 +140,7 @@ export async function getStudentScoresAndExamsAction(userId: string): Promise<{
       examsWithScores: reportCards,
       studentProfileId,
       studentSchoolId,
+      school: schoolData.data as SchoolDetails | null,
     };
 
   } catch (error: any) {

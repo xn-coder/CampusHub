@@ -5,9 +5,9 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { ExamWithStudentScore } from '@/types';
+import type { ExamWithStudentScore, SchoolDetails } from '@/types';
 import { useState, useEffect } from 'react';
-import { Award, BookOpen, CalendarCheck, FileText, Loader2, TrendingUp, Download } from 'lucide-react';
+import { Award, BookOpen, CalendarCheck, FileText, Loader2, TrendingUp, Download, School } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { getStudentScoresAndExamsAction } from './actions';
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import type jsPDF from 'jspdf';
 import type { UserOptions } from 'jspdf-autotable';
+import Image from 'next/image';
 
 interface JsPDFWithAutoTable extends jsPDF {
   autoTable: (options: UserOptions) => jsPDF;
@@ -28,6 +29,7 @@ export default function StudentMyScoresPage() {
   const [selectedReport, setSelectedReport] = useState<ExamWithStudentScore | null>(null);
   const [isDetailViewOpen, setIsDetailViewOpen] = useState(false);
   const [currentStudentName, setCurrentStudentName] = useState<string>('');
+  const [schoolDetails, setSchoolDetails] = useState<SchoolDetails | null>(null);
 
 
   useEffect(() => {
@@ -47,9 +49,10 @@ export default function StudentMyScoresPage() {
 
       const result = await getStudentScoresAndExamsAction(studentUserId);
 
-      if (result.ok && result.examsWithScores) {
-        setReportCards(result.examsWithScores);
-        if (result.examsWithScores.length === 0 && result.studentProfileId) {
+      if (result.ok) {
+        setReportCards(result.examsWithScores || []);
+        setSchoolDetails(result.school || null);
+        if (result.examsWithScores && result.examsWithScores.length === 0 && result.studentProfileId) {
           setPageMessage("No exam results have been published yet.");
         }
       } else {
@@ -74,64 +77,86 @@ export default function StudentMyScoresPage() {
     const { default: autoTable } = await import('jspdf-autotable');
 
     const doc = new jsPDF() as JsPDFWithAutoTable;
-    const schoolName = "CampusHub High School"; // Mock data
+    const schoolName = schoolDetails?.name || "CampusHub High School";
     
-    doc.setFontSize(20);
-    doc.text(schoolName, doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
-    doc.setFontSize(14);
-    doc.text("Student Report Card", doc.internal.pageSize.getWidth() / 2, 28, { align: 'center' });
-    
-    doc.setFontSize(11);
-    doc.text(`Student: ${currentStudentName}`, 14, 40);
-    doc.text(`Exam: ${selectedReport.name}`, 14, 46);
-    doc.text(`Date: ${formatDateSafe(selectedReport.date)}`, doc.internal.pageSize.getWidth() - 14, 46, { align: 'right' });
-    
-    const tableColumn = ["Subject", "Score", "Max Marks", "Result"];
-    const tableRows = (selectedReport.studentScores || []).map(score => {
-        const maxMarks = score.max_marks ?? 100;
-        const isPass = Number(score.score) >= maxMarks * 0.4;
-        return [
-            score.subjectName,
-            String(score.score),
-            maxMarks,
-            isPass ? 'Pass' : 'Fail'
-        ];
-    });
+    if (schoolDetails?.logo_url) {
+        try {
+            const response = await fetch(schoolDetails.logo_url);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => {
+                const base64data = reader.result;
+                doc.addImage(base64data as string, 'PNG', 14, 12, 20, 20);
+                generatePdfContent(doc);
+            };
+        } catch (e) {
+            console.error("Could not load school logo for PDF, proceeding without it.", e);
+            generatePdfContent(doc);
+        }
+    } else {
+        generatePdfContent(doc);
+    }
 
-    autoTable(doc, {
-        startY: 52,
-        head: [tableColumn],
-        body: tableRows,
-        theme: 'striped',
-        headStyles: { fillColor: [34, 197, 94] }
-    });
-    
-    const finalY = (doc as any).lastAutoTable.finalY || 100;
-    
-    doc.setFontSize(12);
-    doc.text("Overall Summary", 14, finalY + 15);
-    doc.setFontSize(10);
-    doc.line(14, finalY + 16, doc.internal.pageSize.getWidth() - 14, finalY + 16);
-    
-    const summaryX = 16;
-    let summaryY = finalY + 22;
-    doc.text(`Total Marks Obtained: ${selectedReport.overallResult?.totalMarks} / ${selectedReport.overallResult?.maxMarks}`, summaryX, summaryY);
-    summaryY += 6;
-    doc.text(`Percentage: ${selectedReport.overallResult?.percentage.toFixed(2)}%`, summaryX, summaryY);
-    summaryY += 6;
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Final Result: ${selectedReport.overallResult?.status}`, summaryX, summaryY);
+    const generatePdfContent = (docInstance: JsPDFWithAutoTable) => {
+        docInstance.setFontSize(20);
+        docInstance.text(schoolName, docInstance.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
+        docInstance.setFontSize(14);
+        docInstance.text("Student Report Card", docInstance.internal.pageSize.getWidth() / 2, 28, { align: 'center' });
+        
+        docInstance.setFontSize(11);
+        docInstance.setTextColor(100);
+        docInstance.text(`Student: ${currentStudentName}`, 14, 40);
+        docInstance.text(`Exam: ${selectedReport.name}`, 14, 46);
+        docInstance.text(`Date: ${formatDateSafe(selectedReport.date)}`, docInstance.internal.pageSize.getWidth() - 14, 46, { align: 'right' });
+        
+        const tableColumn = ["Subject", "Score", "Max Marks", "Result"];
+        const tableRows = (selectedReport.studentScores || []).map(score => {
+            const maxMarks = score.max_marks ?? 100;
+            const isPass = Number(score.score) >= maxMarks * 0.4;
+            return [
+                score.subjectName,
+                String(score.score),
+                String(maxMarks),
+                isPass ? 'Pass' : 'Fail'
+            ];
+        });
 
-    const signatureY = doc.internal.pageSize.getHeight() - 30;
-    doc.line(14, signatureY, 70, signatureY);
-    doc.text("Principal's Signature", 14, signatureY + 5);
+        autoTable(docInstance, {
+            startY: 52,
+            head: [tableColumn],
+            body: tableRows,
+            theme: 'striped',
+            headStyles: { fillColor: [34, 197, 94] }
+        });
+        
+        const finalY = (docInstance as any).lastAutoTable.finalY || 100;
+        
+        docInstance.setFontSize(12);
+        docInstance.text("Overall Summary", 14, finalY + 15);
+        docInstance.line(14, finalY + 16, docInstance.internal.pageSize.getWidth() - 14, finalY + 16);
+        
+        const summaryX = 16;
+        let summaryY = finalY + 22;
+        docInstance.setFontSize(10);
+        docInstance.text(`Total Marks Obtained: ${selectedReport.overallResult?.totalMarks} / ${selectedReport.overallResult?.maxMarks}`, summaryX, summaryY);
+        summaryY += 6;
+        docInstance.text(`Percentage: ${selectedReport.overallResult?.percentage.toFixed(2)}%`, summaryX, summaryY);
+        summaryY += 6;
+        docInstance.setFont('helvetica', 'bold');
+        docInstance.text(`Final Result: ${selectedReport.overallResult?.status}`, summaryX, summaryY);
 
-    doc.save(`Report_Card_${selectedReport.name.replace(/\s+/g, '_')}_${currentStudentName.replace(/\s/g, '_')}.pdf`);
+        const signatureY = docInstance.internal.pageSize.getHeight() - 30;
+        docInstance.line(14, signatureY, 70, signatureY);
+        docInstance.text("Principal's Signature", 14, signatureY + 5);
 
-    toast({
-        title: "Download Started",
-        description: "Your payment history PDF is being downloaded."
-    });
+        docInstance.save(`Report_Card_${selectedReport.name.replace(/\s+/g, '_')}_${currentStudentName.replace(/\s/g, '_')}.pdf`);
+
+        toast({
+            title: "Download Started",
+            description: `Your report card for ${selectedReport.name} is being downloaded.`
+        });
+    };
   };
 
   const formatDateSafe = (dateString?: string | null) => {
@@ -186,10 +211,17 @@ export default function StudentMyScoresPage() {
         <Dialog open={isDetailViewOpen} onOpenChange={setIsDetailViewOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Detailed Report: {selectedReport.name}</DialogTitle>
-              <DialogDescription>
-                Exam Date: {formatDateSafe(selectedReport.date)}
-              </DialogDescription>
+              <div className="flex items-start gap-4 mb-2">
+                {schoolDetails?.logo_url && (
+                    <Image src={schoolDetails.logo_url} alt="School Logo" width={50} height={50} className="rounded-full object-contain" />
+                )}
+                <div>
+                    <DialogTitle className="text-2xl">{schoolDetails?.name || 'Student Report Card'}</DialogTitle>
+                    <DialogDescription>
+                        Detailed report for: <strong>{selectedReport.name}</strong> (Exam Date: {formatDateSafe(selectedReport.date)})
+                    </DialogDescription>
+                </div>
+              </div>
             </DialogHeader>
             <div className="max-h-[60vh] overflow-y-auto pr-4">
               <Table>
