@@ -301,10 +301,9 @@ export default function ManageTeachersPage() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="list-teachers"><Briefcase className="mr-2 h-4 w-4" />List Teachers</TabsTrigger>
           <TabsTrigger value="create-teacher"><UserPlus className="mr-2 h-4 w-4" />Create Teacher</TabsTrigger>
-          <TabsTrigger value="teacher-activity"><Activity className="mr-2 h-4 w-4" />Teacher Activity</TabsTrigger>
         </TabsList>
 
         <TabsContent value="list-teachers">
@@ -431,17 +430,6 @@ export default function ManageTeachersPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="teacher-activity">
-          <Card>
-            <CardHeader>
-              <CardTitle>Teacher Activity</CardTitle>
-              <CardDescription>Overview of teacher activities and engagement (Placeholder).</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">Teacher activity tracking will be implemented here.</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
