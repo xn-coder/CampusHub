@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { ExamWithStudentScore } from '@/types';
 import { useState, useEffect } from 'react';
-import { Award, BookOpen, CalendarCheck, FileText, Loader2, TrendingUp, RefreshCcw, Download } from 'lucide-react';
+import { Award, BookOpen, CalendarCheck, FileText, Loader2, TrendingUp, Download } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { getStudentScoresAndExamsAction } from './actions';
@@ -65,13 +65,6 @@ export default function StudentMyScoresPage() {
   const handleOpenReportDetails = (report: ExamWithStudentScore) => {
     setSelectedReport(report);
     setIsDetailViewOpen(true);
-  };
-  
-  const handleApplyForReExam = (examName: string) => {
-    toast({
-        title: "Re-exam Request (Mock)",
-        description: `A request to apply for a re-exam for "${examName}" would be sent to the administration. This is a placeholder for a future feature.`,
-    });
   };
   
   const handleDownloadReport = async () => {
@@ -133,7 +126,12 @@ export default function StudentMyScoresPage() {
     doc.line(14, signatureY, 70, signatureY);
     doc.text("Principal's Signature", 14, signatureY + 5);
 
-    doc.save(`Report_Card_${selectedReport.name.replace(/\s+/g, '_')}_${currentStudentName.replace(/\s+/g, '_')}.pdf`);
+    doc.save(`Report_Card_${selectedReport.name.replace(/\s+/g, '_')}_${currentStudentName.replace(/\s/g, '_')}.pdf`);
+
+    toast({
+        title: "Download Started",
+        description: "Your payment history PDF is being downloaded."
+    });
   };
 
   const formatDateSafe = (dateString?: string | null) => {
@@ -242,11 +240,6 @@ export default function StudentMyScoresPage() {
               <Button variant="secondary" onClick={handleDownloadReport}>
                 <Download className="mr-2 h-4 w-4"/> Download Report
               </Button>
-              {selectedReport.overallResult?.status === 'Fail' && (
-                <Button variant="outline" onClick={() => handleApplyForReExam(selectedReport.name)}>
-                    <RefreshCcw className="mr-2 h-4 w-4"/> Apply for Re-exam
-                </Button>
-              )}
               <DialogClose asChild><Button>Close</Button></DialogClose>
             </DialogFooter>
           </DialogContent>
