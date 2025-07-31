@@ -473,4 +473,3 @@ export default function CourseResourcePage() {
         </div>
     );
 }
-
