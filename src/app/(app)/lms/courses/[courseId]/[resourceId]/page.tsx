@@ -217,7 +217,7 @@ export default function CourseResourcePage() {
 
     const handlePreviousQuestion = () => {
         if (currentQuestionIndex > 0) {
-            setCurrentQuestionIndex(prev => prev - 1);
+            setCurrentQuestionIndex(prev => prev + 1);
         }
     };
 
@@ -431,16 +431,16 @@ export default function CourseResourcePage() {
                          <Button
                             asChild
                             variant="outline"
-                            disabled={isPreviewing ? true : !isCompleted}
+                            disabled={isPreviewing || !isCompleted}
                             title={isPreviewing ? "Enroll to access next lesson" : !isCompleted ? "Complete this lesson to proceed" : ""}
                         >
-                            <Link href={isPreviewing ? "#" : `/lms/courses/${courseId}/${nextResourceId}`} className={`max-w-xs ${isPreviewing ? 'cursor-not-allowed' : ''}`}>
-                                {isPreviewing && <Lock className="mr-2 h-4 w-4 shrink-0" />}
+                            <Link href={(isPreviewing || !isCompleted) ? "#" : `/lms/courses/${courseId}/${nextResourceId}`} className={`max-w-xs ${(isPreviewing || !isCompleted) ? 'cursor-not-allowed' : ''}`}>
+                                {(isPreviewing || !isCompleted) && <Lock className="mr-2 h-4 w-4 shrink-0" />}
                                 <div className="flex flex-col items-end">
                                     <span className="text-xs text-muted-foreground">Next</span>
                                     <span className="truncate">{nextResourceTitle || '...'}</span>
                                 </div>
-                                <ArrowRight className="ml-2 h-4 w-4 shrink-0" />
+                                {!((isPreviewing || !isCompleted)) && <ArrowRight className="ml-2 h-4 w-4 shrink-0" />}
                             </Link>
                         </Button>
                     ) : (
