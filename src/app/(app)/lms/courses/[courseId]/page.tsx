@@ -233,7 +233,7 @@ function ViewCoursePageContent() {
                 >
                  {lessons.map((lesson, lessonIndex) => {
                     const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
-                    const isFirstLessonPreview = isPreview && course.is_paid && lessonIndex === 0;
+                    const isLessonLockedInPreview = isPreview && course.is_paid && lessonIndex > 0;
 
                     return (
                         <AccordionItem value={lesson.id} key={lesson.id} className="border rounded-md">
@@ -243,7 +243,7 @@ function ViewCoursePageContent() {
                             <AccordionContent className="px-4 pt-2 border-t">
                                <div className="space-y-2 py-2">
                                    {lessonContents.length > 0 ? lessonContents.map(res => {
-                                       const isLocked = !isAdminViewing && isPreview && course.is_paid && !isFirstLessonPreview;
+                                       const isLocked = !isAdminViewing && isLessonLockedInPreview;
                                        return (
                                            <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
                                                 <Link href={isLocked ? '#' : `/lms/courses/${courseId}/${res.id}`} className={`flex-grow ${isLocked ? 'cursor-not-allowed' : ''}`}>
