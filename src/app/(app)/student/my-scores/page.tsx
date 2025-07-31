@@ -77,38 +77,34 @@ export default function StudentMyScoresPage() {
     const { default: autoTable } = await import('jspdf-autotable');
 
     const doc = new jsPDF() as JsPDFWithAutoTable;
-    const schoolName = schoolDetails?.name || "CampusHub High School";
     
-    if (schoolDetails?.logo_url) {
-        try {
-            const response = await fetch(schoolDetails.logo_url);
-            const blob = await response.blob();
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = () => {
-                const base64data = reader.result;
-                doc.addImage(base64data as string, 'PNG', 14, 12, 20, 20);
-                generatePdfContent(doc);
-            };
-        } catch (e) {
-            console.error("Could not load school logo for PDF, proceeding without it.", e);
-            generatePdfContent(doc);
-        }
-    } else {
-        generatePdfContent(doc);
-    }
-
-    const generatePdfContent = (docInstance: JsPDFWithAutoTable) => {
-        docInstance.setFontSize(20);
-        docInstance.text(schoolName, docInstance.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
-        docInstance.setFontSize(14);
-        docInstance.text("Student Report Card", docInstance.internal.pageSize.getWidth() / 2, 28, { align: 'center' });
+    const generatePdfContent = (logoBase64?: string) => {
+        const schoolName = schoolDetails?.name || "CampusHub High School";
+        const schoolAddress = schoolDetails?.address || "School Address, City, State";
         
-        docInstance.setFontSize(11);
-        docInstance.setTextColor(100);
-        docInstance.text(`Student: ${currentStudentName}`, 14, 40);
-        docInstance.text(`Exam: ${selectedReport.name}`, 14, 46);
-        docInstance.text(`Date: ${formatDateSafe(selectedReport.date)}`, docInstance.internal.pageSize.getWidth() - 14, 46, { align: 'right' });
+        // Header
+        if (logoBase64) {
+          doc.addImage(logoBase64, 'PNG', 15, 12, 24, 24);
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(22);
+        doc.text(schoolName, doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.text(schoolAddress, doc.internal.pageSize.getWidth() / 2, 27, { align: 'center' });
+        
+        doc.setFontSize(14);
+        doc.text("Student Report Card", doc.internal.pageSize.getWidth() / 2, 36, { align: 'center' });
+        
+        doc.setLineWidth(0.5);
+        doc.line(15, 40, doc.internal.pageSize.getWidth() - 15, 40);
+
+        // Student & Exam Info
+        doc.setFontSize(11);
+        doc.setTextColor(50);
+        doc.text(`Student: ${currentStudentName}`, 15, 48);
+        doc.text(`Exam: ${selectedReport.name}`, 15, 54);
+        doc.text(`Date: ${formatDateSafe(selectedReport.date)}`, doc.internal.pageSize.getWidth() - 15, 54, { align: 'right' });
         
         const tableColumn = ["Subject", "Score", "Max Marks", "Result"];
         const tableRows = (selectedReport.studentScores || []).map(score => {
@@ -122,41 +118,87 @@ export default function StudentMyScoresPage() {
             ];
         });
 
-        autoTable(docInstance, {
-            startY: 52,
+        autoTable(doc, {
+            startY: 60,
             head: [tableColumn],
             body: tableRows,
             theme: 'striped',
-            headStyles: { fillColor: [34, 197, 94] }
+            headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+            styles: { fontSize: 10, cellPadding: 2 },
+            columnStyles: {
+                1: { halign: 'center' },
+                2: { halign: 'center' },
+                3: { halign: 'center' },
+            }
         });
         
-        const finalY = (docInstance as any).lastAutoTable.finalY || 100;
+        const finalY = (doc as any).lastAutoTable.finalY || 100;
         
-        docInstance.setFontSize(12);
-        docInstance.text("Overall Summary", 14, finalY + 15);
-        docInstance.line(14, finalY + 16, docInstance.internal.pageSize.getWidth() - 14, finalY + 16);
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text("Overall Summary", 15, finalY + 15);
+        doc.setLineWidth(0.2);
+        doc.line(15, finalY + 16, doc.internal.pageSize.getWidth() - 15, finalY + 16);
         
-        const summaryX = 16;
-        let summaryY = finalY + 22;
-        docInstance.setFontSize(10);
-        docInstance.text(`Total Marks Obtained: ${selectedReport.overallResult?.totalMarks} / ${selectedReport.overallResult?.maxMarks}`, summaryX, summaryY);
-        summaryY += 6;
-        docInstance.text(`Percentage: ${selectedReport.overallResult?.percentage.toFixed(2)}%`, summaryX, summaryY);
-        summaryY += 6;
-        docInstance.setFont('helvetica', 'bold');
-        docInstance.text(`Final Result: ${selectedReport.overallResult?.status}`, summaryX, summaryY);
+        const summaryX = 17;
+        let summaryY = finalY + 23;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Total Marks Obtained:`, summaryX, summaryY);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${selectedReport.overallResult?.totalMarks} / ${selectedReport.overallResult?.maxMarks}`, 65, summaryY);
+        
+        summaryY += 7;
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Percentage:`, summaryX, summaryY);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${selectedReport.overallResult?.percentage.toFixed(2)}%`, 65, summaryY);
 
-        const signatureY = docInstance.internal.pageSize.getHeight() - 30;
-        docInstance.line(14, signatureY, 70, signatureY);
-        docInstance.text("Principal's Signature", 14, signatureY + 5);
+        summaryY += 7;
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Final Result:`, summaryX, summaryY);
+        doc.setFont('helvetica', 'bold');
+        const status = selectedReport.overallResult?.status || 'N/A';
+        const statusColor = status === 'Pass' ? [0, 128, 0] : [255, 0, 0];
+        doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
+        doc.text(status, 65, summaryY);
 
-        docInstance.save(`Report_Card_${selectedReport.name.replace(/\s+/g, '_')}_${currentStudentName.replace(/\s/g, '_')}.pdf`);
+        doc.setTextColor(0, 0, 0); // Reset color
+        
+        const signatureY = doc.internal.pageSize.getHeight() - 30;
+        doc.line(doc.internal.pageSize.getWidth() - 70, signatureY, doc.internal.pageSize.getWidth() - 15, signatureY);
+        doc.setFontSize(10);
+        doc.text("Principal's Signature", doc.internal.pageSize.getWidth() - 42.5, signatureY + 5, { align: 'center'});
+
+        doc.save(`Report_Card_${selectedReport.name.replace(/\s+/g, '_')}_${currentStudentName.replace(/\s/g, '_')}.pdf`);
 
         toast({
             title: "Download Started",
             description: `Your report card for ${selectedReport.name} is being downloaded.`
         });
     };
+
+     if (schoolDetails?.logo_url) {
+        try {
+            const response = await fetch(schoolDetails.logo_url);
+            if (!response.ok) throw new Error("Logo fetch failed");
+            const blob = await response.blob();
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => {
+                generatePdfContent(reader.result as string);
+            };
+            reader.onerror = (error) => {
+              console.error("FileReader error:", error);
+              generatePdfContent();
+            };
+        } catch (e) {
+            console.error("Could not load school logo for PDF, proceeding without it.", e);
+            generatePdfContent();
+        }
+    } else {
+        generatePdfContent();
+    }
   };
 
   const formatDateSafe = (dateString?: string | null) => {
