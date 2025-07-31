@@ -84,6 +84,17 @@ export async function attemptLogin(
       return { ok: false, message: 'User not found.' };
     }
 
+    if (userRecord.role === 'admin') {
+      const { data: school, error: schoolError } = await supabaseAdmin
+        .from('schools')
+        .select('status')
+        .eq('admin_user_id', userRecord.id)
+        .single();
+      if (school?.status === 'Inactive') {
+        return { ok: false, message: 'Your school has been deactivated by the superadmin. Please contact support.'};
+      }
+    }
+
     if (userRecord.status !== 'Active') {
         if (userRecord.role === 'admin') {
             return { ok: false, message: 'Your admin account has been deactivated by the superadmin. Please contact support.' };
