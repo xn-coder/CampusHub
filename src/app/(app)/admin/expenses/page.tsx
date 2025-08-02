@@ -28,16 +28,16 @@ import Link from 'next/link';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
+async function fetchUserSchoolId(userId: string): Promise<string | null> {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('school_id')
+    .eq('id', userId)
     .single();
-  if (error || !school) {
+  if (error || !user?.school_id) {
     return null;
   }
-  return school.id;
+  return user.school_id;
 }
 
 export default function ExpensesPage() {
@@ -84,17 +84,17 @@ export default function ExpensesPage() {
         setCurrentAdminUserId(adminId);
         setDate(format(new Date(), 'yyyy-MM-dd')); // Set date on mount
         if (adminId) {
-            fetchAdminSchoolId(adminId).then(schoolId => {
+            fetchUserSchoolId(adminId).then(schoolId => {
                 setCurrentSchoolId(schoolId);
                 if (schoolId) {
                     loadPageData(schoolId);
                 } else {
-                    toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+                    toast({ title: "Error", description: "User not linked to a school.", variant: "destructive" });
                     setIsLoading(false);
                 }
             });
         } else {
-            toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+            toast({ title: "Error", description: "User not identified.", variant: "destructive" });
             setIsLoading(false);
         }
     }, [toast, loadPageData]);
