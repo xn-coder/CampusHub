@@ -252,8 +252,8 @@ export default function ManageAccountantsPage() {
                       <TableRow key={accountant.id}>
                         <TableCell>
                           <Avatar>
-                            <AvatarImage src={accountant.profile_picture_url || `https://placehold.co/40x40.png?text=${accountant.name.substring(0,2).toUpperCase()}`} alt={accountant.name} data-ai-hint="person portrait" />
-                            <AvatarFallback>{accountant.name.substring(0,2).toUpperCase()}</AvatarFallback>
+                            <AvatarImage src={accountant.profile_picture_url || `https://placehold.co/40x40.png?text=${(accountant.name || 'AC').substring(0,2).toUpperCase()}`} alt={accountant.name || 'Accountant'} data-ai-hint="person portrait" />
+                            <AvatarFallback>{(accountant.name || 'AC').substring(0,2).toUpperCase()}</AvatarFallback>
                           </Avatar>
                         </TableCell>
                         <TableCell className="font-medium">{accountant.name}</TableCell>

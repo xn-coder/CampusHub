@@ -133,9 +133,9 @@ export default function ManageTeachersPage() {
   }
 
   const filteredTeachers = useMemo(() => teachers.filter(teacher =>
-    teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (teacher.email && teacher.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (teacher.subject && teacher.subject.toLowerCase().includes(searchTerm.toLowerCase()))
+    (teacher.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (teacher.email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (teacher.subject?.toLowerCase() || '').includes(searchTerm.toLowerCase())
   ), [teachers, searchTerm]);
 
   const paginatedTeachers = useMemo(() => {
@@ -259,7 +259,7 @@ export default function ManageTeachersPage() {
         headers.join(','),
         ...filteredTeachers.map(teacher => {
             const row = [
-                `"${teacher.name.replace(/"/g, '""')}"`,
+                `"${(teacher.name || '').replace(/"/g, '""')}"`,
                 `"${(teacher.email || 'N/A').replace(/"/g, '""')}"`,
                 `"${(teacher.subject || 'N/A').replace(/"/g, '""')}"`
             ];
@@ -351,8 +351,8 @@ export default function ManageTeachersPage() {
                       <TableRow key={teacher.id}>
                         <TableCell>
                           <Avatar>
-                            <AvatarImage src={teacher.profile_picture_url || `https://placehold.co/40x40.png?text=${teacher.name.substring(0,2).toUpperCase()}`} alt={teacher.name} data-ai-hint="person portrait" />
-                            <AvatarFallback>{teacher.name.substring(0,2).toUpperCase()}</AvatarFallback>
+                            <AvatarImage src={teacher.profile_picture_url || `https://placehold.co/40x40.png?text=${(teacher.name || 'T').substring(0,2).toUpperCase()}`} alt={teacher.name} data-ai-hint="person portrait" />
+                            <AvatarFallback>{(teacher.name || 'T').substring(0,2).toUpperCase()}</AvatarFallback>
                           </Avatar>
                         </TableCell>
                         <TableCell className="font-medium">{teacher.name}</TableCell>
@@ -429,7 +429,6 @@ export default function ManageTeachersPage() {
             </form>
           </Card>
         </TabsContent>
-
       </Tabs>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
