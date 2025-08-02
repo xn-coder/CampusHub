@@ -93,9 +93,10 @@ export default function ManageAccountantsPage() {
     setIsLoading(false); 
   }
 
-  const filteredAccountants = useMemo(() => accountants.filter(accountant =>
-    accountant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (accountant.email && accountant.email.toLowerCase().includes(searchTerm.toLowerCase()))
+  const filteredAccountants = useMemo(() => 
+    accountants.filter(accountant =>
+      (accountant.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (accountant.email?.toLowerCase() || '').includes(searchTerm.toLowerCase())
   ), [accountants, searchTerm]);
 
   const paginatedAccountants = useMemo(() => {
