@@ -164,7 +164,7 @@ export async function getAllAdminEmails(): Promise<string[]> {
   const { data, error } = await supabase
     .from('users')
     .select('email')
-    .eq('role', 'admin');
+    .eq('role', 'admin' as any); // Cast to any to bypass strict type checking for the enum cast
   
   if (error || !data) {
     console.error("[LOG emailService] Error fetching all admin emails:", error);
