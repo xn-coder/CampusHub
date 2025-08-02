@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -8,15 +9,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
-import type { Course, UserRole } from '@/types';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import type { Course, UserRole, SchoolEntry } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
-import { createCourseAction, updateCourseAction, deleteCourseAction } from '@/app/(app)/admin/lms/courses/actions';
-import { PlusCircle, Edit2, Trash2, Save, Library, Settings, KeyRound, Loader2, Upload, Percent, MoreHorizontal, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
+import { createCourseAction, updateCourseAction, deleteCourseAction, assignCourseToSchoolsAction } from '@/app/(app)/admin/lms/courses/actions';
+import { PlusCircle, Edit2, Trash2, Save, Library, Settings, KeyRound, Loader2, Upload, Percent, MoreHorizontal, ChevronLeft, ChevronRight, ChevronsRight, Send } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Checkbox } from '@/components/ui/checkbox';
+
 
 const ITEMS_PER_PAGE = 10;
 
@@ -29,7 +32,12 @@ export default function SuperAdminManageCoursesPage() {
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
 
   const [isCourseDialogOpen, setIsCourseDialogOpen] = useState(false);
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [courseToAssign, setCourseToAssign] = useState<Course | null>(null);
+  const [allSchools, setAllSchools] = useState<SchoolEntry[]>([]);
+  const [selectedSchoolIds, setSelectedSchoolIds] = useState<string[]>([]);
   
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -120,7 +128,11 @@ export default function SuperAdminManageCoursesPage() {
       toast({ title: editingCourse ? "Course Updated" : "Course Added", description: result.message });
       resetCourseForm();
       setIsCourseDialogOpen(false);
-      fetchCourses();
+      await fetchCourses(); // Refetch courses
+      // Automatically open assign dialog for new courses
+      if (!editingCourse && result.course) {
+        handleOpenAssignDialog(result.course);
+      }
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -139,6 +151,35 @@ export default function SuperAdminManageCoursesPage() {
       }
       setIsSubmitting(false);
     }
+  };
+
+  const handleOpenAssignDialog = async (course: Course) => {
+    setCourseToAssign(course);
+    setIsSubmitting(true);
+    const { data: schoolsData, error } = await supabase.from('schools').select('*').order('name');
+    if (error) {
+      toast({ title: "Error fetching schools", variant: "destructive" });
+      setAllSchools([]);
+    } else {
+      setAllSchools(schoolsData || []);
+    }
+    const { data: existingAssignments } = await supabase.from('lms_course_school_availability').select('school_id').eq('course_id', course.id);
+    setSelectedSchoolIds(existingAssignments?.map(a => a.school_id) || []);
+    setIsSubmitting(false);
+    setIsAssignDialogOpen(true);
+  };
+
+  const handleAssignToSchools = async () => {
+    if (!courseToAssign) return;
+    setIsSubmitting(true);
+    const result = await assignCourseToSchoolsAction(courseToAssign.id, selectedSchoolIds);
+    if (result.ok) {
+        toast({ title: "Assignments Updated", description: result.message });
+        setIsAssignDialogOpen(false);
+    } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsSubmitting(false);
   };
 
   return (
@@ -175,6 +216,9 @@ export default function SuperAdminManageCoursesPage() {
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
                     <TableCell className="text-right">
+                       <Button variant="outline" size="sm" onClick={() => handleOpenAssignDialog(course)} disabled={isSubmitting}>
+                            <Send className="mr-2 h-4 w-4" /> Assign to Schools
+                        </Button>
                        <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" disabled={isSubmitting}>
@@ -215,6 +259,40 @@ export default function SuperAdminManageCoursesPage() {
             </CardFooter>
         )}
       </Card>
+
+      <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
+        <DialogContent className="max-w-md">
+            <DialogHeader>
+                <DialogTitle>Assign Course to Schools</DialogTitle>
+                <DialogDescription>Select which schools should have access to "{courseToAssign?.title}".</DialogDescription>
+            </DialogHeader>
+            <div className="py-4 max-h-[60vh] overflow-y-auto">
+                <div className="space-y-2">
+                    {allSchools.map(school => (
+                        <div key={school.id} className="flex items-center space-x-2">
+                            <Checkbox 
+                                id={`school-${school.id}`}
+                                checked={selectedSchoolIds.includes(school.id)}
+                                onCheckedChange={(checked) => {
+                                    setSelectedSchoolIds(prev => 
+                                        checked ? [...prev, school.id] : prev.filter(id => id !== school.id)
+                                    )
+                                }}
+                            />
+                            <Label htmlFor={`school-${school.id}`} className="font-normal">{school.name}</Label>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                <Button onClick={handleAssignToSchools} disabled={isSubmitting}>
+                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                    Save Assignments
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isCourseDialogOpen} onOpenChange={setIsCourseDialogOpen}>
         <DialogContent className="sm:max-w-lg">

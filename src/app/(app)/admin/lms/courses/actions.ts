@@ -5,7 +5,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion, SchoolEntry } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion, SchoolEntry, SchoolDetails } from '@/types';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -247,6 +247,31 @@ export async function assignCourseToSchoolAction(
     revalidatePath('/admin/lms/courses');
     return { ok: true, message: "Course assigned to school successfully." };
 }
+
+export async function assignCourseToSchoolsAction(
+    courseId: string, 
+    schoolIds: string[],
+): Promise<{ ok: boolean; message: string, successCount: number }> {
+    const supabase = createSupabaseServerClient();
+    if (schoolIds.length === 0) return { ok: true, message: "No schools selected.", successCount: 0 };
+    
+    const recordsToInsert = schoolIds.map(schoolId => ({
+        course_id: courseId,
+        school_id: schoolId,
+        target_audience_in_school: 'both' as 'student' | 'teacher' | 'both'
+    }));
+
+    const { error, count } = await supabase.from('lms_course_school_availability').insert(recordsToInsert, { onConflict: 'course_id, school_id' });
+
+    if (error) {
+        console.error("Error assigning course to schools:", error);
+        return { ok: false, message: `Failed to assign course to some schools: ${error.message}`, successCount: 0 };
+    }
+    revalidatePath('/admin/lms/courses');
+    revalidatePath('/superadmin/lms/courses');
+    return { ok: true, message: `Course assigned to ${count || 0} school(s) successfully.`, successCount: count || 0 };
+}
+
 
 export async function unassignCourseFromSchoolAction(
     courseId: string, 
