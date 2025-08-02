@@ -2,7 +2,7 @@
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,20 +16,20 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { createFeeCategoryAction, updateFeeCategoryAction, deleteFeeCategoryAction, getFeeCategoriesAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
+async function fetchUserSchoolId(userId: string): Promise<string | null> {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('school_id')
+    .eq('id', userId)
     .single();
-  if (error || !school) {
-    console.error("Error fetching admin's school:", error?.message);
+  if (error || !user) {
+    console.error("Error fetching user's school:", error?.message);
     return null;
   }
-  return school.id;
+  return user.school_id;
 }
 
 export default function FeeCategoriesPage() {
@@ -51,20 +51,20 @@ export default function FeeCategoriesPage() {
   const [amount, setAmount] = useState<number | ''>('');
 
   useEffect(() => {
-    const adminId = localStorage.getItem('currentUserId');
-    setCurrentAdminUserId(adminId);
-    if (adminId) {
-      fetchAdminSchoolId(adminId).then(schoolId => {
+    const userId = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(userId);
+    if (userId) {
+      fetchUserSchoolId(userId).then(schoolId => {
         setCurrentSchoolId(schoolId);
         if (schoolId) {
           fetchFeeCategories(schoolId);
         } else {
-          toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+          toast({ title: "Error", description: "User not linked to a school.", variant: "destructive" });
           setIsLoading(false);
         }
       });
     } else {
-      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      toast({ title: "Error", description: "User not identified.", variant: "destructive" });
       setIsLoading(false);
     }
   }, [toast]);
@@ -192,7 +192,7 @@ export default function FeeCategoriesPage() {
           {isLoading ? (
             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
           ) : !currentSchoolId ? (
-            <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage fee categories.</p>
+            <p className="text-destructive text-center py-4">User not associated with a school. Cannot manage fee categories.</p>
           ) : filteredCategories.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">
                 {searchTerm && feeCategories.length > 0 ? "No categories match your search." : "No fee categories defined yet for this school."}
