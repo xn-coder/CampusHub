@@ -1162,3 +1162,20 @@ export async function getAllCoursesForAdminNavAction(input: {
   }
   return { ok: true, courses: data || [] };
 }
+
+
+// --- New action for LMS sidebar count ---
+export async function getAssignedCoursesCountForSchool(schoolId: string): Promise<number> {
+    if (!schoolId) return 0;
+    const supabase = createSupabaseServerClient();
+    const { count, error } = await supabase
+        .from('lms_course_school_availability')
+        .select('course_id', { count: 'exact', head: true })
+        .eq('school_id', schoolId);
+    
+    if (error) {
+        console.error("Error fetching assigned course count:", error);
+        return 0;
+    }
+    return count || 0;
+}

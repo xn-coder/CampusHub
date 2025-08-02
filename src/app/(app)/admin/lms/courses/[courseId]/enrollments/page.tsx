@@ -46,6 +46,30 @@ export default function ManageCourseEnrollmentsPage() {
   const [selectedStudentIdToEnroll, setSelectedStudentIdToEnroll] = useState<string>('');
   const [selectedTeacherIdToEnroll, setSelectedTeacherIdToEnroll] = useState<string>('');
   
+  const fetchCurrentlyEnrolledUsers = useCallback(async (cId: string) => {
+    if (!cId) return;
+    setIsLoadingEnrollments(true);
+    const [studentsResult, teachersResult] = await Promise.all([
+        getEnrolledStudentsForCourseAction(cId),
+        getEnrolledTeachersForCourseAction(cId)
+    ]);
+
+    if (studentsResult.ok && studentsResult.students) {
+        setEnrolledStudents(studentsResult.students.filter(s => s.school_id === currentSchoolId));
+    } else {
+        toast({ title: "Error fetching enrolled students", description: studentsResult.message, variant: "destructive"});
+        setEnrolledStudents([]);
+    }
+
+    if (teachersResult.ok && teachersResult.teachers) {
+        setEnrolledTeachers(teachersResult.teachers.filter(t => t.school_id === currentSchoolId));
+    } else {
+        toast({ title: "Error fetching enrolled teachers", description: teachersResult.message, variant: "destructive"});
+        setEnrolledTeachers([]);
+    }
+    setIsLoadingEnrollments(false);
+  }, [currentSchoolId, toast]);
+
   const fetchCourseDetailsAndPotentialEnrollees = useCallback(async (cId: string, adminSchoolId: string | null) => {
     setIsLoadingPage(true);
     const { data: courseData, error: courseError } = await supabase.from('lms_courses').select('*').eq('id', cId).single();
@@ -88,31 +112,8 @@ export default function ManageCourseEnrollmentsPage() {
         toast({title: "Error", description: "Admin user not identified.", variant: "destructive"});
         setIsLoadingPage(false);
     }
-  }, [courseId, toast, fetchCourseDetailsAndPotentialEnrollees]);
+  }, [courseId, toast, fetchCourseDetailsAndPotentialEnrollees, fetchCurrentlyEnrolledUsers]);
   
-  async function fetchCurrentlyEnrolledUsers(cId: string) {
-    if (!cId) return;
-    setIsLoadingEnrollments(true);
-    const [studentsResult, teachersResult] = await Promise.all([
-        getEnrolledStudentsForCourseAction(cId),
-        getEnrolledTeachersForCourseAction(cId)
-    ]);
-
-    if (studentsResult.ok && studentsResult.students) {
-        setEnrolledStudents(studentsResult.students.filter(s => s.school_id === currentSchoolId));
-    } else {
-        toast({ title: "Error fetching enrolled students", description: studentsResult.message, variant: "destructive"});
-        setEnrolledStudents([]);
-    }
-
-    if (teachersResult.ok && teachersResult.teachers) {
-        setEnrolledTeachers(teachersResult.teachers.filter(t => t.school_id === currentSchoolId));
-    } else {
-        toast({ title: "Error fetching enrolled teachers", description: teachersResult.message, variant: "destructive"});
-        setEnrolledTeachers([]);
-    }
-    setIsLoadingEnrollments(false);
-  }
 
   const handleEnrollUser = async (userType: 'student' | 'teacher') => {
     if (!course || !currentSchoolId) { 
