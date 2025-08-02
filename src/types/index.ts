@@ -3,7 +3,7 @@
 import type { LucideIcon } from 'lucide-react';
 
 // ENUMS from DB - Ensure these match your SQL ENUM definitions
-export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student';
+export type UserRole = 'superadmin' | 'admin' | 'teacher' | 'student' | 'accountant';
 export type SchoolStatus = 'Active' | 'Inactive';
 export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';

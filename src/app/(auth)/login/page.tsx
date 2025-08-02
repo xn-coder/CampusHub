@@ -121,7 +121,7 @@ export default function LoginPage() {
                   <SelectItem value="admin">Admin (College Owner)</SelectItem>
                   <SelectItem value="teacher">Teacher</SelectItem>
                   <SelectItem value="student">Student</SelectItem>
-                  {/* Staff role removed */}
+                  <SelectItem value="accountant">Accountant</SelectItem>
                 </SelectContent>
               </Select>
             </div>

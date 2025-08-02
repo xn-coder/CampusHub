@@ -68,6 +68,7 @@ const adminNavItems: NavItem[] = [
   { href: '/school-details', label: 'School Details', icon: School },
   { href: '/admin/manage-students', label: 'Manage Students', icon: Users },
   { href: '/admin/manage-teachers', label: 'Manage Teachers', icon: Briefcase }, 
+  { href: '/admin/manage-accountants', label: 'Manage Accountants', icon: Wallet },
   { href: '/class-management', label: 'Class Management', icon: Presentation },
   { href: '/admin/lms/courses', label: 'LMS Courses', icon: Library }, 
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
@@ -148,7 +149,7 @@ export default function SidebarNav() {
   useEffect(() => {
     setIsMounted(true); 
     const storedRole = localStorage.getItem('currentUserRole') as UserRole | null;
-    const validRoles: UserRole[] = ['superadmin', 'admin', 'teacher', 'student'];
+    const validRoles: UserRole[] = ['superadmin', 'admin', 'teacher', 'student', 'accountant'];
     if (storedRole && validRoles.includes(storedRole)) {
       setCurrentUserRole(storedRole);
     } else {
