@@ -304,6 +304,7 @@ export interface AdmissionRecord {
   school_id: string;
   created_at?: string;
   updated_at?: string;
+  class?: ClassData | null; // For joined data
 }
 
 // For DB interactions with `class_schedules` table

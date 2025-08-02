@@ -5,7 +5,7 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, AdmissionStatus } from '@/types';
+import type { AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, AdmissionStatus, AcademicYear } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { ListChecks, CheckSquare, Loader2, UserPlus, FileDown, Search, Receipt, ChevronLeft, ChevronRight, Edit2, MoreHorizontal } from 'lucide-react';
@@ -34,6 +34,7 @@ export default function AdmissionsPage() {
   const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
   const [feePayments, setFeePayments] = useState<StudentFeePayment[]>([]);
   const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
@@ -64,12 +65,14 @@ export default function AdmissionsPage() {
           setActiveClasses(pageDataResult.classes || []);
           setFeePayments(pageDataResult.feePayments || []);
           setFeeCategories(pageDataResult.feeCategories || []);
+          setAcademicYears(pageDataResult.academicYears || []);
         } else {
           toast({ title: "Error loading data", description: pageDataResult.message, variant: "destructive" });
           setAdmissionRecords([]);
           setActiveClasses([]);
           setFeePayments([]);
           setFeeCategories([]);
+          setAcademicYears([]);
         }
       } else {
         toast({ title: "Error", description: "Admin/Accountant not linked to a school.", variant: "destructive" });
@@ -101,18 +104,21 @@ export default function AdmissionsPage() {
         toast({ title: "No Data", description: "There is no data to download for the current filters.", variant: "destructive" });
         return;
     }
-    const headers = ["Name", "Email", "Class Assigned", "Status", "Admission Date"];
+    const headers = ["Name", "Email", "Class Assigned", "Academic Year", "Status", "Admission Date"];
     const csvRows = [
         headers.join(','),
         ...filteredAdmissionRecords.map(record => {
             const assignedClassDetails = activeClasses.find(c => c.id === record.class_id);
+            const academicYear = academicYears.find(ay => ay.id === assignedClassDetails?.academic_year_id);
             const classText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'N/A';
+            const yearText = academicYear ? academicYear.name : 'N/A';
             const admissionDate = record.admission_date ? format(parseISO(record.admission_date), 'yyyy-MM-dd') : 'N/A';
             
             const row = [
                 `"${record.name.replace(/"/g, '""')}"`,
                 `"${record.email.replace(/"/g, '""')}"`,
                 `"${classText.replace(/"/g, '""')}"`,
+                `"${yearText.replace(/"/g, '""')}"`,
                 `"${record.status}"`,
                 `"${admissionDate}"`
             ];
@@ -192,6 +198,7 @@ export default function AdmissionsPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Class Assigned</TableHead>
+                    <TableHead>Academic Year</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Fees Status</TableHead>
                     <TableHead className="text-right">Action</TableHead>
@@ -201,7 +208,9 @@ export default function AdmissionsPage() {
                   {paginatedRecords.map(record => {
                     const assignedClassDetails = activeClasses.find(c => c.id === record.class_id);
                     const classText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'N/A';
-                    
+                    const academicYear = academicYears.find(ay => ay.id === assignedClassDetails?.academic_year_id);
+                    const yearText = academicYear ? academicYear.name : 'N/A';
+
                     const studentFees = record.student_profile_id ? feePayments.filter(p => p.student_id === record.student_profile_id) : [];
                     const pendingFeeCount = studentFees.filter(p => p.status !== 'Paid').length;
 
@@ -210,6 +219,7 @@ export default function AdmissionsPage() {
                       <TableCell className="font-medium">{record.name}</TableCell>
                       <TableCell>{record.email}</TableCell>
                       <TableCell>{classText}</TableCell>
+                      <TableCell>{yearText}</TableCell>
                       <TableCell>
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                           record.status === 'Admitted' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :

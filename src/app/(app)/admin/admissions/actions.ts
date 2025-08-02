@@ -3,7 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { AdmissionStatus, AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, PaymentStatus, UserRole, Student } from '@/types';
+import type { AdmissionStatus, AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, PaymentStatus, UserRole, Student, AcademicYear } from '@/types';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -34,6 +34,7 @@ export async function fetchAdmissionPageDataAction(schoolId: string): Promise<{
   classes?: ClassData[];
   feeCategories?: FeeCategory[];
   feePayments?: StudentFeePayment[];
+  academicYears?: AcademicYear[];
   message?: string;
 }> {
   if (!schoolId) {
@@ -41,24 +42,27 @@ export async function fetchAdmissionPageDataAction(schoolId: string): Promise<{
   }
   const supabaseAdmin = createSupabaseServerClient();
   try {
-    const [admissionsRes, classesRes, feeCategoriesRes, feePaymentsRes] = await Promise.all([
-        supabaseAdmin.from('admission_records').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }),
-        supabaseAdmin.from('classes').select('id, name, division').eq('school_id', schoolId),
+    const [admissionsRes, classesRes, feeCategoriesRes, feePaymentsRes, academicYearsRes] = await Promise.all([
+        supabaseAdmin.from('admission_records').select('*, class:class_id(*)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        supabaseAdmin.from('classes').select('id, name, division, academic_year_id').eq('school_id', schoolId),
         supabaseAdmin.from('fee_categories').select('id, name').eq('school_id', schoolId),
         supabaseAdmin.from('student_fee_payments').select('*').eq('school_id', schoolId),
+        supabaseAdmin.from('academic_years').select('*').eq('school_id', schoolId),
     ]);
 
     if (admissionsRes.error) throw new Error(`Failed to fetch admissions: ${admissionsRes.error.message}`);
     if (classesRes.error) throw new Error(`Failed to fetch classes: ${classesRes.error.message}`);
     if (feeCategoriesRes.error) throw new Error(`Failed to fetch fee categories: ${feeCategoriesRes.error.message}`);
     if (feePaymentsRes.error) throw new Error(`Failed to fetch fee payments: ${feePaymentsRes.error.message}`);
-    
+    if (academicYearsRes.error) throw new Error(`Failed to fetch academic years: ${academicYearsRes.error.message}`);
+
     return { 
         ok: true, 
         admissions: admissionsRes.data || [], 
         classes: classesRes.data || [],
         feeCategories: feeCategoriesRes.data || [],
         feePayments: feePaymentsRes.data || [],
+        academicYears: academicYearsRes.data || [],
     };
   } catch (error: any) {
     console.error("Unexpected error in fetchAdmissionPageDataAction:", error);
