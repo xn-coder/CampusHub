@@ -61,6 +61,7 @@ const superAdminNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/superadmin/create-school', label: 'Create School', icon: Building },
   { href: '/superadmin/manage-school', label: 'Manage Schools', icon: Settings },
+  { href: '/superadmin/lms/courses', label: 'LMS Courses', icon: Library },
   { href: '/communication', label: 'Announcements', icon: Megaphone }, 
 ];
 

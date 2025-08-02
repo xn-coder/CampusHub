@@ -413,7 +413,7 @@ export interface Course {
   price?: number | null;
   currency?: 'INR' | 'USD' | 'EUR' | null;
   discount_percentage?: number | null;
-  school_id?: string | null;
+  school_id?: string | null; // Null for global courses by superadmin
   target_audience?: 'student' | 'teacher' | 'both' | null;
   target_class_id?: string | null;
   created_by_user_id: string;
@@ -423,6 +423,7 @@ export interface Course {
 
 export interface CourseWithEnrollmentStatus extends Course {
   isEnrolled?: boolean;
+  target_audience_in_school?: 'student' | 'teacher' | 'both';
 }
 
 
