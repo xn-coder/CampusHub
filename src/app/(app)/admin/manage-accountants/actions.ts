@@ -78,8 +78,14 @@ export async function createAccountantAction(
 
     if (accountantInsertError) {
       console.error('Error creating accountant profile:', accountantInsertError);
+      // Clean up the created user if the profile creation fails
       await supabaseAdmin.from('users').delete().eq('id', newUser.id);
-      return { ok: false, message: `Failed to create accountant profile: ${accountantInsertError.message || 'An unknown database error occurred.'}` };
+      
+      let friendlyMessage = `Failed to create accountant profile: ${accountantInsertError.message}`;
+      if (accountantInsertError.message.includes('relation "public.accountants" does not exist')) {
+        friendlyMessage = "Database setup incomplete: The 'accountants' table does not exist. Please run the required database migration.";
+      }
+      return { ok: false, message: friendlyMessage };
     }
     
     revalidatePath('/admin/manage-accountants');
