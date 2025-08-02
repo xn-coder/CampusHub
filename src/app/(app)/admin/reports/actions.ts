@@ -10,17 +10,18 @@ export async function getAdminSchoolIdForReports(adminUserId: string): Promise<s
     return null;
   }
   const supabaseAdmin = createSupabaseServerClient();
-  const { data: school, error } = await supabaseAdmin
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
+  // Fetch school_id directly from the user's record for robustness
+  const { data: user, error } = await supabaseAdmin
+    .from('users')
+    .select('school_id')
+    .eq('id', adminUserId)
     .single();
 
-  if (error || !school) {
-    console.error("Error fetching admin's school for reports:", error?.message);
+  if (error || !user?.school_id) {
+    console.error("Error fetching user's school for reports:", error?.message);
     return null;
   }
-  return school.id;
+  return user.school_id;
 }
 
 export async function getAdminReportsDataAction(schoolId: string): Promise<{
