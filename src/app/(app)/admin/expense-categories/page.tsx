@@ -18,17 +18,17 @@ import { createExpenseCategoryAction, updateExpenseCategoryAction, deleteExpense
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
+async function fetchUserSchoolId(userId: string): Promise<string | null> {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('school_id')
+    .eq('id', userId)
     .single();
-  if (error || !school) {
-    console.error("Error fetching admin's school:", error?.message);
+  if (error || !user?.school_id) {
+    console.error("Error fetching user's school:", error?.message);
     return null;
   }
-  return school.id;
+  return user.school_id;
 }
 
 export default function ExpenseCategoriesPage() {
@@ -47,19 +47,19 @@ export default function ExpenseCategoriesPage() {
   const [description, setDescription] = useState('');
 
   useEffect(() => {
-    const adminId = localStorage.getItem('currentUserId');
-    if (adminId) {
-      fetchAdminSchoolId(adminId).then(schoolId => {
+    const userId = localStorage.getItem('currentUserId');
+    if (userId) {
+      fetchUserSchoolId(userId).then(schoolId => {
         setCurrentSchoolId(schoolId);
         if (schoolId) {
           fetchExpenseCategories(schoolId);
         } else {
-          toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+          toast({ title: "Error", description: "Your account is not linked to a school.", variant: "destructive" });
           setIsLoading(false);
         }
       });
     } else {
-      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      toast({ title: "Error", description: "User not identified.", variant: "destructive" });
       setIsLoading(false);
     }
   }, [toast]);
@@ -169,7 +169,7 @@ export default function ExpenseCategoriesPage() {
           {isLoading ? (
             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
           ) : !currentSchoolId ? (
-            <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage expense categories.</p>
+            <p className="text-destructive text-center py-4">Your account is not associated with a school. Cannot manage expense categories.</p>
           ) : expenseCategories.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">
               No expense categories defined yet for this school.
