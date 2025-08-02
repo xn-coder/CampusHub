@@ -17,6 +17,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { createAccountantAction, updateAccountantAction, deleteAccountantAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Ban } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -47,6 +49,7 @@ export default function ManageAccountantsPage() {
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageError, setPageError] = useState<string | null>(null);
 
   const [newAccountantName, setNewAccountantName] = useState('');
   const [newAccountantEmail, setNewAccountantEmail] = useState('');
@@ -79,13 +82,19 @@ export default function ManageAccountantsPage() {
 
   async function fetchAccountants(schoolId: string) {
     setIsLoading(true); 
+    setPageError(null);
     const { data, error } = await supabase 
       .from('accountants')
       .select('*')
       .eq('school_id', schoolId);
 
     if (error) {
-      toast({ title: "Error", description: `Failed to fetch accountant data: ${error.message}`, variant: "destructive" });
+      let friendlyMessage = `Failed to fetch accountant data: ${error.message}`;
+      if (error.message.includes('relation "public.accountants" does not exist')) {
+        friendlyMessage = "The 'accountants' table is missing from the database. Please run the necessary database migration to enable this feature.";
+        setPageError(friendlyMessage);
+      }
+      toast({ title: "Database Error", description: friendlyMessage, variant: "destructive", duration: 10000 });
       setAccountants([]);
     } else {
       setAccountants(data || []);
@@ -200,7 +209,7 @@ export default function ManageAccountantsPage() {
         title="Manage Accountants" 
         description="Administer accountant profiles and records." 
         actions={
-          <Button onClick={() => setActiveTab("create-accountant")} disabled={isLoading || isSubmitting || !currentSchoolId}>
+          <Button onClick={() => setActiveTab("create-accountant")} disabled={isLoading || isSubmitting || !currentSchoolId || !!pageError}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Accountant
           </Button>
         }
@@ -219,69 +228,79 @@ export default function ManageAccountantsPage() {
               <CardDescription>View, search, and manage all accountant profiles.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                <div className="flex-grow flex items-center gap-2">
-                    <Search className="h-5 w-5 text-muted-foreground" />
-                    <Input 
-                    placeholder="Search by name or email..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="max-w-sm"
-                    disabled={isLoading || !currentSchoolId}
-                    />
-                </div>
-              </div>
-              {isLoading && <p className="text-center text-muted-foreground py-4">Loading accountants...</p>}
-              {!isLoading && currentSchoolId && paginatedAccountants.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">
-                  {searchTerm ? "No accountants match your search." : "No accountants found. Add a new one to get started."}
-                </p>
-              )}
-              {!isLoading && currentSchoolId && paginatedAccountants.length > 0 && (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Avatar</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedAccountants.map((accountant) => (
-                      <TableRow key={accountant.id}>
-                        <TableCell>
-                          <Avatar>
-                            <AvatarImage src={accountant.profile_picture_url || `https://placehold.co/40x40.png?text=${(accountant.name || 'AC').substring(0,2).toUpperCase()}`} alt={accountant.name || 'Accountant'} data-ai-hint="person portrait" />
-                            <AvatarFallback>{(accountant.name || 'AC').substring(0,2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                        </TableCell>
-                        <TableCell className="font-medium">{accountant.name}</TableCell>
-                        <TableCell>{accountant.email}</TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" disabled={isSubmitting || isLoading}>
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={() => handleOpenEditDialog(accountant)}>
-                                <Edit2 className="mr-2 h-4 w-4" /> Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => handleDeleteAccountant(accountant)} className="text-destructive">
-                                <Trash2 className="mr-2 h-4 w-4" /> Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              {pageError ? (
+                <Alert variant="destructive">
+                  <Ban className="h-4 w-4" />
+                  <AlertTitle>Feature Unavailable</AlertTitle>
+                  <AlertDescription>{pageError}</AlertDescription>
+                </Alert>
+              ) : (
+                <>
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <div className="flex-grow flex items-center gap-2">
+                        <Search className="h-5 w-5 text-muted-foreground" />
+                        <Input 
+                        placeholder="Search by name or email..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="max-w-sm"
+                        disabled={isLoading || !currentSchoolId}
+                        />
+                    </div>
+                  </div>
+                  {isLoading && <p className="text-center text-muted-foreground py-4">Loading accountants...</p>}
+                  {!isLoading && currentSchoolId && paginatedAccountants.length === 0 && (
+                    <p className="text-center text-muted-foreground py-4">
+                      {searchTerm ? "No accountants match your search." : "No accountants found. Add a new one to get started."}
+                    </p>
+                  )}
+                  {!isLoading && currentSchoolId && paginatedAccountants.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Avatar</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedAccountants.map((accountant) => (
+                          <TableRow key={accountant.id}>
+                            <TableCell>
+                              <Avatar>
+                                <AvatarImage src={accountant.profile_picture_url || `https://placehold.co/40x40.png?text=${(accountant.name || 'AC').substring(0,2).toUpperCase()}`} alt={accountant.name || 'Accountant'} data-ai-hint="person portrait" />
+                                <AvatarFallback>{(accountant.name || 'AC').substring(0,2).toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                            </TableCell>
+                            <TableCell className="font-medium">{accountant.name}</TableCell>
+                            <TableCell>{accountant.email}</TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" disabled={isSubmitting || isLoading}>
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => handleOpenEditDialog(accountant)}>
+                                    <Edit2 className="mr-2 h-4 w-4" /> Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => handleDeleteAccountant(accountant)} className="text-destructive">
+                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </>
               )}
             </CardContent>
-            {totalPages > 1 && (
+            {!pageError && totalPages > 1 && (
               <CardFooter className="flex justify-end items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1 || isLoading}>
                     <ChevronLeft className="h-4 w-4" /> Previous
@@ -303,17 +322,27 @@ export default function ManageAccountantsPage() {
             </CardHeader>
             <form onSubmit={handleCreateAccountantSubmit}>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="accountantName">Accountant Name</Label>
-                  <Input id="accountantName" value={newAccountantName} onChange={(e) => setNewAccountantName(e.target.value)} placeholder="Full Name" required disabled={isSubmitting || !currentSchoolId}/>
-                </div>
-                <div>
-                  <Label htmlFor="accountantEmail">Email (Login ID)</Label>
-                  <Input id="accountantEmail" type="email" value={newAccountantEmail} onChange={(e) => setNewAccountantEmail(e.target.value)} placeholder="accountant@example.com" required disabled={isSubmitting || !currentSchoolId}/>
-                </div>
+                 {pageError ? (
+                    <Alert variant="destructive">
+                        <Ban className="h-4 w-4" />
+                        <AlertTitle>Feature Unavailable</AlertTitle>
+                        <AlertDescription>{pageError}</AlertDescription>
+                    </Alert>
+                 ) : (
+                    <>
+                        <div>
+                        <Label htmlFor="accountantName">Accountant Name</Label>
+                        <Input id="accountantName" value={newAccountantName} onChange={(e) => setNewAccountantName(e.target.value)} placeholder="Full Name" required disabled={isSubmitting || !currentSchoolId}/>
+                        </div>
+                        <div>
+                        <Label htmlFor="accountantEmail">Email (Login ID)</Label>
+                        <Input id="accountantEmail" type="email" value={newAccountantEmail} onChange={(e) => setNewAccountantEmail(e.target.value)} placeholder="accountant@example.com" required disabled={isSubmitting || !currentSchoolId}/>
+                        </div>
+                    </>
+                 )}
               </CardContent>
               <CardFooter>
-                <Button type="submit" disabled={isSubmitting || !currentSchoolId}>
+                <Button type="submit" disabled={isSubmitting || !currentSchoolId || !!pageError}>
                   {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} 
                   Save Accountant & Create Account
                 </Button>
