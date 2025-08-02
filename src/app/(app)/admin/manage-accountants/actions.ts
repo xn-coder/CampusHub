@@ -79,7 +79,7 @@ export async function createAccountantAction(
     if (accountantInsertError) {
       console.error('Error creating accountant profile:', accountantInsertError);
       await supabaseAdmin.from('users').delete().eq('id', newUser.id);
-      return { ok: false, message: `Failed to create accountant profile: ${accountantInsertError.message}` };
+      return { ok: false, message: `Failed to create accountant profile: ${accountantInsertError.message || 'An unknown database error occurred.'}` };
     }
     
     revalidatePath('/admin/manage-accountants');
