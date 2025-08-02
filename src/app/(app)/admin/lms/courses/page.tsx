@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -16,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -80,7 +82,7 @@ export default function SchoolLmsCoursesPage() {
     const assignedCourseIds = courses.map(c => c.id);
     const availableCourses = globalCourses.filter(gc => !assignedCourseIds.includes(gc.id));
     
-    setAllGlobalCourses(availableCourses);
+    setAllGlobalCourses(availableCourses as Course[]);
     setSelectedCourseToAssign('');
     setIsAssignDialogOpen(true);
     setIsLoading(false);

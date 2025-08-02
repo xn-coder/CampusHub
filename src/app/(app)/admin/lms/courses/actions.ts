@@ -5,7 +5,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion, SchoolEntry } from '@/types';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -67,7 +67,7 @@ export async function createCourseAction(
       price: is_paid ? price : null,
       currency: is_paid ? (currency || 'INR') : null,
       discount_percentage: is_paid ? discount_percentage : null,
-      school_id,
+      school_id: school_id === '' ? null : school_id, // Ensure empty string becomes null
       target_audience,
       target_class_id,
       created_by_user_id,
@@ -87,6 +87,7 @@ export async function createCourseAction(
     }
 
     revalidatePath('/admin/lms/courses');
+    revalidatePath('/superadmin/lms/courses');
     revalidatePath('/lms/available-courses');
     return { ok: true, message: 'Course created successfully.', course: courseData as Course };
   } catch (e: any) {
@@ -121,7 +122,7 @@ export async function updateCourseAction(
       price: is_paid ? price : null,
       currency: is_paid ? (currency || 'INR') : null,
       discount_percentage: is_paid ? discount_percentage : null,
-      school_id,
+      school_id: school_id === '' ? null : school_id,
       target_audience,
       target_class_id,
       updated_at: new Date().toISOString(),
@@ -166,6 +167,7 @@ export async function updateCourseAction(
 export async function deleteCourseAction(id: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   
+  await supabaseAdmin.from('lms_course_school_availability').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_resources').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_activation_codes').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_student_course_enrollments').delete().eq('course_id', id);
@@ -178,9 +180,114 @@ export async function deleteCourseAction(id: string): Promise<{ ok: boolean; mes
     return { ok: false, message: `Failed to delete course: ${error.message}` };
   }
   revalidatePath('/admin/lms/courses');
+  revalidatePath('/superadmin/lms/courses');
   revalidatePath('/lms/available-courses');
   return { ok: true, message: 'Course and related data deleted successfully.' };
 }
+
+export async function getCoursesForSchoolAction(schoolId: string): Promise<{
+    ok: boolean;
+    courses?: CourseWithEnrollmentStatus[];
+    message?: string;
+}> {
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data: availability, error: availabilityError } = await supabase
+            .from('lms_course_school_availability')
+            .select('course_id, target_audience_in_school')
+            .eq('school_id', schoolId);
+        
+        if (availabilityError) throw availabilityError;
+
+        if (!availability || availability.length === 0) {
+            return { ok: true, courses: [] };
+        }
+
+        const courseIds = availability.map(a => a.course_id);
+        const { data: coursesData, error: coursesError } = await supabase
+            .from('lms_courses')
+            .select('*')
+            .in('id', courseIds);
+
+        if (coursesError) throw coursesError;
+        
+        const coursesWithSchoolStatus = coursesData.map(c => {
+            const availInfo = availability.find(a => a.course_id === c.id);
+            return {
+                ...c,
+                isEnrolled: false, // This field is more relevant for student/teacher view
+                target_audience_in_school: availInfo?.target_audience_in_school,
+            };
+        });
+
+        return { ok: true, courses: coursesWithSchoolStatus };
+    } catch (e: any) {
+        return { ok: false, message: e.message || 'An unexpected error occurred.' };
+    }
+}
+
+export async function assignCourseToSchoolAction(
+    courseId: string, 
+    schoolId: string,
+    targetAudience: 'student' | 'teacher' | 'both'
+): Promise<{ ok: boolean; message: string }> {
+    const supabase = createSupabaseServerClient();
+    const { error } = await supabase.from('lms_course_school_availability').insert({
+        course_id: courseId,
+        school_id: schoolId,
+        target_audience_in_school: targetAudience
+    });
+
+    if (error) {
+        if (error.code === '23505') { // unique constraint violation
+            return { ok: false, message: "This course is already assigned to the school." };
+        }
+        return { ok: false, message: `Failed to assign course: ${error.message}` };
+    }
+    revalidatePath('/admin/lms/courses');
+    return { ok: true, message: "Course assigned to school successfully." };
+}
+
+export async function unassignCourseFromSchoolAction(
+    courseId: string, 
+    schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+    const supabase = createSupabaseServerClient();
+    const { error } = await supabase
+        .from('lms_course_school_availability')
+        .delete()
+        .eq('course_id', courseId)
+        .eq('school_id', schoolId);
+    
+    if (error) {
+        return { ok: false, message: `Failed to unassign course: ${error.message}` };
+    }
+    // You might also want to unenroll all users from that school for that course
+    await supabase.from('lms_student_course_enrollments').delete().eq('course_id', courseId).in('student_id', (await supabase.from('students').select('id').eq('school_id', schoolId)).data?.map(s => s.id) || []);
+    await supabase.from('lms_teacher_course_enrollments').delete().eq('course_id', courseId).in('teacher_id', (await supabase.from('teachers').select('id').eq('school_id', schoolId)).data?.map(t => t.id) || []);
+
+    revalidatePath('/admin/lms/courses');
+    return { ok: true, message: "Course unassigned and all relevant enrollments cleared." };
+}
+
+export async function updateCourseAudienceInSchoolAction(
+    courseId: string, 
+    schoolId: string, 
+    targetAudience: 'student' | 'teacher' | 'both'
+): Promise<{ ok: boolean; message: string }> {
+     const supabase = createSupabaseServerClient();
+     const { error } = await supabase
+        .from('lms_course_school_availability')
+        .update({ target_audience_in_school: targetAudience })
+        .eq('course_id', courseId)
+        .eq('school_id', schoolId);
+    if (error) {
+        return { ok: false, message: `Failed to update audience: ${error.message}` };
+    }
+    revalidatePath('/admin/lms/courses');
+    return { ok: true, message: "Course audience updated successfully." };
+}
+
 
 // --- Resource Management (Admin) ---
 
@@ -233,22 +340,71 @@ export async function addLessonToCourseAction(input: { course_id: string; title:
 
 
 // Updates the content of a lesson (which is a CourseResource of type 'note').
-export async function updateLessonContentAction(
+export async function updateResourceInLessonAction(
   lessonResourceId: string,
-  newContent: LessonContentResource[]
+  resourceId: string,
+  updatedResource: LessonContentResource,
 ): Promise<{ ok: boolean, message: string }> {
     const supabase = createSupabaseServerClient();
-    const { error } = await supabase
-        .from('lms_course_resources')
-        .update({ url_or_content: JSON.stringify(newContent) })
-        .eq('id', lessonResourceId);
+    try {
+        const { data: lesson, error: fetchError } = await supabase
+            .from('lms_course_resources')
+            .select('url_or_content')
+            .eq('id', lessonResourceId)
+            .single();
 
-    if (error) {
-        console.error("Error updating lesson content:", error);
-        return { ok: false, message: `DB error updating lesson: ${error.message}` };
+        if (fetchError || !lesson) {
+            return { ok: false, message: "Parent lesson not found." };
+        }
+
+        let currentContent: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
+        const resourceIndex = currentContent.findIndex(r => r.id === resourceId);
+
+        if (resourceIndex === -1) {
+            return { ok: false, message: "Resource to update not found within the lesson." };
+        }
+
+        currentContent[resourceIndex] = updatedResource;
+
+        const { error: updateError } = await supabase
+            .from('lms_course_resources')
+            .update({ url_or_content: JSON.stringify(currentContent) })
+            .eq('id', lessonResourceId);
+
+        if (updateError) throw updateError;
+        
+        revalidatePath('/admin/lms/courses');
+        return { ok: true, message: "Resource updated successfully." };
+    } catch(e: any) {
+        return { ok: false, message: `Failed to update resource: ${e.message}`};
     }
-    revalidatePath('/admin/lms/courses'); // Revalidate the parent course content page
-    return { ok: true, message: "Lesson content updated."};
+}
+
+
+export async function deleteCourseResourceAction(
+  lessonResourceId: string,
+  contentToRemove?: LessonContentResource[] // if you're just deleting a lesson, this is empty
+): Promise<{ ok: boolean; message: string }> {
+  const supabase = createSupabaseServerClient();
+    try {
+        if (contentToRemove) {
+            const { error: updateError } = await supabase
+                .from('lms_course_resources')
+                .update({ url_or_content: JSON.stringify(contentToRemove) })
+                .eq('id', lessonResourceId);
+            if (updateError) throw updateError;
+            revalidatePath('/admin/lms/courses');
+            return {ok: true, message: "Resource removed from lesson."}
+        } else {
+             // Deleting the whole lesson
+             const { error } = await supabase.from('lms_course_resources').delete().eq('id', lessonResourceId);
+             if (error) throw error;
+             revalidatePath('/admin/lms/courses');
+             return {ok: true, message: "Lesson deleted."};
+        }
+    } catch(e: any) {
+        return { ok: false, message: `Failed to delete resource: ${e.message}`};
+    }
 }
 
 
@@ -319,7 +475,7 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
   }
 
   // Basic validation: ensure urlOrContent is present for types that need it.
-  if (!urlOrContent && ['ebook', 'video', 'webinar', 'quiz', 'note'].includes(resourceType)) {
+  if (!urlOrContent && ['ebook', 'video', 'webinar', 'quiz', 'note', 'ppt'].includes(resourceType)) {
       if (resourceType === 'note' && urlOrContent === '') {
           // allow empty note
       } else {
@@ -373,27 +529,6 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
   }
 }
 
-// Deletes a course resource, which can be a lesson container or a standalone resource.
-export async function deleteCourseResourceAction(resourceId: string): Promise<{ ok: boolean; message: string }> {
-  const supabase = createSupabaseServerClient();
-  const { data: resource, error: fetchError } = await supabase
-    .from('lms_course_resources')
-    .select('course_id')
-    .eq('id', resourceId)
-    .single();
-
-  if (fetchError || !resource) {
-    return { ok: false, message: "Resource not found." };
-  }
-  
-  const { error } = await supabase.from('lms_course_resources').delete().eq('id', resourceId);
-  if (error) {
-    console.error("Error deleting course resource:", error);
-    return { ok: false, message: error.message };
-  }
-  revalidatePath(`/admin/lms/courses/${resource.course_id}/content`);
-  return { ok: true, message: "Resource deleted." };
-}
 
 // --- Activation Code Management (Rest of the file is unchanged) ---
 // ... (the rest of your original file from generateActivationCodesAction down to the end) ...
@@ -452,14 +587,15 @@ export async function generateActivationCodesAction(
 interface ManageEnrollmentInput {
   course_id: string;
   user_profile_id: string; 
-  user_type: UserRole; 
+  user_type: UserRole;
+  school_id: string;
 }
 
 export async function enrollUserInCourseAction(
   input: ManageEnrollmentInput
 ): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { course_id, user_profile_id, user_type } = input; 
+  const { course_id, user_profile_id, user_type, school_id } = input; 
 
   const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
   const fkColumnNameInEnrollmentTable = user_type === 'student' ? 'student_id' : 'teacher_id';
@@ -484,6 +620,7 @@ export async function enrollUserInCourseAction(
       course_id, 
   };
   enrollmentData[fkColumnNameInEnrollmentTable] = user_profile_id;
+  enrollmentData['school_id'] = school_id;
 
   if (user_type === 'student') {
     enrollmentData.enrolled_at = new Date().toISOString();
@@ -504,7 +641,7 @@ export async function enrollUserInCourseAction(
 }
 
 export async function unenrollUserFromCourseAction(
-  input: ManageEnrollmentInput
+  input: Omit<ManageEnrollmentInput, 'school_id'>
 ): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   const { course_id, user_profile_id, user_type } = input;
@@ -619,18 +756,32 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
   try {
     let courseQuery = supabase.from('lms_courses').select('*');
 
-    // Filter by school
-    if (userSchoolId && userRole !== 'superadmin') {
-      courseQuery = courseQuery.or(`school_id.eq.${userSchoolId},school_id.is.null`);
-    } else if (userRole !== 'superadmin') { 
+    if (!userSchoolId) {
+      // User with no school context sees only global courses
       courseQuery = courseQuery.is('school_id', null);
-    }
-    
-    // Filter by target audience based on user role
-    if (userRole === 'student') {
-        courseQuery = courseQuery.in('target_audience', ['student', 'both']);
-    } else if (userRole === 'teacher') {
-        courseQuery = courseQuery.in('target_audience', ['teacher', 'both']);
+    } else {
+       // Regular users see courses assigned to their school
+      const { data: availableRecords, error: availabilityError } = await supabase
+          .from('lms_course_school_availability')
+          .select('course_id, target_audience_in_school')
+          .eq('school_id', userSchoolId);
+      
+      if (availabilityError) throw availabilityError;
+      
+      const availableCourseIds = availableRecords?.map(rec => rec.course_id) || [];
+      if (availableCourseIds.length === 0) return { ok: true, courses: [] };
+
+      let audienceFilter = 'both';
+      if (userRole === 'student') audienceFilter = 'student';
+      if (userRole === 'teacher') audienceFilter = 'teacher';
+
+      const courseIdsForRole = availableRecords
+          ?.filter(rec => rec.target_audience_in_school === 'both' || rec.target_audience_in_school === audienceFilter)
+          .map(rec => rec.course_id) || [];
+      
+      if(courseIdsForRole.length === 0) return { ok: true, courses: [] };
+
+      courseQuery = courseQuery.in('id', courseIdsForRole);
     }
 
     const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
@@ -797,6 +948,7 @@ export async function activateCourseWithCodeAction(
       course_id: codeToActivate.course_id,
       user_profile_id: userProfileId,
       user_type: userRole,
+      school_id: schoolId!, // If it gets here, schoolId must be valid
     });
 
     if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
@@ -843,7 +995,7 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
     const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
 
     const supabase = createSupabaseServerClient();
-    const { data: user, error: userError } = await supabase.from('users').select('id, role').eq('id', userId).single();
+    const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
     if(userError || !user) return { ok: false, message: "User not found." };
     const userRole = user.role as UserRole;
     const profileTable = userRole === 'student' ? 'students' : 'teachers';
@@ -856,6 +1008,7 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
             course_id: courseId,
             user_profile_id: profile.id,
             user_type: userRole,
+            school_id: user.school_id!
         });
         
         if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
@@ -923,7 +1076,7 @@ export async function verifyCoursePaymentAndEnrollAction(
         }
         
         const supabase = createSupabaseServerClient();
-        const { data: user, error: userError } = await supabase.from('users').select('id, role').eq('id', userId).single();
+        const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
         if (userError || !user) return { ok: false, message: "User associated with payment not found." };
 
         const userRole = user.role as UserRole;
@@ -935,6 +1088,7 @@ export async function verifyCoursePaymentAndEnrollAction(
             course_id: ""+courseId,
             user_profile_id: profile.id,
             user_type: userRole,
+            school_id: user.school_id!
         });
 
         if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
