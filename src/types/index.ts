@@ -90,6 +90,7 @@ export interface Student {
   name: string;
   email: string;
   class_id?: string | null;
+  academic_year_id?: string | null;
   profile_picture_url?: string | null;
   date_of_birth?: string | null;
   gender?: 'Male' | 'Female' | 'Other' | null;

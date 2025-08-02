@@ -76,6 +76,7 @@ export async function getNewAdmissionPageDataAction(schoolId: string): Promise<{
   ok: boolean;
   classes?: ClassData[];
   feeCategories?: FeeCategory[];
+  academicYears?: AcademicYear[];
   message?: string;
 }> {
   if (!schoolId) {
@@ -83,18 +84,21 @@ export async function getNewAdmissionPageDataAction(schoolId: string): Promise<{
   }
   const supabase = createSupabaseServerClient();
   try {
-    const [classesRes, feeCategoriesRes] = await Promise.all([
-      supabase.from('classes').select('id, name, division').eq('school_id', schoolId).order('name'),
-      supabase.from('fee_categories').select('*').eq('school_id', schoolId).order('name')
+    const [classesRes, feeCategoriesRes, academicYearsRes] = await Promise.all([
+      supabase.from('classes').select('id, name, division, academic_year_id').eq('school_id', schoolId).order('name'),
+      supabase.from('fee_categories').select('*').eq('school_id', schoolId).order('name'),
+      supabase.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
     ]);
 
     if (classesRes.error) throw new Error(`Failed to fetch classes: ${classesRes.error.message}`);
     if (feeCategoriesRes.error) throw new Error(`Failed to fetch fee categories: ${feeCategoriesRes.error.message}`);
+    if (academicYearsRes.error) throw new Error(`Failed to fetch academic years: ${academicYearsRes.error.message}`);
     
     return { 
         ok: true, 
         classes: classesRes.data || [],
         feeCategories: feeCategoriesRes.data || [],
+        academicYears: academicYearsRes.data || [],
     };
   } catch (error: any) {
     console.error("Error in getNewAdmissionPageDataAction:", error);
@@ -132,6 +136,7 @@ export async function admitNewStudentAction(
   
   // School & Class Info
   const classId = formData.get('classId') as string;
+  const academicYearId = formData.get('academicYearId') as string | null;
   const rollNumber = formData.get('rollNumber') as string | null;
   const schoolId = formData.get('schoolId') as string;
   
@@ -208,6 +213,7 @@ export async function admitNewStudentAction(
         email: email.trim(),
         roll_number: rollNumber || null,
         class_id: classId,
+        academic_year_id: academicYearId || null,
         date_of_birth: dateOfBirth || null,
         gender: gender || null,
         nationality: nationality || null,

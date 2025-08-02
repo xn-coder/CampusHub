@@ -267,7 +267,7 @@ export default function AdmissionsPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem asChild disabled={!record.student_profile_id}>
+                            <DropdownMenuItem asChild disabled={true}>
                                 <Link href={`/admin/manage-students/${record.student_profile_id}/edit`}>
                                     <Edit2 className="mr-2 h-4 w-4"/> Edit Details
                                 </Link>

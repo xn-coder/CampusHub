@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import type { ClassData, FeeCategory } from '@/types';
+import type { ClassData, FeeCategory, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { FilePlus, UserPlus, Loader2 } from 'lucide-react';
@@ -24,6 +24,7 @@ export default function AdminNewAdmissionPage() {
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [allFeeCategories, setAllFeeCategories] = useState<FeeCategory[]>([]);
+  const [allAcademicYears, setAllAcademicYears] = useState<AcademicYear[]>([]);
 
   // Form state
   const [name, setName] = useState('');
@@ -48,6 +49,7 @@ export default function AdminNewAdmissionPage() {
   const [annualFamilyIncome, setAnnualFamilyIncome] = useState('');
   
   const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string>('');
   
   // New state for fee assignment
   const [shouldAssignFee, setShouldAssignFee] = useState(false);
@@ -69,13 +71,13 @@ export default function AdminNewAdmissionPage() {
         if (result.ok) {
           setAllClasses(result.classes || []);
           setAllFeeCategories(result.feeCategories || []);
+          setAllAcademicYears(result.academicYears || []);
           // Initialize selectedFees state
           const initialFeesState = (result.feeCategories || []).reduce((acc, cat) => {
             acc[cat.id] = { selected: false, amount: cat.amount?.toString() || '' };
             return acc;
           }, {} as Record<string, { selected: boolean; amount: string }>);
           setSelectedFees(initialFeesState);
-
         } else {
           toast({ title: "Error", description: result.message || "Failed to load class list or fee categories.", variant: "destructive" });
         }
@@ -159,6 +161,7 @@ export default function AdminNewAdmissionPage() {
     if(annualFamilyIncome) formData.append('annualFamilyIncome', annualFamilyIncome);
     
     formData.append('classId', selectedClassId);
+    if(selectedAcademicYearId) formData.append('academicYearId', selectedAcademicYearId);
     formData.append('rollNumber', rollNumber);
     formData.append('schoolId', currentSchoolId);
     
@@ -172,7 +175,7 @@ export default function AdminNewAdmissionPage() {
       // Reset form
       setName(''); setEmail(''); setContactNumber(''); setDateOfBirth(''); setAdmissionDate(''); setGender(''); setBloodGroup(''); setNationality(''); setCategory(''); setAddress('');
       setFatherName(''); setFatherOccupation(''); setMotherName(''); setMotherOccupation(''); setGuardianName(''); setParentContactNumber(''); setAnnualFamilyIncome('');
-      setSelectedClassId(''); setRollNumber('');
+      setSelectedClassId(''); setSelectedAcademicYearId(''); setRollNumber('');
       setProfilePictureFile(null);
       const fileInput = document.getElementById('profilePictureFile') as HTMLInputElement;
       if (fileInput) fileInput.value = ''; // Reset file input
@@ -286,7 +289,14 @@ export default function AdminNewAdmissionPage() {
             {/* School & Fee Info */}
              <div className="space-y-4 border p-4 rounded-md">
                 <h3 className="text-lg font-medium">School & Fee Information</h3>
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                        <Label htmlFor="academicYearSelect">Academic Year</Label>
+                        <Select value={selectedAcademicYearId} onValueChange={setSelectedAcademicYearId} disabled={isLoading || allAcademicYears.length === 0}>
+                            <SelectTrigger id="academicYearSelect"><SelectValue placeholder="Select academic year" /></SelectTrigger>
+                            <SelectContent>{allAcademicYears.length > 0 ? allAcademicYears.map(ay => (<SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)) : <SelectItem value="no-year" disabled>No academic years found</SelectItem>}</SelectContent>
+                        </Select>
+                    </div>
                     <div>
                         <Label htmlFor="classSelect">Assign to Class</Label>
                         <Select value={selectedClassId} onValueChange={setSelectedClassId} required disabled={isLoading || allClasses.length === 0}>
