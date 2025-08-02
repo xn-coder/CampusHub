@@ -45,16 +45,16 @@ export default function AdmissionsPage() {
 
 
   useEffect(() => {
-    const adminUserId = localStorage.getItem('currentUserId');
-    if (!adminUserId) {
-      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+    const userId = localStorage.getItem('currentUserId');
+    if (!userId) {
+      toast({ title: "Error", description: "User not identified.", variant: "destructive" });
       setIsLoading(false);
       return;
     }
 
     async function loadInitialData() {
       setIsLoading(true);
-      const schoolId = await fetchAdminSchoolIdForAdmissions(adminUserId);
+      const schoolId = await fetchAdminSchoolIdForAdmissions(userId);
       setCurrentSchoolId(schoolId);
 
       if (schoolId) {
@@ -72,7 +72,7 @@ export default function AdmissionsPage() {
           setFeeCategories([]);
         }
       } else {
-        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+        toast({ title: "Error", description: "Admin/Accountant not linked to a school.", variant: "destructive" });
       }
       setIsLoading(false);
     }
@@ -182,7 +182,7 @@ export default function AdmissionsPage() {
             {isLoading ? (
                 <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin" /> Loading records...</div>
             ) : !currentSchoolId ? (
-                <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot view admissions.</p>
+                <p className="text-destructive text-center py-4">Admin/Accountant not associated with a school. Cannot view admissions.</p>
             ) : filteredAdmissionRecords.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No admission records found for the current filters.</p>
             ) : (

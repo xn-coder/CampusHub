@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import type { NavItem, UserRole } from '@/types';
@@ -127,6 +128,16 @@ const studentNavItems: NavItem[] = [
   { href: '/calendar-events', label: 'School Calendar', icon: CalendarDays },
 ];
 
+const accountantNavItems: NavItem[] = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
+  { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
+  { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
+  { href: '/admin/receipts', label: 'Receipt Vouchers', icon: ReceiptText },
+  { href: '/admin/expense-categories', label: 'Expense Categories', icon: Tags },
+  { href: '/admin/expenses', label: 'Expense Management', icon: Wallet },
+];
+
 const lockedStudentFeatures = [
     '/student/subjects',
     '/student/assignments',
@@ -233,6 +244,9 @@ export default function SidebarNav() {
             disabled: isFeeDefaulter && lockedStudentFeatures.includes(item.href)
         }));
       }
+      break;
+    case 'accountant':
+      navItems = accountantNavItems;
       break;
     default:
       navItems = []; 

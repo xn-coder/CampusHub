@@ -21,23 +21,23 @@ interface AssignFeeInput {
   school_id: string;
 }
 
-export async function fetchAdminSchoolIdForFees(adminUserId: string): Promise<string | null> {
-  if (!adminUserId) {
-    console.error("fetchAdminSchoolIdForFees: Admin User ID is required.");
+export async function fetchAdminSchoolIdForFees(userId: string): Promise<string | null> {
+  if (!userId) {
+    console.error("fetchAdminSchoolIdForFees: User ID is required.");
     return null;
   }
-  const supabaseAdmin = createSupabaseServerClient();
-  const { data: school, error } = await supabaseAdmin
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
+  const supabase = createSupabaseServerClient();
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('school_id')
+    .eq('id', userId)
     .single();
 
-  if (error || !school) {
-    console.error("Error fetching admin's school for fees:", error?.message);
+  if (error || !user?.school_id) {
+    console.error("Error fetching user's school for fees:", error?.message);
     return null;
   }
-  return school.id;
+  return user.school_id;
 }
 
 export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<{

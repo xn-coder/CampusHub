@@ -527,6 +527,17 @@ export interface TCRequest {
   student: Student;
 }
 
+export interface Accountant {
+    id: string;
+    user_id: string;
+    school_id: string;
+    name: string;
+    email: string;
+    profile_picture_url?: string | null;
+    created_at?: string;
+    updated_at?: string;
+}
+
 
 declare global {
   interface Window {

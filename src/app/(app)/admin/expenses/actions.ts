@@ -185,7 +185,7 @@ export async function deleteExpenseAction(id: string, schoolId: string): Promise
     
     if (expenseToDelete?.receipt_url && expenseToDelete.receipt_url.includes(process.env.NEXT_PUBLIC_SUPABASE_URL!)) {
         const filePath = new URL(expenseToDelete.receipt_url).pathname.replace(`/storage/v1/object/public/campushub/`, '');
-        const { error: storageError } = await supabaseAdmin.storage.from('campushub').remove([filePath]);
+        const { error: storageError } = await supabaseAdmin.storage.from('campushub').remove([filePath.replace('/public/','')]);
         if (storageError) {
             console.warn(`Failed to delete receipt from storage, but proceeding with DB deletion. Path: ${filePath}, Error: ${storageError.message}`);
         }
