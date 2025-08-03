@@ -36,16 +36,33 @@ import { useRouter } from 'next/navigation';
 const ITEMS_PER_PAGE = 10;
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
+  const { data: userRec, error: userError } = await supabase
+      .from('users')
+      .select('school_id')
+      .eq('id', adminUserId)
+      .single();
+
+  if (userError && userError.code !== 'PGRST116') {
+      console.error("Error fetching user's school:", userError.message);
+      return null;
+  }
+
+  if (userRec?.school_id) {
+      return userRec.school_id;
+  }
+  
+  // Fallback for older setups where admin might not have school_id on their user record
+  const { data: school, error: schoolError } = await supabase
     .from('schools')
     .select('id')
     .eq('admin_user_id', adminUserId)
     .single();
-  if (error || !school) {
-    console.error("Error fetching admin's school or admin not linked:", error?.message || "No school record found for this admin_user_id.");
+    
+  if (schoolError && schoolError.code !== 'PGRST116') {
+    console.error("Error fetching admin's school or admin not linked:", schoolError.message);
     return null;
   }
-  return school.id;
+  return school?.id || null;
 }
 
 export default function ManageStudentsPage() {
