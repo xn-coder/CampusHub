@@ -19,6 +19,7 @@ import { getExamsPageDataAction, addExamAction, updateExamAction, deleteExamActi
 import Link from 'next/link';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { supabase } from '@/lib/supabaseClient';
 
 interface ExamGroup {
   id: string; // Using the first exam's ID for keys

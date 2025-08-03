@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getSubjectsPageDataAction, addSubjectAction, updateSubjectAction, deleteSubjectAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { supabase } from '@/lib/supabaseClient';
 
 export default function SubjectsPage() {
   const { toast } = useToast();

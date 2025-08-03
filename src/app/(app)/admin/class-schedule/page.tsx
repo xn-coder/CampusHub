@@ -20,16 +20,32 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
+  const { data: userRec, error: userErr } = await supabase
+    .from('users')
+    .select('school_id')
+    .eq('id', adminUserId)
+    .single();
+  
+  if (userErr && userErr.code !== 'PGRST116') {
+    console.error("Error fetching user record for school ID:", userErr.message);
+    return null;
+  }
+  
+  if (userRec?.school_id) {
+    return userRec.school_id;
+  }
+  
+  const { data: school, error: schoolError } = await supabase
     .from('schools')
     .select('id')
     .eq('admin_user_id', adminUserId)
     .single();
-  if (error || !school) {
-    console.error("Error fetching admin's school for class schedule:", error?.message);
-    return null;
+
+  if (schoolError && schoolError.code !== 'PGRST116') {
+    console.error("Error during fallback school fetch for admin:", schoolError.message);
   }
-  return school.id;
+
+  return school?.id || null;
 }
 
 export default function ClassSchedulePage() {
