@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, type FormEvent, useEffect } from 'react';
@@ -93,6 +94,16 @@ export default function EditSchoolDialog({ school }: EditSchoolDialogProps) {
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="adminEmail" className="text-right">Principal Email</Label>
+              <Input
+                id="adminEmail"
+                value={school.admin_email}
+                className="col-span-3"
+                readOnly
+                disabled
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="editSchoolStatus" className="text-right">Status</Label>
               <Select value={editSchoolStatus} onValueChange={(value) => setEditSchoolStatus(value as School['status'])} disabled={isLoading}>
                 <SelectTrigger className="col-span-3">
@@ -117,4 +128,3 @@ export default function EditSchoolDialog({ school }: EditSchoolDialogProps) {
     </Dialog>
   );
 }
-

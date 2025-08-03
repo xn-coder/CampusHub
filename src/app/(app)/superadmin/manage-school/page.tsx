@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -137,7 +138,7 @@ export default function ManageSchoolPage() {
           <div className="mb-4 flex items-center gap-2 max-w-lg">
             <SearchIcon className="h-5 w-5 text-muted-foreground" />
             <Input
-              placeholder="Search by school name, admin name, or admin email..."
+              placeholder="Search by school name, principal name, or principal email..."
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
               className="flex-grow"
@@ -156,8 +157,8 @@ export default function ManageSchoolPage() {
                 <TableRow>
                   <SortableHeader column="name" label="School Name" />
                   <SortableHeader column="address" label="Address" />
-                  <SortableHeader column="admin_name" label="Administrator Name" />
-                  <SortableHeader column="admin_email" label="Admin Email" />
+                  <SortableHeader column="admin_name" label="Principal Name" />
+                  <SortableHeader column="admin_email" label="Principal Email" />
                   <SortableHeader column="status" label="Status" />
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>

@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -35,7 +36,7 @@ export async function createSchoolAndAdminAction(
         return { ok: false, message: 'Database error while checking admin email.' };
     }
     if (existingUser) {
-      return { ok: false, message: `Admin email ${adminEmail} already exists.` };
+      return { ok: false, message: `An admin user with email ${adminEmail} already exists.` };
     }
 
     const { data: existingSchoolByAdminEmail, error: schoolFetchError } = await supabaseAdmin
@@ -129,7 +130,7 @@ export async function createSchoolAndAdminAction(
 
     return {
       ok: true,
-      message: `School "${schoolName}" and admin account for ${adminName} created successfully. Default password is "password".`,
+      message: `School "${schoolName}" and principal account for ${adminName} created successfully. Default password is "password".`,
       schoolId: newSchoolId,
       adminId: newAdminUserId,
     };

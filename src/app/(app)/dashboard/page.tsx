@@ -42,7 +42,7 @@ const getDashboardTitle = (role: UserRole | null): string => {
     case 'superadmin':
       return 'Super Admin Dashboard';
     case 'admin':
-      return 'Admin Dashboard';
+      return 'Principal Dashboard';
     case 'teacher':
       return 'Teacher Dashboard';
     case 'student':

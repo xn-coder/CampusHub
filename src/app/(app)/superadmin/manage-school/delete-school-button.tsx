@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { Button } from '@/components/ui/button';
@@ -52,7 +53,7 @@ export default function DeleteSchoolButton({ schoolId, schoolName }: DeleteSchoo
           <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
           <AlertDialogDescription>
             This action cannot be undone. This will permanently delete the school record for "{schoolName}". 
-            Associated admin user accounts will NOT be deleted automatically.
+            Associated principal user accounts will NOT be deleted automatically.
             Ensure all dependent data (classes, students, etc.) for this school is handled or removed.
           </AlertDialogDescription>
         </AlertDialogHeader>

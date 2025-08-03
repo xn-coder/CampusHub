@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -58,7 +59,7 @@ export default function CreateSchoolPage() {
 
     if (result.ok) {
       toast({
-        title: "School & Admin Created",
+        title: "School & Principal Created",
         description: result.message,
       });
       setSchoolName('');
@@ -82,12 +83,12 @@ export default function CreateSchoolPage() {
     <div className="flex flex-col gap-6">
       <PageHeader 
         title="Create New School" 
-        description="Fill in the details to register a new school and its primary administrator." 
+        description="Fill in the details to register a new school and its primary principal." 
       />
       <Card className="max-w-2xl mx-auto w-full">
         <CardHeader>
           <CardTitle className="flex items-center"><Building className="mr-2 h-6 w-6" /> New School Registration</CardTitle>
-          <CardDescription>Provide the necessary information for the new school and its administrator. The admin password will be "password".</CardDescription>
+          <CardDescription>Provide the necessary information for the new school and its principal. The admin password will be "password".</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
@@ -104,21 +105,21 @@ export default function CreateSchoolPage() {
               <Input id="logoFile" name="logoFile" type="file" onChange={handleFileChange} accept="image/png, image/jpeg" disabled={isLoading}/>
             </div>
             <hr className="my-4"/>
-            <h3 className="text-lg font-medium text-foreground">Administrator Credentials</h3>
-            <CardDescription>The administrator will be able to log in with the email below and the default password: "password".</CardDescription>
+            <h3 className="text-lg font-medium text-foreground">Principal Credentials</h3>
+            <CardDescription>The principal will be able to log in with the email below and the default password: "password".</CardDescription>
              <div className="pt-2">
-              <Label htmlFor="adminName">Administrator Full Name</Label>
+              <Label htmlFor="adminName">Principal Full Name</Label>
               <Input id="adminName" name="adminName" value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="e.g., Seymour Skinner" required disabled={isLoading} />
             </div>
             <div>
-              <Label htmlFor="adminEmail">Administrator Email (Login ID)</Label>
-              <Input id="adminEmail" name="adminEmail" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="admin@springfieldelementary.edu" required disabled={isLoading} />
+              <Label htmlFor="adminEmail">Principal Email (Login ID)</Label>
+              <Input id="adminEmail" name="adminEmail" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="principal@springfieldelementary.edu" required disabled={isLoading} />
             </div>
           </CardContent>
           <CardFooter>
              <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Building className="mr-2 h-4 w-4" />}
-                {isLoading ? 'Creating...' : 'Create School & Admin Account'}
+                {isLoading ? 'Creating...' : 'Create School & Principal Account'}
             </Button>
           </CardFooter>
         </form>
