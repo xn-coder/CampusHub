@@ -31,13 +31,27 @@ async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   
   if (userErr && userErr.code !== 'PGRST116') {
     console.error("Error fetching user record for school ID:", userErr.message);
+    return null;
   }
-
+  
   if (userRec?.school_id) {
     return userRec.school_id;
   }
-  return null;
+  
+  // Fallback for older setups or different admin linking methods
+  const { data: school, error: schoolError } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUserId)
+    .single();
+
+  if (schoolError && schoolError.code !== 'PGRST116') {
+    console.error("Error during fallback school fetch for admin:", schoolError.message);
+  }
+
+  return school?.id || null;
 }
+
 
 export default function ManageAccountantsPage() {
   const { toast } = useToast();

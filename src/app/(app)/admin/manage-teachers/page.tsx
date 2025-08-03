@@ -21,7 +21,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 const ITEMS_PER_PAGE = 10;
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  // First, try to get school_id directly from the user's record
   const { data: userRec, error: userErr } = await supabase
     .from('users')
     .select('school_id')
@@ -30,32 +29,25 @@ async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   
   if (userErr && userErr.code !== 'PGRST116') {
     console.error("Error fetching user record for school ID:", userErr.message);
-    // Don't return yet, try fallback
+    return null;
   }
-
+  
   if (userRec?.school_id) {
     return userRec.school_id;
   }
-
-  // Fallback: If school_id is null on the user record, check if they are an admin_user_id in the schools table
-  console.warn(`User ${adminUserId} has no school_id on their record. Falling back to check schools.admin_user_id.`);
-  const { data: school, error: schoolError } = await supabase 
+  
+  // Fallback for older setups or different admin linking methods
+  const { data: school, error: schoolError } = await supabase
     .from('schools')
     .select('id')
     .eq('admin_user_id', adminUserId)
     .single();
 
-  if (schoolError && schoolError.code !== 'PGRST116') { // Ignore "no rows found" error
+  if (schoolError && schoolError.code !== 'PGRST116') {
     console.error("Error during fallback school fetch for admin:", schoolError.message);
-    return null;
-  }
-  
-  if (school) {
-    return school.id;
   }
 
-  console.error(`Could not determine school ID for admin ${adminUserId} via user record or schools table.`);
-  return null;
+  return school?.id || null;
 }
 
 
@@ -351,7 +343,7 @@ export default function ManageTeachersPage() {
                       <TableRow key={teacher.id}>
                         <TableCell>
                           <Avatar>
-                            <AvatarImage src={teacher.profile_picture_url || `https://placehold.co/40x40.png?text=${(teacher.name || 'T').substring(0,2).toUpperCase()}`} alt={teacher.name} data-ai-hint="person portrait" />
+                            <AvatarImage src={teacher.profile_picture_url || `https://placehold.co/40x40.png?text=${(teacher.name || 'T').substring(0,2).toUpperCase()}`} alt={teacher.name || ''} data-ai-hint="person portrait" />
                             <AvatarFallback>{(teacher.name || 'T').substring(0,2).toUpperCase()}</AvatarFallback>
                           </Avatar>
                         </TableCell>
