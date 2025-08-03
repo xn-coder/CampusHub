@@ -54,9 +54,11 @@ export default function LoginPage() {
       localStorage.setItem('currentUserId', result.user.id);
       localStorage.setItem('currentUserName', result.user.name); 
       
+      const displayRole = role === 'admin' ? 'Principal' : role.charAt(0).toUpperCase() + role.slice(1);
+      
       toast({
         title: "Login Successful!",
-        description: `Welcome, ${result.user.name}! You are logged in as ${role}.`,
+        description: `Welcome, ${result.user.name}! You are logged in as ${displayRole}.`,
       });
       router.push('/dashboard');
     } else {
