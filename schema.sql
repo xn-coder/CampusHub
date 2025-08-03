@@ -1,195 +1,124 @@
--- This is the complete database schema for the CampusHub application.
--- It includes tables, columns, relationships, and row-level security policies.
+-- Full Application Schema for CampusHub
 
--- Enable UUID extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "public";
-
--- Drop existing tables in reverse order of dependency to avoid errors
+-- Drop existing tables and types in reverse order of dependency to avoid errors.
 DROP TABLE IF EXISTS public.lms_assignment_submissions CASCADE;
-DROP TABLE IF EXISTS public.lms_course_school_availability CASCADE;
-DROP TABLE IF EXISTS public.lms_student_course_enrollments CASCADE;
-DROP TABLE IF EXISTS public.lms_teacher_course_enrollments CASCADE;
-DROP TABLE IF EXISTS public.lms_course_activation_codes CASCADE;
-DROP TABLE IF EXISTS public.lms_course_resources CASCADE;
 DROP TABLE IF EXISTS public.assignments CASCADE;
 DROP TABLE IF EXISTS public.student_scores CASCADE;
 DROP TABLE IF EXISTS public.exams CASCADE;
 DROP TABLE IF EXISTS public.class_subjects CASCADE;
 DROP TABLE IF EXISTS public.subjects CASCADE;
-DROP TABLE IF EXISTS public.academic_years CASCADE;
-DROP TABLE IF EXISTS public.receipt_items CASCADE;
-DROP TABLE IF EXISTS public.receipts CASCADE;
-DROP TABLE IF EXISTS public.expenses CASCADE;
-DROP TABLE IF EXISTS public.expense_categories CASCADE;
+DROP TABLE IF EXISTS public.class_schedules CASCADE;
+DROP TABLE IF EXISTS public.tc_requests CASCADE;
 DROP TABLE IF EXISTS public.student_fee_payments CASCADE;
 DROP TABLE IF EXISTS public.fee_categories CASCADE;
 DROP TABLE IF EXISTS public.attendance_records CASCADE;
 DROP TABLE IF EXISTS public.leave_applications CASCADE;
-DROP TABLE IF EXISTS public.tc_requests CASCADE;
-DROP TABLE IF EXISTS public.admission_records CASCADE;
-DROP TABLE IF EXISTS public.calendar_events CASCADE;
-DROP TABLE IF EXISTS public.holidays CASCADE;
-DROP TABLE IF EXISTS public.class_schedules CASCADE;
 DROP TABLE IF EXISTS public.announcements CASCADE;
+DROP TABLE IF EXISTS public.calendar_events CASCADE;
+DROP TABLE IF EXISTS public.expenses CASCADE;
+DROP TABLE IF EXISTS public.expense_categories CASCADE;
+DROP TABLE IF EXISTS public.admission_records CASCADE;
+DROP TABLE IF EXISTS public.lms_student_course_enrollments CASCADE;
+DROP TABLE IF EXISTS public.lms_teacher_course_enrollments CASCADE;
+DROP TABLE IF EXISTS public.lms_course_activation_codes CASCADE;
+DROP TABLE IF EXISTS public.lms_course_school_availability CASCADE;
+DROP TABLE IF EXISTS public.lms_course_resources CASCADE;
+DROP TABLE IF EXISTS public.lms_courses CASCADE;
 DROP TABLE IF EXISTS public.students CASCADE;
+DROP TABLE IF EXISTS public.classes CASCADE;
 DROP TABLE IF EXISTS public.teachers CASCADE;
 DROP TABLE IF EXISTS public.accountants CASCADE;
-DROP TABLE IF EXISTS public.classes CASCADE;
 DROP TABLE IF EXISTS public.class_names CASCADE;
 DROP TABLE IF EXISTS public.section_names CASCADE;
+DROP TABLE IF EXISTS public.academic_years CASCADE;
+DROP TABLE IF EXISTS public.holidays CASCADE;
 DROP TABLE IF EXISTS public.schools CASCADE;
 DROP TABLE IF EXISTS public.users CASCADE;
 
-
--- Drop existing ENUM types
+-- Drop custom types
 DROP TYPE IF EXISTS public.user_role_enum;
+DROP TYPE IF EXISTS public.lms_audience_enum;
 DROP TYPE IF EXISTS public.school_status_enum;
 DROP TYPE IF EXISTS public.attendance_status_enum;
-DROP TYPE IF EXISTS public.leave_request_status_enum;
+DROP TYPE IF EXISTS public.leave_status_enum;
 DROP TYPE IF EXISTS public.payment_status_enum;
-DROP TYPE IF EXISTS public.day_of_week_enum;
 DROP TYPE IF EXISTS public.course_resource_type_enum;
+DROP TYPE IF EXISTS public.day_of_week_enum;
 DROP TYPE IF EXISTS public.admission_status_enum;
 DROP TYPE IF EXISTS public.tc_request_status_enum;
-DROP TYPE IF EXISTS public.user_status_enum;
 
-
--- Create ENUM types for status fields and roles
+-- Create ENUM types
 CREATE TYPE public.user_role_enum AS ENUM ('superadmin', 'admin', 'teacher', 'student', 'accountant');
 CREATE TYPE public.school_status_enum AS ENUM ('Active', 'Inactive');
 CREATE TYPE public.attendance_status_enum AS ENUM ('Present', 'Absent', 'Late', 'Excused');
-CREATE TYPE public.leave_request_status_enum AS ENUM ('Pending', 'Approved', 'Rejected');
+CREATE TYPE public.leave_status_enum AS ENUM ('Pending', 'Approved', 'Rejected');
 CREATE TYPE public.payment_status_enum AS ENUM ('Pending', 'Paid', 'Partially Paid', 'Overdue', 'Failed');
-CREATE TYPE public.day_of_week_enum AS ENUM ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday');
 CREATE TYPE public.course_resource_type_enum AS ENUM ('ebook', 'video', 'note', 'webinar', 'quiz', 'ppt');
+CREATE TYPE public.day_of_week_enum AS ENUM ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday');
 CREATE TYPE public.admission_status_enum AS ENUM ('Pending Review', 'Admitted', 'Enrolled', 'Rejected');
 CREATE TYPE public.tc_request_status_enum AS ENUM ('Pending', 'Approved', 'Rejected');
-CREATE TYPE public.user_status_enum AS ENUM ('Active', 'Inactive', 'Terminated', 'Graduated');
+CREATE TYPE public.lms_audience_enum AS ENUM ('student', 'teacher', 'both');
 
-
--- Create USERS table
+-- Main Tables
 CREATE TABLE public.users (
-    id uuid NOT NULL DEFAULT uuid_generate_v4(),
-    email text NOT NULL,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    email text UNIQUE NOT NULL,
     name text NOT NULL,
     role public.user_role_enum NOT NULL,
-    password_hash text,
+    password_hash text NOT NULL,
     school_id uuid,
-    status public.user_status_enum NOT NULL DEFAULT 'Active'::public.user_status_enum,
+    status text DEFAULT 'Active'::text,
     last_sign_in_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT users_pkey PRIMARY KEY (id),
-    CONSTRAINT users_email_key UNIQUE (email)
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
 );
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow users to read their own data" ON public.users FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Allow users to update their own data" ON public.users FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
-CREATE POLICY "Allow all users to read public user info" ON public.users FOR SELECT USING (true);
+CREATE POLICY "Allow users to update their own data" ON public.users FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Allow public read access to users table" ON public.users FOR SELECT USING (true);
 
 
--- Create SCHOOLS table
 CREATE TABLE public.schools (
-    id uuid NOT NULL DEFAULT uuid_generate_v4(),
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name text NOT NULL,
     address text,
-    admin_email text NOT NULL,
+    admin_email text UNIQUE NOT NULL,
     admin_name text NOT NULL,
     contact_email text,
-    admin_user_id uuid,
-    status public.school_status_enum NOT NULL DEFAULT 'Active'::public.school_status_enum,
+    admin_user_id uuid REFERENCES public.users(id) ON DELETE SET NULL,
+    status public.school_status_enum DEFAULT 'Active'::school_status_enum,
     contact_phone text,
     logo_url text,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT schools_pkey PRIMARY KEY (id),
-    CONSTRAINT schools_admin_email_key UNIQUE (admin_email),
-    CONSTRAINT schools_admin_user_id_fkey FOREIGN KEY (admin_user_id) REFERENCES public.users(id) ON DELETE SET NULL
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
 );
 ALTER TABLE public.schools ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow superadmin full access" ON public.schools FOR ALL USING ((SELECT role FROM public.users WHERE id = auth.uid())::text = 'superadmin') WITH CHECK ((SELECT role FROM public.users WHERE id = auth.uid())::text = 'superadmin');
-CREATE POLICY "Allow admin to manage their own school" ON public.schools FOR ALL USING (id = (SELECT school_id FROM public.users WHERE id = auth.uid())) WITH CHECK (id = (SELECT school_id FROM public.users WHERE id = auth.uid()));
-CREATE POLICY "Allow authenticated users to view school details" ON public.schools FOR SELECT USING (true);
-ALTER TABLE public.users ADD CONSTRAINT users_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE SET NULL;
+ALTER TABLE public.users ADD CONSTRAINT fk_users_school_id FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE SET NULL;
+
+CREATE POLICY "Allow superadmin full access" ON public.schools FOR ALL USING ((SELECT role::text FROM public.users WHERE id = auth.uid()) = 'superadmin');
+CREATE POLICY "Allow admin to read own school data" ON public.schools FOR SELECT USING (id = (SELECT school_id FROM public.users WHERE id = auth.uid()));
 
 
--- Create supporting definition tables (class_names, section_names)
-CREATE TABLE public.class_names (
-    id uuid NOT NULL DEFAULT uuid_generate_v4(),
-    name text NOT NULL,
-    school_id uuid NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT class_names_pkey PRIMARY KEY (id),
-    CONSTRAINT class_names_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE
-);
-ALTER TABLE public.class_names ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow admin full access for their school" ON public.class_names FOR ALL USING (school_id = (SELECT school_id FROM public.users WHERE id = auth.uid()) AND (SELECT role FROM public.users WHERE id = auth.uid())::text = 'admin');
-
-CREATE TABLE public.section_names (
-    id uuid NOT NULL DEFAULT uuid_generate_v4(),
-    name text NOT NULL,
-    school_id uuid NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT section_names_pkey PRIMARY KEY (id),
-    CONSTRAINT section_names_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE
-);
-ALTER TABLE public.section_names ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow admin full access for their school" ON public.section_names FOR ALL USING (school_id = (SELECT school_id FROM public.users WHERE id = auth.uid()) AND (SELECT role FROM public.users WHERE id = auth.uid())::text = 'admin');
-
-
--- Create TEACHERS table
 CREATE TABLE public.teachers (
-    id uuid NOT NULL DEFAULT uuid_generate_v4(),
-    user_id uuid NOT NULL,
-    school_id uuid NOT NULL,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid UNIQUE REFERENCES public.users(id) ON DELETE CASCADE,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
     name text NOT NULL,
     email text NOT NULL,
     subject text,
     profile_picture_url text,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT teachers_pkey PRIMARY KEY (id),
-    CONSTRAINT teachers_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE,
-    CONSTRAINT teachers_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
 );
 ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow teachers to view their own profile" ON public.teachers FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "Allow admin to manage teachers in their school" ON public.teachers FOR ALL USING (school_id = (SELECT school_id FROM public.users WHERE id = auth.uid()) AND (SELECT role FROM public.users WHERE id = auth.uid())::text = 'admin');
 
-
--- Create CLASSES table
-CREATE TABLE public.classes (
-    id uuid NOT NULL DEFAULT uuid_generate_v4(),
-    name text NOT NULL,
-    division text NOT NULL,
-    class_name_id uuid NOT NULL,
-    section_name_id uuid NOT NULL,
-    teacher_id uuid,
-    academic_year_id uuid,
-    school_id uuid NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT classes_pkey PRIMARY KEY (id),
-    CONSTRAINT classes_class_name_id_fkey FOREIGN KEY (class_name_id) REFERENCES public.class_names(id) ON DELETE RESTRICT,
-    CONSTRAINT classes_section_name_id_fkey FOREIGN KEY (section_name_id) REFERENCES public.section_names(id) ON DELETE RESTRICT,
-    CONSTRAINT classes_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES public.teachers(id) ON DELETE SET NULL,
-    CONSTRAINT classes_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE
-);
-ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow admin to manage classes in their school" ON public.classes FOR ALL USING (school_id = (SELECT school_id FROM public.users WHERE id = auth.uid()) AND (SELECT role FROM public.users WHERE id = auth.uid())::text = 'admin');
-CREATE POLICY "Allow assigned teacher to view their class" ON public.classes FOR SELECT USING (teacher_id = (SELECT id FROM public.teachers WHERE user_id = auth.uid()));
-CREATE POLICY "Allow enrolled student to view their class" ON public.classes FOR SELECT USING (id IN (SELECT class_id FROM public.students WHERE user_id = auth.uid()));
-
-
--- Create STUDENTS table
 CREATE TABLE public.students (
-    id uuid NOT NULL DEFAULT uuid_generate_v4(),
-    roll_number text,
-    user_id uuid NOT NULL,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid UNIQUE REFERENCES public.users(id) ON DELETE CASCADE,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
     name text NOT NULL,
     email text NOT NULL,
+    roll_number text,
     class_id uuid,
     academic_year_id uuid,
     profile_picture_url text,
@@ -208,24 +137,270 @@ CREATE TABLE public.students (
     contact_number text,
     address text,
     admission_date date,
-    status public.user_status_enum NOT NULL DEFAULT 'Active'::public.user_status_enum,
-    school_id uuid NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT students_pkey PRIMARY KEY (id),
-    CONSTRAINT students_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE,
-    CONSTRAINT students_class_id_fkey FOREIGN KEY (class_id) REFERENCES public.classes(id) ON DELETE SET NULL,
-    CONSTRAINT students_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE
+    status text DEFAULT 'Active'::text,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
 );
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow students to view their own profile" ON public.students FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "Allow admin to manage students in their school" ON public.students FOR ALL USING (school_id = (SELECT school_id FROM public.users WHERE id = auth.uid()) AND (SELECT role FROM public.users WHERE id = auth.uid())::text = 'admin');
-CREATE POLICY "Allow teacher to view students in their classes" ON public.students FOR SELECT USING (class_id IN (SELECT id FROM public.classes WHERE teacher_id = (SELECT id FROM public.teachers WHERE user_id = auth.uid())));
+
+CREATE TABLE public.accountants (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid UNIQUE REFERENCES public.users(id) ON DELETE CASCADE,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    email text NOT NULL,
+    profile_picture_url text,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.accountants ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.class_names (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    UNIQUE(name, school_id)
+);
+ALTER TABLE public.class_names ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.section_names (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    UNIQUE(name, school_id)
+);
+ALTER TABLE public.section_names ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.academic_years (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    start_date date NOT NULL,
+    end_date date NOT NULL,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    UNIQUE(name, school_id)
+);
+ALTER TABLE public.academic_years ENABLE ROW LEVEL SECURITY;
 
 
--- LMS Tables
+CREATE TABLE public.classes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    division text NOT NULL,
+    class_name_id uuid REFERENCES public.class_names(id),
+    section_name_id uuid REFERENCES public.section_names(id),
+    teacher_id uuid REFERENCES public.teachers(id) ON DELETE SET NULL,
+    academic_year_id uuid REFERENCES public.academic_years(id) ON DELETE RESTRICT,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
+    UNIQUE(class_name_id, section_name_id, academic_year_id, school_id)
+);
+ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.students ADD CONSTRAINT fk_students_class_id FOREIGN KEY (class_id) REFERENCES public.classes(id) ON DELETE SET NULL;
+
+CREATE TABLE public.subjects (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    code text NOT NULL,
+    academic_year_id uuid REFERENCES public.academic_years(id) ON DELETE RESTRICT,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    UNIQUE(code, school_id)
+);
+ALTER TABLE public.subjects ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.class_subjects (
+    class_id uuid NOT NULL REFERENCES public.classes(id) ON DELETE CASCADE,
+    subject_id uuid NOT NULL REFERENCES public.subjects(id) ON DELETE CASCADE,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    PRIMARY KEY (class_id, subject_id)
+);
+ALTER TABLE public.class_subjects ENABLE ROW LEVEL SECURITY;
+
+
+CREATE TABLE public.class_schedules (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    class_id uuid NOT NULL REFERENCES public.classes(id) ON DELETE CASCADE,
+    subject_id uuid NOT NULL REFERENCES public.subjects(id) ON DELETE CASCADE,
+    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    day_of_week public.day_of_week_enum NOT NULL,
+    start_time time NOT NULL,
+    end_time time NOT NULL
+);
+ALTER TABLE public.class_schedules ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.attendance_records (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id uuid NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
+    class_id uuid NOT NULL REFERENCES public.classes(id) ON DELETE CASCADE,
+    date date NOT NULL,
+    status public.attendance_status_enum NOT NULL,
+    remarks text,
+    taken_by_teacher_id uuid REFERENCES public.teachers(id) ON DELETE SET NULL,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    UNIQUE(student_id, date)
+);
+ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
+
+
+CREATE TABLE public.leave_applications (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_profile_id uuid REFERENCES public.students(id) ON DELETE SET NULL,
+    student_name text NOT NULL,
+    reason text NOT NULL,
+    medical_notes_data_uri text,
+    submission_date timestamptz NOT NULL DEFAULT now(),
+    status public.leave_status_enum NOT NULL DEFAULT 'Pending'::leave_status_enum,
+    ai_reasoning text,
+    applicant_user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    applicant_role public.user_role_enum NOT NULL,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE
+);
+ALTER TABLE public.leave_applications ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.announcements (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title text NOT NULL,
+    content text NOT NULL,
+    date timestamptz NOT NULL,
+    author_name text NOT NULL,
+    posted_by_user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    posted_by_role public.user_role_enum NOT NULL,
+    target_audience text DEFAULT 'all',
+    target_class_id uuid REFERENCES public.classes(id) ON DELETE SET NULL,
+    school_id uuid REFERENCES public.schools(id) ON DELETE CASCADE,
+    linked_exam_id uuid
+);
+ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
+
+
+CREATE TABLE public.calendar_events (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title text NOT NULL,
+    description text,
+    date date NOT NULL,
+    start_time time,
+    end_time time,
+    is_all_day boolean NOT NULL DEFAULT false,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    posted_by_user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE
+);
+ALTER TABLE public.calendar_events ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.holidays (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    date date NOT NULL,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE
+);
+ALTER TABLE public.holidays ENABLE ROW LEVEL SECURITY;
+
+
+CREATE TABLE public.fee_categories (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    description text,
+    amount numeric,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    UNIQUE(name, school_id)
+);
+ALTER TABLE public.fee_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.student_fee_payments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id uuid NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
+    fee_category_id uuid NOT NULL REFERENCES public.fee_categories(id) ON DELETE CASCADE,
+    academic_year_id uuid REFERENCES public.academic_years(id) ON DELETE SET NULL,
+    assigned_amount numeric NOT NULL,
+    paid_amount numeric NOT NULL DEFAULT 0,
+    due_date date,
+    payment_date date,
+    status public.payment_status_enum NOT NULL DEFAULT 'Pending'::payment_status_enum,
+    notes text,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE
+);
+ALTER TABLE public.student_fee_payments ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.expense_categories (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    description text,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    UNIQUE(name, school_id)
+);
+ALTER TABLE public.expense_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.expenses (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title text NOT NULL,
+    amount numeric NOT NULL,
+    category_id uuid REFERENCES public.expense_categories(id) ON DELETE SET NULL,
+    date date NOT NULL,
+    receipt_url text,
+    notes text,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    recorded_by_user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE
+);
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+
+
+CREATE TABLE public.receipts (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    receipt_no serial UNIQUE,
+    narration text,
+    payment_date date NOT NULL,
+    payment_mode text NOT NULL,
+    total_amount numeric NOT NULL,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    created_by_user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    created_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.receipts ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.receipt_items (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    receipt_id uuid NOT NULL REFERENCES public.receipts(id) ON DELETE CASCADE,
+    ledger text NOT NULL,
+    description text,
+    amount numeric NOT NULL,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE
+);
+ALTER TABLE public.receipt_items ENABLE ROW LEVEL SECURITY;
+
+
+CREATE TABLE public.exams (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    subject_id uuid NOT NULL REFERENCES public.subjects(id) ON DELETE CASCADE,
+    class_id uuid REFERENCES public.classes(id) ON DELETE CASCADE,
+    academic_year_id uuid REFERENCES public.academic_years(id) ON DELETE SET NULL,
+    date date NOT NULL,
+    start_time time,
+    end_time time,
+    max_marks numeric,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE
+);
+ALTER TABLE public.exams ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE public.student_scores (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id uuid NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
+    exam_id uuid NOT NULL REFERENCES public.exams(id) ON DELETE CASCADE,
+    subject_id uuid NOT NULL REFERENCES public.subjects(id) ON DELETE CASCADE,
+    class_id uuid NOT NULL REFERENCES public.classes(id) ON DELETE CASCADE,
+    score text NOT NULL,
+    max_marks numeric,
+    recorded_by_teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    date_recorded date NOT NULL,
+    comments text,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    UNIQUE(student_id, exam_id, subject_id)
+);
+ALTER TABLE public.student_scores ENABLE ROW LEVEL SECURITY;
+
+
 CREATE TABLE public.lms_courses (
-    id uuid NOT NULL DEFAULT uuid_generate_v4(),
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     title text NOT NULL,
     description text,
     feature_image_url text,
@@ -233,81 +408,135 @@ CREATE TABLE public.lms_courses (
     price numeric,
     currency text,
     discount_percentage numeric,
-    school_id uuid,
-    target_audience public.user_role_enum,
-    target_class_id uuid,
-    created_by_user_id uuid NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT lms_courses_pkey PRIMARY KEY (id),
-    CONSTRAINT lms_courses_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE SET NULL,
-    CONSTRAINT lms_courses_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id) ON DELETE CASCADE,
-    CONSTRAINT lms_courses_target_class_id_fkey FOREIGN KEY (target_class_id) REFERENCES public.classes(id) ON DELETE SET NULL
+    school_id uuid REFERENCES public.schools(id) ON DELETE CASCADE,
+    target_audience public.lms_audience_enum,
+    target_class_id uuid REFERENCES public.classes(id) ON DELETE SET NULL,
+    created_by_user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
 );
 ALTER TABLE public.lms_courses ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow superadmin full access" ON public.lms_courses FOR ALL USING ((SELECT role FROM public.users WHERE id = auth.uid())::text = 'superadmin');
-CREATE POLICY "Allow admin to manage courses for their school" ON public.lms_courses FOR ALL USING (school_id = (SELECT school_id FROM public.users WHERE id = auth.uid()));
-CREATE POLICY "Allow enrolled users to view course details" ON public.lms_courses FOR SELECT USING (true);
 
--- Other tables like announcements, class_schedules, etc. follow a similar pattern...
--- (Full schema for all other tables would continue here)
 
--- Make school_id on lms_courses nullable to allow for global courses
-ALTER TABLE public.lms_courses
-ALTER COLUMN school_id DROP NOT NULL;
+CREATE TABLE public.lms_course_resources (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id uuid NOT NULL REFERENCES public.lms_courses(id) ON DELETE CASCADE,
+    type public.course_resource_type_enum NOT NULL,
+    title text NOT NULL,
+    url_or_content text,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.lms_course_resources ENABLE ROW LEVEL SECURITY;
 
--- Create a join table to link global courses to specific schools
+
+CREATE TABLE public.lms_course_activation_codes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id uuid NOT NULL REFERENCES public.lms_courses(id) ON DELETE CASCADE,
+    code text UNIQUE NOT NULL,
+    is_used boolean NOT NULL DEFAULT false,
+    used_by_user_id uuid REFERENCES public.users(id),
+    used_at timestamptz,
+    generated_date date NOT NULL,
+    expiry_date date
+);
+ALTER TABLE public.lms_course_activation_codes ENABLE ROW LEVEL SECURITY;
+
+
+CREATE TABLE public.lms_student_course_enrollments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id uuid NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
+    course_id uuid NOT NULL REFERENCES public.lms_courses(id) ON DELETE CASCADE,
+    enrolled_at timestamptz DEFAULT now(),
+    progress numeric DEFAULT 0,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    UNIQUE(student_id, course_id)
+);
+ALTER TABLE public.lms_student_course_enrollments ENABLE ROW LEVEL SECURITY;
+
+
+CREATE TABLE public.lms_teacher_course_enrollments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    course_id uuid NOT NULL REFERENCES public.lms_courses(id) ON DELETE CASCADE,
+    assigned_at timestamptz DEFAULT now(),
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    UNIQUE(teacher_id, course_id)
+);
+ALTER TABLE public.lms_teacher_course_enrollments ENABLE ROW LEVEL SECURITY;
+
 CREATE TABLE public.lms_course_school_availability (
-    id uuid NOT NULL DEFAULT uuid_generate_v4(),
-    course_id uuid NOT NULL,
-    school_id uuid NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT lms_course_school_availability_pkey PRIMARY KEY (id),
-    CONSTRAINT lms_course_school_availability_course_id_fkey FOREIGN KEY (course_id) REFERENCES public.lms_courses(id) ON DELETE CASCADE,
-    CONSTRAINT lms_course_school_availability_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE,
-    CONSTRAINT lms_course_school_availability_course_id_school_id_key UNIQUE (course_id, school_id)
+    course_id uuid NOT NULL REFERENCES public.lms_courses(id) ON DELETE CASCADE,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    target_audience_in_school public.lms_audience_enum NOT NULL DEFAULT 'both',
+    PRIMARY KEY (course_id, school_id)
 );
+ALTER TABLE public.lms_course_school_availability ENABLE ROW LEVEL SECURITY;
 
--- Add a column to track who can be enrolled in a course at a specific school
-ALTER TABLE public.lms_course_school_availability
-ADD COLUMN target_audience_in_school varchar(255) NOT NULL DEFAULT 'both'::character varying;
 
--- Enable RLS for the new table
-ALTER TABLE public.lms_course_school_availability
-ENABLE ROW LEVEL SECURITY;
-
--- Allow admins to manage availability for their own school
-CREATE POLICY "Allow admin full access for own school"
-ON public.lms_course_school_availability
-FOR ALL
-TO authenticated
-USING (
-  (SELECT school_id FROM public.users WHERE id = auth.uid()) = school_id AND
-  (SELECT role::text FROM public.users WHERE id = auth.uid()) = 'admin'
-)
-WITH CHECK (
-  (SELECT school_id FROM public.users WHERE id = auth.uid()) = school_id AND
-  (SELECT role::text FROM public.users WHERE id = auth.uid()) = 'admin'
+CREATE TABLE public.assignments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title text NOT NULL,
+    description text,
+    due_date date NOT NULL,
+    class_id uuid NOT NULL REFERENCES public.classes(id) ON DELETE CASCADE,
+    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    subject_id uuid REFERENCES public.subjects(id) ON DELETE SET NULL,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    attachment_url text,
+    attachment_name text
 );
+ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
 
--- Allow superadmins full access
-CREATE POLICY "Allow superadmin full access"
-ON public.lms_course_school_availability
-FOR ALL
-TO authenticated
-USING (
-  (SELECT role::text FROM public.users WHERE id = auth.uid()) = 'superadmin'
-)
-WITH CHECK (
-  (SELECT role::text FROM public.users WHERE id = auth.uid()) = 'superadmin'
+CREATE TABLE public.lms_assignment_submissions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    assignment_id uuid NOT NULL REFERENCES public.assignments(id) ON DELETE CASCADE,
+    student_id uuid NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    submission_date timestamptz NOT NULL DEFAULT now(),
+    file_path text NOT NULL,
+    file_name text NOT NULL,
+    notes text,
+    grade text,
+    feedback text,
+    UNIQUE(assignment_id, student_id)
 );
+ALTER TABLE public.lms_assignment_submissions ENABLE ROW LEVEL SECURITY;
 
--- Allow enrolled users to view availability records
-CREATE POLICY "Allow enrolled users to view"
-ON public.lms_course_school_availability
-FOR SELECT
-TO authenticated
-USING (true);
 
--- (The rest of the schema for all other tables would be here)
+CREATE TABLE public.admission_records (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    email text,
+    date_of_birth date,
+    guardian_name text,
+    contact_number text,
+    address text,
+    admission_date date NOT NULL,
+    status public.admission_status_enum NOT NULL,
+    class_id uuid REFERENCES public.classes(id) ON DELETE SET NULL,
+    student_profile_id uuid REFERENCES public.students(id) ON DELETE SET NULL,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.admission_records ENABLE ROW LEVEL SECURITY;
 
+
+CREATE TABLE public.tc_requests (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id uuid NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
+    school_id uuid NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    request_date timestamptz NOT NULL DEFAULT now(),
+    status public.tc_request_status_enum NOT NULL DEFAULT 'Pending'::tc_request_status_enum,
+    rejection_reason text,
+    approved_date timestamptz,
+    UNIQUE (student_id, school_id)
+);
+ALTER TABLE public.tc_requests ENABLE ROW LEVEL SECURITY;
+
+
+-- RLS Policies
+CREATE POLICY "Allow superadmin full access" ON public.lms_course_school_availability FOR ALL USING ((SELECT role::text FROM public.users WHERE id = auth.uid()) = 'superadmin') WITH CHECK ((SELECT role::text FROM public.users WHERE id = auth.uid()) = 'superadmin');
+CREATE POLICY "Allow admin full access for own school" ON public.lms_course_school_availability FOR ALL USING (((SELECT school_id FROM public.users WHERE id = auth.uid()) = school_id) AND ((SELECT role::text FROM public.users WHERE id = auth.uid()) = 'admin')) WITH CHECK (((SELECT school_id FROM public.users WHERE id = auth.uid()) = school_id) AND ((SELECT role::text FROM public.users WHERE id = auth.uid()) = 'admin'));
+CREATE POLICY "Allow enrolled users to view" ON public.lms_course_school_availability FOR SELECT USING (true);
