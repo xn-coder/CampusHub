@@ -103,29 +103,20 @@ export default function ManageTeachersPage() {
     setIsLoading(true); 
     const { data, error } = await supabase 
       .from('teachers')
-      .select('id, name, email, subject, profile_picture_url, user_id')
+      .select('*')
       .eq('school_id', schoolId);
 
     if (error) {
       toast({ title: "Error", description: `Failed to fetch teacher data: ${error.message}`, variant: "destructive" });
       setTeachers([]);
     } else {
-      const formattedTeachers = data?.map(t => ({
-        id: t.id, 
-        user_id: t.user_id, 
-        name: t.name,
-        email: t.email, 
-        subject: t.subject,
-        profile_picture_url: t.profile_picture_url,
-        school_id: schoolId, 
-      })) || [];
-      setTeachers(formattedTeachers);
+      setTeachers((data || []) as Teacher[]);
     }
     setIsLoading(false); 
   }
 
   const filteredTeachers = useMemo(() => teachers.filter(teacher =>
-    (teacher.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (teacher.name.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (teacher.email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (teacher.subject?.toLowerCase() || '').includes(searchTerm.toLowerCase())
   ), [teachers, searchTerm]);
@@ -343,8 +334,8 @@ export default function ManageTeachersPage() {
                       <TableRow key={teacher.id}>
                         <TableCell>
                           <Avatar>
-                            <AvatarImage src={teacher.profile_picture_url || `https://placehold.co/40x40.png?text=${(teacher.name || 'T').substring(0,2).toUpperCase()}`} alt={teacher.name || ''} data-ai-hint="person portrait" />
-                            <AvatarFallback>{(teacher.name || 'T').substring(0,2).toUpperCase()}</AvatarFallback>
+                            <AvatarImage src={teacher.profile_picture_url || `https://placehold.co/40x40.png?text=${teacher.name.substring(0,2).toUpperCase()}`} alt={teacher.name} data-ai-hint="person portrait" />
+                            <AvatarFallback>{teacher.name.substring(0,2).toUpperCase()}</AvatarFallback>
                           </Avatar>
                         </TableCell>
                         <TableCell className="font-medium">{teacher.name}</TableCell>
