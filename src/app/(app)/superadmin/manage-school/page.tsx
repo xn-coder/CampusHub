@@ -26,7 +26,6 @@ export default function ManageSchoolPage() {
   const [sortBy, setSortBy] = useState<keyof School | null>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
-  const [triggerRefetch, setTriggerRefetch] = useState(0); // State to trigger refetch
 
   const getSchools = useCallback(async () => {
     setIsLoading(true);
@@ -71,7 +70,13 @@ export default function ManageSchoolPage() {
 
   useEffect(() => {
     getSchools();
-  }, [getSchools, triggerRefetch]);
+    // This will refetch data when the user navigates back to the page.
+    const handleFocus = () => getSchools();
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [getSchools]);
   
   const handleSort = (column: keyof School) => {
     if (sortBy === column) {
