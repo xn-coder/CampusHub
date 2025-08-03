@@ -85,7 +85,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/student-scores', label: 'Student Scores', icon: Award },
   { href: '/admin/attendance', label: 'Attendance Records', icon: ClipboardCheck }, 
   { href: '/admin/id-card-printing', label: 'ID Card Printing', icon: Printer },
-  { href: '/admin/tc-requests', label: 'TC Requests', icon: TextSelect, badgeId: 'pendingTCRequests' },
+  { href: '/admin/tc-requests', label: 'TC Requests', badgeId: 'pendingTCRequests' },
   { href: '/admin/class-schedule', label: 'Class Schedule', icon: Clock },
   { href: '/communication', label: 'Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'Calendar & Events', icon: CalendarDays },
@@ -131,12 +131,16 @@ const studentNavItems: NavItem[] = [
 
 const accountantNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
+  { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 },
   { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
   { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
   { href: '/admin/receipts', label: 'Receipt Vouchers', icon: ReceiptText },
   { href: '/admin/expense-categories', label: 'Expense Categories', icon: Tags },
   { href: '/admin/expenses', label: 'Expense Management', icon: Wallet },
+  { href: '/communication', label: 'Announcements', icon: Megaphone },
+  { href: '/leave-application', label: 'Apply for Leave', icon: ClipboardEdit },
+  { href: '/calendar-events', label: 'Calendar & Events', icon: CalendarDays },
+  { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
 ];
 
 const lockedStudentFeatures = [

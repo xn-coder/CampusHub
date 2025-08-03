@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -7,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { Student, ClassData, Teacher } from '@/types';
+import type { Student, ClassData, Teacher, UserRole } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2, Users, Briefcase, FileDown } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
@@ -32,14 +33,14 @@ export default function AdminReportsPage() {
   useEffect(() => {
     async function loadInitialData() {
       setIsLoading(true);
-      const adminUserId = localStorage.getItem('currentUserId');
-      if (!adminUserId) {
-        toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      const userId = localStorage.getItem('currentUserId');
+      if (!userId) {
+        toast({ title: "Error", description: "User not identified.", variant: "destructive" });
         setIsLoading(false);
         return;
       }
 
-      const schoolId = await getAdminSchoolIdForReports(adminUserId);
+      const schoolId = await getAdminSchoolIdForReports(userId);
       setCurrentSchoolId(schoolId);
 
       if (schoolId) {
@@ -52,7 +53,7 @@ export default function AdminReportsPage() {
           toast({ title: "Error loading report data", description: result.message, variant: "destructive" });
         }
       } else {
-        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+        toast({ title: "Error", description: "Admin/Accountant not linked to a school.", variant: "destructive" });
       }
       setIsLoading(false);
     }
@@ -278,7 +279,7 @@ export default function AdminReportsPage() {
     return (
         <div className="flex flex-col gap-6">
         <PageHeader title="Activity Reports (Admin)" />
-        <Card><CardContent className="pt-6 text-center text-destructive">Admin not associated with a school. Cannot view reports.</CardContent></Card>
+        <Card><CardContent className="pt-6 text-center text-destructive">Admin/Accountant not associated with a school. Cannot view reports.</CardContent></Card>
         </div>
     );
   }
@@ -286,7 +287,7 @@ export default function AdminReportsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader 
-        title="Activity Reports (Admin)" 
+        title="Activity Reports" 
         description="View overall student and teacher activity." 
         actions={
           <Button onClick={handleDownloadCsv} disabled={isLoading}>

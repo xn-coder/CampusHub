@@ -1,12 +1,13 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { Student, ClassData, Teacher } from '@/types'; 
 
-export async function getAdminSchoolIdForReports(adminUserId: string): Promise<string | null> {
-  if (!adminUserId) {
-    console.error("getAdminSchoolIdForReports: Admin User ID is required.");
+export async function getAdminSchoolIdForReports(userId: string): Promise<string | null> {
+  if (!userId) {
+    console.error("getAdminSchoolIdForReports: User ID is required.");
     return null;
   }
   const supabaseAdmin = createSupabaseServerClient();
@@ -14,7 +15,7 @@ export async function getAdminSchoolIdForReports(adminUserId: string): Promise<s
   const { data: user, error } = await supabaseAdmin
     .from('users')
     .select('school_id')
-    .eq('id', adminUserId)
+    .eq('id', userId)
     .single();
 
   if (error || !user?.school_id) {
