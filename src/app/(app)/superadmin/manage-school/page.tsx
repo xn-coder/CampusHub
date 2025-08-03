@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -12,7 +11,7 @@ import EditSchoolDialog from './edit-school-dialog';
 import DeleteSchoolButton from './delete-school-button';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
@@ -27,49 +26,52 @@ export default function ManageSchoolPage() {
   const [sortBy, setSortBy] = useState<keyof School | null>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
+  const [triggerRefetch, setTriggerRefetch] = useState(0); // State to trigger refetch
+
+  const getSchools = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      let query = supabase.from('schools').select(`
+        id,
+        name,
+        address,
+        admin_email,
+        admin_name,
+        status,
+        admin_user_id,
+        created_at
+      `); 
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Failed to fetch schools from Supabase:", error);
+        toast({ title: "Error", description: "Failed to fetch schools.", variant: "destructive"});
+        setSchools([]);
+      } else {
+        setSchools((data || []).map(item => ({
+          id: item.id,
+          name: item.name,
+          address: item.address,
+          admin_email: item.admin_email,
+          admin_name: item.admin_name,
+          status: item.status as 'Active' | 'Inactive',
+          admin_user_id: item.admin_user_id,
+          created_at: item.created_at, 
+        })));
+      }
+    } catch (error) {
+      console.error("Unexpected error fetching schools:", error);
+      toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive"});
+      setSchools([]);
+    }
+    setIsLoading(false);
+  }, [toast]);
+
 
   useEffect(() => {
-    async function getSchools() {
-      setIsLoading(true);
-      try {
-        let query = supabase.from('schools').select(`
-          id,
-          name,
-          address,
-          admin_email,
-          admin_name,
-          status,
-          admin_user_id,
-          created_at
-        `); 
-
-        const { data, error } = await query.order('created_at', { ascending: false });
-
-        if (error) {
-          console.error("Failed to fetch schools from Supabase:", error);
-          toast({ title: "Error", description: "Failed to fetch schools.", variant: "destructive"});
-          setSchools([]);
-        } else {
-          setSchools((data || []).map(item => ({
-            id: item.id,
-            name: item.name,
-            address: item.address,
-            admin_email: item.admin_email,
-            admin_name: item.admin_name,
-            status: item.status as 'Active' | 'Inactive',
-            admin_user_id: item.admin_user_id,
-            created_at: item.created_at, 
-          })));
-        }
-      } catch (error) {
-        console.error("Unexpected error fetching schools:", error);
-        toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive"});
-        setSchools([]);
-      }
-      setIsLoading(false);
-    }
     getSchools();
-  }, [toast]);
+  }, [getSchools, triggerRefetch]);
   
   const handleSort = (column: keyof School) => {
     if (sortBy === column) {
