@@ -14,39 +14,9 @@ import { useState, useEffect, type FormEvent, useCallback } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, Clock, Loader2, MoreHorizontal } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { addClassScheduleAction, updateClassScheduleAction, deleteClassScheduleAction, fetchClassSchedulePageData } from './actions';
-import { supabase } from '@/lib/supabaseClient'; // For fetching current user's school ID
+import { getAdminSchoolIdAction } from '../academic-years/actions'; 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-
-
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: userRec, error: userErr } = await supabase
-    .from('users')
-    .select('school_id')
-    .eq('id', adminUserId)
-    .single();
-  
-  if (userErr && userErr.code !== 'PGRST116') {
-    console.error("Error fetching user record for school ID:", userErr.message);
-    return null;
-  }
-  
-  if (userRec?.school_id) {
-    return userRec.school_id;
-  }
-  
-  const { data: school, error: schoolError } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
-    .single();
-
-  if (schoolError && schoolError.code !== 'PGRST116') {
-    console.error("Error during fallback school fetch for admin:", schoolError.message);
-  }
-
-  return school?.id || null;
-}
 
 export default function ClassSchedulePage() {
   const { toast } = useToast();
@@ -88,7 +58,7 @@ export default function ClassSchedulePage() {
     const adminId = localStorage.getItem('currentUserId');
     setCurrentAdminUserId(adminId);
     if (adminId) {
-      fetchAdminSchoolId(adminId).then(schoolId => {
+      getAdminSchoolIdAction(adminId).then(schoolId => {
         setCurrentSchoolId(schoolId);
         if (schoolId) {
           loadPageData(schoolId);
