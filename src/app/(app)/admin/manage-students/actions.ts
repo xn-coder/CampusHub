@@ -12,13 +12,32 @@ export async function getAdminSchoolId(adminUserId: string): Promise<string | nu
     return null;
   }
   const supabase = createSupabaseServerClient();
+  
+  // First, try to get school_id from the user's own record. This is the most reliable.
+  const { data: userRec, error: userErr } = await supabase
+    .from('users')
+    .select('school_id')
+    .eq('id', adminUserId)
+    .single();
+
+  if (userErr && userErr.code !== 'PGRST116') { // Don't error on "no rows"
+    console.error("Error fetching user record for school ID:", userErr.message);
+  }
+
+  if (userRec?.school_id) {
+    return userRec.school_id;
+  }
+
+  // Fallback: If user has no school_id, check if they are the primary admin_user_id on a school record.
+  console.warn(`User ${adminUserId} has no school_id on their user record. Falling back to check schools.admin_user_id`);
   const { data: school, error } = await supabase
     .from('schools')
     .select('id')
     .eq('admin_user_id', adminUserId)
     .single();
+
   if (error || !school) {
-    console.error("Error fetching admin's school:", error?.message);
+    console.error("Error fetching admin's school via fallback or admin not linked:", error?.message);
     return null;
   }
   return school.id;
