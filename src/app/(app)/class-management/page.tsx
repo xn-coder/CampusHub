@@ -28,7 +28,7 @@ import {
   getAssignedSubjectsForClassAction,
   saveClassSubjectAssignmentsAction,
 } from './actions';
-import { getAdminSchoolIdAction } from '../admin/academic-years/actions';
+import { getAdminSchoolIdAction, getAcademicYearsForSchoolAction } from '../admin/academic-years/actions';
 import { Badge } from '@/components/ui/badge';
 
 const ITEMS_PER_PAGE = 10;
@@ -106,7 +106,7 @@ export default function ClassManagementPage() {
           getActiveClassesAction(schoolId),
           supabase.from('students').select('*').eq('school_id', schoolId),
           supabase.from('teachers').select('*').eq('school_id', schoolId),
-          supabase.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false }),
+          getAcademicYearsForSchoolAction(schoolId), // Using server action
           supabase.from('subjects').select('*').eq('school_id', schoolId).order('name'),
         ]);
 
@@ -128,8 +128,9 @@ export default function ClassManagementPage() {
         if (subjectsResult.error) toast({ title: "Error fetching subjects", description: subjectsResult.error.message, variant: "destructive" });
         else setAllSubjectsInSchool(subjectsResult.data || []);
 
-        if (academicYearsResult.error) toast({ title: "Error fetching academic years", description: academicYearsResult.error.message, variant: "destructive" });
-        else setAllAcademicYears(academicYearsResult.data || []);
+        if (academicYearsResult.ok && academicYearsResult.years) setAllAcademicYears(academicYearsResult.years);
+        else toast({ title: "Error fetching academic years", description: academicYearsResult.message || "Unknown error", variant: "destructive" });
+
     } catch (err: any) {
         console.error("Error in fetchAllData Promise.all:", err);
         toast({ title: "Data Fetch Error", description: err.message || "An unexpected error occurred while fetching page data.", variant: "destructive" });
