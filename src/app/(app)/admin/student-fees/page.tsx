@@ -39,8 +39,7 @@ interface StudentFeeSummary {
   totalDue: number;
   status: StudentFeeStatus;
   payments: StudentFeePayment[];
-  // A unique identifier for the summary itself, especially for 'General' fees.
-  summaryId: string;
+  summaryId: string; // A unique identifier for the summary itself
 }
 
 
@@ -284,10 +283,10 @@ export default function AdminStudentFeesPage() {
     feePayments.forEach(fp => {
         const student = students.find(s => s.id === fp.student_id);
         if (!student) return;
-        
-        const key = fp.academic_year_id 
-            ? `${student.id}-${fp.academic_year_id}`
-            : `${student.id}-general-${fp.id}`; // Use payment ID to make 'general' entries unique
+
+        // Group by student and academic year. Use "general" as the key for null academic years.
+        const academicYearGroupKey = fp.academic_year_id || 'general';
+        const key = `${student.id}-${academicYearGroupKey}`;
 
         if (!summaryMap[key]) {
             summaryMap[key] = {
@@ -441,8 +440,8 @@ export default function AdminStudentFeesPage() {
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="Paid">Paid</SelectItem>
                     <SelectItem value="Unpaid">Unpaid</SelectItem>
+                    <SelectItem value="Paid">Paid</SelectItem>
                     <SelectItem value="Pending">Pending</SelectItem>
                     <SelectItem value="Partially Paid">Partially Paid</SelectItem>
                     <SelectItem value="Overdue">Overdue</SelectItem>
@@ -692,5 +691,6 @@ export default function AdminStudentFeesPage() {
     </div>
   );
 }
+
 
 
