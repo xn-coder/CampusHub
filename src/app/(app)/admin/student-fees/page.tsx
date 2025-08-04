@@ -283,8 +283,11 @@ export default function AdminStudentFeesPage() {
         const student = students.find(s => s.id === fp.student_id);
         if (!student) return;
 
-        const academicYearId = fp.academic_year_id || 'general';
-        const key = `${student.id}-${academicYearId}`;
+        // Use the fee payment ID for general fees to keep them separate,
+        // otherwise group by student and academic year.
+        const key = fp.academic_year_id 
+            ? `${student.id}-${fp.academic_year_id}`
+            : `${student.id}-general-${fp.id}`;
 
         if (!summaryMap[key]) {
             summaryMap[key] = {
