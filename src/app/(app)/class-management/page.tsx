@@ -30,6 +30,7 @@ import {
 } from './actions';
 import { getAdminSchoolIdAction, getAcademicYearsForSchoolAction } from '../admin/academic-years/actions';
 import { getTeachersForSchoolAction } from '../admin/manage-teachers/actions';
+import { getSubjectsPageDataAction } from '../admin/subjects/actions';
 import { Badge } from '@/components/ui/badge';
 
 const ITEMS_PER_PAGE = 10;
@@ -90,7 +91,7 @@ export default function ClassManagementPage() {
   const [isFetchingPromotionData, setIsFetchingPromotionData] = useState(false);
 
 
-  const fetchAllData = useCallback(async (schoolId: string) => {
+  const fetchAllData = useCallback(async (schoolId: string, adminUserId: string) => {
     setIsLoading(true);
     try {
         const [
@@ -106,9 +107,9 @@ export default function ClassManagementPage() {
           getSectionNamesAction(schoolId),
           getActiveClassesAction(schoolId),
           supabase.from('students').select('*').eq('school_id', schoolId),
-          getTeachersForSchoolAction(schoolId), // Using Server Action
+          getTeachersForSchoolAction(schoolId), 
           getAcademicYearsForSchoolAction(schoolId),
-          supabase.from('subjects').select('*').eq('school_id', schoolId).order('name'),
+          getSubjectsPageDataAction(adminUserId),
         ]);
 
         if (classNamesResult.ok && classNamesResult.classNames) setClassNamesList(classNamesResult.classNames);
@@ -124,13 +125,13 @@ export default function ClassManagementPage() {
         else setAllStudentsInSchool(studentsResult.data || []);
         
         if (teachersResult.ok && teachersResult.teachers) setAllTeachersInSchool(teachersResult.teachers);
-        else toast({ title: "Error fetching teachers", description: teachersResult.message || "Unknown error", variant: "destructive" });
+        else toast({ title: "Error fetching teachers", description: teachersResult.message, variant: "destructive" });
 
-        if (subjectsResult.error) toast({ title: "Error fetching subjects", description: subjectsResult.error.message, variant: "destructive" });
-        else setAllSubjectsInSchool(subjectsResult.data || []);
+        if (subjectsResult.ok && subjectsResult.subjects) setAllSubjectsInSchool(subjectsResult.subjects);
+        else toast({ title: "Error fetching subjects", description: subjectsResult.message || "Unknown error", variant: "destructive" });
 
         if (academicYearsResult.ok && academicYearsResult.years) setAllAcademicYears(academicYearsResult.years as AcademicYear[]);
-        else toast({ title: "Error fetching academic years", description: academicYearsResult.message || "Unknown error", variant: "destructive" });
+        else toast({ title: "Error fetching academic years", description: academicYearsResult.message, variant: "destructive" });
 
     } catch (err: any) {
         console.error("Error in fetchAllData Promise.all:", err);
@@ -168,10 +169,10 @@ export default function ClassManagementPage() {
   }, [toast]);
 
   useEffect(() => {
-    if (currentSchoolId) {
-        fetchAllData(currentSchoolId);
+    if (currentSchoolId && currentAdminUserId) {
+        fetchAllData(currentSchoolId, currentAdminUserId);
     }
-  }, [currentSchoolId, fetchAllData]);
+  }, [currentSchoolId, currentAdminUserId, fetchAllData]);
 
 
   const getTeacherName = (teacherId?: string | null): string => {
@@ -194,8 +195,8 @@ export default function ClassManagementPage() {
     setNewClassNameInput('');
     if (result.classNames) {
       setClassNamesList(result.classNames);
-    } else if (currentSchoolId) {
-      fetchAllData(currentSchoolId);
+    } else if (currentSchoolId && currentAdminUserId) {
+      fetchAllData(currentSchoolId, currentAdminUserId);
     }
     setIsSubmitting(false);
   };
@@ -207,7 +208,7 @@ export default function ClassManagementPage() {
   };
 
   const handleEditClassNameSubmit = async () => {
-    if (!editingClassNameRecord || !editNameInput.trim() || !currentSchoolId) {
+    if (!editingClassNameRecord || !editNameInput.trim() || !currentSchoolId || !currentAdminUserId) {
       toast({ title: "Error", description: "New name cannot be empty.", variant: "destructive" });
       return;
     }
@@ -217,7 +218,7 @@ export default function ClassManagementPage() {
     if (result.classNames) {
       setClassNamesList(result.classNames);
     } else if (currentSchoolId) {
-      fetchAllData(currentSchoolId);
+      fetchAllData(currentSchoolId, currentAdminUserId);
     }
     setIsEditClassNameDialogOpen(false);
     setEditingClassNameRecord(null);
@@ -225,20 +226,20 @@ export default function ClassManagementPage() {
   };
 
   const handleDeleteClassName = async (id: string) => {
-    if (!currentSchoolId) return;
+    if (!currentSchoolId || !currentAdminUserId) return;
     setIsSubmitting(true);
     const result = await deleteClassNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.classNames) {
       setClassNamesList(result.classNames);
     } else if (currentSchoolId) {
-      fetchAllData(currentSchoolId);
+      fetchAllData(currentSchoolId, currentAdminUserId);
     }
     setIsSubmitting(false);
   };
 
   const handleAddSectionName = async () => {
-    if (!currentSchoolId || !newSectionNameInput.trim()) {
+    if (!currentSchoolId || !newSectionNameInput.trim() || !currentAdminUserId) {
       toast({ title: "Error", description: "Section name cannot be empty and school context is required.", variant: "destructive" });
       return;
     }
@@ -249,7 +250,7 @@ export default function ClassManagementPage() {
     if (result.sectionNames) {
       setSectionNamesList(result.sectionNames);
     } else if (currentSchoolId) {
-      fetchAllData(currentSchoolId);
+      fetchAllData(currentSchoolId, currentAdminUserId);
     }
     setIsSubmitting(false);
   };
@@ -261,7 +262,7 @@ export default function ClassManagementPage() {
   };
 
   const handleEditSectionNameSubmit = async () => {
-    if (!editingSectionNameRecord || !editNameInput.trim() || !currentSchoolId) {
+    if (!editingSectionNameRecord || !editNameInput.trim() || !currentSchoolId || !currentAdminUserId) {
       toast({ title: "Error", description: "New name cannot be empty.", variant: "destructive" });
       return;
     }
@@ -271,7 +272,7 @@ export default function ClassManagementPage() {
     if (result.sectionNames) {
       setSectionNamesList(result.sectionNames);
     } else if (currentSchoolId) {
-      fetchAllData(currentSchoolId);
+      fetchAllData(currentSchoolId, currentAdminUserId);
     }
     setIsEditSectionNameDialogOpen(false);
     setEditingSectionNameRecord(null);
@@ -279,14 +280,14 @@ export default function ClassManagementPage() {
   };
 
   const handleDeleteSectionName = async (id: string) => {
-    if (!currentSchoolId) return;
+    if (!currentSchoolId || !currentAdminUserId) return;
     setIsSubmitting(true);
     const result = await deleteSectionNameAction(id, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.sectionNames) {
         setSectionNamesList(result.sectionNames);
     } else if (currentSchoolId) {
-        fetchAllData(currentSchoolId);
+        fetchAllData(currentSchoolId, currentAdminUserId);
     }
     setIsSubmitting(false);
   };
@@ -299,7 +300,7 @@ export default function ClassManagementPage() {
   };
 
   const handleActivateClassSection = async () => {
-    if (!selectedClassNameIdForActivation || !selectedSectionNameIdForActivation || !currentSchoolId) {
+    if (!selectedClassNameIdForActivation || !selectedSectionNameIdForActivation || !currentSchoolId || !currentAdminUserId) {
       toast({ title: "Error", description: "Please select Class Name, Section Name, and ensure school context.", variant: "destructive" });
       return;
     }
@@ -313,20 +314,20 @@ export default function ClassManagementPage() {
     });
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok && currentSchoolId) {
-      fetchAllData(currentSchoolId);
+      fetchAllData(currentSchoolId, currentAdminUserId);
       setIsActivateClassSectionDialogOpen(false);
     }
     setIsSubmitting(false);
   };
 
   const handleDeleteActiveClass = async (activeClassId: string) => {
-    if (!currentSchoolId) return;
+    if (!currentSchoolId || !currentAdminUserId) return;
     if (confirm(`Are you sure you want to delete this active class-section? This will unassign all students.`)) {
       setIsSubmitting(true);
       const result = await deleteActiveClassAction(activeClassId, currentSchoolId);
       toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
       if (result.ok && currentSchoolId) {
-        fetchAllData(currentSchoolId);
+        fetchAllData(currentSchoolId, currentAdminUserId);
       }
       setIsSubmitting(false);
     }
@@ -346,12 +347,12 @@ export default function ClassManagementPage() {
   };
 
   const handleSaveStudentAssignments = async () => {
-    if (!classToManageStudents || !currentSchoolId) return;
+    if (!classToManageStudents || !currentSchoolId || !currentAdminUserId) return;
     setIsSubmitting(true);
     const result = await assignStudentsToClassAction(classToManageStudents.id, selectedStudentIdsForDialog, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok && currentSchoolId) {
-      fetchAllData(currentSchoolId);
+      fetchAllData(currentSchoolId, currentAdminUserId);
       setIsManageStudentsDialogOpen(false);
     }
     setIsSubmitting(false);
@@ -364,12 +365,12 @@ export default function ClassManagementPage() {
   };
 
   const handleSaveTeacherAssignment = async () => {
-    if (!classToAssignTeacher || !currentSchoolId) return;
+    if (!classToAssignTeacher || !currentSchoolId || !currentAdminUserId) return;
     setIsSubmitting(true);
     const result = await assignTeacherToClassAction(classToAssignTeacher.id, selectedTeacherIdForDialog, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok && currentSchoolId) {
-      fetchAllData(currentSchoolId);
+      fetchAllData(currentSchoolId, currentAdminUserId);
       setIsAssignTeacherDialogOpen(false);
     }
     setIsSubmitting(false);
@@ -403,7 +404,7 @@ export default function ClassManagementPage() {
     toast({ title: result.ok ? "Promotion Successful" : "Promotion Failed", description: result.message, variant: result.ok ? "default" : "destructive" });
     if (result.ok) {
         setIsPromoteDialogOpen(false);
-        if (currentSchoolId) fetchAllData(currentSchoolId);
+        if (currentSchoolId && currentAdminUserId) fetchAllData(currentSchoolId, currentAdminUserId);
     }
     setIsSubmitting(false);
   };
@@ -424,12 +425,12 @@ export default function ClassManagementPage() {
   };
 
   const handleSaveSubjectAssignments = async () => {
-    if (!classToAssignSubjects || !currentSchoolId) return;
+    if (!classToAssignSubjects || !currentSchoolId || !currentAdminUserId) return;
     setIsSubmitting(true);
     const result = await saveClassSubjectAssignmentsAction(classToAssignSubjects.id, selectedSubjectIdsForDialog, currentSchoolId);
     toast({ title: result.ok ? "Success" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
     if(result.ok && currentSchoolId) {
-        fetchAllData(currentSchoolId);
+        fetchAllData(currentSchoolId, currentAdminUserId);
         setIsAssignSubjectsDialogOpen(false);
     }
     setIsSubmitting(false);
