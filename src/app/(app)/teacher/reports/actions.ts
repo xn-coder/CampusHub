@@ -43,7 +43,7 @@ export async function getTeacherStudentsAndClassesAction(teacherId: string, scho
     }
     
     const studentIds = studentsInClasses.map(s => s.id);
-    const userIds = studentsInClasses.map(s => s.user_id).filter(Boolean);
+    const userIds = studentsInClasses.map(s => s.user_id).filter(Boolean) as string[];
     
     // Fetch all required activity data in parallel
     const [submissionsRes, attendanceRes, usersRes] = await Promise.all([

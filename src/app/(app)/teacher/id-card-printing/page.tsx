@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -6,76 +7,63 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import type { ClassData, Student } from '@/types';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Download, Printer } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import { format, parseISO } from 'date-fns';
 import { IdCardPreview } from '@/components/shared/id-card-preview';
 import { Checkbox } from '@/components/ui/checkbox';
-
+import { getTeacherClassesDataAction } from '../my-classes/actions'; // Use a reliable action
 
 export default function TeacherDataExportPage() {
   const { toast } = useToast();
   const [assignedClasses, setAssignedClasses] = useState<ClassData[]>([]);
-  const [allStudentsInSchool, setAllStudentsInSchool] = useState<Student[]>([]);
+  const [allStudentsInClasses, setAllStudentsInClasses] = useState<Student[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
-  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [currentSchoolName, setCurrentSchoolName] = useState<string | null>(null);
+  const [currentSchoolLogo, setCurrentSchoolLogo] = useState<string | null>(null);
   const [selectedStudentsForPrint, setSelectedStudentsForPrint] = useState<string[]>([]);
 
 
-  useEffect(() => {
-    async function fetchData() {
-      setIsLoading(true);
-      const teacherUserId = localStorage.getItem('currentUserId');
-      if (!teacherUserId) {
-        toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-
-      const { data: teacherProfile, error: profileError } = await supabase
-        .from('teachers')
-        .select('id, school_id')
-        .eq('user_id', teacherUserId)
-        .single();
-
-      if (profileError || !teacherProfile) {
-        toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-      setCurrentTeacherId(teacherProfile.id);
-      setCurrentSchoolId(teacherProfile.school_id);
-
-      if (teacherProfile.id && teacherProfile.school_id) {
-        const [classesRes, studentsRes, schoolRes] = await Promise.all([
-          supabase.from('classes').select('*').eq('teacher_id', teacherProfile.id).eq('school_id', teacherProfile.school_id),
-          supabase.from('students').select('*').eq('school_id', teacherProfile.school_id),
-          supabase.from('schools').select('name').eq('id', teacherProfile.school_id).single()
-        ]);
-
-        if (classesRes.error) toast({ title: "Error fetching classes", variant: "destructive" });
-        else setAssignedClasses(classesRes.data || []);
-
-        if (studentsRes.error) toast({ title: "Error fetching students", variant: "destructive" });
-        else setAllStudentsInSchool(studentsRes.data || []);
-        
-        if (schoolRes.error) toast({ title: "Error fetching school name", variant: "destructive" });
-        else setCurrentSchoolName(schoolRes.data?.name || null);
-      }
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    const teacherUserId = localStorage.getItem('currentUserId');
+    if (!teacherUserId) {
+      toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
       setIsLoading(false);
+      return;
     }
-    fetchData();
+
+    const result = await getTeacherClassesDataAction(teacherUserId);
+
+    if (result.ok) {
+      const classes = result.classesWithStudents || [];
+      setAssignedClasses(classes);
+      const allStudents = classes.flatMap(c => c.students);
+      setAllStudentsInClasses(allStudents);
+
+      if (classes.length > 0 && classes[0].school_id) {
+         const { data: schoolDetails } = await supabase.from('schools').select('name, logo_url').eq('id', classes[0].school_id).single();
+         setCurrentSchoolName(schoolDetails?.name || null);
+         setCurrentSchoolLogo(schoolDetails?.logo_url || null);
+      }
+
+    } else {
+      toast({ title: "Error loading data", description: result.message, variant: "destructive" });
+    }
+    setIsLoading(false);
   }, [toast]);
+
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const studentsToDisplay = useMemo(() => {
     if (!selectedClassId) return [];
-    return allStudentsInSchool.filter(s => s.class_id === selectedClassId);
-  }, [selectedClassId, allStudentsInSchool]);
+    return allStudentsInClasses.filter(s => s.class_id === selectedClassId);
+  }, [selectedClassId, allStudentsInClasses]);
 
   const handleSelectStudentForPrint = (studentId: string, isSelected: boolean) => {
     setSelectedStudentsForPrint(prev => 
@@ -150,10 +138,10 @@ export default function TeacherDataExportPage() {
     return cls ? `${cls.name} - ${cls.division}` : 'Unknown Class';
   };
   
-  if (isLoading && !currentTeacherId) {
+  if (isLoading) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading teacher data...</span></div>;
   }
-  if (!currentTeacherId || !currentSchoolId) {
+  if (!assignedClasses) {
      return (
         <div className="flex flex-col gap-6">
         <PageHeader title="ID Card Printing" />
@@ -222,7 +210,7 @@ export default function TeacherDataExportPage() {
                                 checked={selectedStudentsForPrint.includes(student.id)}
                                 onCheckedChange={(checked) => handleSelectStudentForPrint(student.id, Boolean(checked))}
                             />
-                            <IdCardPreview student={student} schoolName={currentSchoolName} className={getStudentClassName(student)} />
+                            <IdCardPreview student={student} schoolName={currentSchoolName} className={getStudentClassName(student)} schoolLogoUrl={currentSchoolLogo} />
                         </div>
                     ))
                 ) : (

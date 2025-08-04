@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -25,42 +24,42 @@ export default function TeacherLeaveRequestsPage() {
 
   async function fetchTeacherAndLeaveData() {
     setIsLoading(true);
-    if (typeof window !== 'undefined') {
-      const teacherUserId = localStorage.getItem('currentUserId'); 
-      if (!teacherUserId) {
-        toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-      
-      const { data: teacherProfile, error: profileError } = await supabase
-        .from('teachers')
-        .select('id, school_id') 
-        .eq('user_id', teacherUserId)
-        .single();
+    const teacherUserId = localStorage.getItem('currentUserId'); 
+    if (!teacherUserId) {
+      toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
+      setIsLoading(false);
+      return;
+    }
+    
+    // This is the correct way: fetch the profile ID using the logged-in user's ID.
+    const { data: teacherProfile, error: profileError } = await supabase
+      .from('teachers')
+      .select('id, school_id') 
+      .eq('user_id', teacherUserId)
+      .single();
 
-      if (profileError || !teacherProfile) {
-        toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-      setCurrentTeacherId(teacherProfile.id);
-      setCurrentSchoolId(teacherProfile.school_id);
+    if (profileError || !teacherProfile) {
+      toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
+      setIsLoading(false);
+      return;
+    }
+    setCurrentTeacherId(teacherProfile.id);
+    setCurrentSchoolId(teacherProfile.school_id);
 
-      if (teacherProfile.id && teacherProfile.school_id) {
-        const result = await getLeaveRequestsAction({ 
-            school_id: teacherProfile.school_id, 
-            teacher_id: teacherProfile.id, 
-            target_role: 'student' 
-        });
-        if (result.ok && result.applications) {
-          setLeaveRequests(result.applications);
-        } else {
-          toast({ title: "Error", description: result.message || "Failed to fetch leave requests.", variant: "destructive" });
-          setLeaveRequests([]);
-        }
+    if (teacherProfile.id && teacherProfile.school_id) {
+      const result = await getLeaveRequestsAction({ 
+          school_id: teacherProfile.school_id, 
+          teacher_id: teacherProfile.id, 
+          target_role: 'student' 
+      });
+      if (result.ok && result.applications) {
+        setLeaveRequests(result.applications);
+      } else {
+        toast({ title: "Error", description: result.message || "Failed to fetch leave requests.", variant: "destructive" });
+        setLeaveRequests([]);
       }
     }
+    
     setIsLoading(false);
   }
 

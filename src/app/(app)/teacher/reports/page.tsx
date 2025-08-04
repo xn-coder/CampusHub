@@ -7,11 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { Student, ClassData } from '@/types';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getTeacherStudentsAndClassesAction } from './actions';
-import { supabase } from '@/lib/supabaseClient';
 import { format, parseISO, isValid } from 'date-fns';
 
 type StudentWithActivity = Student & {
@@ -24,8 +23,6 @@ export default function TeacherReportsPage() {
   const { toast } = useToast();
   const [teacherStudents, setTeacherStudents] = useState<StudentWithActivity[]>([]);
   const [teacherClasses, setTeacherClasses] = useState<ClassData[]>([]);
-  const [currentTeacherProfileId, setCurrentTeacherProfileId] = useState<string | null>(null);
-  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,45 +30,44 @@ export default function TeacherReportsPage() {
   const [sortBy, setSortBy] = useState<keyof StudentWithActivity | ''>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
-  useEffect(() => {
-    async function loadInitialData() {
-      setIsLoading(true);
-      const teacherUserId = localStorage.getItem('currentUserId');
-      if (!teacherUserId) {
-        toast({ title: "Error", description: "Teacher user not identified.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-
-      const { data: teacherProfile, error: profileError } = await supabase
-        .from('teachers')
-        .select('id, school_id')
-        .eq('user_id', teacherUserId)
-        .single();
-
-      if (profileError || !teacherProfile) {
-        toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-      setCurrentTeacherProfileId(teacherProfile.id);
-      setCurrentSchoolId(teacherProfile.school_id);
-
-      if (teacherProfile.id && teacherProfile.school_id) {
-        const result = await getTeacherStudentsAndClassesAction(teacherProfile.id, teacherProfile.school_id);
-        if (result.ok) {
-          setTeacherStudents(result.students as StudentWithActivity[] || []);
-          setTeacherClasses(result.classes || []);
-        } else {
-          toast({ title: "Error loading report data", description: result.message, variant: "destructive" });
-        }
-      } else {
-        toast({ title: "Error", description: "Teacher profile or school ID missing.", variant: "destructive" });
-      }
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    const teacherUserId = localStorage.getItem('currentUserId');
+    if (!teacherUserId) {
+      toast({ title: "Error", description: "Teacher user not identified.", variant: "destructive" });
       setIsLoading(false);
+      return;
     }
-    loadInitialData();
+
+    const { data: teacherProfile, error: profileError } = await supabase
+      .from('teachers')
+      .select('id, school_id')
+      .eq('user_id', teacherUserId)
+      .single();
+
+    if (profileError || !teacherProfile) {
+      toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
+      setIsLoading(false);
+      return;
+    }
+    
+    if (teacherProfile.id && teacherProfile.school_id) {
+      const result = await getTeacherStudentsAndClassesAction(teacherProfile.id, teacherProfile.school_id);
+      if (result.ok) {
+        setTeacherStudents(result.students as StudentWithActivity[] || []);
+        setTeacherClasses(result.classes || []);
+      } else {
+        toast({ title: "Error loading report data", description: result.message, variant: "destructive" });
+      }
+    } else {
+      toast({ title: "Error", description: "Teacher profile or school ID missing.", variant: "destructive" });
+    }
+    setIsLoading(false);
   }, [toast]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleSort = (column: keyof StudentWithActivity | '') => {
     if (sortBy === column) {
@@ -141,14 +137,6 @@ export default function TeacherReportsPage() {
   
   if (isLoading) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading reports...</span></div>;
-  }
-  if (!currentTeacherProfileId || !currentSchoolId) {
-    return (
-        <div className="flex flex-col gap-6">
-        <PageHeader title="Student Activity Reports" />
-        <Card><CardContent className="pt-6 text-center text-destructive">Could not load teacher profile. Cannot view reports.</CardContent></Card>
-        </div>
-    );
   }
 
   return (
