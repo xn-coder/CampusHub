@@ -70,10 +70,8 @@ export default function ManageStudentsPage() {
         setAllAcademicYearsInSchool(result.academicYears || []);
         setCurrentSchoolId(result.schoolId || null);
         
-        const allStudents = result.students || [];
-        const activeStudents = allStudents.filter(s => s.status !== 'Terminated');
-        const terminatedStudents = allStudents.filter(s => s.status === 'Terminated');
-        setStudents(showTerminated ? terminatedStudents : activeStudents);
+        const allStudentsData = result.students || [];
+        setStudents(allStudentsData);
 
     } else {
         setPageError(result.message || "An unknown error occurred fetching page data.");
@@ -84,7 +82,7 @@ export default function ManageStudentsPage() {
     }
 
     setIsLoading(false);
-  }, [showTerminated, toast]);
+  }, [toast]);
 
 
   useEffect(() => {
@@ -111,11 +109,26 @@ export default function ManageStudentsPage() {
     const cls = allClassesInSchool.find(c => c.id === classId);
     return cls ? `${cls.name} - ${cls.division}` : 'N/A';
   };
+  
+  const getAcademicYearName = (yearId?: string | null): string => {
+    if (!yearId) return 'N/A';
+    const year = allAcademicYearsInSchool.find(ay => ay.id === yearId);
+    return year ? year.name : 'N/A';
+  };
 
-  const filteredStudents = useMemo(() => students.filter(student =>
-    (student.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-    (student.email?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-  ), [students, searchTerm]);
+  const filteredStudents = useMemo(() => {
+    let studentList = students;
+    if (showTerminated) {
+        studentList = studentList.filter(s => s.status === 'Terminated');
+    } else {
+        studentList = studentList.filter(s => s.status !== 'Terminated');
+    }
+
+    return studentList.filter(student =>
+        (student.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+        (student.email?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+    )
+  }, [students, searchTerm, showTerminated]);
 
   const paginatedStudents = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -205,16 +218,18 @@ export default function ManageStudentsPage() {
         toast({ title: "No Data", description: "There are no students to download for the current filter.", variant: "destructive"});
         return;
     }
-    const headers = ["Name", "Roll Number", "Email", "Class", "Status", "Student UUID"];
+    const headers = ["Name", "Roll Number", "Email", "Class", "Academic Year", "Status", "Student UUID"];
     const csvRows = [
         headers.join(','),
         ...filteredStudents.map(student => {
             const className = getClassDisplayName(student.class_id);
+            const academicYear = getAcademicYearName(student.academic_year_id);
             const row = [
                 `"${(student.name || '').replace(/"/g, '""')}"`,
                 `"${student.roll_number || 'N/A'}"`,
                 `"${(student.email || 'N/A').replace(/"/g, '""')}"`,
                 `"${className.replace(/"/g, '""')}"`,
+                `"${academicYear.replace(/"/g, '""')}"`,
                 `"${student.status || 'Active'}"`,
                 `"${student.id}"`,
             ];
@@ -278,7 +293,7 @@ export default function ManageStudentsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Student Roster</CardTitle>
-            <CardDescription>View, search, and manage enrolled student profiles. New students are registered by teachers or admins.</CardDescription>
+            <CardDescription>View, search, and manage enrolled student profiles. New students are registered via the admissions page.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-4 flex flex-wrap items-center gap-4">
@@ -321,8 +336,8 @@ export default function ManageStudentsPage() {
                         <TableHead>Avatar</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Roll Number</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Class / Status</TableHead>
+                        <TableHead>Class</TableHead>
+                        <TableHead>Academic Year</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -339,13 +354,13 @@ export default function ManageStudentsPage() {
                           <TableCell>
                               <span className="font-mono text-xs">{student.roll_number || 'N/A'}</span>
                           </TableCell>
-                          <TableCell>{student.email}</TableCell>
                           <TableCell>
                               {student.status && student.status !== 'Active' ? 
                                   <Badge variant="destructive">{student.status}</Badge> 
                                   : getClassDisplayName(student.class_id)
                               }
                           </TableCell>
+                          <TableCell>{getAcademicYearName(student.academic_year_id)}</TableCell>
                           <TableCell className="text-right">
                             <AlertDialog>
                               <DropdownMenu>
