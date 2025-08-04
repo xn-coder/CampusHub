@@ -31,6 +31,7 @@ import {
 import { getAdminSchoolIdAction, getAcademicYearsForSchoolAction } from '../admin/academic-years/actions';
 import { getTeachersForSchoolAction } from '../admin/manage-teachers/actions';
 import { getSubjectsPageDataAction } from '../admin/subjects/actions';
+import { getStudentsForSchoolAction } from '../admin/manage-students/actions';
 import { Badge } from '@/components/ui/badge';
 
 const ITEMS_PER_PAGE = 10;
@@ -106,7 +107,7 @@ export default function ClassManagementPage() {
           getClassNamesAction(schoolId),
           getSectionNamesAction(schoolId),
           getActiveClassesAction(schoolId),
-          supabase.from('students').select('*').eq('school_id', schoolId),
+          getStudentsForSchoolAction(schoolId),
           getTeachersForSchoolAction(schoolId), 
           getAcademicYearsForSchoolAction(schoolId),
           getSubjectsPageDataAction(adminUserId),
@@ -120,9 +121,9 @@ export default function ClassManagementPage() {
 
         if (activeClassesResult.ok && activeClassesResult.activeClasses) setActiveClasses(activeClassesResult.activeClasses);
         else toast({ title: "Error fetching active classes", description: activeClassesResult.message || "Unknown error", variant: "destructive" });
-
-        if (studentsResult.error) toast({ title: "Error fetching students", description: studentsResult.error.message, variant: "destructive" });
-        else setAllStudentsInSchool(studentsResult.data || []);
+        
+        if (studentsResult.ok && studentsResult.students) setAllStudentsInSchool(studentsResult.students);
+        else toast({ title: "Error fetching students", description: studentsResult.message || "Unknown error", variant: "destructive" });
         
         if (teachersResult.ok && teachersResult.teachers) setAllTeachersInSchool(teachersResult.teachers);
         else toast({ title: "Error fetching teachers", description: teachersResult.message, variant: "destructive" });
