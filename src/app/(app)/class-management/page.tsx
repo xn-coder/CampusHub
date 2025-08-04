@@ -128,7 +128,7 @@ export default function ClassManagementPage() {
         if (subjectsResult.error) toast({ title: "Error fetching subjects", description: subjectsResult.error.message, variant: "destructive" });
         else setAllSubjectsInSchool(subjectsResult.data || []);
 
-        if (academicYearsResult.ok && academicYearsResult.years) setAllAcademicYears(academicYearsResult.years);
+        if (academicYearsResult.ok && academicYearsResult.years) setAllAcademicYears(academicYearsResult.years as AcademicYear[]);
         else toast({ title: "Error fetching academic years", description: academicYearsResult.message || "Unknown error", variant: "destructive" });
 
     } catch (err: any) {
@@ -931,3 +931,5 @@ export default function ClassManagementPage() {
     </div>
   );
 }
+
+    
