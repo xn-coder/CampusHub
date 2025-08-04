@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Student, User, ClassData } from '@/types';
+import type { Student, User, ClassData, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
 import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck, FileText, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +46,7 @@ export default function ManageStudentsPage() {
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [allClassesInSchool, setAllClassesInSchool] = useState<ClassData[]>([]);
+  const [allAcademicYearsInSchool, setAllAcademicYearsInSchool] = useState<AcademicYear[]>([]);
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -53,6 +54,7 @@ export default function ManageStudentsPage() {
   const [editStudentEmail, setEditStudentEmail] = useState('');
   const [editStudentRollNumber, setEditStudentRollNumber] = useState<string>('');
   const [editStudentClassId, setEditStudentClassId] = useState<string | undefined>(undefined);
+  const [editStudentAcademicYearId, setEditStudentAcademicYearId] = useState<string | undefined>(undefined);
   
   const [showTerminated, setShowTerminated] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -85,7 +87,7 @@ export default function ManageStudentsPage() {
       getAdminSchoolId(adminId).then(schoolId => {
         setCurrentSchoolId(schoolId);
         if (schoolId) {
-          fetchClasses(schoolId);
+          fetchClassesAndYears(schoolId);
           fetchStudents(schoolId);
         } else {
           setIsLoading(false);
@@ -105,16 +107,24 @@ export default function ManageStudentsPage() {
   }, [currentSchoolId, showTerminated, fetchStudents]);
 
 
-  async function fetchClasses(schoolId: string) {
-     const { data, error } = await supabase
+  async function fetchClassesAndYears(schoolId: string) {
+     const { data: classesData, error: classesError } = await supabase
       .from('classes')
-      .select('id, name, division')
+      .select('*')
       .eq('school_id', schoolId);
-    if (error) {
-      console.error("Error fetching classes:", error);
+    if (classesError) {
       toast({ title: "Error", description: "Failed to fetch class data.", variant: "destructive" });
     } else {
-      setAllClassesInSchool(data || []);
+      setAllClassesInSchool(classesData || []);
+    }
+     const { data: yearsData, error: yearsError } = await supabase
+      .from('academic_years')
+      .select('*')
+      .eq('school_id', schoolId);
+    if (yearsError) {
+      toast({ title: "Error", description: "Failed to fetch academic years data.", variant: "destructive" });
+    } else {
+      setAllAcademicYearsInSchool(yearsData || []);
     }
   }
 
@@ -142,6 +152,7 @@ export default function ManageStudentsPage() {
     setEditStudentEmail(student.email);
     setEditStudentRollNumber(student.roll_number || '');
     setEditStudentClassId(student.class_id || undefined);
+    setEditStudentAcademicYearId(student.academic_year_id || undefined);
     setIsEditDialogOpen(true);
   };
 
@@ -161,6 +172,7 @@ export default function ManageStudentsPage() {
         email: editStudentEmail.trim(),
         roll_number: editStudentRollNumber.trim() || null,
         class_id: editStudentClassId === 'unassign' ? null : (editStudentClassId || null),
+        academic_year_id: editStudentAcademicYearId === 'unassign' ? null : (editStudentAcademicYearId || null),
     });
 
     if (result.ok) {
@@ -415,12 +427,12 @@ export default function ManageStudentsPage() {
         </Card>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[480px]">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Student: {editingStudent?.name}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleEditStudentSubmit}>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto px-2">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editStudentName" className="text-right">Name</Label>
                 <Input id="editStudentName" value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} className="col-span-3" required disabled={isSubmitting} />
@@ -434,17 +446,25 @@ export default function ManageStudentsPage() {
                 <Input id="editStudentRollNumber" value={editStudentRollNumber || ''} onChange={(e) => setEditStudentRollNumber(e.target.value)} className="col-span-3" placeholder="Optional" disabled={isSubmitting} />
               </div>
                <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="editStudentAcademicYearId" className="text-right">Academic Year</Label>
+                 <Select value={editStudentAcademicYearId || 'unassign'} onValueChange={(value) => setEditStudentAcademicYearId(value === 'unassign' ? undefined : value)} disabled={isSubmitting}>
+                    <SelectTrigger className="col-span-3"><SelectValue placeholder="Select Academic Year" /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="unassign">Unassign from Year</SelectItem>
+                        {allAcademicYearsInSchool.map(ay => (<SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>))}
+                    </SelectContent>
+                 </Select>
+              </div>
+               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="editStudentClassId" className="text-right">Assign Class</Label>
-                 <Select value={editStudentClassId} onValueChange={(value) => setEditStudentClassId(value === 'unassign' ? undefined : value)} disabled={isSubmitting}>
-                    <SelectTrigger className="col-span-3">
-                        <SelectValue placeholder="Select a class" />
-                    </SelectTrigger>
+                 <Select value={editStudentClassId || 'unassign'} onValueChange={(value) => setEditStudentClassId(value === 'unassign' ? undefined : value)} disabled={isSubmitting}>
+                    <SelectTrigger className="col-span-3"><SelectValue placeholder="Select a class" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="unassign">Unassign from Class</SelectItem>
                         {allClassesInSchool.map(cls => (
                             <SelectItem key={cls.id} value={cls.id}>{cls.name} - {cls.division}</SelectItem>
                         ))}
-                        {allClassesInSchool.length === 0 && <SelectItem value="no-classes" disabled>No classes available in this school</SelectItem>}
+                        {allClassesInSchool.length === 0 && <SelectItem value="no-classes" disabled>No classes available</SelectItem>}
                     </SelectContent>
                  </Select>
               </div>

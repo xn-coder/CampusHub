@@ -165,13 +165,14 @@ interface UpdateStudentInput {
   email: string;
   roll_number: string | null;
   class_id: string | null;
+  academic_year_id: string | null;
 }
 
 export async function updateStudentAction(
   input: UpdateStudentInput
 ): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
-  const { studentId, userId, schoolId, name, email, roll_number, class_id } = input;
+  const { studentId, userId, schoolId, name, email, roll_number, class_id, academic_year_id } = input;
 
   try {
     // 1. Check if the new email is already taken by another user in the same school
@@ -199,6 +200,7 @@ export async function updateStudentAction(
         email: email.trim(),
         roll_number: roll_number || null,
         class_id: class_id,
+        academic_year_id: academic_year_id,
       })
       .eq('id', studentId)
       .eq('school_id', schoolId);
