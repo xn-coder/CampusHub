@@ -5,8 +5,32 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { revalidatePath } from 'next/cache';
+import type { Teacher } from '@/types';
 
 const SALT_ROUNDS = 10;
+
+// New action to fetch all teachers for a school
+export async function getTeachersForSchoolAction(schoolId: string): Promise<{ ok: boolean; teachers?: Teacher[], message?: string }> {
+    if (!schoolId) {
+        return { ok: false, message: "School ID is required." };
+    }
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data, error } = await supabase
+            .from('teachers')
+            .select('*')
+            .eq('school_id', schoolId)
+            .order('name');
+
+        if (error) {
+            return { ok: false, message: `Failed to fetch teachers: ${error.message}` };
+        }
+        return { ok: true, teachers: data || [] };
+    } catch (e: any) {
+        return { ok: false, message: e.message || 'An unexpected server error occurred.' };
+    }
+}
+
 
 interface UpdateTeacherInput {
   id: string; 

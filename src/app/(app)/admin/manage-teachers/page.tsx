@@ -10,17 +10,20 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { Teacher, User } from '@/types'; 
-import { useState, useEffect, type FormEvent, type ChangeEvent, useMemo } from 'react';
+import type { Teacher } from '@/types'; 
+import { useState, useEffect, type FormEvent, type ChangeEvent, useMemo, useCallback } from 'react';
 import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2, FileDown, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient';
-import { createTeacherAction, updateTeacherAction, deleteTeacherAction } from './actions';
+import { getTeachersForSchoolAction, createTeacherAction, updateTeacherAction, deleteTeacherAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 const ITEMS_PER_PAGE = 10;
 
+// This helper is now robust, checking user record first.
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
+  const { createSupabaseServerClient } = await import('@/lib/supabaseClient');
+  const supabase = createSupabaseServerClient();
+
   const { data: userRec, error: userErr } = await supabase
     .from('users')
     .select('school_id')
@@ -36,7 +39,6 @@ async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
     return userRec.school_id;
   }
   
-  // Fallback for older setups or different admin linking methods
   const { data: school, error: schoolError } = await supabase
     .from('schools')
     .select('id')
@@ -78,6 +80,18 @@ export default function ManageTeachersPage() {
   const [editTeacherProfilePicUrl, setEditTeacherProfilePicUrl] = useState('');
 
 
+  const fetchTeachers = useCallback(async (schoolId: string) => {
+    setIsLoading(true);
+    const result = await getTeachersForSchoolAction(schoolId);
+    if (result.ok && result.teachers) {
+      setTeachers(result.teachers);
+    } else {
+      toast({ title: "Error", description: `Failed to fetch teacher data: ${result.message}`, variant: "destructive" });
+      setTeachers([]);
+    }
+    setIsLoading(false);
+  }, [toast]);
+
   useEffect(() => {
     const adminIdFromStorage = localStorage.getItem('currentUserId');
     setCurrentAdminUserId(adminIdFromStorage);
@@ -96,29 +110,12 @@ export default function ManageTeachersPage() {
        setIsLoading(false); 
        toast({ title: "Authentication Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast]); 
-
-  async function fetchTeachers(schoolId: string) {
-    setIsLoading(true); 
-    const { data, error } = await supabase 
-      .from('teachers')
-      .select('*')
-      .eq('school_id', schoolId);
-
-    if (error) {
-      toast({ title: "Error", description: `Failed to fetch teacher data: ${error.message}`, variant: "destructive" });
-      setTeachers([]);
-    } else {
-      setTeachers((data || []) as Teacher[]);
-    }
-    setIsLoading(false); 
-  }
+  }, [toast, fetchTeachers]);
 
   const filteredTeachers = useMemo(() => teachers.filter(teacher =>
-    (teacher.name.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-    (teacher.email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-    (teacher.subject?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+    teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (teacher.email && teacher.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (teacher.subject && teacher.subject.toLowerCase().includes(searchTerm.toLowerCase()))
   ), [teachers, searchTerm]);
 
   const paginatedTeachers = useMemo(() => {
