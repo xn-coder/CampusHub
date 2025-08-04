@@ -39,6 +39,8 @@ interface StudentFeeSummary {
   totalDue: number;
   status: StudentFeeStatus;
   payments: StudentFeePayment[];
+  // A unique identifier for the summary itself, especially for 'General' fees.
+  summaryId: string;
 }
 
 
@@ -282,12 +284,10 @@ export default function AdminStudentFeesPage() {
     feePayments.forEach(fp => {
         const student = students.find(s => s.id === fp.student_id);
         if (!student) return;
-
-        // Use the fee payment ID for general fees to keep them separate,
-        // otherwise group by student and academic year.
+        
         const key = fp.academic_year_id 
             ? `${student.id}-${fp.academic_year_id}`
-            : `${student.id}-general-${fp.id}`;
+            : `${student.id}-general-${fp.id}`; // Use payment ID to make 'general' entries unique
 
         if (!summaryMap[key]) {
             summaryMap[key] = {
@@ -300,7 +300,8 @@ export default function AdminStudentFeesPage() {
                 totalPaid: 0,
                 totalDue: 0,
                 status: 'Paid',
-                payments: []
+                payments: [],
+                summaryId: key,
             };
         }
         
@@ -477,7 +478,7 @@ export default function AdminStudentFeesPage() {
               </TableHeader>
               <TableBody>
                 {filteredSummaries.map((summary) => (
-                  <TableRow key={summary.studentId + (summary.academicYearId || 'general')}>
+                  <TableRow key={summary.summaryId}>
                     <TableCell className="font-medium">{summary.studentName}</TableCell>
                     <TableCell>
                       <span className="font-mono text-xs">{getStudentRollNumber(summary.studentId)}</span>
@@ -691,4 +692,5 @@ export default function AdminStudentFeesPage() {
     </div>
   );
 }
+
 
