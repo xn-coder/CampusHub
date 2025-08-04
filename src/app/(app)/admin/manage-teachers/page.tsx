@@ -14,44 +14,11 @@ import type { Teacher } from '@/types';
 import { useState, useEffect, type FormEvent, type ChangeEvent, useMemo, useCallback } from 'react';
 import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2, FileDown, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { getTeachersForSchoolAction, createTeacherAction, updateTeacherAction, deleteTeacherAction } from './actions';
+import { supabase } from '@/lib/supabaseClient';
+import { createTeacherAction, updateTeacherAction, deleteTeacherAction, getAdminTeacherManagementPageDataAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 const ITEMS_PER_PAGE = 10;
-
-// This helper is now robust, checking user record first.
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { createSupabaseServerClient } = await import('@/lib/supabaseClient');
-  const supabase = createSupabaseServerClient();
-
-  const { data: userRec, error: userErr } = await supabase
-    .from('users')
-    .select('school_id')
-    .eq('id', adminUserId)
-    .single();
-  
-  if (userErr && userErr.code !== 'PGRST116') {
-    console.error("Error fetching user record for school ID:", userErr.message);
-    return null;
-  }
-  
-  if (userRec?.school_id) {
-    return userRec.school_id;
-  }
-  
-  const { data: school, error: schoolError } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
-    .single();
-
-  if (schoolError && schoolError.code !== 'PGRST116') {
-    console.error("Error during fallback school fetch for admin:", schoolError.message);
-  }
-
-  return school?.id || null;
-}
-
 
 export default function ManageTeachersPage() {
   const { toast } = useToast();
@@ -80,37 +47,31 @@ export default function ManageTeachersPage() {
   const [editTeacherProfilePicUrl, setEditTeacherProfilePicUrl] = useState('');
 
 
-  const fetchTeachers = useCallback(async (schoolId: string) => {
+  const fetchPageData = useCallback(async (adminId: string) => {
     setIsLoading(true);
-    const result = await getTeachersForSchoolAction(schoolId);
-    if (result.ok && result.teachers) {
-      setTeachers(result.teachers);
+    const result = await getAdminTeacherManagementPageDataAction(adminId);
+
+    if (result.ok) {
+        setTeachers(result.teachers || []);
+        setCurrentSchoolId(result.schoolId || null);
     } else {
-      toast({ title: "Error", description: `Failed to fetch teacher data: ${result.message}`, variant: "destructive" });
-      setTeachers([]);
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+        setTeachers([]);
+        setCurrentSchoolId(null);
     }
     setIsLoading(false);
   }, [toast]);
 
   useEffect(() => {
     const adminIdFromStorage = localStorage.getItem('currentUserId');
-    setCurrentAdminUserId(adminIdFromStorage);
-
     if (adminIdFromStorage) {
-      fetchAdminSchoolId(adminIdFromStorage).then(fetchedSchoolId => {
-        setCurrentSchoolId(fetchedSchoolId);
-        if (fetchedSchoolId) {
-          fetchTeachers(fetchedSchoolId); 
-        } else {
-          setIsLoading(false); 
-          toast({ title: "School Not Found", description: "Admin not linked to a school or school ID could not be determined. Cannot manage teachers.", variant: "destructive"});
-        }
-      });
+      setCurrentAdminUserId(adminIdFromStorage);
+      fetchPageData(adminIdFromStorage);
     } else {
        setIsLoading(false); 
        toast({ title: "Authentication Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
     }
-  }, [toast, fetchTeachers]);
+  }, [fetchPageData, toast]);
 
   const filteredTeachers = useMemo(() => teachers.filter(teacher =>
     teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -156,7 +117,7 @@ export default function ManageTeachersPage() {
       toast({ title: "Teacher Updated", description: result.message });
       setIsEditDialogOpen(false);
       setEditingTeacher(null);
-      if(currentSchoolId) fetchTeachers(currentSchoolId);
+      if(currentAdminUserId) fetchPageData(currentAdminUserId);
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -170,7 +131,7 @@ export default function ManageTeachersPage() {
       const result = await deleteTeacherAction(teacher.id, teacher.user_id, currentSchoolId);
       if (result.ok) {
         toast({ title: "Teacher Deleted", description: result.message, variant: "destructive" });
-        if(currentSchoolId) fetchTeachers(currentSchoolId);
+        if(currentAdminUserId) fetchPageData(currentAdminUserId);
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
       }
@@ -222,7 +183,7 @@ export default function ManageTeachersPage() {
       if (fileInput) fileInput.value = '';
 
       setActiveTab("list-teachers"); 
-      if(currentSchoolId) fetchTeachers(currentSchoolId);
+      if(currentAdminUserId) fetchPageData(currentAdminUserId);
     } else {
        toast({ title: "Error", description: result.message, variant: "destructive" });
     }

@@ -9,24 +9,50 @@ import type { Teacher } from '@/types';
 
 const SALT_ROUNDS = 10;
 
-// New action to fetch all teachers for a school
-export async function getTeachersForSchoolAction(schoolId: string): Promise<{ ok: boolean; teachers?: Teacher[], message?: string }> {
-    if (!schoolId) {
-        return { ok: false, message: "School ID is required." };
+// New action to fetch all data needed for the manage teachers page
+export async function getAdminTeacherManagementPageDataAction(adminUserId: string): Promise<{
+  ok: boolean;
+  schoolId?: string | null;
+  teachers?: Teacher[],
+  message?: string
+}> {
+    if (!adminUserId) {
+        return { ok: false, message: "Admin User ID is required." };
     }
     const supabase = createSupabaseServerClient();
     try {
-        const { data, error } = await supabase
+        const { data: userRec, error: userErr } = await supabase.from('users').select('school_id').eq('id', adminUserId).single();
+        if (userErr && userErr.code !== 'PGRST116') {
+            throw new Error(`Failed to fetch user record: ${userErr.message}`);
+        }
+        
+        let schoolId = userRec?.school_id;
+        
+        if (!schoolId) {
+            const { data: schoolRec, error: schoolErr } = await supabase.from('schools').select('id').eq('admin_user_id', adminUserId).single();
+            if (schoolErr && schoolErr.code !== 'PGRST116') {
+                throw new Error(`Failed to fetch school record: ${schoolErr.message}`);
+            }
+            if (!schoolRec) {
+                return { ok: false, message: "Admin is not associated with any school." };
+            }
+            schoolId = schoolRec.id;
+        }
+
+        const { data: teachers, error: teachersError } = await supabase
             .from('teachers')
             .select('*')
             .eq('school_id', schoolId)
             .order('name');
-
-        if (error) {
-            return { ok: false, message: `Failed to fetch teachers: ${error.message}` };
+        
+        if (teachersError) {
+            throw new Error(`Failed to fetch teachers: ${teachersError.message}`);
         }
-        return { ok: true, teachers: data || [] };
+
+        return { ok: true, schoolId, teachers: teachers || [] };
+
     } catch (e: any) {
+        console.error("Error in getAdminTeacherManagementPageDataAction:", e);
         return { ok: false, message: e.message || 'An unexpected server error occurred.' };
     }
 }
