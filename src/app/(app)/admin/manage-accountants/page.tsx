@@ -11,11 +11,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Accountant } from '@/types'; 
-import { useState, useEffect, type FormEvent, type ChangeEvent, useMemo } from 'react';
-import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Briefcase, UserPlus, Save, Loader2, FileDown, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
+import { PlusCircle, Edit2, Trash2, Search, Briefcase, UserPlus, Save, Loader2, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { createAccountantAction, updateAccountantAction, deleteAccountantAction } from './actions';
+import { createAccountantAction, updateAccountantAction, deleteAccountantAction, getAccountantsForSchoolAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Ban } from 'lucide-react';
@@ -74,6 +74,22 @@ export default function ManageAccountantsPage() {
   const [editAccountantEmail, setEditAccountantEmail] = useState('');
   
 
+  const fetchAccountants = useCallback(async (schoolId: string) => {
+    setIsLoading(true);
+    setPageError(null);
+    const result = await getAccountantsForSchoolAction(schoolId);
+
+    if (result.ok && result.accountants) {
+      setAccountants(result.accountants);
+    } else {
+      setPageError(result.message || "An unknown error occurred.");
+      toast({ title: "Database Error", description: result.message, variant: "destructive", duration: 10000 });
+      setAccountants([]);
+    }
+    setIsLoading(false);
+  }, [toast]);
+
+
   useEffect(() => {
     const adminIdFromStorage = localStorage.getItem('currentUserId');
     setCurrentAdminUserId(adminIdFromStorage);
@@ -92,29 +108,7 @@ export default function ManageAccountantsPage() {
        setIsLoading(false); 
        toast({ title: "Authentication Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
     }
-  }, [toast]); 
-
-  async function fetchAccountants(schoolId: string) {
-    setIsLoading(true); 
-    setPageError(null);
-    const { data, error } = await supabase 
-      .from('accountants')
-      .select('*')
-      .eq('school_id', schoolId);
-
-    if (error) {
-      let friendlyMessage = `Failed to fetch accountant data: ${error.message}`;
-      if (error.message.includes('relation "public.accountants" does not exist')) {
-        friendlyMessage = "The 'accountants' table is missing from the database. Please run the necessary database migration to enable this feature.";
-        setPageError(friendlyMessage);
-      }
-      toast({ title: "Database Error", description: friendlyMessage, variant: "destructive", duration: 10000 });
-      setAccountants([]);
-    } else {
-      setAccountants(data || []);
-    }
-    setIsLoading(false); 
-  }
+  }, [toast, fetchAccountants]); 
 
   const filteredAccountants = useMemo(() => 
     accountants.filter(accountant =>

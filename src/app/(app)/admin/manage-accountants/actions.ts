@@ -5,8 +5,36 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { revalidatePath } from 'next/cache';
+import type { Accountant } from '@/types';
 
 const SALT_ROUNDS = 10;
+
+// New action to fetch all accountants for a school
+export async function getAccountantsForSchoolAction(schoolId: string): Promise<{ ok: boolean; accountants?: Accountant[], message?: string }> {
+    if (!schoolId) {
+        return { ok: false, message: "School ID is required." };
+    }
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data, error } = await supabase
+            .from('accountants')
+            .select('*')
+            .eq('school_id', schoolId)
+            .order('name');
+
+        if (error) {
+          let friendlyMessage = `Failed to fetch accountants: ${error.message}`;
+           if (error.message.includes('relation "public.accountants" does not exist')) {
+            friendlyMessage = "The 'accountants' table is missing from the database. Please run the necessary database migration to enable this feature.";
+          }
+          return { ok: false, message: friendlyMessage };
+        }
+        return { ok: true, accountants: data || [] };
+    } catch (e: any) {
+        return { ok: false, message: e.message || 'An unexpected server error occurred.' };
+    }
+}
+
 
 interface CreateAccountantInput {
   name: string;
