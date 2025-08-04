@@ -14,8 +14,7 @@ import type { Student, User, ClassData, AcademicYear } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
 import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck, FileText, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient'; 
-import { terminateStudentAction, reactivateStudentAction, updateStudentAction, checkFeeStatusAndGenerateTCAction, getAdminSchoolId, getStudentsForSchoolAction } from './actions';
+import { terminateStudentAction, reactivateStudentAction, updateStudentAction, checkFeeStatusAndGenerateTCAction, getManageStudentsPageDataAction } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -61,19 +60,27 @@ export default function ManageStudentsPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
 
-  const fetchStudents = useCallback(async (schoolId: string) => {
+  const fetchPageData = useCallback(async (adminId: string) => {
     setIsLoading(true);
     setPageError(null);
-    const result = await getStudentsForSchoolAction(schoolId);
+    const result = await getManageStudentsPageDataAction(adminId);
 
-    if (result.ok && result.students) {
-      const activeStudents = result.students.filter(s => s.status !== 'Terminated');
-      const terminatedStudents = result.students.filter(s => s.status === 'Terminated');
-      setStudents(showTerminated ? terminatedStudents : activeStudents);
+    if (result.ok) {
+        setAllClassesInSchool(result.classes || []);
+        setAllAcademicYearsInSchool(result.academicYears || []);
+        setCurrentSchoolId(result.schoolId || null);
+        
+        const allStudents = result.students || [];
+        const activeStudents = allStudents.filter(s => s.status !== 'Terminated');
+        const terminatedStudents = allStudents.filter(s => s.status === 'Terminated');
+        setStudents(showTerminated ? terminatedStudents : activeStudents);
+
     } else {
-        setPageError(result.message || "An unknown error occurred fetching students.");
-        toast({ title: "Error Fetching Students", description: result.message, variant: "destructive" });
+        setPageError(result.message || "An unknown error occurred fetching page data.");
+        toast({ title: "Error Fetching Data", description: result.message, variant: "destructive" });
         setStudents([]);
+        setAllClassesInSchool([]);
+        setAllAcademicYearsInSchool([]);
     }
 
     setIsLoading(false);
@@ -82,51 +89,22 @@ export default function ManageStudentsPage() {
 
   useEffect(() => {
     const adminId = localStorage.getItem('currentUserId');
-    setCurrentAdminUserId(adminId);
     if (adminId) {
-      getAdminSchoolId(adminId).then(schoolId => {
-        setCurrentSchoolId(schoolId);
-        if (schoolId) {
-          fetchClassesAndYears(schoolId);
-          fetchStudents(schoolId);
-        } else {
-          setIsLoading(false);
-          toast({ title: "Error", description: "Admin not linked to a school. Cannot manage students.", variant: "destructive"});
-        }
-      });
+        setCurrentAdminUserId(adminId);
+        fetchPageData(adminId);
     } else {
       setIsLoading(false);
       toast({ title: "Error", description: "Admin user ID not found. Please log in.", variant: "destructive"});
     }
-  }, [toast, fetchStudents]);
+  }, [fetchPageData, toast]);
   
    useEffect(() => {
-    if (currentSchoolId) {
-      fetchStudents(currentSchoolId);
+    if (currentAdminUserId) {
+      fetchPageData(currentAdminUserId);
     }
-  }, [currentSchoolId, showTerminated, fetchStudents]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTerminated]);
 
-
-  async function fetchClassesAndYears(schoolId: string) {
-     const { data: classesData, error: classesError } = await supabase
-      .from('classes')
-      .select('*')
-      .eq('school_id', schoolId);
-    if (classesError) {
-      toast({ title: "Error", description: "Failed to fetch class data.", variant: "destructive" });
-    } else {
-      setAllClassesInSchool(classesData || []);
-    }
-     const { data: yearsData, error: yearsError } = await supabase
-      .from('academic_years')
-      .select('*')
-      .eq('school_id', schoolId);
-    if (yearsError) {
-      toast({ title: "Error", description: "Failed to fetch academic years data.", variant: "destructive" });
-    } else {
-      setAllAcademicYearsInSchool(yearsData || []);
-    }
-  }
 
   const getClassDisplayName = (classId?: string | null): string => {
     if (!classId) return 'N/A';
@@ -179,7 +157,7 @@ export default function ManageStudentsPage() {
       toast({ title: "Student Updated", description: result.message });
       setIsEditDialogOpen(false);
       setEditingStudent(null);
-      if(currentSchoolId) fetchStudents(currentSchoolId); 
+      if(currentAdminUserId) fetchPageData(currentAdminUserId); 
     } else {
        toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -197,7 +175,7 @@ export default function ManageStudentsPage() {
     const result = await terminateStudentAction(student.id, student.user_id, currentSchoolId);
     if (result.ok) {
       toast({ title: "Student Terminated", description: result.message });
-      if(currentSchoolId) fetchStudents(currentSchoolId);
+      if(currentAdminUserId) fetchPageData(currentAdminUserId);
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -214,7 +192,7 @@ export default function ManageStudentsPage() {
     const result = await reactivateStudentAction(student.id, student.user_id, currentSchoolId);
     if (result.ok) {
       toast({ title: "Student Reactivated", description: result.message });
-      if(currentSchoolId) fetchStudents(currentSchoolId);
+      if(currentAdminUserId) fetchPageData(currentAdminUserId);
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -273,6 +251,14 @@ export default function ManageStudentsPage() {
   };
 
 
+  if (isLoading) {
+    return (
+        <div className="flex flex-col gap-6">
+        <PageHeader title="Manage Students" />
+        <Card><CardContent className="pt-6 text-center text-destructive"><Loader2 className="h-6 w-6 animate-spin mr-2 inline-block"/>Loading student data...</CardContent></Card>
+        </div>
+    );
+  }
   if (!currentSchoolId && !isLoading) {
     return (
         <div className="flex flex-col gap-6">

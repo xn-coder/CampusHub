@@ -3,7 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { Student, ClassData } from '@/types';
+import type { Student, ClassData, AcademicYear } from '@/types';
 
 
 export async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
@@ -13,14 +13,13 @@ export async function getAdminSchoolId(adminUserId: string): Promise<string | nu
   }
   const supabase = createSupabaseServerClient();
   
-  // First, try to get school_id from the user's own record. This is the most reliable.
   const { data: userRec, error: userErr } = await supabase
     .from('users')
     .select('school_id')
     .eq('id', adminUserId)
     .single();
 
-  if (userErr && userErr.code !== 'PGRST116') { // Don't error on "no rows"
+  if (userErr && userErr.code !== 'PGRST116') {
     console.error("Error fetching user record for school ID:", userErr.message);
   }
 
@@ -28,7 +27,6 @@ export async function getAdminSchoolId(adminUserId: string): Promise<string | nu
     return userRec.school_id;
   }
 
-  // Fallback: If user has no school_id, check if they are the primary admin_user_id on a school record.
   console.warn(`User ${adminUserId} has no school_id on their user record. Falling back to check schools.admin_user_id`);
   const { data: school, error } = await supabase
     .from('schools')
@@ -67,6 +65,48 @@ export async function getStudentsForSchoolAction(schoolId: string): Promise<{ ok
     }
 }
 
+export async function getManageStudentsPageDataAction(adminUserId: string): Promise<{
+  ok: boolean;
+  schoolId?: string | null;
+  students?: Student[];
+  classes?: ClassData[];
+  academicYears?: AcademicYear[];
+  message?: string;
+}> {
+  if (!adminUserId) {
+    return { ok: false, message: "Admin User ID is required." };
+  }
+  const supabase = createSupabaseServerClient();
+
+  try {
+    const schoolId = await getAdminSchoolId(adminUserId);
+    if (!schoolId) {
+      return { ok: false, message: "Could not determine admin's school context." };
+    }
+
+    const [studentsRes, classesRes, academicYearsRes] = await Promise.all([
+      supabase.from('students').select('*').eq('school_id', schoolId).order('name'),
+      supabase.from('classes').select('*').eq('school_id', schoolId).order('name'),
+      supabase.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false })
+    ]);
+
+    if (studentsRes.error) throw new Error(`Fetching students failed: ${studentsRes.error.message}`);
+    if (classesRes.error) throw new Error(`Fetching classes failed: ${classesRes.error.message}`);
+    if (academicYearsRes.error) throw new Error(`Fetching academic years failed: ${academicYearsRes.error.message}`);
+
+    return {
+      ok: true,
+      schoolId: schoolId,
+      students: studentsRes.data || [],
+      classes: classesRes.data || [],
+      academicYears: academicYearsRes.data || [],
+    };
+  } catch (e: any) {
+    console.error("Error in getManageStudentsPageDataAction:", e);
+    return { ok: false, message: e.message || "An unexpected error occurred." };
+  }
+}
+
 
 export async function terminateStudentAction(
   studentId: string,
@@ -79,7 +119,6 @@ export async function terminateStudentAction(
 
   const supabase = createSupabaseServerClient();
   try {
-    // Step 1: Update student profile
     const { error: studentUpdateError } = await supabase
       .from('students')
       .update({ status: 'Terminated', class_id: null })
@@ -97,7 +136,6 @@ export async function terminateStudentAction(
       return { ok: false, message: `Database error on student profile: ${studentUpdateError.message}` };
     }
 
-    // Step 2: Deactivate user account
     const { error: userUpdateError } = await supabase
       .from('users')
       .update({ status: 'Inactive' })
@@ -117,7 +155,6 @@ export async function terminateStudentAction(
       };
     }
 
-    // Step 3: Revalidate paths and return success
     revalidatePath('/admin/manage-students');
     revalidatePath('/class-management');
     revalidatePath('/admin/attendance');
@@ -140,7 +177,6 @@ export async function reactivateStudentAction(
 
   const supabase = createSupabaseServerClient();
   try {
-    // Step 1: Reactivate student profile
     const { error: studentUpdateError } = await supabase
       .from('students')
       .update({ status: 'Active' })
@@ -152,7 +188,6 @@ export async function reactivateStudentAction(
       return { ok: false, message: `Database error on student profile: ${studentUpdateError.message}` };
     }
 
-    // Step 2: Reactivate user account
     const { error: userUpdateError } = await supabase
       .from('users')
       .update({ status: 'Active' })
@@ -166,7 +201,6 @@ export async function reactivateStudentAction(
       };
     }
 
-    // Step 3: Revalidate paths and return success
     revalidatePath('/admin/manage-students');
 
     return { ok: true, message: 'Student reactivated and account enabled successfully.' };
@@ -194,7 +228,6 @@ export async function updateStudentAction(
   const { studentId, userId, schoolId, name, email, roll_number, class_id, academic_year_id } = input;
 
   try {
-    // 1. Check if the new email is already taken by another user in the same school
     const { data: existingUser, error: fetchError } = await supabase
       .from('users')
       .select('id')
@@ -211,7 +244,6 @@ export async function updateStudentAction(
       return { ok: false, message: `Another user with the email ${email.trim()} already exists in this school.` };
     }
 
-    // 2. Update the student's profile in the 'students' table
     const { error: studentUpdateError } = await supabase
       .from('students')
       .update({
@@ -229,7 +261,6 @@ export async function updateStudentAction(
       return { ok: false, message: `Failed to update student profile: ${studentUpdateError.message}` };
     }
 
-    // 3. Update the corresponding user record in the 'users' table
     const { error: userUpdateError } = await supabase
       .from('users')
       .update({
@@ -239,7 +270,6 @@ export async function updateStudentAction(
       .eq('id', userId);
 
     if (userUpdateError) {
-      // This is not a critical failure; the main student profile was updated. Log a warning.
       console.warn(`Student profile ${studentId} updated, but failed to associated user login ${userId}: ${userUpdateError.message}`);
     }
 
