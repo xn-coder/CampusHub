@@ -4,11 +4,11 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import type { ClassData, Student, UserRole } from '@/types';
-import { useState, useEffect } from 'react';
+import type { ClassData, Student } from '@/types';
+import { useState, useEffect, useCallback } from 'react';
 import { School, Loader2 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
+import { getTeacherClassesDataAction } from './actions';
 
 interface EnrichedClassData extends ClassData {
   students: Student[];
@@ -19,101 +19,32 @@ export default function MyClassesPage() {
   const [assignedClassesWithStudents, setAssignedClassesWithStudents] = useState<EnrichedClassData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Removed currentTeacherId and currentSchoolId from state as they are derived inside useEffect
 
-  useEffect(() => {
-    async function fetchData() {
-      setIsLoading(true);
-      setError(null);
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
 
-      const teacherUserId = localStorage.getItem('currentUserId'); // This is User.id
-      const role = localStorage.getItem('currentUserRole') as UserRole | null;
-
-      if (!teacherUserId || role !== 'teacher') {
-        setError("Access denied. You must be logged in as a teacher.");
-        setIsLoading(false);
-        return;
-      }
-
-      // Get teacher's profile ID and school_id from their profile
-      const { data: teacherProfile, error: teacherError } = await supabase
-        .from('teachers')
-        .select('id, school_id') // 'id' here is the teacher's profile ID (teachers.id)
-        .eq('user_id', teacherUserId)
-        .single();
-
-      if (teacherError || !teacherProfile) {
-        setError("Could not fetch teacher profile or school information.");
-        toast({title: "Error", description: "Could not fetch teacher profile.", variant: "destructive"});
-        setIsLoading(false);
-        return;
-      }
-      
-      const teacherProfileId = teacherProfile.id;
-      const schoolId = teacherProfile.school_id;
-
-      if (!schoolId) {
-        setError("Teacher is not associated with a school.");
-        toast({title: "Error", description: "Teacher not associated with a school.", variant: "destructive"});
-        setIsLoading(false);
-        return;
-      }
-
-      // Fetch classes assigned to this teacher in this school
-      const { data: teacherClassesData, error: classesError } = await supabase
-        .from('classes')
-        .select('id, name, division, class_name_id, section_name_id, teacher_id, academic_year_id, school_id')
-        .eq('teacher_id', teacherProfileId) // Query by teacher's profile ID
-        .eq('school_id', schoolId);
-      
-      if (classesError) {
-        setError(`Failed to load classes: ${classesError.message}`);
-        toast({title: "Error", description: `Failed to load classes: ${classesError.message}`, variant: "destructive"});
-        setIsLoading(false);
-        return;
-      }
-      
-      if (!teacherClassesData || teacherClassesData.length === 0) {
-        setAssignedClassesWithStudents([]);
-        setIsLoading(false);
-        return;
-      }
-      
-      // Fetch all students for the school to filter locally
-      const { data: allStudentsData, error: studentsError } = await supabase
-        .from('students')
-        .select('id, name, email, class_id, profile_picture_url, user_id, school_id')
-        .eq('school_id', schoolId);
-
-      if (studentsError) {
-        setError(`Failed to load students: ${studentsError.message}`);
-        toast({title: "Error", description: `Failed to load students: ${studentsError.message}`, variant: "destructive"});
-        setIsLoading(false);
-        return;
-      }
-
-      const enrichedClasses = teacherClassesData.map(cls => {
-        const studentsInClass = (allStudentsData || []).filter(student => student.class_id === cls.id);
-        const classDataTyped: ClassData = {
-            id: cls.id,
-            name: cls.name,
-            division: cls.division,
-            class_name_id: cls.class_name_id,
-            section_name_id: cls.section_name_id,
-            teacher_id: cls.teacher_id,
-            academic_year_id: cls.academic_year_id,
-            school_id: cls.school_id,
-            studentIds: studentsInClass.map(s => s.id),
-        };
-        return { ...classDataTyped, students: studentsInClass };
-      });
-
-      setAssignedClassesWithStudents(enrichedClasses);
+    const teacherUserId = localStorage.getItem('currentUserId');
+    if (!teacherUserId) {
+      setError("Access denied. You must be logged in as a teacher.");
       setIsLoading(false);
+      return;
     }
 
-    fetchData();
+    const result = await getTeacherClassesDataAction(teacherUserId);
+
+    if (result.ok) {
+      setAssignedClassesWithStudents(result.classesWithStudents || []);
+    } else {
+      setError(result.message || "An unknown error occurred.");
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsLoading(false);
   }, [toast]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   if (isLoading) {
     return (
@@ -140,7 +71,7 @@ export default function MyClassesPage() {
         title="My Classes & Students" 
         description="View the classes you are assigned to and the students in each." 
       />
-      {assignedClassesWithStudents.length === 0 && (
+      {assignedClassesWithStudents.length === 0 && !isLoading && (
         <Card>
           <CardContent className="pt-6">
             <p className="text-muted-foreground text-center">You are not currently assigned to any classes.</p>
