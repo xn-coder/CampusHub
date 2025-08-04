@@ -31,6 +31,7 @@ type StudentFeeStatus = 'Paid' | 'Partially Paid' | 'Pending' | 'Overdue';
 interface StudentFeeSummary {
   studentId: string;
   studentName: string;
+  studentClassId?: string | null;
   academicYearId?: string | null;
   academicYearName?: string;
   totalAssigned: number;
@@ -127,6 +128,11 @@ export default function AdminStudentFeesPage() {
   const getStudentRollNumber = (studentId: string) => students.find(s => s.id === studentId)?.roll_number || 'N/A';
   const getFeeCategoryName = (feeCategoryId: string) => feeCategories.find(fc => fc.id === feeCategoryId)?.name || 'N/A';
   const getAcademicYearName = (yearId?: string | null) => yearId ? academicYears.find(ay => ay.id === yearId)?.name : 'General';
+  const getStudentClass = (classId?: string | null) => {
+    if (!classId) return 'N/A';
+    const cls = classes.find(c => c.id === classId);
+    return cls ? `${cls.name} - ${cls.division}` : 'N/A';
+  };
   
 
   const resetAssignFeeForm = () => {
@@ -284,6 +290,7 @@ export default function AdminStudentFeesPage() {
             summaryMap[key] = {
                 studentId: student.id,
                 studentName: student.name,
+                studentClassId: student.class_id,
                 academicYearId: fp.academic_year_id,
                 academicYearName: getAcademicYearName(fp.academic_year_id),
                 totalAssigned: 0,
@@ -456,6 +463,7 @@ export default function AdminStudentFeesPage() {
                 <TableRow>
                   <TableHead>Student</TableHead>
                   <TableHead>Roll Number</TableHead>
+                  <TableHead>Class</TableHead>
                   <TableHead>Academic Year</TableHead>
                   <TableHead className="text-right">Total Assigned (<span className="font-mono">₹</span>)</TableHead>
                   <TableHead className="text-right">Total Paid (<span className="font-mono">₹</span>)</TableHead>
@@ -471,6 +479,7 @@ export default function AdminStudentFeesPage() {
                     <TableCell>
                       <span className="font-mono text-xs">{getStudentRollNumber(summary.studentId)}</span>
                     </TableCell>
+                    <TableCell>{getStudentClass(summary.studentClassId)}</TableCell>
                     <TableCell>{summary.academicYearName}</TableCell>
                     <TableCell className="text-right"><span className="font-mono">₹</span>{summary.totalAssigned.toFixed(2)}</TableCell>
                     <TableCell className="text-right"><span className="font-mono">₹</span>{summary.totalPaid.toFixed(2)}</TableCell>
@@ -679,3 +688,4 @@ export default function AdminStudentFeesPage() {
     </div>
   );
 }
+
