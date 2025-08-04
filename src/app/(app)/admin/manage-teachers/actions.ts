@@ -166,10 +166,18 @@ export async function createTeacherAction(
 }
 
 export async function updateTeacherAction(
-  data: UpdateTeacherInput
+  formData: FormData
 ): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { id, userId, name, email, subject, profilePictureUrl, school_id } = data;
+  
+  const id = formData.get('id') as string;
+  const userId = formData.get('userId') as string;
+  const name = formData.get('name') as string;
+  const email = formData.get('email') as string;
+  const subject = formData.get('subject') as string;
+  const school_id = formData.get('school_id') as string;
+  const profilePictureFile = formData.get('profilePictureFile') as File | null;
+
   try {
     if (userId) {
         const { data: currentUserData, error: currentUserFetchError } = await supabaseAdmin
@@ -194,14 +202,34 @@ export async function updateTeacherAction(
         }
     }
 
-    const { error: teacherUpdateError } = await supabaseAdmin
-      .from('teachers')
-      .update({
+    const teacherUpdateData: Partial<Teacher> = {
         name: name.trim(),
         email: email.trim(), 
         subject: subject.trim(),
-        profile_picture_url: profilePictureUrl?.trim() || `https://placehold.co/100x100.png?text=${name.substring(0,1)}`,
-      })
+    };
+
+    if (profilePictureFile && profilePictureFile.size > 0) {
+        const { data: currentTeacherData } = await supabaseAdmin.from('teachers').select('profile_picture_url').eq('id', id).single();
+        
+        const sanitizedFileName = profilePictureFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+        const filePath = `public/teacher-profiles/${school_id}/${uuidv4()}-${sanitizedFileName}`;
+
+        const { error: uploadError } = await supabaseAdmin.storage.from('campushub').upload(filePath, profilePictureFile);
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
+        teacherUpdateData.profile_picture_url = publicUrlData.publicUrl;
+
+        if (currentTeacherData?.profile_picture_url && currentTeacherData.profile_picture_url.includes('supabase.co')) {
+            const oldFilePath = new URL(currentTeacherData.profile_picture_url).pathname.split('/public/')[1];
+            await supabaseAdmin.storage.from('campushub').remove([oldFilePath]);
+        }
+    }
+
+
+    const { error: teacherUpdateError } = await supabaseAdmin
+      .from('teachers')
+      .update(teacherUpdateData)
       .eq('id', id)
       .eq('school_id', school_id);
 

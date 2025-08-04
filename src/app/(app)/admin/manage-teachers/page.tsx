@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Teacher } from '@/types'; 
 import { useState, useEffect, type FormEvent, type ChangeEvent, useMemo, useCallback } from 'react';
-import { PlusCircle, Edit2, Trash2, Search, Users, FilePlus, Activity, Briefcase, UserPlus, Save, Loader2, FileDown, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Search, Briefcase, UserPlus, Save, Loader2, FileDown, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { createTeacherAction, updateTeacherAction, deleteTeacherAction, getAdminTeacherManagementPageDataAction } from './actions';
@@ -44,7 +44,7 @@ export default function ManageTeachersPage() {
   const [editTeacherName, setEditTeacherName] = useState('');
   const [editTeacherEmail, setEditTeacherEmail] = useState('');
   const [editTeacherSubject, setEditTeacherSubject] = useState('');
-  const [editTeacherProfilePicUrl, setEditTeacherProfilePicUrl] = useState('');
+  const [editTeacherProfilePicFile, setEditTeacherProfilePicFile] = useState<File | null>(null);
 
 
   const fetchPageData = useCallback(async (adminId: string) => {
@@ -64,8 +64,8 @@ export default function ManageTeachersPage() {
 
   useEffect(() => {
     const adminIdFromStorage = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(adminIdFromStorage);
     if (adminIdFromStorage) {
-      setCurrentAdminUserId(adminIdFromStorage);
       fetchPageData(adminIdFromStorage);
     } else {
        setIsLoading(false); 
@@ -91,7 +91,7 @@ export default function ManageTeachersPage() {
     setEditTeacherName(teacher.name);
     setEditTeacherEmail(teacher.email);
     setEditTeacherSubject(teacher.subject || '');
-    setEditTeacherProfilePicUrl(teacher.profile_picture_url || '');
+    setEditTeacherProfilePicFile(null);
     setIsEditDialogOpen(true);
   };
 
@@ -103,15 +103,18 @@ export default function ManageTeachersPage() {
     }
     setIsSubmitting(true);
     
-    const result = await updateTeacherAction({
-      id: editingTeacher.id,
-      userId: editingTeacher.user_id,
-      name: editTeacherName,
-      email: editTeacherEmail,
-      subject: editTeacherSubject,
-      profilePictureUrl: editTeacherProfilePicUrl,
-      school_id: currentSchoolId,
-    });
+    const formData = new FormData();
+    formData.append('id', editingTeacher.id);
+    if(editingTeacher.user_id) formData.append('userId', editingTeacher.user_id);
+    formData.append('name', editTeacherName);
+    formData.append('email', editTeacherEmail);
+    formData.append('subject', editTeacherSubject);
+    formData.append('school_id', currentSchoolId);
+    if(editTeacherProfilePicFile) {
+        formData.append('profilePictureFile', editTeacherProfilePicFile);
+    }
+
+    const result = await updateTeacherAction(formData);
 
     if (result.ok) {
       toast({ title: "Teacher Updated", description: result.message });
@@ -139,15 +142,17 @@ export default function ManageTeachersPage() {
     }
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>, type: 'create' | 'edit') => {
     const file = e.target.files?.[0];
     if (file && file.size > 2 * 1024 * 1024) {
         toast({ title: "File too large", description: "Profile picture must be less than 2MB.", variant: "destructive"});
         e.target.value = ''; // Reset the input
-        setNewTeacherProfilePicFile(null);
+        if (type === 'create') setNewTeacherProfilePicFile(null);
+        else setEditTeacherProfilePicFile(null);
         return;
     }
-    setNewTeacherProfilePicFile(file || null);
+    if (type === 'create') setNewTeacherProfilePicFile(file || null);
+    else setEditTeacherProfilePicFile(file || null);
   };
 
   const handleCreateTeacherSubmit = async (e: React.FormEvent) => {
@@ -358,7 +363,7 @@ export default function ManageTeachersPage() {
                 </div>
                 <div>
                   <Label htmlFor="teacherProfilePicFile">Profile Picture (Optional, &lt;2MB)</Label>
-                  <Input id="teacherProfilePicFile" type="file" onChange={handleFileChange} accept="image/png, image/jpeg" disabled={isSubmitting || !currentSchoolId}/>
+                  <Input id="teacherProfilePicFile" type="file" onChange={(e) => handleFileChange(e, 'create')} accept="image/png, image/jpeg" disabled={isSubmitting || !currentSchoolId}/>
                 </div>
               </CardContent>
               <CardFooter>
@@ -392,8 +397,8 @@ export default function ManageTeachersPage() {
                 <Input id="editTeacherSubject" value={editTeacherSubject} onChange={(e) => setEditTeacherSubject(e.target.value)} className="col-span-3" required disabled={isSubmitting}/>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="editTeacherProfilePicUrl" className="text-right">Profile URL</Label>
-                <Input id="editTeacherProfilePicUrl" value={editTeacherProfilePicUrl} onChange={(e) => setEditTeacherProfilePicUrl(e.target.value)} className="col-span-3" placeholder="Optional image URL" disabled={isSubmitting}/>
+                <Label htmlFor="editTeacherProfilePicFile" className="text-right">Profile Picture</Label>
+                <Input id="editTeacherProfilePicFile" type="file" onChange={(e) => handleFileChange(e, 'edit')} accept="image/png, image/jpeg" className="col-span-3" disabled={isSubmitting}/>
               </div>
             </div>
             <DialogFooter>
