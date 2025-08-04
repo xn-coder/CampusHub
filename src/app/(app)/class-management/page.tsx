@@ -28,22 +28,10 @@ import {
   getAssignedSubjectsForClassAction,
   saveClassSubjectAssignmentsAction,
 } from './actions';
+import { getAdminSchoolIdAction } from '../admin/academic-years/actions';
 import { Badge } from '@/components/ui/badge';
 
 const ITEMS_PER_PAGE = 10;
-
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
-    .single();
-  if (error || !school) {
-    console.error("Error fetching admin's school or admin not linked:", error?.message || "No school record found for this admin_user_id.");
-    return null;
-  }
-  return school.id;
-}
 
 type PromotionStatus = 'Pass' | 'Fail' | 'Incomplete';
 type StudentWithStatus = Student & { promotionStatus: PromotionStatus };
@@ -164,7 +152,7 @@ export default function ClassManagementPage() {
     setCurrentAdminUserId(adminIdFromStorage);
 
     if (adminIdFromStorage) {
-      fetchAdminSchoolId(adminIdFromStorage).then(fetchedSchoolId => {
+      getAdminSchoolIdAction(adminIdFromStorage).then(fetchedSchoolId => {
         setCurrentSchoolId(fetchedSchoolId);
         if (!fetchedSchoolId) {
           setIsLoading(false);
@@ -585,7 +573,7 @@ export default function ClassManagementPage() {
             <CardHeader className="sm:flex-row sm:justify-between sm:items-center">
               <div>
                 <CardTitle>Activated Class-Sections</CardTitle>
-                <CardDescription>Combine class names and section names to create assignable units. Students and teachers are assigned here.</CardDescription>
+                <CardDescription>Combine a Class Name with a Section Name to make it an assignable unit. Students and teachers are assigned here.</CardDescription>
               </div>
               <Button onClick={handleOpenActivateDialog} className="mt-2 sm:mt-0" disabled={isSubmitting || isLoading}><PlusCircle className="mr-2 h-4 w-4" /> Activate New Class-Section</Button>
             </CardHeader>
