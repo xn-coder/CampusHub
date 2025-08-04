@@ -3,6 +3,51 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
+import type { Student, ClassData } from '@/types';
+
+
+export async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
+  if (!adminUserId) {
+    console.error("getAdminSchoolId: Admin User ID is required.");
+    return null;
+  }
+  const supabase = createSupabaseServerClient();
+  const { data: school, error } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('admin_user_id', adminUserId)
+    .single();
+  if (error || !school) {
+    console.error("Error fetching admin's school:", error?.message);
+    return null;
+  }
+  return school.id;
+}
+
+
+export async function getStudentsForSchoolAction(schoolId: string): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
+    if (!schoolId) {
+        return { ok: false, message: "School ID is required." };
+    }
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data, error } = await supabase
+            .from('students')
+            .select('*')
+            .eq('school_id', schoolId)
+            .order('name');
+
+        if (error) {
+            throw new Error(error.message);
+        }
+
+        return { ok: true, students: data || [] };
+    } catch (e: any) {
+        console.error("Error fetching students for school:", e.message);
+        return { ok: false, message: e.message };
+    }
+}
+
 
 export async function terminateStudentAction(
   studentId: string,

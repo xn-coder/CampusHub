@@ -15,7 +15,7 @@ import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react
 import { Edit2, Search, Users, Activity, Save, Loader2, FileDown, UserX, AlertTriangle, UserCheck, FileText, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient'; 
-import { terminateStudentAction, reactivateStudentAction, updateStudentAction, checkFeeStatusAndGenerateTCAction } from './actions';
+import { terminateStudentAction, reactivateStudentAction, updateStudentAction, checkFeeStatusAndGenerateTCAction, getAdminSchoolId, getStudentsForSchoolAction } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -35,35 +35,6 @@ import { useRouter } from 'next/navigation';
 
 const ITEMS_PER_PAGE = 10;
 
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: userRec, error: userError } = await supabase
-      .from('users')
-      .select('school_id')
-      .eq('id', adminUserId)
-      .single();
-
-  if (userError && userError.code !== 'PGRST116') {
-      console.error("Error fetching user's school:", userError.message);
-      return null;
-  }
-
-  if (userRec?.school_id) {
-      return userRec.school_id;
-  }
-  
-  // Fallback for older setups where admin might not have school_id on their user record
-  const { data: school, error: schoolError } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
-    .single();
-    
-  if (schoolError && schoolError.code !== 'PGRST116') {
-    console.error("Error fetching admin's school or admin not linked:", schoolError.message);
-    return null;
-  }
-  return school?.id || null;
-}
 
 export default function ManageStudentsPage() {
   const router = useRouter();
@@ -91,35 +62,18 @@ export default function ManageStudentsPage() {
   const fetchStudents = useCallback(async (schoolId: string) => {
     setIsLoading(true);
     setPageError(null);
-    let query = supabase
-      .from('students')
-      .select('id, name, email, class_id, profile_picture_url, user_id, school_id, status, roll_number')
-      .eq('school_id', schoolId);
+    const result = await getStudentsForSchoolAction(schoolId);
 
-    if (showTerminated) {
-      query = query.eq('status', 'Terminated');
+    if (result.ok && result.students) {
+      const activeStudents = result.students.filter(s => s.status !== 'Terminated');
+      const terminatedStudents = result.students.filter(s => s.status === 'Terminated');
+      setStudents(showTerminated ? terminatedStudents : activeStudents);
     } else {
-      query = query.or('status.eq.Active,status.is.null');
+        setPageError(result.message || "An unknown error occurred fetching students.");
+        toast({ title: "Error Fetching Students", description: result.message, variant: "destructive" });
+        setStudents([]);
     }
 
-    const { data, error } = await query.order('name');
-
-    if (error) {
-      console.error("Error fetching students:", JSON.stringify(error, null, 2));
-      let description = `Database Error: ${error.message}.`;
-      
-      if (error.message.includes('column "status" does not exist')) {
-          const detailedError = "Database schema is out of date. The 'status' column is missing from the 'students' table. Please run the required SQL migration to enable the terminate student feature.";
-          setPageError(detailedError);
-          toast({ title: "Database Schema Error", description: detailedError, variant: "destructive", duration: 15000 });
-      } else {
-           toast({ title: "Error Fetching Students", description, variant: "destructive", duration: 10000 });
-           setPageError(description);
-      }
-      setStudents([]);
-    } else {
-      setStudents(data || []);
-    }
     setIsLoading(false);
   }, [showTerminated, toast]);
 
@@ -128,7 +82,7 @@ export default function ManageStudentsPage() {
     const adminId = localStorage.getItem('currentUserId');
     setCurrentAdminUserId(adminId);
     if (adminId) {
-      fetchAdminSchoolId(adminId).then(schoolId => {
+      getAdminSchoolId(adminId).then(schoolId => {
         setCurrentSchoolId(schoolId);
         if (schoolId) {
           fetchClasses(schoolId);
@@ -379,8 +333,8 @@ export default function ManageStudentsPage() {
                         <TableRow key={student.id} className={student.status !== 'Active' && student.status ? 'bg-muted/50' : ''}>
                           <TableCell>
                             <Avatar>
-                              <AvatarImage src={student.profile_picture_url || `https://placehold.co/40x40.png?text=${(student.name || 'S').substring(0,2).toUpperCase()}`} alt={student.name || 'Student'} data-ai-hint="person portrait" />
-                              <AvatarFallback>{(student.name || 'S').substring(0,2).toUpperCase()}</AvatarFallback>
+                              <AvatarImage src={student.profile_picture_url || `https://placehold.co/40x40.png?text=${student.name.substring(0,2).toUpperCase()}`} alt={student.name} data-ai-hint="person portrait" />
+                              <AvatarFallback>{student.name.substring(0,2).toUpperCase()}</AvatarFallback>
                             </Avatar>
                           </TableCell>
                           <TableCell className="font-medium">{student.name}</TableCell>
