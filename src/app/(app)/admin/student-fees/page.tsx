@@ -337,7 +337,10 @@ export default function AdminStudentFeesPage() {
         const search = searchTerm.toLowerCase();
 
         const matchesSearch = studentName.includes(search);
-        const matchesAcademicYear = selectedAcademicYearFilter === 'all' || summary.academicYearId === selectedAcademicYearFilter || (!summary.academicYearId && selectedAcademicYearFilter === 'general');
+        
+        const matchesAcademicYear = selectedAcademicYearFilter === 'all' 
+            || (selectedAcademicYearFilter === 'general' && !summary.academicYearId) 
+            || summary.academicYearId === selectedAcademicYearFilter;
         
         const matchesStatus = (() => {
             if (selectedStatusFilter === 'all') return true;
@@ -413,7 +416,7 @@ export default function AdminStudentFeesPage() {
             />
             <Select value={selectedAcademicYearFilter} onValueChange={setSelectedAcademicYearFilter} disabled={isLoadingPage || academicYears.length === 0}>
                 <SelectTrigger className="md:w-[200px]">
-                    <SelectValue placeholder="Filter by year" />
+                    <SelectValue placeholder="All Years" />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value="all">All Years</SelectItem>
