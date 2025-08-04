@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import type { Student, ClassData, SchoolDetails } from '@/types';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Download, Printer } from 'lucide-react';
 import { getStudentDataExportPageDataAction } from './actions';
@@ -20,45 +20,46 @@ export default function AdminIdCardPrintingPage() {
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [currentSchoolId, setCurrentSchoolId] = useState<string|null>(null);
-  const [schoolDetails, setSchoolDetails] = useState<SchoolDetails | null>(null);
+  const [currentSchoolName, setCurrentSchoolName] = useState<string|null>(null);
+  const [currentSchoolLogo, setCurrentSchoolLogo] = useState<string|null>(null);
   const [isLoadingPage, setIsLoadingPage] = useState(true);
 
   const [selectedClassId, setSelectedClassId] = useState<string>('all'); 
   const [selectedStudentsForPrint, setSelectedStudentsForPrint] = useState<string[]>([]);
 
+  const loadPageData = useCallback(async () => {
+    setIsLoadingPage(true);
+    const adminUserId = localStorage.getItem('currentUserId');
+    if (!adminUserId) {
+      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      setIsLoadingPage(false);
+      return;
+    }
+
+    const result = await getStudentDataExportPageDataAction(adminUserId);
+    if (result.ok) {
+      setCurrentSchoolId(result.schoolId || null);
+      setCurrentSchoolName(result.schoolName || null);
+      setAllStudents(result.students || []);
+      setAllClasses(result.classes || []);
+      
+      // To get the logo, we fetch the full school details if an ID is present
+      if (result.schoolId) {
+        const { data: schoolDetails } = await supabase.from('schools').select('logo_url').eq('id', result.schoolId).single();
+        setCurrentSchoolLogo(schoolDetails?.logo_url || null);
+      }
+
+    } else {
+      toast({ title: "Error loading data", description: result.message, variant: "destructive" });
+      setAllStudents([]);
+      setAllClasses([]);
+    }
+    setIsLoadingPage(false);
+  }, [toast]);
 
   useEffect(() => {
-    async function loadData() {
-      setIsLoadingPage(true);
-      const adminUserId = localStorage.getItem('currentUserId');
-      if (!adminUserId) {
-        toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
-        setIsLoadingPage(false);
-        return;
-      }
-      
-      const { data: school, error: schoolError } = await supabase.from('schools').select('*').eq('admin_user_id', adminUserId).single();
-      if(schoolError || !school) {
-        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
-        setIsLoadingPage(false);
-        return;
-      }
-      setSchoolDetails(school as SchoolDetails);
-      setCurrentSchoolId(school.id);
-
-      const result = await getStudentDataExportPageDataAction(adminUserId);
-      if (result.ok) {
-        setAllStudents(result.students || []);
-        setAllClasses(result.classes || []);
-      } else {
-        toast({ title: "Error loading data", description: result.message, variant: "destructive" });
-        setAllStudents([]);
-        setAllClasses([]);
-      }
-      setIsLoadingPage(false);
-    }
-    loadData();
-  }, [toast]);
+    loadPageData();
+  }, [loadPageData]);
   
 
   const studentsToDisplay = useMemo(() => {
@@ -102,7 +103,7 @@ export default function AdminIdCardPrintingPage() {
                 `"${(student.email || '').replace(/"/g, '""')}"`,
                 `"${student.roll_number || ''}"`,
                 `"${className}"`,
-                `"${(schoolDetails?.name || 'N/A').replace(/"/g, '""')}"`,
+                `"${(currentSchoolName || 'N/A').replace(/"/g, '""')}"`,
                 `"${(student.guardian_name || '').replace(/"/g, '""')}"`,
                 `"${student.contact_number || ''}"`,
                 `"${(student.address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
@@ -222,7 +223,7 @@ export default function AdminIdCardPrintingPage() {
                                 checked={selectedStudentsForPrint.includes(student.id)}
                                 onCheckedChange={(checked) => handleSelectStudentForPrint(student.id, Boolean(checked))}
                             />
-                            <IdCardPreview student={student} schoolName={schoolDetails?.name || null} className={getStudentClassName(student)} schoolLogoUrl={schoolDetails?.logo_url}/>
+                            <IdCardPreview student={student} schoolName={currentSchoolName} className={getStudentClassName(student)} schoolLogoUrl={currentSchoolLogo}/>
                         </div>
                     ))
                 ) : (
