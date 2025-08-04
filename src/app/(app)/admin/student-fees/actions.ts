@@ -114,7 +114,7 @@ interface AssignMultipleFeesToClassInput {
   fee_category_ids: string[];
   due_date?: string;
   notes?: string;
-  academic_year_id?: string;
+  academic_year_id?: string | null;
   school_id: string;
 }
 

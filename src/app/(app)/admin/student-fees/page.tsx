@@ -190,7 +190,7 @@ export default function AdminStudentFeesPage() {
         fee_category_ids: selectedFeeCategoryIds,
         due_date: dueDate || undefined,
         notes: notes.trim() || undefined,
-        academic_year_id: selectedAcademicYearId === 'none' ? undefined : selectedAcademicYearId,
+        academic_year_id: selectedAcademicYearId === 'none' ? null : selectedAcademicYearId,
         school_id: currentSchoolId,
     });
     
