@@ -5,7 +5,6 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Building, Search as SearchIcon, ArrowDownUp, ChevronLeft, ChevronRight } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import type { SchoolEntry as School } from '@/types'; 
 import EditSchoolDialog from './edit-school-dialog'; 
 import DeleteSchoolButton from './delete-school-button';
@@ -14,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { getSchoolsAction } from './actions';
 
 const ITEMS_PER_PAGE = 5;
 
@@ -29,39 +29,12 @@ export default function ManageSchoolPage() {
 
   const getSchools = useCallback(async () => {
     setIsLoading(true);
-    try {
-      let query = supabase.from('schools').select(`
-        id,
-        name,
-        address,
-        admin_email,
-        admin_name,
-        status,
-        admin_user_id,
-        created_at
-      `); 
+    const result = await getSchoolsAction();
 
-      const { data, error } = await query.order('created_at', { ascending: false });
-
-      if (error) {
-        console.error("Failed to fetch schools from Supabase:", error);
-        toast({ title: "Error", description: "Failed to fetch schools.", variant: "destructive"});
-        setSchools([]);
-      } else {
-        setSchools((data || []).map(item => ({
-          id: item.id,
-          name: item.name,
-          address: item.address,
-          admin_email: item.admin_email,
-          admin_name: item.admin_name,
-          status: item.status as 'Active' | 'Inactive',
-          admin_user_id: item.admin_user_id,
-          created_at: item.created_at, 
-        })));
-      }
-    } catch (error) {
-      console.error("Unexpected error fetching schools:", error);
-      toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive"});
+    if (result.ok && result.schools) {
+      setSchools(result.schools);
+    } else {
+      toast({ title: "Error", description: result.message || "Failed to fetch schools.", variant: "destructive"});
       setSchools([]);
     }
     setIsLoading(false);
@@ -70,7 +43,6 @@ export default function ManageSchoolPage() {
 
   useEffect(() => {
     getSchools();
-    // This will refetch data when the user navigates back to the page.
     const handleFocus = () => getSchools();
     window.addEventListener('focus', handleFocus);
     return () => {
