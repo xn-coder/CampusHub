@@ -3,6 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { Student, ClassData } from '@/types';
+import { getAdminSchoolIdAction } from '../academic-years/actions';
 
 export async function getStudentDataExportPageDataAction(adminUserId: string): Promise<{
   ok: boolean;
@@ -19,48 +20,40 @@ export async function getStudentDataExportPageDataAction(adminUserId: string): P
   const supabase = createSupabaseServerClient();
 
   try {
-    // Fetch admin's school ID and Name
-    const { data: schoolData, error: schoolError } = await supabase
-      .from('schools')
-      .select('id, name')
-      .eq('admin_user_id', adminUserId)
-      .single();
-
-    if (schoolError || !schoolData) {
-      console.error("Error fetching admin's school for data export:", schoolError?.message);
-      return { ok: false, message: "Admin not linked to a school or school not found." };
-    }
-    const schoolId = schoolData.id;
-    const schoolName = schoolData.name;
-
-    // Fetch students for the school
-    const { data: studentsData, error: studentsError } = await supabase
-      .from('students')
-      .select('*')
-      .eq('school_id', schoolId);
-
-    if (studentsError) {
-      console.error("Error fetching students for data export:", studentsError);
-      return { ok: false, message: `Failed to fetch students: ${studentsError.message}`, schoolId, schoolName };
+    const schoolId = await getAdminSchoolIdAction(adminUserId);
+    if (!schoolId) {
+        return { ok: false, message: "Admin not linked to a school or school not found." };
     }
 
-    // Fetch classes for the school
-    const { data: classesData, error: classesError } = await supabase
-      .from('classes')
-      .select('*')
-      .eq('school_id', schoolId);
+    // Fetch school name, students, and classes in parallel
+    const [schoolRes, studentsRes, classesRes] = await Promise.all([
+        supabase.from('schools').select('name').eq('id', schoolId).single(),
+        supabase.from('students').select('*').eq('school_id', schoolId),
+        supabase.from('classes').select('*').eq('school_id', schoolId)
+    ]);
 
-    if (classesError) {
-      console.error("Error fetching classes for data export:", classesError);
-      return { ok: false, message: `Failed to fetch classes: ${classesError.message}`, schoolId, schoolName, students: studentsData || [] };
+    if (schoolRes.error) {
+        console.error("Error fetching school name for data export:", schoolRes.error?.message);
+        return { ok: false, message: `Could not fetch school details: ${schoolRes.error.message}` };
+    }
+    const schoolName = schoolRes.data.name;
+
+    if (studentsRes.error) {
+      console.error("Error fetching students for data export:", studentsRes.error);
+      return { ok: false, message: `Failed to fetch students: ${studentsRes.error.message}`, schoolId, schoolName };
+    }
+
+    if (classesRes.error) {
+      console.error("Error fetching classes for data export:", classesRes.error);
+      return { ok: false, message: `Failed to fetch classes: ${classesRes.error.message}`, schoolId, schoolName, students: studentsRes.data || [] };
     }
 
     return {
       ok: true,
       schoolId,
       schoolName,
-      students: studentsData || [],
-      classes: classesData || [],
+      students: studentsRes.data || [],
+      classes: classesRes.data || [],
     };
 
   } catch (error: any) {

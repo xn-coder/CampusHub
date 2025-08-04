@@ -14,19 +14,7 @@ import { getTCRequestsForSchoolAction } from './actions';
 import { format, parseISO } from 'date-fns';
 import { CheckCircle, FileText, Loader2, XCircle, Ban, TextSelect, Download } from 'lucide-react';
 import Link from 'next/link';
-
-
-async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
-  const { data: school, error } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
-    .single();
-  if (error || !school) {
-    return null;
-  }
-  return school.id;
-}
+import { getAdminSchoolIdAction } from '../academic-years/actions';
 
 
 export default function AdminTCRequestsPage() {
@@ -49,9 +37,9 @@ export default function AdminTCRequestsPage() {
   useEffect(() => {
     const adminUserId = localStorage.getItem('currentUserId');
     if (adminUserId) {
-      getAdminSchoolId(adminUserId).then(schoolId => {
-        setCurrentSchoolId(schoolId);
+      getAdminSchoolIdAction(adminUserId).then(schoolId => {
         if (schoolId) {
+          setCurrentSchoolId(schoolId);
           fetchRequests(schoolId);
         } else {
           setIsLoading(false);
