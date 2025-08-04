@@ -208,7 +208,10 @@ export default function AdmissionsPage() {
                   {paginatedRecords.map(record => {
                     const assignedClassDetails = activeClasses.find(c => c.id === record.class_id);
                     const classText = assignedClassDetails ? `${assignedClassDetails.name} - ${assignedClassDetails.division}` : 'N/A';
-                    const academicYear = academicYears.find(ay => ay.id === assignedClassDetails?.academic_year_id);
+                    
+                    // Corrected logic: Use `record.class.academic_year_id` from the joined data if available
+                    const academicYearId = (record.class as any)?.academic_year_id || assignedClassDetails?.academic_year_id;
+                    const academicYear = academicYears.find(ay => ay.id === academicYearId);
                     const yearText = academicYear ? academicYear.name : 'N/A';
 
                     const studentFees = record.student_profile_id ? feePayments.filter(p => p.student_id === record.student_profile_id) : [];
