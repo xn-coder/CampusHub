@@ -8,13 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Teacher, User, Assignment, ClassData } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { KeyRound, History, BookCheck, ClipboardList, Loader2, UserCog, Save, Briefcase, UploadCloud } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { updateUserPasswordAction } from '@/actions/userActions';
-import { updateTeacherProfileAction } from './actions';
+import { getTeacherProfileDataAction, updateTeacherProfileAction } from './actions';
 
 export default function TeacherProfilePage() {
   const { toast } = useToast();
@@ -34,45 +33,38 @@ export default function TeacherProfilePage() {
   // Password form state
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  
+  const fetchProfileData = useCallback(async () => {
+    setIsLoading(true);
+    const currentUserId = localStorage.getItem('currentUserId');
+    if (!currentUserId) {
+      toast({ title: "Error", description: "User not identified. Please log in.", variant: "destructive" });
+      setIsLoading(false);
+      return;
+    }
+
+    const result = await getTeacherProfileDataAction(currentUserId);
+    
+    if(result.ok) {
+        setUserDetails(result.user || null);
+        setTeacherDetails(result.teacher || null);
+        setAssignedClasses(result.classes || []);
+        setAssignmentCount(result.assignmentCount || 0);
+
+        if(result.teacher) {
+            setEditSubject(result.teacher.subject || '');
+        }
+    } else {
+        toast({ title: "Error", description: result.message || "Failed to load profile data.", variant: "destructive" });
+    }
+    
+    setIsLoading(false);
+  }, [toast]);
+
 
   useEffect(() => {
-    async function fetchProfileData() {
-      setIsLoading(true);
-      const currentUserId = localStorage.getItem('currentUserId');
-      if (!currentUserId) {
-        toast({ title: "Error", description: "User not identified. Please log in.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-
-      const { data: userData, error: userError } = await supabase.from('users').select('*').eq('id', currentUserId).single();
-      if (userError || !userData) {
-        toast({ title: "Error", description: "Could not fetch user data.", variant: "destructive" });
-        setIsLoading(false); return;
-      }
-      setUserDetails(userData as User);
-
-      const { data: teacherData, error: teacherError } = await supabase.from('teachers').select('*').eq('user_id', currentUserId).single();
-      if (teacherError || !teacherData) {
-        toast({ title: "Error", description: "Could not fetch teacher profile.", variant: "destructive" });
-        setIsLoading(false); return;
-      }
-      setTeacherDetails(teacherData as Teacher);
-      setEditSubject(teacherData.subject || '');
-
-      if (teacherData.id) {
-        const { count, error: assignmentError } = await supabase.from('assignments').select('id', { count: 'exact', head: true }).eq('teacher_id', teacherData.id);
-        if (assignmentError) console.error("Error fetching assignment count:", assignmentError);
-        else setAssignmentCount(count || 0);
-        
-        const { data: classData, error: classError } = await supabase.from('classes').select('*').eq('teacher_id', teacherData.id);
-        if (classError) console.error("Error fetching class data:", classError);
-        else setAssignedClasses(classData || []);
-      }
-      setIsLoading(false);
-    }
     fetchProfileData();
-  }, [toast]);
+  }, [fetchProfileData]);
 
   const handleEditSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -90,7 +82,7 @@ export default function TeacherProfilePage() {
     if(result.ok) {
         toast({title: "Profile Updated", description: result.message});
         setIsEditDialogOpen(false);
-        fetchProfileData();
+        await fetchProfileData();
     } else {
         toast({title: "Error", description: result.message, variant: "destructive"});
     }

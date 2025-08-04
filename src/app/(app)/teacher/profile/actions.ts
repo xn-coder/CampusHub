@@ -4,6 +4,49 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
+import type { Teacher, User, ClassData } from '@/types';
+
+export async function getTeacherProfileDataAction(userId: string): Promise<{
+    ok: boolean;
+    message?: string;
+    user?: User | null;
+    teacher?: Teacher | null;
+    classes?: ClassData[] | null;
+    assignmentCount?: number;
+}> {
+    if (!userId) {
+        return { ok: false, message: "User not identified." };
+    }
+    const supabase = createSupabaseServerClient();
+
+    try {
+        const { data: user, error: userError } = await supabase.from('users').select('*').eq('id', userId).single();
+        if (userError || !user) throw new Error(userError?.message || "User data not found.");
+
+        const { data: teacher, error: teacherError } = await supabase.from('teachers').select('*').eq('user_id', userId).single();
+        if (teacherError || !teacher) throw new Error(teacherError?.message || "Teacher profile not found.");
+
+        const [assignmentRes, classRes] = await Promise.all([
+            supabase.from('assignments').select('id', { count: 'exact', head: true }).eq('teacher_id', teacher.id),
+            supabase.from('classes').select('*').eq('teacher_id', teacher.id)
+        ]);
+
+        if (assignmentRes.error) console.warn("Could not fetch assignment count:", assignmentRes.error.message);
+        if (classRes.error) console.warn("Could not fetch class data:", classRes.error.message);
+        
+        return {
+            ok: true,
+            user: user as User,
+            teacher: teacher as Teacher,
+            classes: (classRes.data || []) as ClassData[],
+            assignmentCount: assignmentRes.count || 0
+        };
+
+    } catch (error: any) {
+        return { ok: false, message: error.message };
+    }
+}
+
 
 export async function updateTeacherProfileAction(
   formData: FormData
@@ -25,11 +68,12 @@ export async function updateTeacherProfileAction(
         return { ok: false, message: "Unauthorized or invalid user."};
     }
 
-    const updates: any = {
+    const updates: Partial<Teacher> = {
       subject: subject,
     };
 
     if (profilePictureFile && profilePictureFile.size > 0) {
+      // Fetch old file path to delete it after new upload
       const { data: teacherData, error: fetchError } = await supabase.from('teachers').select('profile_picture_url').eq('id', teacherId).single();
       const oldFileUrl = teacherData?.profile_picture_url;
 
