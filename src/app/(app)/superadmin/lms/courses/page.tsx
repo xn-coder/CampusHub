@@ -48,11 +48,11 @@ export default function SuperAdminManageCoursesPage() {
   
   const fetchCourses = async () => {
     setIsLoading(true);
-    // Superadmin sees only global courses (school_id is null or empty)
+    // Superadmin sees only global courses (school_id is null)
     const { data, error } = await supabase
       .from('lms_courses')
-      .select('*')
-      .or('school_id.is.null,school_id.eq.')
+      .select('*, target_class:target_class_id(name,division)')
+      .is('school_id', null)
       .order('created_at', { ascending: false });
     
     if (error) {
@@ -331,5 +331,6 @@ export default function SuperAdminManageCoursesPage() {
     </div>
   );
 }
+
 
 
