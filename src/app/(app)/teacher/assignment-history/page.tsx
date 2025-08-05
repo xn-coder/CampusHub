@@ -3,7 +3,6 @@
 
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -48,6 +47,9 @@ export default function TeacherAssignmentHistoryPage() {
         setIsLoading(false); return;
       }
 
+      // Securely fetch teacher profile on the server-side via an action if needed,
+      // but for this page, we can derive it from the user ID which is secure.
+      // The getTeacherAssignmentsAction should handle security checks.
       const {data: teacherProfile, error: profileError} = await supabase
         .from('teachers').select('id, school_id').eq('user_id', teacherUserId).single();
       
