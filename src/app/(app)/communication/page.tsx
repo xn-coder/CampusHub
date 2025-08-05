@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -239,6 +238,11 @@ function CommunicationPageForm() {
 
   const canPostAnnouncement = (currentUserRole === 'admin' || currentUserRole === 'teacher' || currentUserRole === 'superadmin');
   const availableClassesForTargeting = currentUserRole === 'admin' ? allSchoolClasses : teacherAssignedClasses;
+  
+  const isClassTargetingDisabled = isSubmitting 
+    || availableClassesForTargeting.length === 0 
+    || !!newAnnouncement.linkedExamId 
+    || (currentUserRole === 'admin' && newAnnouncement.targetAudience === 'teachers');
 
   return (
     <div className="flex flex-col gap-6">
@@ -286,7 +290,11 @@ function CommunicationPageForm() {
               {(currentUserRole === 'admin' || currentUserRole === 'teacher') && (
                 <div>
                   <Label htmlFor="targetClassId">Target Specific Class (Optional)</Label>
-                  <Select value={newAnnouncement.targetClassId || "none"} onValueChange={handleSelectChange('targetClassId')} disabled={isSubmitting || availableClassesForTargeting.length === 0 || !!newAnnouncement.linkedExamId}>
+                  <Select 
+                    value={newAnnouncement.targetClassId || "none"} 
+                    onValueChange={handleSelectChange('targetClassId')} 
+                    disabled={isClassTargetingDisabled}
+                  >
                     <SelectTrigger id="targetClassId">
                       <SelectValue placeholder="General Announcement (School-wide)" />
                     </SelectTrigger>
