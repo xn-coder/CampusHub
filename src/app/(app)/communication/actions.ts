@@ -1,5 +1,4 @@
 
-
 'use server';
 
 console.log('[LOG] Loading src/app/(app)/communication/actions.ts');
@@ -105,18 +104,22 @@ export async function postAnnouncementAction(
           // Global announcement for all admins
           recipientEmails = await getAllAdminEmails();
       } else if (input.posted_by_role === 'admin' && input.school_id) {
+          const rolesToEmail: UserRole[] = [];
+          if(input.target_audience === 'students') rolesToEmail.push('student');
+          if(input.target_audience === 'teachers') rolesToEmail.push('teacher');
+          if(input.target_audience === 'all') rolesToEmail.push('student', 'teacher', 'admin');
+
           if (input.target_class_id) {
-            const studentEmails = await getStudentEmailsByClassId(input.target_class_id, input.school_id);
-            recipientEmails.push(...studentEmails);
-            if (announcement.target_class?.teacher_id) {
-              const teacherEmail = await getTeacherEmailByTeacherProfileId(announcement.target_class.teacher_id);
-              if (teacherEmail) recipientEmails.push(teacherEmail);
+            // Class-specific announcement
+            if (rolesToEmail.includes('student')) {
+                recipientEmails.push(...await getStudentEmailsByClassId(input.target_class_id, input.school_id));
+            }
+            if (rolesToEmail.includes('teacher') && announcement.target_class?.teacher_id) {
+                const teacherEmail = await getTeacherEmailByTeacherProfileId(announcement.target_class.teacher_id);
+                if (teacherEmail) recipientEmails.push(teacherEmail);
             }
           } else {
-            const rolesToEmail: UserRole[] = [];
-            if(input.target_audience === 'students') rolesToEmail.push('student');
-            if(input.target_audience === 'teachers') rolesToEmail.push('teacher');
-            if(input.target_audience === 'all') rolesToEmail.push('student', 'teacher', 'admin'); // Admin should also get general school announcements
+            // School-wide announcement
             recipientEmails = await getAllUserEmailsInSchool(input.school_id, rolesToEmail);
           }
       } else if (input.posted_by_role === 'teacher' && input.school_id && input.target_class_id) {
