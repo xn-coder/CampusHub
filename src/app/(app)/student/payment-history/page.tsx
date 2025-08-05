@@ -155,7 +155,11 @@ export default function StudentPaymentHistoryPage() {
         return feeCategories.find(fc => fc.id === categoryId)?.name || 'N/A';
     };
 
-    const getAcademicYearName = (yearId?: string | null) => yearId ? academicYears.find(ay => ay.id === yearId)?.name : 'General';
+    const getAcademicYearName = useCallback((yearId?: string | null) => {
+        if (!yearId) return 'General';
+        const year = academicYears.find(ay => ay.id === yearId);
+        return year ? year.name : 'N/A';
+    }, [academicYears]);
     
     const formatDateSafe = (dateString?: string | null) => {
         if (!dateString) return 'N/A';
