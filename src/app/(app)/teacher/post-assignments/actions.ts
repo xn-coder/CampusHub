@@ -158,20 +158,55 @@ export async function postAssignmentAction(
 }
 
 
-export async function getTeacherAssignmentsAction(teacherId: string, schoolId: string): Promise<{ ok: boolean; message?: string; assignments?: Assignment[] }> {
+export async function getTeacherAssignmentsAction(teacherUserId: string): Promise<{ 
+    ok: boolean; 
+    message?: string; 
+    assignments?: Assignment[];
+    teacherProfileId?: string;
+    schoolId?: string;
+}> {
     const supabase = createSupabaseServerClient();
-    const { data, error } = await supabase
-        .from('assignments')
-        .select('*, class:class_id(name,division), subject:subject_id(name)')
-        .eq('teacher_id', teacherId)
-        .eq('school_id', schoolId)
-        .order('due_date', { ascending: false });
 
-    if (error) {
-        console.error("Error fetching assignments:", error);
-        return { ok: false, message: `Database error: ${error.message}` };
+    try {
+        const { data: teacherProfile, error: profileError } = await supabase
+            .from('teachers')
+            .select('id, school_id')
+            .eq('user_id', teacherUserId)
+            .single();
+
+        if (profileError || !teacherProfile) {
+            return { ok: false, message: profileError?.message || "Teacher profile not found." };
+        }
+        
+        const { id: teacherProfileId, school_id: schoolId } = teacherProfile;
+
+        if (!schoolId) {
+            return { ok: false, message: "Teacher is not associated with a school." };
+        }
+
+        const { data, error } = await supabase
+            .from('assignments')
+            .select('*, class:class_id(name,division), subject:subject_id(name)')
+            .eq('teacher_id', teacherProfileId)
+            .eq('school_id', schoolId)
+            .order('due_date', { ascending: false });
+
+        if (error) {
+            console.error("Error fetching assignments:", error);
+            return { ok: false, message: `Database error: ${error.message}` };
+        }
+        
+        return { 
+            ok: true, 
+            assignments: (data || []) as Assignment[],
+            teacherProfileId,
+            schoolId,
+        };
+
+    } catch (e: any) {
+        console.error("Unexpected error fetching assignments:", e);
+        return { ok: false, message: `Unexpected error: ${e.message}` };
     }
-    return { ok: true, assignments: (data || []) as Assignment[] };
 }
 
 interface UpdateAssignmentInput extends Omit<Partial<any>, 'teacher_id' | 'school_id'> {

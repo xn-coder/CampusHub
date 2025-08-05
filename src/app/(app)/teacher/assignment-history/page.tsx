@@ -10,11 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Assignment, ClassData, Subject, UserRole } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { ScrollText, CalendarDays, ClipboardList, Info, Edit2, Save, Trash2, Loader2, MoreHorizontal } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
-import { supabase } from '@/lib/supabaseClient';
 import { getTeacherAssignmentsAction, updateAssignmentAction, deleteAssignmentAction } from '../post-assignments/actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
@@ -27,7 +26,7 @@ export default function TeacherAssignmentHistoryPage() {
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -36,52 +35,44 @@ export default function TeacherAssignmentHistoryPage() {
   const [editDescription, setEditDescription] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editSubjectId, setEditSubjectId] = useState<string>(NO_SUBJECT_VALUE);
-  // Target class remains non-editable for this iteration
+
+  const fetchAssignmentData = useCallback(async () => {
+    setIsLoading(true);
+    const teacherUserId = localStorage.getItem('currentUserId');
+    if (!teacherUserId) {
+      toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
+      setIsLoading(false);
+      return;
+    }
+  
+    const result = await getTeacherAssignmentsAction(teacherUserId);
+  
+    if (result.ok) {
+      setCurrentTeacherId(result.teacherProfileId || null);
+      setCurrentSchoolId(result.schoolId || null);
+      setPostedAssignments(result.assignments?.sort((a, b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime()) || []);
+      
+      if(result.schoolId) {
+        // We can now fetch classes and subjects as we have the school context
+        const { data: classesData, error: classesError } = await supabase.from('classes').select('*').eq('school_id', result.schoolId);
+        if (classesError) toast({ title: "Error", description: "Failed to load class data.", variant: "destructive" });
+        else setAllClasses(classesData || []);
+
+        const { data: subjectsData, error: subjectsError } = await supabase.from('subjects').select('*').eq('school_id', result.schoolId);
+        if (subjectsError) toast({ title: "Error", description: "Failed to load subject data.", variant: "destructive" });
+        else setAllSubjects(subjectsData || []);
+      }
+
+    } else {
+      toast({ title: "Error", description: result.message || "Failed to load assignments.", variant: "destructive" });
+    }
+  
+    setIsLoading(false);
+  }, [toast]);
 
   useEffect(() => {
-    async function fetchData() {
-      setIsLoading(true);
-      const teacherUserId = localStorage.getItem('currentUserId');
-      if (!teacherUserId) {
-        toast({ title: "Error", description: "Teacher not identified.", variant: "destructive"});
-        setIsLoading(false); return;
-      }
-
-      // Securely fetch teacher profile on the server-side via an action if needed,
-      // but for this page, we can derive it from the user ID which is secure.
-      // The getTeacherAssignmentsAction should handle security checks.
-      const {data: teacherProfile, error: profileError} = await supabase
-        .from('teachers').select('id, school_id').eq('user_id', teacherUserId).single();
-      
-      if (profileError || !teacherProfile || !teacherProfile.id || !teacherProfile.school_id) {
-        toast({title: "Error", description: "Could not load teacher profile or school association.", variant: "destructive"});
-        setIsLoading(false); return;
-      }
-      setCurrentTeacherId(teacherProfile.id);
-      setCurrentSchoolId(teacherProfile.school_id);
-
-      const [assignmentsResult, classesResult, subjectsResult] = await Promise.all([
-        getTeacherAssignmentsAction(teacherProfile.id, teacherProfile.school_id),
-        supabase.from('classes').select('*').eq('school_id', teacherProfile.school_id),
-        supabase.from('subjects').select('*').eq('school_id', teacherProfile.school_id)
-      ]);
-
-      if (assignmentsResult.ok && assignmentsResult.assignments) {
-        setPostedAssignments(assignmentsResult.assignments.sort((a, b) => parseISO(b.due_date).getTime() - parseISO(a.due_date).getTime()));
-      } else {
-        toast({title: "Error", description: assignmentsResult.message || "Failed to load assignments", variant: "destructive"});
-      }
-
-      if (classesResult.error) toast({title: "Error", description: "Failed to load class data", variant: "destructive"});
-      else setAllClasses(classesResult.data || []);
-
-      if (subjectsResult.error) toast({title: "Error", description: "Failed to load subject data", variant: "destructive"});
-      else setAllSubjects(subjectsResult.data || []);
-      
-      setIsLoading(false);
-    }
-    fetchData();
-  }, [toast]);
+    fetchAssignmentData();
+  }, [fetchAssignmentData]);
 
   const getClassSectionName = (classId: string): string => {
     const cls = allClasses.find(c => c.id === classId);
@@ -97,7 +88,6 @@ export default function TeacherAssignmentHistoryPage() {
     setEditingAssignment(assignment);
     setEditTitle(assignment.title);
     setEditDescription(assignment.description || '');
-    // Ensure due_date is formatted to YYYY-MM-DD for the input
     setEditDueDate(assignment.due_date ? format(parseISO(assignment.due_date), 'yyyy-MM-dd') : '');
     setEditSubjectId(assignment.subject_id || NO_SUBJECT_VALUE);
     setIsEditDialogOpen(true);
@@ -114,11 +104,11 @@ export default function TeacherAssignmentHistoryPage() {
       id: editingAssignment.id,
       title: editTitle.trim(),
       description: editDescription.trim(),
-      due_date: editDueDate, // editDueDate is already YYYY-MM-DD
+      due_date: editDueDate,
       subject_id: editSubjectId === NO_SUBJECT_VALUE ? null : editSubjectId,
       teacher_id: currentTeacherId, 
       school_id: currentSchoolId,   
-      class_id: editingAssignment.class_id, // Pass class_id for context if action uses it
+      class_id: editingAssignment.class_id,
     });
     setIsSubmitting(false);
 
@@ -147,10 +137,10 @@ export default function TeacherAssignmentHistoryPage() {
     }
   };
 
-  if (isLoading && !currentTeacherId) {
+  if (isLoading) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading data...</span></div>;
   }
-  if (!currentTeacherId || !currentSchoolId) {
+   if (!currentTeacherId || !currentSchoolId) {
        return (
         <div className="flex flex-col gap-6">
         <PageHeader title="My Posted Assignment History" />
