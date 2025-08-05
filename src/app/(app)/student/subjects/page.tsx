@@ -3,11 +3,11 @@
 
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import type { Subject, Student, AcademicYear } from '@/types';
-import { useState, useEffect } from 'react';
+import type { Subject } from '@/types';
+import { useState, useEffect, useCallback } from 'react';
 import { BookOpenText, Layers, Loader2 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
+import { getStudentSubjectsAction } from './actions';
 
 interface EnrichedSubject extends Subject {
   academicYearName?: string;
@@ -19,61 +19,29 @@ export default function StudentSubjectsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [studentSchoolId, setStudentSchoolId] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchSubjectData() {
-      setIsLoading(true);
-      const currentUserId = localStorage.getItem('currentUserId');
-      if (!currentUserId) {
-        toast({ title: "Error", description: "User not identified.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        const { data: studentData, error: studentError } = await supabase
-          .from('students')
-          .select('school_id, class_id') // Also fetch class_id if needed for more specific subject filtering
-          .eq('user_id', currentUserId)
-          .single();
-
-        if (studentError || !studentData || !studentData.school_id) {
-          toast({ title: "Error", description: "Could not fetch student's school information.", variant: "destructive" });
-          setIsLoading(false);
-          return;
-        }
-        setStudentSchoolId(studentData.school_id);
-
-        const [subjectsResult, academicYearsResult] = await Promise.all([
-          supabase.from('subjects').select('*').eq('school_id', studentData.school_id),
-          supabase.from('academic_years').select('*').eq('school_id', studentData.school_id)
-        ]);
-
-        if (subjectsResult.error) {
-          toast({ title: "Error", description: "Failed to fetch subjects.", variant: "destructive" });
-          setIsLoading(false);
-          return;
-        }
-        
-        const allSubjects: Subject[] = subjectsResult.data || [];
-        const academicYears: AcademicYear[] = academicYearsResult.data || [];
-        
-        // Here you might add more complex logic to filter subjects based on studentData.class_id
-        // For now, showing all school subjects with their academic year.
-        const enrichedSubjects = allSubjects.map(sub => ({
-            ...sub,
-            academicYearName: sub.academic_year_id ? academicYears.find(ay => ay.id === sub.academic_year_id)?.name : 'General'
-        }));
-        
-        setMySubjects(enrichedSubjects);
-
-      } catch (error: any) {
-        toast({ title: "Error", description: `An unexpected error occurred: ${error.message}`, variant: "destructive"});
-      } finally {
-        setIsLoading(false);
-      }
+  const fetchSubjectData = useCallback(async () => {
+    setIsLoading(true);
+    const currentUserId = localStorage.getItem('currentUserId');
+    if (!currentUserId) {
+      toast({ title: "Error", description: "User not identified.", variant: "destructive" });
+      setIsLoading(false);
+      return;
     }
-    fetchSubjectData();
+
+    const result = await getStudentSubjectsAction(currentUserId);
+    if (result.ok) {
+        setStudentSchoolId(result.schoolId || null);
+        setMySubjects(result.subjects || []);
+    } else {
+        toast({ title: "Error", description: result.message || "Failed to load subjects.", variant: "destructive" });
+    }
+
+    setIsLoading(false);
   }, [toast]);
+
+  useEffect(() => {
+    fetchSubjectData();
+  }, [fetchSubjectData]);
 
   return (
     <div className="flex flex-col gap-6">
