@@ -3,11 +3,17 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { StoredLeaveApplicationDB, UserRole, LeaveRequestStatus, Student, Teacher } from '@/types';
+import type { StoredLeaveApplicationDB, UserRole, LeaveRequestStatus, Student, Teacher, Accountant } from '@/types';
 
-export async function getUserProfileForLeaveAction(userId: string, role: UserRole): Promise<{ profile: Student | Teacher | null, schoolId: string | null }> {
+export async function getUserProfileForLeaveAction(userId: string, role: UserRole): Promise<{ profile: Student | Teacher | Accountant | null, schoolId: string | null }> {
     const supabase = createSupabaseServerClient();
-    const tableName = role === 'student' ? 'students' : role === 'teacher' ? 'teachers' : null;
+    let tableName: string | null = null;
+    switch(role) {
+        case 'student': tableName = 'students'; break;
+        case 'teacher': tableName = 'teachers'; break;
+        case 'accountant': tableName = 'accountants'; break;
+    }
+    
     if (!tableName || !userId) return { profile: null, schoolId: null };
 
     const { data, error } = await supabase.from(tableName).select('*').eq('user_id', userId).single();
@@ -70,7 +76,7 @@ interface GetLeaveRequestsParams {
   teacher_id?: string; // For teacher role to get students in their classes
   student_user_id?: string; // For student role
   applicant_user_id?: string; // For fetching a specific user's own requests (e.g., a teacher)
-  target_role?: 'student' | 'teacher';
+  target_role?: 'student' | 'teacher' | 'accountant';
 }
 
 // Fetches leave requests.

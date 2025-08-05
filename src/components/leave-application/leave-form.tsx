@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CheckCircle, XCircle, Loader2, UploadCloud } from 'lucide-react';
-import type { User, Student, UserRole, SchoolEntry, StoredLeaveApplicationDB, Teacher } from '@/types';
+import type { User, Student, UserRole, SchoolEntry, StoredLeaveApplicationDB, Teacher, Accountant } from '@/types';
 import { submitLeaveApplicationAction, getUserProfileForLeaveAction } from '@/actions/leaveActions';
 import { useToast } from '@/hooks/use-toast';
 import { fileToDataUri } from '@/lib/utils';
@@ -42,6 +42,7 @@ export default function LeaveForm({ onApplicationSubmitted }: LeaveFormProps) {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [studentProfile, setStudentProfile] = useState<Student | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<Teacher | null>(null);
+  const [accountantProfile, setAccountantProfile] = useState<Accountant | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
 
@@ -68,6 +69,7 @@ export default function LeaveForm({ onApplicationSubmitted }: LeaveFormProps) {
             setCurrentSchoolId(schoolId);
             if(role === 'student') setStudentProfile(profile as Student);
             if(role === 'teacher') setTeacherProfile(profile as Teacher);
+            if(role === 'accountant') setAccountantProfile(profile as Accountant);
         } else {
             toast({ title: "Error", description: `Could not load your ${role} profile.`, variant: "destructive" });
         }
