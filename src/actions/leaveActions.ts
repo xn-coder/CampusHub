@@ -3,7 +3,21 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { StoredLeaveApplicationDB, UserRole, LeaveRequestStatus } from '@/types';
+import type { StoredLeaveApplicationDB, UserRole, LeaveRequestStatus, Student, Teacher } from '@/types';
+
+export async function getUserProfileForLeaveAction(userId: string, role: UserRole): Promise<{ profile: Student | Teacher | null, schoolId: string | null }> {
+    const supabase = createSupabaseServerClient();
+    const tableName = role === 'student' ? 'students' : role === 'teacher' ? 'teachers' : null;
+    if (!tableName || !userId) return { profile: null, schoolId: null };
+
+    const { data, error } = await supabase.from(tableName).select('*').eq('user_id', userId).single();
+    if (error) {
+        console.error(`Error fetching ${role} profile in server action:`, error);
+        return { profile: null, schoolId: null };
+    }
+    return { profile: data as any, schoolId: data.school_id };
+}
+
 
 interface SubmitLeaveApplicationInput {
   student_profile_id?: string;

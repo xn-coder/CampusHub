@@ -13,9 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CheckCircle, XCircle, Loader2, UploadCloud } from 'lucide-react';
 import type { User, Student, UserRole, SchoolEntry, StoredLeaveApplicationDB, Teacher } from '@/types';
-import { submitLeaveApplicationAction } from '@/actions/leaveActions';
+import { submitLeaveApplicationAction, getUserProfileForLeaveAction } from '@/actions/leaveActions';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/lib/supabaseClient';
 import { fileToDataUri } from '@/lib/utils';
 import { DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 
@@ -29,18 +28,6 @@ type LeaveFormValues = z.infer<typeof formSchema>;
 
 interface LeaveFormProps {
     onApplicationSubmitted?: () => void;
-}
-
-async function getUserProfile(userId: string, role: UserRole): Promise<{ profile: Student | Teacher | null, schoolId: string | null }> {
-    const tableName = role === 'student' ? 'students' : role === 'teacher' ? 'teachers' : null;
-    if (!tableName) return { profile: null, schoolId: null };
-
-    const { data, error } = await supabase.from(tableName).select('*').eq('user_id', userId).single();
-    if (error) {
-        console.error(`Error fetching ${role} profile:`, error);
-        return { profile: null, schoolId: null };
-    }
-    return { profile: data as any, schoolId: data.school_id };
 }
 
 
@@ -76,7 +63,7 @@ export default function LeaveForm({ onApplicationSubmitted }: LeaveFormProps) {
     setValue('applicantName', userName || '');
 
     if (userId && role) {
-        const { profile, schoolId } = await getUserProfile(userId, role);
+        const { profile, schoolId } = await getUserProfileForLeaveAction(userId, role);
         if (profile) {
             setCurrentSchoolId(schoolId);
             if(role === 'student') setStudentProfile(profile as Student);
