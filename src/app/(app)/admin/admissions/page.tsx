@@ -5,7 +5,7 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, AdmissionStatus, AcademicYear } from '@/types';
+import type { AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, AdmissionStatus, AcademicYear, UserRole } from '@/types';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { ListChecks, CheckSquare, Loader2, UserPlus, FileDown, Search, Receipt, ChevronLeft, ChevronRight, Edit2, MoreHorizontal } from 'lucide-react';
@@ -38,6 +38,7 @@ export default function AdmissionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [classFilter, setClassFilter] = useState('all');
@@ -47,6 +48,9 @@ export default function AdmissionsPage() {
 
   useEffect(() => {
     const userId = localStorage.getItem('currentUserId');
+    const role = localStorage.getItem('currentUserRole') as UserRole | null;
+    setCurrentUserRole(role);
+
     if (!userId) {
       toast({ title: "Error", description: "User not identified.", variant: "destructive" });
       setIsLoading(false);
@@ -145,11 +149,13 @@ export default function AdmissionsPage() {
         title="View Admission Records"
         description="Review and manage student admission records."
         actions={
-          <Button asChild>
-            <Link href="/admin/admissions/new">
-              <UserPlus className="mr-2 h-4 w-4" /> New Admission
-            </Link>
-          </Button>
+          currentUserRole !== 'accountant' ? (
+            <Button asChild>
+              <Link href="/admin/admissions/new">
+                <UserPlus className="mr-2 h-4 w-4" /> New Admission
+              </Link>
+            </Button>
+          ) : null
         }
       />
         <Card>
