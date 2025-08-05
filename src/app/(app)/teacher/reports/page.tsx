@@ -12,7 +12,6 @@ import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2 } from 'lucide-reac
 import { useToast } from "@/hooks/use-toast";
 import { getTeacherStudentsAndClassesAction } from './actions';
 import { format, parseISO, isValid } from 'date-fns';
-import { supabase } from '@/lib/supabaseClient';
 
 type StudentWithActivity = Student & {
     lastLogin?: string;
@@ -40,29 +39,14 @@ export default function TeacherReportsPage() {
       return;
     }
 
-    const { data: teacherProfile, error: profileError } = await supabase
-      .from('teachers')
-      .select('id, school_id')
-      .eq('user_id', teacherUserId)
-      .single();
-
-    if (profileError || !teacherProfile) {
-      toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
-      setIsLoading(false);
-      return;
-    }
-    
-    if (teacherProfile.id && teacherProfile.school_id) {
-      const result = await getTeacherStudentsAndClassesAction(teacherProfile.id, teacherProfile.school_id);
-      if (result.ok) {
+    const result = await getTeacherStudentsAndClassesAction(teacherUserId);
+    if (result.ok) {
         setTeacherStudents(result.students as StudentWithActivity[] || []);
         setTeacherClasses(result.classes || []);
-      } else {
-        toast({ title: "Error loading report data", description: result.message, variant: "destructive" });
-      }
     } else {
-      toast({ title: "Error", description: "Teacher profile or school ID missing.", variant: "destructive" });
+        toast({ title: "Error loading report data", description: result.message, variant: "destructive" });
     }
+    
     setIsLoading(false);
   }, [toast]);
 
