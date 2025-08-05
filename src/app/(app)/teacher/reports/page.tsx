@@ -12,6 +12,7 @@ import { Search, ArrowDownUp, BarChartHorizontalBig, Loader2 } from 'lucide-reac
 import { useToast } from "@/hooks/use-toast";
 import { getTeacherStudentsAndClassesAction } from './actions';
 import { format, parseISO, isValid } from 'date-fns';
+import { supabase } from '@/lib/supabaseClient';
 
 type StudentWithActivity = Student & {
     lastLogin?: string;
