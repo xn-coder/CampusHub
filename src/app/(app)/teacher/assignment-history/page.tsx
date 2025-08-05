@@ -51,32 +51,31 @@ export default function TeacherAssignmentHistoryPage() {
       const {data: teacherProfile, error: profileError} = await supabase
         .from('teachers').select('id, school_id').eq('user_id', teacherUserId).single();
       
-      if (profileError || !teacherProfile) {
-        toast({title: "Error", description: "Could not load teacher profile.", variant: "destructive"});
+      if (profileError || !teacherProfile || !teacherProfile.id || !teacherProfile.school_id) {
+        toast({title: "Error", description: "Could not load teacher profile or school association.", variant: "destructive"});
         setIsLoading(false); return;
       }
       setCurrentTeacherId(teacherProfile.id);
       setCurrentSchoolId(teacherProfile.school_id);
 
-      if (teacherProfile.id && teacherProfile.school_id) {
-        const [assignmentsResult, classesResult, subjectsResult] = await Promise.all([
-          getTeacherAssignmentsAction(teacherProfile.id, teacherProfile.school_id),
-          supabase.from('classes').select('*').eq('school_id', teacherProfile.school_id),
-          supabase.from('subjects').select('*').eq('school_id', teacherProfile.school_id)
-        ]);
+      const [assignmentsResult, classesResult, subjectsResult] = await Promise.all([
+        getTeacherAssignmentsAction(teacherProfile.id, teacherProfile.school_id),
+        supabase.from('classes').select('*').eq('school_id', teacherProfile.school_id),
+        supabase.from('subjects').select('*').eq('school_id', teacherProfile.school_id)
+      ]);
 
-        if (assignmentsResult.ok && assignmentsResult.assignments) {
-          setPostedAssignments(assignmentsResult.assignments.sort((a, b) => parseISO(b.due_date).getTime() - parseISO(a.due_date).getTime()));
-        } else {
-          toast({title: "Error", description: assignmentsResult.message || "Failed to load assignments", variant: "destructive"});
-        }
-
-        if (classesResult.error) toast({title: "Error", description: "Failed to load class data", variant: "destructive"});
-        else setAllClasses(classesResult.data || []);
-
-        if (subjectsResult.error) toast({title: "Error", description: "Failed to load subject data", variant: "destructive"});
-        else setAllSubjects(subjectsResult.data || []);
+      if (assignmentsResult.ok && assignmentsResult.assignments) {
+        setPostedAssignments(assignmentsResult.assignments.sort((a, b) => parseISO(b.due_date).getTime() - parseISO(a.due_date).getTime()));
+      } else {
+        toast({title: "Error", description: assignmentsResult.message || "Failed to load assignments", variant: "destructive"});
       }
+
+      if (classesResult.error) toast({title: "Error", description: "Failed to load class data", variant: "destructive"});
+      else setAllClasses(classesResult.data || []);
+
+      if (subjectsResult.error) toast({title: "Error", description: "Failed to load subject data", variant: "destructive"});
+      else setAllSubjects(subjectsResult.data || []);
+      
       setIsLoading(false);
     }
     fetchData();
