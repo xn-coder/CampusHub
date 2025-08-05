@@ -13,20 +13,34 @@ interface EnrichedSubmission extends AssignmentSubmission {
   student_email: string;
 }
 
-export async function getTeacherAssignmentsForGradingAction(teacherId: string, schoolId: string): Promise<{
+export async function getTeacherAssignmentsForGradingAction(teacherUserId: string): Promise<{
   ok: boolean;
   assignments?: Assignment[];
+  teacherProfileId?: string;
+  schoolId?: string;
   message?: string;
 }> {
-  if (!teacherId || !schoolId) {
-    return { ok: false, message: "Teacher ID and School ID are required." };
+  if (!teacherUserId) {
+    return { ok: false, message: "Teacher user ID is required." };
   }
   const supabase = createSupabaseServerClient();
   try {
+    const { data: teacherProfile, error: profileError } = await supabase
+      .from('teachers')
+      .select('id, school_id')
+      .eq('user_id', teacherUserId)
+      .single();
+
+    if (profileError || !teacherProfile || !teacherProfile.id || !teacherProfile.school_id) {
+      return { ok: false, message: profileError?.message || "Could not load teacher profile." };
+    }
+
+    const { id: teacherProfileId, school_id: schoolId } = teacherProfile;
+
     const { data, error } = await supabase
       .from('assignments')
       .select('*, subject:subject_id(name), class:class_id(name,division)')
-      .eq('teacher_id', teacherId)
+      .eq('teacher_id', teacherProfileId)
       .eq('school_id', schoolId)
       .order('due_date', { ascending: false });
 
@@ -34,7 +48,12 @@ export async function getTeacherAssignmentsForGradingAction(teacherId: string, s
       console.error("Error fetching teacher's assignments for grading:", error);
       return { ok: false, message: `Database error: ${error.message}` };
     }
-    return { ok: true, assignments: (data || []) as Assignment[] };
+    return { 
+        ok: true, 
+        assignments: (data || []) as Assignment[],
+        teacherProfileId,
+        schoolId
+    };
   } catch (e: any) {
     console.error("Unexpected error fetching assignments:", e);
     return { ok: false, message: `Unexpected error: ${e.message}` };

@@ -14,7 +14,6 @@ import { useState, useEffect, useCallback, useMemo, type FormEvent } from 'react
 import { useToast } from "@/hooks/use-toast";
 import { Edit, Save, BookOpenCheck, Loader2, Download, FileText, User, ArrowDownUp } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { supabase } from '@/lib/supabaseClient'; 
 import { 
     getTeacherAssignmentsForGradingAction, 
     getSubmissionsForAssignmentAction, 
@@ -59,24 +58,14 @@ export default function TeacherGradeAssignmentsPage() {
       return;
     }
 
-    const { data: teacherProfile, error: profileError } = await supabase
-      .from('teachers').select('id, school_id').eq('user_id', teacherUserId).single();
-    
-    if (profileError || !teacherProfile) {
-      toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
-      setIsLoadingAssignments(false);
-      return;
-    }
-    setCurrentTeacherId(teacherProfile.id);
-    setCurrentSchoolId(teacherProfile.school_id);
+    const assignmentsResult = await getTeacherAssignmentsForGradingAction(teacherUserId);
 
-    if (teacherProfile.id && teacherProfile.school_id) {
-        const assignmentsResult = await getTeacherAssignmentsForGradingAction(teacherProfile.id, teacherProfile.school_id);
-        if (assignmentsResult.ok && assignmentsResult.assignments) {
-            setTeacherAssignments(assignmentsResult.assignments.sort((a,b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime()));
-        } else {
-            toast({ title: "Error fetching assignments", description: assignmentsResult.message, variant: "destructive" });
-        }
+    if (assignmentsResult.ok) {
+        setTeacherAssignments(assignmentsResult.assignments?.sort((a,b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime()) || []);
+        setCurrentTeacherId(assignmentsResult.teacherProfileId || null);
+        setCurrentSchoolId(assignmentsResult.schoolId || null);
+    } else {
+        toast({ title: "Error fetching assignments", description: assignmentsResult.message, variant: "destructive" });
     }
     setIsLoadingAssignments(false);
   }, [toast]);
@@ -138,8 +127,6 @@ export default function TeacherGradeAssignmentsPage() {
   };
 
   const getPublicFileUrl = (filePath: string) => {
-    // This is a simplified approach. In a real app, you might need a server action
-    // to create a temporary signed URL if the files are not in a public bucket.
     const { data } = supabase.storage.from('campushub').getPublicUrl(filePath);
     return data.publicUrl;
   };
@@ -293,3 +280,4 @@ export default function TeacherGradeAssignmentsPage() {
     </div>
   );
 }
+
