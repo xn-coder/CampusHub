@@ -6,9 +6,9 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { StudentFeePayment, FeeCategory, ClassData } from '@/types';
+import type { StudentFeePayment, FeeCategory, ClassData, Student } from '@/types';
 import { DollarSign, CalendarDays, FileText, Loader2, CreditCard, Download, School } from 'lucide-react';
-import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { useState, useEffect, useMemo, type FormEvent, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { getStudentPaymentHistoryAction, createRazorpayOrderAction, verifyRazorpayPaymentAction, mockPayFeesAction } from '@/app/(app)/admin/student-fees/actions';
@@ -29,66 +29,35 @@ export default function StudentPaymentHistoryPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isPaying, setIsPaying] = useState(false);
     
-    const [currentStudentProfileId, setCurrentStudentProfileId] = useState<string | null>(null);
+    const [currentStudentProfile, setCurrentStudentProfile] = useState<Student | null>(null);
     const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
-    const [currentStudentName, setCurrentStudentName] = useState<string | null>(null);
-    const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
-
-    const loadPaymentData = async () => {
-        if (currentStudentProfileId && currentSchoolId) {
-            setIsLoading(true);
-            const result = await getStudentPaymentHistoryAction(currentStudentProfileId, currentSchoolId);
-            if (result.ok) {
-                setPayments(result.payments || []);
-                setFeeCategories(result.feeCategories || []);
-            } else {
-                toast({ title: "Error fetching payment history", description: result.message, variant: "destructive"});
-            }
+    const loadPaymentData = useCallback(async () => {
+        const studentUserId = localStorage.getItem('currentUserId');
+        if (!studentUserId) {
+            toast({ title: "Error", description: "Student not identified.", variant: "destructive" });
             setIsLoading(false);
+            return;
         }
-    }
+
+        setIsLoading(true);
+        const result = await getStudentPaymentHistoryAction(studentUserId);
+        
+        if (result.ok) {
+            setPayments(result.payments || []);
+            setFeeCategories(result.feeCategories || []);
+            setCurrentStudentProfile(result.studentProfile || null);
+            setCurrentSchoolId(result.studentProfile?.school_id || null);
+        } else {
+            toast({ title: "Error fetching payment history", description: result.message, variant: "destructive"});
+        }
+        setIsLoading(false);
+    }, [toast]);
     
     useEffect(() => {
-        async function fetchInitialData() {
-            setIsLoading(true);
-            const studentUserId = localStorage.getItem('currentUserId');
-            if (!studentUserId) {
-                toast({ title: "Error", description: "Student not identified.", variant: "destructive" });
-                setIsLoading(false);
-                return;
-            }
-
-            const { data: studentProfile, error: profileError } = await supabase
-                .from('students')
-                .select('id, school_id, name, email')
-                .eq('user_id', studentUserId)
-                .single();
-            
-            if (profileError || !studentProfile || !studentProfile.id || !studentProfile.school_id) {
-                toast({ title: "Error", description: "Could not fetch student profile or school information.", variant: "destructive"});
-                setIsLoading(false);
-                return;
-            }
-            setCurrentStudentProfileId(studentProfile.id);
-            setCurrentSchoolId(studentProfile.school_id);
-            setCurrentStudentName(studentProfile.name);
-            setCurrentUserEmail(studentProfile.email);
-            
-            const paymentResult = await getStudentPaymentHistoryAction(studentProfile.id, studentProfile.school_id);
-
-            if (paymentResult.ok) {
-                setPayments(paymentResult.payments || []);
-                setFeeCategories(paymentResult.feeCategories || []);
-            } else {
-                toast({ title: "Error fetching payment history", description: paymentResult.message, variant: "destructive"});
-            }
-
-            setIsLoading(false);
-        }
-        fetchInitialData();
+        loadPaymentData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [toast]);
+    }, []);
     
     const totalDue = useMemo(() => {
       return payments
@@ -97,7 +66,7 @@ export default function StudentPaymentHistoryPage() {
     }, [payments]);
 
     const initiatePayment = async (amountToPay: number, feeIds: string[], description: string) => {
-        if (!currentStudentProfileId || !currentSchoolId || !currentStudentName || !currentUserEmail) {
+        if (!currentStudentProfile || !currentSchoolId) {
             toast({ title: 'Error', description: 'User context is missing.', variant: 'destructive' });
             return;
         }
@@ -106,7 +75,7 @@ export default function StudentPaymentHistoryPage() {
 
         const amountInPaisa = Math.round(amountToPay * 100);
 
-        const orderResult = await createRazorpayOrderAction(amountInPaisa, feeIds, currentStudentProfileId, currentSchoolId);
+        const orderResult = await createRazorpayOrderAction(amountInPaisa, feeIds, currentStudentProfile.id, currentSchoolId);
 
         if (!orderResult.ok) {
             toast({ title: 'Payment Error', description: orderResult.message || 'Could not create payment order.', variant: 'destructive' });
@@ -114,7 +83,6 @@ export default function StudentPaymentHistoryPage() {
             return;
         }
         
-        // Handle mock payment success
         if (orderResult.isMock) {
             toast({ title: "Payment Successful", description: orderResult.message });
             await loadPaymentData();
@@ -122,7 +90,6 @@ export default function StudentPaymentHistoryPage() {
             return;
         }
 
-        // Proceed with real Razorpay payment
         if (orderResult.order) {
             const options = {
                 key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
@@ -146,11 +113,11 @@ export default function StudentPaymentHistoryPage() {
                     }
                 },
                 prefill: {
-                    name: currentStudentName,
-                    email: currentUserEmail,
+                    name: currentStudentProfile.name,
+                    email: currentStudentProfile.email,
                 },
                 notes: {
-                    student_id: currentStudentProfileId,
+                    student_id: currentStudentProfile.id,
                 },
                 theme: {
                     color: "#3399cc"
@@ -212,7 +179,7 @@ export default function StudentPaymentHistoryPage() {
         doc.text("Fee Payment History Statement", 14, 22);
         doc.setFontSize(11);
         doc.setTextColor(100);
-        doc.text(`Student: ${currentStudentName || 'N/A'}`, 14, 29);
+        doc.text(`Student: ${currentStudentProfile?.name || 'N/A'}`, 14, 29);
         doc.text(`Date Generated: ${format(new Date(), 'PP')}`, 14, 34);
 
         const tableColumn = ["Fee Category", "Due Date", "Assigned (₹)", "Paid (₹)", "Payment Date", "Status"];
@@ -250,7 +217,7 @@ export default function StudentPaymentHistoryPage() {
         doc.text(`Total Due: ₹${totalDue.toFixed(2)}`, 14, finalY + 34);
         doc.setFont('helvetica', 'normal');
 
-        doc.save(`payment_history_${(currentStudentName || 'student').replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+        doc.save(`payment_history_${(currentStudentProfile?.name || 'student').replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
 
         toast({
             title: "Download Started",
@@ -275,7 +242,7 @@ export default function StudentPaymentHistoryPage() {
           <CardContent>
             {isLoading ? (
               <div className="text-center py-4 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading payment history...</div>
-            ) : !currentStudentProfileId ? (
+            ) : !currentStudentProfile ? (
               <p className="text-destructive text-center py-4">Could not load student profile. Payment history unavailable.</p>
             ) : payments.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No payment records found for you.</p>

@@ -300,14 +300,34 @@ export async function deleteStudentFeeAssignmentAction(
 
 
 export async function getStudentPaymentHistoryAction(
-  studentId: string, // This should be students.id (student_profile_id)
-  schoolId: string
-): Promise<{ ok: boolean; message?: string; payments?: StudentFeePayment[], feeCategories?: FeeCategory[] }> {
-  if (!studentId || !schoolId) {
-    return { ok: false, message: "Student ID and School ID are required." };
+  studentUserId: string,
+): Promise<{
+    ok: boolean;
+    message?: string;
+    payments?: StudentFeePayment[];
+    feeCategories?: FeeCategory[];
+    studentProfile?: Student | null;
+}> {
+  if (!studentUserId) {
+    return { ok: false, message: "User ID is required." };
   }
   const supabase = createSupabaseServerClient();
   try {
+    const { data: studentProfile, error: profileError } = await supabase
+      .from('students')
+      .select('id, school_id, name, email')
+      .eq('user_id', studentUserId)
+      .single();
+    
+    if (profileError || !studentProfile) {
+        return { ok: false, message: profileError?.message || "Could not load student profile." };
+    }
+
+    const { id: studentId, school_id: schoolId } = studentProfile;
+    if (!studentId || !schoolId) {
+        return { ok: false, message: "Student is not associated with a school." };
+    }
+
     const [paymentsRes, categoriesRes] = await Promise.all([
         supabase
         .from('student_fee_payments')
@@ -325,11 +345,15 @@ export async function getStudentPaymentHistoryAction(
       return { ok: false, message: `Database error: ${paymentsRes.error.message}` };
     }
     if (categoriesRes.error) {
-        console.error("Error fetching fee categories for payment history:", categoriesRes.error);
-        // Non-fatal, but categories won't be named
+        console.warn("Error fetching fee categories for payment history:", categoriesRes.error);
     }
 
-    return { ok: true, payments: paymentsRes.data || [], feeCategories: categoriesRes.data || [] };
+    return { 
+      ok: true, 
+      payments: paymentsRes.data || [], 
+      feeCategories: categoriesRes.data || [],
+      studentProfile,
+    };
   } catch (e: any) {
     console.error("Unexpected error fetching student payment history:", e);
     return { ok: false, message: `Unexpected error: ${e.message}` };
