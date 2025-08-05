@@ -3,26 +3,50 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { sendEmail } from '@/services/emailService';
-import type { TCRequest } from '@/types';
+import type { TCRequest, Student } from '@/types';
 import { revalidatePath } from 'next/cache';
 
-export async function getStudentTCRequestStatusAction(studentId: string, schoolId: string): Promise<{
-    ok: boolean,
-    request?: TCRequest | null,
-    message?: string,
+export async function getStudentTCRequestPageDataAction(userId: string): Promise<{
+    ok: boolean;
+    studentId?: string | null;
+    schoolId?: string | null;
+    request?: TCRequest | null;
+    message?: string;
 }> {
-    if (!studentId || !schoolId) return { ok: false, message: "Context missing." };
+    if (!userId) {
+        return { ok: false, message: "User not identified." };
+    }
     const supabase = createSupabaseServerClient();
     try {
-        const { data, error } = await supabase
+        const { data: studentProfile, error: profileError } = await supabase
+            .from('students')
+            .select('id, school_id')
+            .eq('user_id', userId)
+            .single();
+
+        if (profileError || !studentProfile) {
+            return { ok: false, message: "Could not load your student profile." };
+        }
+
+        const { data: tcRequest, error: requestError } = await supabase
             .from('tc_requests')
             .select('*')
-            .eq('student_id', studentId)
-            .eq('school_id', schoolId)
+            .eq('student_id', studentProfile.id)
+            .eq('school_id', studentProfile.school_id)
             .maybeSingle();
 
-        if (error) throw error;
-        return { ok: true, request: data };
+        if (requestError) {
+            console.error("Error fetching TC request status:", requestError);
+            // Non-fatal, we can still show the request button
+        }
+
+        return {
+            ok: true,
+            studentId: studentProfile.id,
+            schoolId: studentProfile.school_id,
+            request: tcRequest || null,
+        };
+
     } catch (e: any) {
         return { ok: false, message: e.message };
     }

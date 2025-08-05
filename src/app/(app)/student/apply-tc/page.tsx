@@ -7,8 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Loader2, CheckCircle, Clock, XCircle, Download } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
-import { requestTransferCertificateAction, getStudentTCRequestStatusAction } from './actions';
+import { requestTransferCertificateAction, getStudentTCRequestPageDataAction } from './actions';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { TCRequest } from '@/types';
 import { useRouter } from 'next/navigation';
@@ -34,28 +33,17 @@ export default function ApplyForTCPage() {
       setIsPageLoading(false);
       return;
     }
+    
+    const result = await getStudentTCRequestPageDataAction(userId);
 
-    const { data: studentProfile, error } = await supabase
-      .from('students')
-      .select('id, school_id')
-      .eq('user_id', userId)
-      .single();
-    
-    if (error || !studentProfile) {
-      toast({ title: "Error", description: "Could not load your student profile.", variant: "destructive" });
-      setIsPageLoading(false);
-      return;
+    if (result.ok) {
+        setCurrentStudentId(result.studentId || null);
+        setCurrentSchoolId(result.schoolId || null);
+        setExistingRequest(result.request || null);
+    } else {
+        toast({ title: "Error", description: result.message || "Failed to load page data.", variant: "destructive"});
     }
     
-    setCurrentStudentId(studentProfile.id);
-    setCurrentSchoolId(studentProfile.school_id);
-    
-    if (studentProfile.id && studentProfile.school_id) {
-        const statusResult = await getStudentTCRequestStatusAction(studentProfile.id, studentProfile.school_id);
-        if(statusResult.ok) {
-            setExistingRequest(statusResult.request || null);
-        }
-    }
     setIsPageLoading(false);
   }, [toast]);
   
