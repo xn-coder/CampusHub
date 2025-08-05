@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import type { StoredLeaveApplicationDB } from '@/types';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient';
 import { getLeaveRequestsAction } from '@/actions/leaveActions';
 import { format, parseISO, isValid } from 'date-fns';
 import { History, Loader2, CheckCircle, XCircle, ExternalLink, MessageSquare, CalendarDays } from 'lucide-react';
@@ -23,27 +22,18 @@ export default function StudentLeaveHistoryPage() {
     async function fetchHistory() {
       setIsLoading(true);
       const studentUserId = localStorage.getItem('currentUserId');
-      if (!studentUserId) {
-        toast({ title: "Error", description: "User not identified.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-
-      const { data: studentProfile, error } = await supabase
-        .from('students')
-        .select('id, school_id')
-        .eq('user_id', studentUserId)
-        .single();
+      const schoolId = localStorage.getItem('currentSchoolId'); // Assuming schoolId is stored on login
       
-      if (error || !studentProfile || !studentProfile.id || !studentProfile.school_id) {
-        toast({ title: "Error", description: "Could not fetch student profile or school info.", variant: "destructive" });
+      if (!studentUserId || !schoolId) {
+        toast({ title: "Error", description: "User or school context is missing. Please log in again.", variant: "destructive" });
         setIsLoading(false);
         return;
       }
       
       const result = await getLeaveRequestsAction({ 
-        school_id: studentProfile.school_id, 
-        student_profile_id: studentProfile.id 
+        school_id: schoolId,
+        student_user_id: studentUserId,
+        target_role: 'student'
       });
 
       if (result.ok) {

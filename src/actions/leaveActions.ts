@@ -68,7 +68,7 @@ export async function submitLeaveApplicationAction(
 interface GetLeaveRequestsParams {
   school_id: string;
   teacher_id?: string; // For teacher role to get students in their classes
-  student_profile_id?: string; // For student role
+  student_user_id?: string; // For student role
   applicant_user_id?: string; // For fetching a specific user's own requests (e.g., a teacher)
   target_role?: 'student' | 'teacher';
 }
@@ -76,7 +76,7 @@ interface GetLeaveRequestsParams {
 // Fetches leave requests.
 export async function getLeaveRequestsAction(params: GetLeaveRequestsParams): Promise<{ ok: boolean; message?: string; applications?: StoredLeaveApplicationDB[] }> {
   const supabase = createSupabaseServerClient();
-  const { school_id, teacher_id, student_profile_id, applicant_user_id, target_role } = params;
+  const { school_id, teacher_id, student_user_id, applicant_user_id, target_role } = params;
 
   try {
     let query = supabase
@@ -95,10 +95,14 @@ export async function getLeaveRequestsAction(params: GetLeaveRequestsParams): Pr
     if(applicant_user_id) {
         query = query.eq('applicant_user_id', applicant_user_id);
     }
-
+    
     if (target_role === 'student') {
-      if (student_profile_id) {
-        query = query.eq('student_profile_id', student_profile_id);
+      if (student_user_id) {
+          const { data: student, error: studentErr } = await supabase.from('students').select('id').eq('user_id', student_user_id).single();
+          if(studentErr || !student) {
+              return { ok: false, message: "Could not find student profile for this user."}
+          }
+          query = query.eq('student_profile_id', student.id);
       } else if (teacher_id) {
         const { data: teacherClasses, error: classesError } = await supabase
           .from('classes')
