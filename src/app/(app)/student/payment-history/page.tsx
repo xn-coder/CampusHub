@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -42,13 +43,9 @@ export default function StudentPaymentHistoryPage() {
         if (result.ok) {
             setPayments(result.payments || []);
             setFeeCategories(result.feeCategories || []);
+            setAcademicYears(result.academicYears || []);
             setCurrentStudentProfile(result.studentProfile || null);
             setCurrentSchoolId(result.studentProfile?.school_id || null);
-            // Fetch academic years to get names
-            if (result.studentProfile?.school_id) {
-              const { data: ayData } = await supabase.from('academic_years').select('*').eq('school_id', result.studentProfile.school_id);
-              setAcademicYears(ayData || []);
-            }
         } else {
             toast({ title: "Error fetching payment history", description: result.message, variant: "destructive"});
         }
@@ -60,7 +57,9 @@ export default function StudentPaymentHistoryPage() {
     }, [loadPaymentData]);
 
     const totalDue = useMemo(() => {
-      return payments.reduce((acc, payment) => acc + (payment.assigned_amount - payment.paid_amount), 0);
+      return payments
+        .filter(p => p.status !== 'Paid')
+        .reduce((acc, payment) => acc + (payment.assigned_amount - payment.paid_amount), 0);
     }, [payments]);
 
     const initiatePayment = async (amountToPay: number, feeIds: string[], description: string) => {

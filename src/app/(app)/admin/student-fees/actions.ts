@@ -306,6 +306,7 @@ export async function getStudentPaymentHistoryAction(
     message?: string;
     payments?: StudentFeePayment[];
     feeCategories?: FeeCategory[];
+    academicYears?: AcademicYear[];
     studentProfile?: Student | null;
 }> {
   if (!studentUserId) {
@@ -328,7 +329,7 @@ export async function getStudentPaymentHistoryAction(
         return { ok: false, message: "Student is not associated with a school." };
     }
 
-    const [paymentsRes, categoriesRes] = await Promise.all([
+    const [paymentsRes, categoriesRes, academicYearsRes] = await Promise.all([
         supabase
         .from('student_fee_payments')
         .select('*')
@@ -336,7 +337,8 @@ export async function getStudentPaymentHistoryAction(
         .eq('school_id', schoolId)
         .order('payment_date', { ascending: false, nullsFirst: true })
         .order('due_date', { ascending: false, nullsFirst: true }),
-        supabase.from('fee_categories').select('*').eq('school_id', schoolId)
+        supabase.from('fee_categories').select('*').eq('school_id', schoolId),
+        supabase.from('academic_years').select('*').eq('school_id', schoolId)
     ]);
 
 
@@ -347,11 +349,15 @@ export async function getStudentPaymentHistoryAction(
     if (categoriesRes.error) {
         console.warn("Error fetching fee categories for payment history:", categoriesRes.error);
     }
+    if (academicYearsRes.error) {
+        console.warn("Error fetching academic years for payment history:", academicYearsRes.error);
+    }
 
     return { 
       ok: true, 
       payments: paymentsRes.data || [], 
       feeCategories: categoriesRes.data || [],
+      academicYears: academicYearsRes.data || [],
       studentProfile,
     };
   } catch (e: any) {
