@@ -24,7 +24,7 @@ interface GetAnnouncementsParams {
   school_id?: string | null;
   user_role: UserRole;
   user_id?: string;
-  student_class_id?: string | null;
+  student_user_id?: string;
   teacher_class_ids?: string[];
 }
 
@@ -49,8 +49,7 @@ function CommunicationPageForm() {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
-  const [studentProfile, setStudentProfile] = useState<Student | null>(null);
-
+  
   const [teacherAssignedClasses, setTeacherAssignedClasses] = useState<ClassData[]>([]);
   const [allSchoolClasses, setAllSchoolClasses] = useState<ClassData[]>([]);
 
@@ -104,14 +103,6 @@ function CommunicationPageForm() {
                     .eq('school_id', fetchedSchoolId);
                 if (classesError) toast({title: "Error", description: "Failed to fetch school classes for admin.", variant: "destructive"});
                 else setAllSchoolClasses(classesData || []);
-            } else if (fetchedRole === 'student') {
-              const { data: studentData, error: studentError } = await supabase
-                .from('students')
-                .select('*') 
-                .eq('user_id', fetchedUserId) 
-                .single();
-              if (studentError || !studentData) toast({title: "Error", description: "Could not load student profile.", variant: "destructive"});
-              else setStudentProfile(studentData as Student);
             }
           }
         }
@@ -145,15 +136,15 @@ function CommunicationPageForm() {
 
   useEffect(() => {
     async function fetchAnnouncements() {
-      if (isContextLoading || !currentUserRole) return; 
+      if (isContextLoading || !currentUserRole || !currentUserId) return;
 
       setIsLoading(true); 
       
       const params: GetAnnouncementsParams = {
         school_id: currentSchoolId,
         user_role: currentUserRole,
-        user_id: currentUserId || undefined,
-        student_class_id: studentProfile?.class_id || null, 
+        user_id: currentUserId,
+        student_user_id: currentUserRole === 'student' ? currentUserId : undefined,
         teacher_class_ids: teacherAssignedClasses.map(c => c.id),
       };
       
@@ -161,10 +152,7 @@ function CommunicationPageForm() {
       if (result.ok && result.announcements) {
         setAllAnnouncements(result.announcements);
       } else {
-        // Avoid showing error if context is just not available yet.
-        if (currentUserRole !== null && currentUserId !== null) {
-          toast({ title: "Error", description: result.message || "Failed to fetch announcements.", variant: "destructive" });
-        }
+        toast({ title: "Error", description: result.message || "Failed to fetch announcements.", variant: "destructive" });
         setAllAnnouncements([]);
       }
       setIsLoading(false);
@@ -172,7 +160,7 @@ function CommunicationPageForm() {
     
     fetchAnnouncements();
 
-  }, [currentSchoolId, currentUserRole, currentUserId, studentProfile, teacherAssignedClasses, toast, isContextLoading]);
+  }, [currentSchoolId, currentUserRole, currentUserId, teacherAssignedClasses, toast, isContextLoading]);
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -223,7 +211,7 @@ function CommunicationPageForm() {
         school_id: currentSchoolId,
         user_role: currentUserRole,
         user_id: currentUserId,
-        student_class_id: studentProfile?.class_id,
+        student_user_id: currentUserRole === 'student' ? currentUserId : undefined,
         teacher_class_ids: teacherAssignedClasses.map(c => c.id),
       };
       const fetchResult = await getAnnouncementsAction(params);

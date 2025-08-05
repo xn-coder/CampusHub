@@ -158,46 +158,50 @@ interface GetAnnouncementsParams {
   school_id?: string | null;
   user_role: UserRole;
   user_id?: string;
-  student_class_id?: string | null;
+  student_user_id?: string;
   teacher_class_ids?: string[];
 }
 
 export async function getAnnouncementsAction(params: GetAnnouncementsParams): Promise<{ ok: boolean; message?: string; announcements?: AnnouncementDB[] }> {
   const supabase = createSupabaseServerClient();
-  const { school_id, user_role, user_id, student_class_id, teacher_class_ids = [] } = params;
+  const { school_id, user_role, user_id, student_user_id, teacher_class_ids = [] } = params;
 
   try {
     let query = supabase
       .from('announcements')
       .select(`*, posted_by:posted_by_user_id(name, email), target_class:target_class_id(name, division)`)
       .order('date', { ascending: false });
-
+      
     if (user_role === 'superadmin') {
-      // Superadmin sees ONLY global announcements (school_id is null)
       query = query.is('school_id', null);
     } else if (user_role === 'admin') {
-      // Admin sees announcements for their school AND global announcements
       if (school_id) {
         query = query.or(`school_id.eq.${school_id},school_id.is.null`);
       } else {
         return { ok: false, message: "School context missing for admin." };
       }
-    } else if (user_role === 'student' && school_id && student_class_id) {
-      // Students see their class-specific announcements OR school-wide ones for students/all.
-      query = query
-        .eq('school_id', school_id)
-        .or(`and(target_class_id.eq.${student_class_id},target_audience.in.("all","students")),and(target_class_id.is.null,target_audience.in.("all","students"))`);
+    } else if (user_role === 'student' && student_user_id) {
+      const { data: student, error: studentError } = await supabase.from('students').select('school_id, class_id').eq('user_id', student_user_id).single();
+      if (studentError || !student || !student.school_id) {
+          return { ok: false, message: "Could not find student's class and school."};
+      }
+      const studentClassId = student.class_id;
+      const studentSchoolId = student.school_id;
+
+      let orCondition = `and(school_id.eq.${studentSchoolId},target_class_id.is.null,target_audience.in.("all","students"))`;
+      if (studentClassId) {
+          orCondition += `,and(school_id.eq.${studentSchoolId},target_class_id.eq.${studentClassId})`;
+      }
+      query = query.or(orCondition);
 
     } else if (user_role === 'teacher' && school_id) {
       // Teachers see announcements for their classes OR school-wide ones for teachers/all.
-      let classFilter = `target_class_id.is.null,target_audience.in.("all","teachers")`; // School-wide for teachers
+      let classFilter = `and(school_id.eq.${school_id},target_class_id.is.null,target_audience.in.("all","teachers"))`; // School-wide for teachers
       if (teacher_class_ids.length > 0) {
         const classSpecificFilter = `target_class_id.in.(${teacher_class_ids.join(',')})`; // For their specific classes (all audiences)
         classFilter = `${classSpecificFilter},${classFilter}`;
       }
-       query = query
-        .eq('school_id', school_id)
-        .or(classFilter);
+       query = query.or(classFilter);
 
     } else {
       // User has no school context and is not superadmin, so they see nothing.
