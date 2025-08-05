@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import type { Course, UserRole, SchoolEntry } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
@@ -48,8 +48,12 @@ export default function SuperAdminManageCoursesPage() {
   
   const fetchCourses = async () => {
     setIsLoading(true);
-    // Superadmin sees only global courses (school_id is null)
-    const { data, error } = await supabase.from('lms_courses').select('*').is('school_id', null).order('created_at', { ascending: false });
+    // Superadmin sees only global courses (school_id is null or empty)
+    const { data, error } = await supabase
+      .from('lms_courses')
+      .select('*')
+      .or('school_id.is.null,school_id.eq.')
+      .order('created_at', { ascending: false });
     
     if (error) {
       toast({ title: "Error", description: `Failed to fetch courses: ${error.message}`, variant: "destructive" });
@@ -327,4 +331,5 @@ export default function SuperAdminManageCoursesPage() {
     </div>
   );
 }
+
 
