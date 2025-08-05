@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Assignment, AssignmentSubmission } from '@/types';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Edit, Save, BookOpenCheck, Loader2, Download, FileText, User, ArrowDownUp } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -41,7 +41,7 @@ export default function TeacherGradeAssignmentsPage() {
   const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
-  const [isGradeDialogValid, setIsGradeDialogValid] = useState(false);
+  const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
   const [selectedSubmissionForGrading, setSelectedSubmissionForGrading] = useState<EnrichedSubmissionClient | null>(null);
   const [gradeInput, setGradeInput] = useState('');
   const [feedbackInput, setFeedbackInput] = useState('');
@@ -71,12 +71,12 @@ export default function TeacherGradeAssignmentsPage() {
     setCurrentSchoolId(teacherProfile.school_id);
 
     if (teacherProfile.id && teacherProfile.school_id) {
-      const assignmentsResult = await getTeacherAssignmentsForGradingAction(teacherProfile.id, teacherProfile.school_id);
-      if (assignmentsResult.ok && assignmentsResult.assignments) {
-        setTeacherAssignments(assignmentsResult.assignments);
-      } else {
-        toast({ title: "Error fetching assignments", description: assignmentsResult.message, variant: "destructive" });
-      }
+        const assignmentsResult = await getTeacherAssignmentsForGradingAction(teacherProfile.id, teacherProfile.school_id);
+        if (assignmentsResult.ok && assignmentsResult.assignments) {
+            setTeacherAssignments(assignmentsResult.assignments.sort((a,b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime()));
+        } else {
+            toast({ title: "Error fetching assignments", description: assignmentsResult.message, variant: "destructive" });
+        }
     }
     setIsLoadingAssignments(false);
   }, [toast]);
@@ -107,7 +107,7 @@ export default function TeacherGradeAssignmentsPage() {
     setSelectedSubmissionForGrading(submission);
     setGradeInput(submission.grade || '');
     setFeedbackInput(submission.feedback || '');
-    setIsGradeDialogValid(true);
+    setIsGradeDialogOpen(true);
   };
 
   const handleSaveGradeAndFeedback = async (e: FormEvent) => {
@@ -130,7 +130,7 @@ export default function TeacherGradeAssignmentsPage() {
         setSubmissions(prevSubs => prevSubs.map(sub => 
             sub.id === selectedSubmissionForGrading.id ? { ...sub, grade: result.updatedSubmission?.grade, feedback: result.updatedSubmission?.feedback } : sub
         ));
-        setIsGradeDialogValid(false);
+        setIsGradeDialogOpen(false);
         setSelectedSubmissionForGrading(null);
     } else {
         toast({ title: "Error Saving Grade", description: result.message, variant: "destructive"});
@@ -138,7 +138,9 @@ export default function TeacherGradeAssignmentsPage() {
   };
 
   const getPublicFileUrl = (filePath: string) => {
-    const { data } = supabase.storage.from('assignment_submissions').getPublicUrl(filePath);
+    // This is a simplified approach. In a real app, you might need a server action
+    // to create a temporary signed URL if the files are not in a public bucket.
+    const { data } = supabase.storage.from('campushub').getPublicUrl(filePath);
     return data.publicUrl;
   };
   
@@ -156,7 +158,7 @@ export default function TeacherGradeAssignmentsPage() {
       if (sortBy === 'grade') {
         const gradeA = a.grade || '';
         const gradeB = b.grade || '';
-        return sortOrder === 'asc' ? gradeA.localeCompare(gradeB) : gradeB.localeCompare(gradeA);
+        return sortOrder === 'asc' ? gradeA.localeCompare(gradeB) : b.grade.localeCompare(gradeA);
       }
       return 0;
     });
@@ -262,43 +264,27 @@ export default function TeacherGradeAssignmentsPage() {
           </CardContent>
         )}
       </Card>
-
-      <Dialog open={isGradeDialogValid} onOpenChange={setIsGradeDialogValid}>
-        <DialogContent className="sm:max-w-md">
+      
+      <Dialog open={isGradeDialogOpen} onOpenChange={setIsGradeDialogOpen}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Grade Submission: {selectedSubmissionForGrading?.student_name}</DialogTitle>
-            <CardDescription>For assignment: {selectedAssignmentDetails?.title}</CardDescription>
+            <DialogTitle>Grade Submission for {selectedSubmissionForGrading?.student_name}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSaveGradeAndFeedback}>
-            <div className="grid gap-4 py-4">
+            <div className="py-4 space-y-4">
               <div>
                 <Label htmlFor="gradeInput">Grade</Label>
-                <Input 
-                  id="gradeInput" 
-                  value={gradeInput} 
-                  onChange={(e) => setGradeInput(e.target.value)} 
-                  placeholder="e.g., A+, 95/100, Pass" 
-                  required 
-                  disabled={isSavingGrade}
-                />
+                <Input id="gradeInput" value={gradeInput} onChange={(e) => setGradeInput(e.target.value)} placeholder="e.g., A+, 85/100" required disabled={isSavingGrade} />
               </div>
               <div>
                 <Label htmlFor="feedbackInput">Feedback (Optional)</Label>
-                <Textarea 
-                  id="feedbackInput" 
-                  value={feedbackInput} 
-                  onChange={(e) => setFeedbackInput(e.target.value)} 
-                  placeholder="Provide constructive feedback..." 
-                  rows={4}
-                  disabled={isSavingGrade}
-                />
+                <Textarea id="feedbackInput" value={feedbackInput} onChange={(e) => setFeedbackInput(e.target.value)} placeholder="Provide constructive feedback..." disabled={isSavingGrade} />
               </div>
             </div>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" disabled={isSavingGrade}>Cancel</Button></DialogClose>
-              <Button type="submit" disabled={isSavingGrade || !gradeInput.trim()}>
-                {isSavingGrade ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
-                {isSavingGrade ? 'Saving...' : 'Save Grade'}
+              <Button type="submit" disabled={isSavingGrade}>
+                {isSavingGrade ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Grade
               </Button>
             </DialogFooter>
           </form>
