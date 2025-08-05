@@ -14,6 +14,7 @@ import { format, parseISO } from 'date-fns';
 import { IdCardPreview } from '@/components/shared/id-card-preview';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getTeacherClassesDataAction } from '../my-classes/actions'; // Use a reliable action
+import { supabase } from '@/lib/supabaseClient';
 
 export default function TeacherDataExportPage() {
   const { toast } = useToast();
