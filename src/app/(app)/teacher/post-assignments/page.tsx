@@ -12,8 +12,7 @@ import type { Assignment, ClassData, Subject, UserRole } from '@/types'; // Adde
 import { useState, useEffect, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { ClipboardPlus, Send, Loader2, Paperclip } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
-import { postAssignmentAction } from './actions';
+import { postAssignmentAction, getTeacherPostAssignmentDataAction } from './actions';
 
 const NO_SUBJECT_VALUE = "__NO_SUBJECT__";
 
@@ -35,41 +34,28 @@ export default function PostAssignmentsPage() {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
 
   useEffect(() => {
-    const teacherUserId = localStorage.getItem('currentUserId');
-    if (teacherUserId) {
-        supabase.from('teachers').select('id, school_id').eq('user_id', teacherUserId).single()
-        .then(({data: teacherProfile, error: profileError}) => {
-            if(profileError || !teacherProfile) {
-                toast({title: "Error", description: "Could not load teacher profile.", variant: "destructive"});
-                setIsFetchingInitial(false); return;
-            }
-            setCurrentTeacherId(teacherProfile.id);
-            setCurrentSchoolId(teacherProfile.school_id);
+    async function fetchInitialData() {
+        setIsFetchingInitial(true);
+        const teacherUserId = localStorage.getItem('currentUserId');
+        if (!teacherUserId) {
+            toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
+            setIsFetchingInitial(false);
+            return;
+        }
 
-            if (teacherProfile.id && teacherProfile.school_id) {
-                Promise.all([
-                    supabase.from('classes').select('*').eq('teacher_id', teacherProfile.id).eq('school_id', teacherProfile.school_id),
-                    supabase.from('subjects').select('*').eq('school_id', teacherProfile.school_id) // Fetch subjects for the school
-                ]).then(([classesRes, subjectsRes]) => {
-                    if(classesRes.error) toast({title: "Error fetching classes", variant: "destructive"});
-                    else setAssignedClasses(classesRes.data || []);
+        const result = await getTeacherPostAssignmentDataAction(teacherUserId);
 
-                    if(subjectsRes.error) toast({title: "Error fetching subjects", variant: "destructive"});
-                    else setAllSubjects(subjectsRes.data || []);
-                    
-                    setIsFetchingInitial(false);
-                }).catch(err => {
-                    toast({ title: "Error fetching initial data", variant: "destructive"});
-                    setIsFetchingInitial(false);
-                });
-            } else {
-                 setIsFetchingInitial(false);
-            }
-        });
-    } else {
-        toast({title: "Error", description: "Teacher not identified.", variant: "destructive"});
+        if (result.ok) {
+            setCurrentTeacherId(result.teacherProfileId || null);
+            setCurrentSchoolId(result.schoolId || null);
+            setAssignedClasses(result.assignedClasses || []);
+            setAllSubjects(result.allSubjects || []);
+        } else {
+            toast({ title: "Error", description: result.message || "Could not load teacher profile or school association. Ensure your account is set up.", variant: "destructive" });
+        }
         setIsFetchingInitial(false);
     }
+    fetchInitialData();
   }, [toast]);
 
   const resetForm = () => {

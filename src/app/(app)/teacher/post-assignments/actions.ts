@@ -6,10 +6,59 @@ console.log('[LOG] Loading src/app/(app)/teacher/post-assignments/actions.ts');
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Assignment, UserRole } from '@/types';
+import type { Assignment, UserRole, ClassData, Subject } from '@/types';
 import { getStudentEmailsByClassId, sendEmail } from '@/services/emailService';
 
 const NO_SUBJECT_VALUE_INTERNAL = "__NO_SUBJECT__";
+
+export async function getTeacherPostAssignmentDataAction(teacherUserId: string): Promise<{
+    ok: boolean;
+    message?: string;
+    teacherProfileId?: string;
+    schoolId?: string;
+    assignedClasses?: ClassData[];
+    allSubjects?: Subject[];
+}> {
+    if (!teacherUserId) {
+        return { ok: false, message: "Teacher user ID is required." };
+    }
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data: teacherProfile, error: profileError } = await supabase
+            .from('teachers')
+            .select('id, school_id')
+            .eq('user_id', teacherUserId)
+            .single();
+
+        if (profileError || !teacherProfile) {
+            return { ok: false, message: profileError?.message || "Teacher profile not found." };
+        }
+        const { id: teacherProfileId, school_id: schoolId } = teacherProfile;
+        if (!schoolId) {
+            return { ok: false, message: "Teacher is not associated with a school." };
+        }
+
+        const [classesRes, subjectsRes] = await Promise.all([
+            supabase.from('classes').select('*').eq('teacher_id', teacherProfileId).eq('school_id', schoolId),
+            supabase.from('subjects').select('*').eq('school_id', schoolId)
+        ]);
+
+        if (classesRes.error) throw new Error(`Fetching classes failed: ${classesRes.error.message}`);
+        if (subjectsRes.error) throw new Error(`Fetching subjects failed: ${subjectsRes.error.message}`);
+        
+        return {
+            ok: true,
+            teacherProfileId,
+            schoolId,
+            assignedClasses: (classesRes.data || []) as ClassData[],
+            allSubjects: (subjectsRes.data || []) as Subject[],
+        };
+    } catch (e: any) {
+        console.error("Error in getTeacherPostAssignmentDataAction:", e);
+        return { ok: false, message: e.message || "An unexpected error occurred." };
+    }
+}
+
 
 export async function postAssignmentAction(
   formData: FormData
