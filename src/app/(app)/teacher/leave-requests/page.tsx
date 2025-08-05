@@ -13,6 +13,7 @@ import { getLeaveRequestsAction, updateLeaveStatusAction } from '@/actions/leave
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
+import { getTeacherStudentsAndClassesAction } from '../my-students/actions';
 
 
 export default function TeacherLeaveRequestsPage() {
@@ -31,18 +32,16 @@ export default function TeacherLeaveRequestsPage() {
       return;
     }
     
-    // This is the correct way: fetch the profile ID using the logged-in user's ID.
+    // Securely get teacher profile info
     const { data: teacherProfile, error: profileError } = await supabase
-      .from('teachers')
-      .select('id, school_id') 
-      .eq('user_id', teacherUserId)
-      .single();
+      .from('teachers').select('id, school_id').eq('user_id', teacherUserId).single();
 
     if (profileError || !teacherProfile) {
       toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
       setIsLoading(false);
       return;
     }
+
     setCurrentTeacherId(teacherProfile.id);
     setCurrentSchoolId(teacherProfile.school_id);
 

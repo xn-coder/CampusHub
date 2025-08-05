@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, type FormEvent, useEffect } from 'react';
+import { useState, type FormEvent, useEffect, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -31,6 +31,19 @@ interface LeaveFormProps {
     onApplicationSubmitted?: () => void;
 }
 
+async function getUserProfile(userId: string, role: UserRole): Promise<{ profile: Student | Teacher | null, schoolId: string | null }> {
+    const tableName = role === 'student' ? 'students' : role === 'teacher' ? 'teachers' : null;
+    if (!tableName) return { profile: null, schoolId: null };
+
+    const { data, error } = await supabase.from(tableName).select('*').eq('user_id', userId).single();
+    if (error) {
+        console.error(`Error fetching ${role} profile:`, error);
+        return { profile: null, schoolId: null };
+    }
+    return { profile: data as any, schoolId: data.school_id };
+}
+
+
 export default function LeaveForm({ onApplicationSubmitted }: LeaveFormProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -53,44 +66,30 @@ export default function LeaveForm({ onApplicationSubmitted }: LeaveFormProps) {
     }
   });
   
-  useEffect(() => {
-    async function loadUserContext() {
-      if (typeof window !== 'undefined') {
-        const role = localStorage.getItem('currentUserRole') as UserRole | null;
-        const userId = localStorage.getItem('currentUserId'); // This is User.id
-        setCurrentUserRole(role);
-        setCurrentUserId(userId);
+  const loadUserContext = useCallback(async () => {
+    const role = localStorage.getItem('currentUserRole') as UserRole | null;
+    const userId = localStorage.getItem('currentUserId');
+    const userName = localStorage.getItem('currentUserName');
 
-        if (userId) {
-          const { data: userRec, error: userErr } = await supabase.from('users').select('school_id, name').eq('id', userId).single();
-          if (userErr || !userRec) {
-            toast({title: "Error", description: "Could not determine user's school.", variant: "destructive"});
-            return;
-          }
-          setCurrentSchoolId(userRec.school_id);
-          
-          if (role === 'student') {
-            const { data: studentData, error: studentError } = await supabase.from('students').select('*').eq('user_id', userId).single();
-            if (studentError || !studentData) {
-              toast({title: "Error", description: "Could not load student profile.", variant: "destructive"});
-            } else {
-              setStudentProfile(studentData as Student);
-              setValue('applicantName', studentData.name);
-            }
-          } else if (role === 'teacher') {
-            const { data: teacherData, error: teacherError } = await supabase.from('teachers').select('*').eq('user_id', userId).single();
-            if (teacherError || !teacherData) {
-              toast({title: "Error", description: "Could not load teacher profile.", variant: "destructive"});
-            } else {
-              setTeacherProfile(teacherData as Teacher);
-              setValue('applicantName', teacherData.name);
-            }
-          }
+    setCurrentUserRole(role);
+    setCurrentUserId(userId);
+    setValue('applicantName', userName || '');
+
+    if (userId && role) {
+        const { profile, schoolId } = await getUserProfile(userId, role);
+        if (profile) {
+            setCurrentSchoolId(schoolId);
+            if(role === 'student') setStudentProfile(profile as Student);
+            if(role === 'teacher') setTeacherProfile(profile as Teacher);
+        } else {
+            toast({ title: "Error", description: `Could not load your ${role} profile.`, variant: "destructive" });
         }
-      }
     }
-    loadUserContext();
   }, [setValue, toast]);
+
+  useEffect(() => {
+    loadUserContext();
+  }, [loadUserContext]);
 
 
   const onSubmit = async (data: LeaveFormValues) => {
@@ -204,7 +203,7 @@ export default function LeaveForm({ onApplicationSubmitted }: LeaveFormProps) {
               <Controller
                 name="applicantName"
                 control={control}
-                render={({ field }) => <Input id="applicantName" placeholder="Enter your full name" {...field} disabled={(currentUserRole === 'student' && !!studentProfile) || (currentUserRole === 'teacher' && !!teacherProfile)} />}
+                render={({ field }) => <Input id="applicantName" placeholder="Enter your full name" {...field} disabled />}
               />
               {errors.applicantName && <p className="text-sm text-destructive mt-1">{errors.applicantName.message}</p>}
             </div>
