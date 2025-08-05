@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import type { ClassData, Student } from '@/types';
+import type { Student, ClassData, SchoolDetails } from '@/types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Download, Printer } from 'lucide-react';
@@ -205,7 +205,7 @@ export default function TeacherDataExportPage() {
                     <div className="col-span-full text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading students...</div>
                 ) : studentsToDisplay.length > 0 ? (
                     studentsToDisplay.map(student => (
-                        <div key={student.id} className={`relative print-card ${!selectedStudentsForPrint.includes(student.id) ? 'print:hidden' : ''}`}>
+                        <div key={student.id} className={`relative print-card ${selectedStudentsForPrint.includes(student.id) ? 'print:block' : 'print:hidden'}`}>
                             <Checkbox
                                 className="absolute top-2 right-2 z-10 print:hidden"
                                 checked={selectedStudentsForPrint.includes(student.id)}
