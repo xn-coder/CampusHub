@@ -188,20 +188,22 @@
 }
 
 @media print {
-  body * {
-    visibility: hidden;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+  .no-print {
+    display: none !important;
   }
-  .printable-area, .printable-area * {
-    visibility: visible;
-  }
+  
   .printable-area {
+    display: block;
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
   }
+
+  [data-printable="false"] {
+    display: none !important;
+  }
+
   .print-card {
     page-break-inside: avoid;
     break-inside: avoid;
