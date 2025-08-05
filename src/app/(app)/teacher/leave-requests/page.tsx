@@ -6,80 +6,60 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { UserRole, Student, StoredLeaveApplicationDB, User } from '@/types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ClipboardCheck, ExternalLink, User as UserIcon, CalendarDays, MessageSquare, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { getLeaveRequestsAction, updateLeaveStatusAction } from '@/actions/leaveActions';
+import { updateLeaveStatusAction } from '@/actions/leaveActions';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
-import { getTeacherStudentsAndClassesAction } from '../my-students/actions';
-
+import { getLeaveRequestsForTeacherAction } from './actions';
 
 export default function TeacherLeaveRequestsPage() {
   const { toast } = useToast();
   const [leaveRequests, setLeaveRequests] = useState<StoredLeaveApplicationDB[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null); // Teacher Profile ID
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
-  async function fetchTeacherAndLeaveData() {
+  const fetchTeacherAndLeaveData = useCallback(async () => {
     setIsLoading(true);
-    const teacherUserId = localStorage.getItem('currentUserId'); 
+    const teacherUserId = localStorage.getItem('currentUserId');
     if (!teacherUserId) {
       toast({ title: "Error", description: "Teacher not identified.", variant: "destructive" });
       setIsLoading(false);
       return;
     }
+
+    const result = await getLeaveRequestsForTeacherAction(teacherUserId);
     
-    // Securely get teacher profile info
-    const { data: teacherProfile, error: profileError } = await supabase
-      .from('teachers').select('id, school_id').eq('user_id', teacherUserId).single();
-
-    if (profileError || !teacherProfile) {
-      toast({ title: "Error", description: "Could not load teacher profile.", variant: "destructive" });
-      setIsLoading(false);
-      return;
-    }
-
-    setCurrentTeacherId(teacherProfile.id);
-    setCurrentSchoolId(teacherProfile.school_id);
-
-    if (teacherProfile.id && teacherProfile.school_id) {
-      const result = await getLeaveRequestsAction({ 
-          school_id: teacherProfile.school_id, 
-          teacher_id: teacherProfile.id, 
-          target_role: 'student' 
-      });
-      if (result.ok && result.applications) {
-        setLeaveRequests(result.applications);
-      } else {
-        toast({ title: "Error", description: result.message || "Failed to fetch leave requests.", variant: "destructive" });
+    if (result.ok) {
+        setLeaveRequests(result.applications || []);
+        setCurrentTeacherId(result.teacherProfileId || null);
+        setCurrentSchoolId(result.schoolId || null);
+    } else {
+        toast({ title: "Error", description: result.message || "Failed to load leave requests.", variant: "destructive" });
         setLeaveRequests([]);
-      }
     }
-    
+
     setIsLoading(false);
-  }
+  }, [toast]);
 
   useEffect(() => {
     fetchTeacherAndLeaveData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast]);
+  }, [fetchTeacherAndLeaveData]);
   
   const handleUpdateStatus = async (requestId: string, status: 'Approved' | 'Rejected') => {
     if (!currentSchoolId) return;
-    setIsLoading(true); // Consider a more granular loading state if needed
+    setIsLoading(true);
     const result = await updateLeaveStatusAction({ requestId, status, schoolId: currentSchoolId });
     if (result.ok) {
         toast({ title: "Status Updated", description: result.message });
-        await fetchTeacherAndLeaveData(); // Refresh the list
+        await fetchTeacherAndLeaveData();
     } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
+        setIsLoading(false); 
     }
-    setIsLoading(false);
   }
-
 
   if (isLoading && !currentTeacherId) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <span className="ml-2">Loading data...</span></div>;
@@ -94,7 +74,6 @@ export default function TeacherLeaveRequestsPage() {
         </div>
     );
   }
-
 
   return (
     <div className="flex flex-col gap-6">
