@@ -182,17 +182,18 @@ export async function getAnnouncementsAction(params: GetAnnouncementsParams): Pr
       } else {
         return { ok: false, message: "School context missing for admin." };
       }
-    } else if (user_role === 'student' && school_id) {
-      // Students see their class-specific announcements, OR school-wide ones for students/all.
+    } else if (user_role === 'student' && school_id && student_class_id) {
+      // Students see their class-specific announcements OR school-wide ones for students/all.
       query = query
         .eq('school_id', school_id)
-        .or(`target_class_id.eq.${student_class_id},and(target_class_id.is.null,target_audience.in.("all","students"))`);
+        .or(`and(target_class_id.eq.${student_class_id},target_audience.in.("all","students")),and(target_class_id.is.null,target_audience.in.("all","students"))`);
 
     } else if (user_role === 'teacher' && school_id) {
-      // Teachers see announcements for their classes, OR school-wide ones for teachers/all.
-      let classFilter = `target_class_id.is.null,and(target_audience.in.("all","teachers"))`;
+      // Teachers see announcements for their classes OR school-wide ones for teachers/all.
+      let classFilter = `target_class_id.is.null,target_audience.in.("all","teachers")`; // School-wide for teachers
       if (teacher_class_ids.length > 0) {
-        classFilter = `target_class_id.in.(${teacher_class_ids.join(',')}),${classFilter}`;
+        const classSpecificFilter = `target_class_id.in.(${teacher_class_ids.join(',')})`; // For their specific classes (all audiences)
+        classFilter = `${classSpecificFilter},${classFilter}`;
       }
        query = query
         .eq('school_id', school_id)

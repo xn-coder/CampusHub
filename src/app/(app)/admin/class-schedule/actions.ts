@@ -102,8 +102,7 @@ export async function addClassScheduleAction(
         content: announcementContent,
         author_name: adminName,
         posted_by_user_id: input.posted_by_user_id,
-        posted_by_role: 'admin',
-        target_audience: 'all',
+        posted_by_role: 'admin', 
         target_class_id: schedule.class_id,
         school_id: input.school_id,
       });
@@ -166,7 +165,6 @@ export async function updateClassScheduleAction(
         author_name: adminName,
         posted_by_user_id: input.posted_by_user_id,
         posted_by_role: 'admin',
-        target_audience: 'all',
         target_class_id: schedule.class_id,
         school_id: input.school_id,
       });
