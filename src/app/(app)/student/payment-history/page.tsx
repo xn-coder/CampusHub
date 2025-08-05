@@ -198,7 +198,7 @@ export default function StudentPaymentHistoryPage() {
                 }
             };
 
-            const rzp = new window.Razorpay(options);
+            const rzp = new (window as any).Razorpay(options);
             rzp.on('payment.failed', function (response: any){
                 console.error(response);
                 toast({
@@ -267,27 +267,41 @@ export default function StudentPaymentHistoryPage() {
             ) : (
               <div className="space-y-4">
                 {feeSummaries.map((summary) => (
-                    <Card key={summary.academicYearId || 'general'}>
-                        <CardHeader className="flex flex-row justify-between items-start">
-                            <div>
-                                <CardTitle>{summary.academicYearName}</CardTitle>
-                                <CardDescription>Status: 
-                                    <Badge variant={
-                                        summary.status === 'Paid' ? 'default' :
-                                        summary.status === 'Partially Paid' ? 'secondary' :
-                                        'destructive'
-                                    } className="ml-2">{summary.status}</Badge>
-                                </CardDescription>
+                    <Card key={summary.academicYearId || 'general'} className="bg-muted/50">
+                        <CardHeader>
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <CardTitle className="text-xl">{summary.academicYearName}</CardTitle>
+                                    <CardDescription>Contains {summary.payments.length} fee item(s)</CardDescription>
+                                </div>
+                                <Badge variant={
+                                    summary.status === 'Paid' ? 'default' :
+                                    summary.status === 'Partially Paid' ? 'secondary' :
+                                    'destructive'
+                                }>{summary.status}</Badge>
                             </div>
-                             <Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isPaying}>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-3 gap-4 text-center">
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Total Assigned</p>
+                                    <p className="font-semibold text-lg"><span className="font-mono">₹</span>{summary.totalAssigned.toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Total Paid</p>
+                                    <p className="font-semibold text-lg"><span className="font-mono">₹</span>{summary.totalPaid.toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Total Due</p>
+                                    <p className={`font-semibold text-lg ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                         <CardFooter>
+                            <Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isPaying} className="w-full">
                                 <FolderOpen className="mr-2 h-4 w-4" /> View Details
                             </Button>
-                        </CardHeader>
-                        <CardContent className="grid grid-cols-3 gap-4">
-                            <div><Label>Total Assigned</Label><p className="font-semibold text-lg"><span className="font-mono">₹</span>{summary.totalAssigned.toFixed(2)}</p></div>
-                            <div><Label>Total Paid</Label><p className="font-semibold text-lg"><span className="font-mono">₹</span>{summary.totalPaid.toFixed(2)}</p></div>
-                            <div><Label>Total Due</Label><p className={`font-semibold text-lg ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</p></div>
-                        </CardContent>
+                        </CardFooter>
                     </Card>
                 ))}
               </div>
