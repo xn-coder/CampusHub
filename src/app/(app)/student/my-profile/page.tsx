@@ -14,9 +14,9 @@ import type { Student, User, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { KeyRound, School, Loader2, UserCog, Save, UploadCloud } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
-import { updateStudentProfileAction } from './actions';
+import { getStudentProfileDataAction, updateStudentProfileAction } from './actions';
 import { updateUserPasswordAction } from '@/actions/userActions';
+import Image from 'next/image';
 
 export default function StudentProfilePage() {
   const { toast } = useToast();
@@ -53,36 +53,30 @@ export default function StudentProfilePage() {
       return;
     }
 
-    try {
-      const { data: userData, error: userError } = await supabase.from('users').select('*').eq('id', currentUserId).single();
-      if (userError || !userData) throw userError || new Error("User data not found.");
-      setUserDetails(userData as User);
+    const result = await getStudentProfileDataAction(currentUserId);
+    
+    if (result.ok) {
+        setUserDetails(result.user || null);
+        setStudentDetails(result.student || null);
+        setClassDetails(result.classData || null);
 
-      const { data: studentData, error: studentError } = await supabase.from('students').select('*').eq('user_id', currentUserId).single();
-      if (studentError || !studentData) throw studentError || new Error("Student profile not found.");
-      setStudentDetails(studentData as Student);
-      
-      // Pre-fill edit form state
-      setEditContactNumber(studentData.contact_number || '');
-      setEditAddress(studentData.address || '');
-      setEditBloodGroup(studentData.blood_group || '');
-      setEditFatherName(studentData.father_name || '');
-      setEditFatherOccupation(studentData.father_occupation || '');
-      setEditMotherName(studentData.mother_name || '');
-      setEditMotherOccupation(studentData.mother_occupation || '');
-      setEditGuardianName(studentData.guardian_name || '');
-      setEditParentContactNumber(studentData.parent_contact_number || '');
-
-      if (studentData.class_id) {
-        const { data: classData, error: classError } = await supabase.from('classes').select('*').eq('id', studentData.class_id).single();
-        if (classError) console.warn("Could not fetch class details:", classError?.message);
-        else setClassDetails(classData as ClassData);
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: `An unexpected error occurred: ${error.message}`, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
+        if(result.student) {
+            // Pre-fill edit form state
+            setEditContactNumber(result.student.contact_number || '');
+            setEditAddress(result.student.address || '');
+            setEditBloodGroup(result.student.blood_group || '');
+            setEditFatherName(result.student.father_name || '');
+            setEditFatherOccupation(result.student.father_occupation || '');
+            setEditMotherName(result.student.mother_name || '');
+            setEditMotherOccupation(result.student.mother_occupation || '');
+            setEditGuardianName(result.student.guardian_name || '');
+            setEditParentContactNumber(result.student.parent_contact_number || '');
+        }
+    } else {
+        toast({ title: "Error", description: result.message || "Failed to load profile data.", variant: "destructive" });
     }
+    
+    setIsLoading(false);
   }, [toast]);
 
 

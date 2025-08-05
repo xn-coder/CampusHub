@@ -4,7 +4,55 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Student } from '@/types';
+import type { Student, User, ClassData } from '@/types';
+
+
+export async function getStudentProfileDataAction(userId: string): Promise<{
+    ok: boolean;
+    message?: string;
+    user?: User | null;
+    student?: Student | null;
+    classData?: ClassData | null;
+    assignmentCount?: number;
+}> {
+    if (!userId) {
+        return { ok: false, message: "User not identified." };
+    }
+    const supabase = createSupabaseServerClient();
+
+    try {
+        const { data: user, error: userError } = await supabase.from('users').select('*').eq('id', userId).single();
+        if (userError || !user) throw new Error(userError?.message || "User data not found.");
+
+        const { data: student, error: studentError } = await supabase.from('students').select('*').eq('user_id', userId).single();
+        if (studentError || !student) throw new Error(studentError?.message || "Student profile not found.");
+
+        let classData: ClassData | null = null;
+        if (student.class_id) {
+            const { data: classInfo, error: classError } = await supabase.from('classes').select('*').eq('id', student.class_id).single();
+            if (classError) console.warn("Could not fetch class details:", classError.message);
+            else classData = classInfo as ClassData;
+        }
+        
+        const { count: assignmentCount, error: assignmentError } = await supabase
+          .from('lms_assignment_submissions')
+          .select('id', { count: 'exact', head: true })
+          .eq('student_id', student.id);
+        
+        if (assignmentError) console.warn("Could not fetch assignment count:", assignmentError.message);
+        
+        return {
+            ok: true,
+            user: user as User,
+            student: student as Student,
+            classData: classData,
+            assignmentCount: assignmentCount || 0
+        };
+
+    } catch (error: any) {
+        return { ok: false, message: error.message };
+    }
+}
 
 
 export async function updateStudentProfileAction(
