@@ -6,9 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { AttendanceRecord, UserRole } from '@/types';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/lib/supabaseClient';
 import { getStudentAttendanceHistoryAction } from './actions';
 import { format, parseISO, isValid } from 'date-fns';
 import { ClipboardCheck, Loader2 } from 'lucide-react';
@@ -44,37 +43,27 @@ export default function StudentAttendanceHistoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
 
-  useEffect(() => {
-    async function fetchHistory() {
-      setIsLoading(true);
-      const studentUserId = localStorage.getItem('currentUserId');
-      if (!studentUserId) {
-        toast({ title: "Error", description: "User not identified.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-      const { data: studentProfile, error } = await supabase
-        .from('students')
-        .select('id, school_id')
-        .eq('user_id', studentUserId)
-        .single();
-      
-      if (error || !studentProfile || !studentProfile.id || !studentProfile.school_id) {
-        toast({ title: "Error", description: "Could not fetch student profile or school info.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-
-      const result = await getStudentAttendanceHistoryAction(studentProfile.id, studentProfile.school_id);
-      if (result.ok) {
-        setAttendance(result.records || []);
-      } else {
-        toast({ title: "Error", description: result.message || "Failed to load attendance history.", variant: "destructive" });
-      }
+  const fetchHistory = useCallback(async () => {
+    setIsLoading(true);
+    const studentUserId = localStorage.getItem('currentUserId');
+    if (!studentUserId) {
+      toast({ title: "Error", description: "User not identified.", variant: "destructive" });
       setIsLoading(false);
+      return;
     }
-    fetchHistory();
+
+    const result = await getStudentAttendanceHistoryAction(studentUserId);
+    if (result.ok) {
+      setAttendance(result.records || []);
+    } else {
+      toast({ title: "Error", description: result.message || "Failed to load attendance history.", variant: "destructive" });
+    }
+    setIsLoading(false);
   }, [toast]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
   
   const filteredAttendance = useMemo(() => {
     if (selectedMonth === 'all') {

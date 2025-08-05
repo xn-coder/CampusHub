@@ -5,16 +5,27 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { AttendanceRecord } from '@/types';
 
 export async function getStudentAttendanceHistoryAction(
-  studentProfileId: string,
-  schoolId: string
+  userId: string
 ): Promise<{ ok: boolean; message?: string; records?: AttendanceRecord[] }> {
-  if (!studentProfileId || !schoolId) {
-    return { ok: false, message: "Student and School IDs are required." };
+  if (!userId) {
+    return { ok: false, message: "User not identified." };
   }
   
   const supabase = createSupabaseServerClient();
   
   try {
+    const { data: studentProfile, error: profileError } = await supabase
+      .from('students')
+      .select('id, school_id')
+      .eq('user_id', userId)
+      .single();
+
+    if (profileError || !studentProfile || !studentProfile.id || !studentProfile.school_id) {
+        return { ok: false, message: profileError?.message || "Could not load student profile." };
+    }
+    
+    const { id: studentProfileId, school_id: schoolId } = studentProfile;
+    
     const { data, error } = await supabase
       .from('attendance_records')
       .select('*')
