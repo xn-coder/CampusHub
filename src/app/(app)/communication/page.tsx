@@ -12,7 +12,7 @@ import type { AnnouncementDB as Announcement, UserRole, ClassData, Student, Exam
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { PlusCircle, Send, Loader2, Link as LinkIcon, FileText } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { postAnnouncementAction, getAnnouncementsAction, getExamDetailsForLinkingAction } from './actions';
+import { postAnnouncementAction, getAnnouncementsAction, getClassesForAnnouncementAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
 import { format, parseISO } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
@@ -50,9 +50,7 @@ function CommunicationPageForm() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   
-  const [teacherAssignedClasses, setTeacherAssignedClasses] = useState<ClassData[]>([]);
-  const [allSchoolClasses, setAllSchoolClasses] = useState<ClassData[]>([]);
-
+  const [availableClassesForTargeting, setAvailableClassesForTargeting] = useState<ClassData[]>([]);
 
   useEffect(() => { 
     async function loadUserAndSchoolContext() {
@@ -83,26 +81,12 @@ function CommunicationPageForm() {
           setCurrentSchoolId(fetchedSchoolId);
           setNewAnnouncement(prev => ({ ...prev, authorName: userRec.name }));
 
-          if (fetchedSchoolId) {
-            if (fetchedRole === 'teacher') {
-              const { data: teacherProfile, error: teacherProfileError } = await supabase
-                  .from('teachers').select('id').eq('user_id', fetchedUserId).single();
-              if (teacherProfile) {
-                   const { data: classesData, error: classesError } = await supabase
-                      .from('classes')
-                      .select('id, name, division')
-                      .eq('teacher_id', teacherProfile.id)
-                      .eq('school_id', fetchedSchoolId);
-                  if (classesError) toast({title: "Error", description: "Failed to fetch teacher's classes.", variant: "destructive"});
-                  else setTeacherAssignedClasses(classesData || []);
-              }
-            } else if (fetchedRole === 'admin') {
-                const { data: classesData, error: classesError } = await supabase
-                    .from('classes')
-                    .select('id, name, division')
-                    .eq('school_id', fetchedSchoolId);
-                if (classesError) toast({title: "Error", description: "Failed to fetch school classes for admin.", variant: "destructive"});
-                else setAllSchoolClasses(classesData || []);
+          if (fetchedRole && (fetchedRole === 'admin' || fetchedRole === 'teacher')) {
+            const classResult = await getClassesForAnnouncementAction(fetchedUserId, fetchedRole);
+            if (classResult.ok && classResult.classes) {
+              setAvailableClassesForTargeting(classResult.classes);
+            } else {
+              toast({ title: "Error fetching classes", description: classResult.message, variant: "destructive" });
             }
           }
         }
@@ -145,7 +129,7 @@ function CommunicationPageForm() {
         user_role: currentUserRole,
         user_id: currentUserId,
         student_user_id: currentUserRole === 'student' ? currentUserId : undefined,
-        teacher_class_ids: teacherAssignedClasses.map(c => c.id),
+        teacher_class_ids: currentUserRole === 'teacher' ? availableClassesForTargeting.map(c => c.id) : [],
       };
       
       const result = await getAnnouncementsAction(params);
@@ -160,7 +144,7 @@ function CommunicationPageForm() {
     
     fetchAnnouncements();
 
-  }, [currentSchoolId, currentUserRole, currentUserId, teacherAssignedClasses, toast, isContextLoading]);
+  }, [currentSchoolId, currentUserRole, currentUserId, availableClassesForTargeting, toast, isContextLoading]);
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -212,7 +196,7 @@ function CommunicationPageForm() {
         user_role: currentUserRole,
         user_id: currentUserId,
         student_user_id: currentUserRole === 'student' ? currentUserId : undefined,
-        teacher_class_ids: teacherAssignedClasses.map(c => c.id),
+        teacher_class_ids: currentUserRole === 'teacher' ? availableClassesForTargeting.map(c => c.id) : [],
       };
       const fetchResult = await getAnnouncementsAction(params);
       if (fetchResult.ok && fetchResult.announcements) setAllAnnouncements(fetchResult.announcements);
@@ -225,7 +209,6 @@ function CommunicationPageForm() {
   };
 
   const canPostAnnouncement = (currentUserRole === 'admin' || currentUserRole === 'teacher' || currentUserRole === 'superadmin');
-  const availableClassesForTargeting = currentUserRole === 'admin' ? allSchoolClasses : teacherAssignedClasses;
   
   const isClassTargetingDisabled = isSubmitting 
     || availableClassesForTargeting.length === 0 

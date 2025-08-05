@@ -240,3 +240,52 @@ export async function getExamDetailsForLinkingAction(examId: string): Promise<{
     }
     return { ok: true, exam: data as Exam };
 }
+
+export async function getClassesForAnnouncementAction(userId: string, role: UserRole): Promise<{ ok: boolean; classes?: ClassData[]; message?: string }> {
+  if (!userId || !role) {
+    return { ok: false, message: "User context is required." };
+  }
+  const supabase = createSupabaseServerClient();
+
+  try {
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('school_id')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user || !user.school_id) {
+      return { ok: false, message: "Could not retrieve user's school information." };
+    }
+    const schoolId = user.school_id;
+
+    if (role === 'admin') {
+      const { data: classesData, error: classesError } = await supabase
+        .from('classes')
+        .select('id, name, division')
+        .eq('school_id', schoolId);
+      if (classesError) throw classesError;
+      return { ok: true, classes: classesData || [] };
+    } else if (role === 'teacher') {
+      const { data: teacherProfile, error: teacherProfileError } = await supabase
+        .from('teachers')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+      if (teacherProfileError || !teacherProfile) throw new Error("Teacher profile not found.");
+      
+      const { data: classesData, error: classesError } = await supabase
+        .from('classes')
+        .select('id, name, division')
+        .eq('teacher_id', teacherProfile.id)
+        .eq('school_id', schoolId);
+      if (classesError) throw classesError;
+      return { ok: true, classes: classesData || [] };
+    }
+    // Other roles don't need to post announcements with class targets
+    return { ok: true, classes: [] };
+  } catch (e: any) {
+    console.error("Error in getClassesForAnnouncementAction:", e);
+    return { ok: false, message: e.message || "An unexpected error occurred." };
+  }
+}
