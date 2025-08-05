@@ -16,6 +16,7 @@ import { ScrollText, CalendarDays, ClipboardList, Info, Edit2, Save, Trash2, Loa
 import { format, parseISO, isValid } from 'date-fns';
 import { getTeacherAssignmentsAction, updateAssignmentAction, deleteAssignmentAction } from '../post-assignments/actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { supabase } from '@/lib/supabaseClient';
 
 const NO_SUBJECT_VALUE = "__NO_SUBJECT__";
 
