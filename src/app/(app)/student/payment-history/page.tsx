@@ -17,6 +17,7 @@ import type jsPDF from 'jspdf';
 import type { UserOptions } from 'jspdf-autotable';
 import Script from 'next/script';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 interface JsPDFWithAutoTable extends jsPDF {
   autoTable: (options: UserOptions) => jsPDF;
@@ -372,4 +373,3 @@ export default function StudentPaymentHistoryPage() {
     </>
   );
 }
-
