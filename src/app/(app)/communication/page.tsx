@@ -58,6 +58,7 @@ function CommunicationPageForm() {
       let fetchedRole: UserRole | null = null;
       let fetchedUserId: string | null = null;
       let fetchedSchoolId: string | null = null;
+      let fetchedUserName: string | null = null;
 
       if (typeof window !== 'undefined') {
         fetchedRole = localStorage.getItem('currentUserRole') as UserRole | null;
@@ -157,7 +158,12 @@ function CommunicationPageForm() {
   };
   
    const handleRadioChange = (name: keyof typeof newAnnouncement) => (value: 'students' | 'teachers' | 'all') => {
-    setNewAnnouncement(prev => ({ ...prev, [name]: value }));
+    setNewAnnouncement(prev => ({ 
+        ...prev, 
+        [name]: value,
+        // Reset class target if 'All Users' is selected by admin, as it's a general announcement
+        targetClassId: (currentUserRole === 'admin' && value === 'all') ? '' : prev.targetClassId 
+    }));
   };
 
 
@@ -213,7 +219,7 @@ function CommunicationPageForm() {
   const isClassTargetingDisabled = isSubmitting 
     || availableClassesForTargeting.length === 0 
     || !!newAnnouncement.linkedExamId 
-    || (currentUserRole === 'admin' && newAnnouncement.targetAudience === 'teachers');
+    || (currentUserRole === 'admin' && newAnnouncement.targetAudience === 'all');
 
   return (
     <div className="flex flex-col gap-6">
