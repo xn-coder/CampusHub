@@ -14,8 +14,8 @@ import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
-import { createCourseAction, updateCourseAction, deleteCourseAction, assignCourseToSchoolsAction } from '@/app/(app)/admin/lms/courses/actions';
-import { PlusCircle, Edit2, Trash2, Save, Library, Settings, KeyRound, Loader2, Upload, Percent, MoreHorizontal, ChevronLeft, ChevronRight, ChevronsRight, Send } from 'lucide-react';
+import { getCoursesForSuperAdminAction, createCourseAction, updateCourseAction, deleteCourseAction, assignCourseToSchoolsAction } from './actions';
+import { PlusCircle, Edit2, Trash2, Save, Library, Settings, Loader2, MoreHorizontal, ChevronLeft, ChevronRight, Send } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
@@ -51,16 +51,12 @@ export default function SuperAdminManageCoursesPage() {
   
   const fetchCourses = useCallback(async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('lms_courses')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (error) {
-      toast({ title: "Error", description: `Failed to fetch courses: ${error.message}`, variant: "destructive" });
-      setCourses([]);
+    const result = await getCoursesForSuperAdminAction();
+    if (result.ok && result.courses) {
+      setCourses(result.courses);
     } else {
-      setCourses(data as Course[] || []);
+      toast({ title: "Error", description: result.message || "Failed to fetch courses.", variant: "destructive" });
+      setCourses([]);
     }
     setIsLoading(false);
   }, [toast]);
@@ -236,7 +232,7 @@ export default function SuperAdminManageCoursesPage() {
                 {paginatedCourses.map((course) => (
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
-                    <TableCell>{course.school_id ? `School Specific` : 'Global'}</TableCell>
+                    <TableCell>{(course as any).school?.name ? (course as any).school.name : 'Global'}</TableCell>
                     <TableCell>{course.subscription_plan?.replace('_', ' ') || 'N/A'}</TableCell>
                     <TableCell>₹{course.price?.toFixed(2) || '0.00'}</TableCell>
                     <TableCell>{course.max_users_allowed || 'Unlimited'}</TableCell>
@@ -375,5 +371,3 @@ export default function SuperAdminManageCoursesPage() {
     </div>
   );
 }
-
-    
