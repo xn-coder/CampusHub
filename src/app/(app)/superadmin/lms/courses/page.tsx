@@ -148,8 +148,8 @@ export default function SuperAdminManageCoursesPage() {
     if (result.ok) {
       toast({ title: editingCourse ? "Course Updated" : "Course Added", description: result.message });
       setIsCourseDialogOpen(false);
-      await fetchCourses(); // Refetch courses
       resetCourseForm();
+      await fetchCourses(); // Refetch courses
       if (!editingCourse && result.course) {
         // Automatically open assign dialog for new courses
         handleOpenAssignDialog(result.course);
