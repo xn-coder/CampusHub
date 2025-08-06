@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import type { Course, UserRole, SchoolEntry, SubscriptionPlan } from '@/types';
-import { useState, useEffect, type FormEvent, useMemo } from 'react';
+import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
@@ -46,11 +46,11 @@ export default function SuperAdminManageCoursesPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [featureImageFile, setFeatureImageFile] = useState<File | null>(null);
-  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>('one_time');
+  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>('free');
   const [price, setPrice] = useState<number | ''>('');
   const [maxUsers, setMaxUsers] = useState<number | ''>('');
   
-  const fetchCourses = async () => {
+  const fetchCourses = useCallback(async () => {
     setIsLoading(true);
     // Superadmin sees all courses. Join with schools to get school name.
     const { data, error } = await supabase
@@ -65,14 +65,18 @@ export default function SuperAdminManageCoursesPage() {
       setCourses(data || []);
     }
     setIsLoading(false);
-  }
+  }, [toast]);
 
   useEffect(() => {
     const adminId = localStorage.getItem('currentUserId');
     setCurrentAdminUserId(adminId);
-    fetchCourses();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if(adminId) {
+        fetchCourses();
+    } else {
+        setIsLoading(false);
+        toast({ title: "Error", description: "Could not identify Super Admin user.", variant: "destructive"});
+    }
+  }, [fetchCourses, toast]);
 
   const paginatedCourses = courses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const totalPages = Math.ceil(courses.length / ITEMS_PER_PAGE);
@@ -144,12 +148,12 @@ export default function SuperAdminManageCoursesPage() {
 
     if (result.ok) {
       toast({ title: editingCourse ? "Course Updated" : "Course Added", description: result.message });
-      resetCourseForm();
       setIsCourseDialogOpen(false);
       await fetchCourses(); // Refetch courses
       if (!editingCourse && result.course) {
         handleOpenAssignDialog(result.course);
       }
+      resetCourseForm();
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -353,7 +357,7 @@ export default function SuperAdminManageCoursesPage() {
               <div className="grid grid-cols-2 gap-4">
                  <div>
                     <Label htmlFor="price">Price (₹)</Label>
-                    <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 499" step="0.01" min="0" required disabled={isSubmitting || subscriptionPlan === 'free'}/>
+                    <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 499" step="0.01" min="0" required={subscriptionPlan !== 'free'} disabled={isSubmitting || subscriptionPlan === 'free'}/>
                   </div>
                   <div>
                     <Label htmlFor="maxUsers">Allowed Users</Label>
