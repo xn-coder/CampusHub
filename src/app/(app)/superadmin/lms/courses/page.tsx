@@ -51,6 +51,7 @@ export default function SuperAdminManageCoursesPage() {
   
   const fetchCourses = useCallback(async () => {
     setIsLoading(true);
+    // Correct, simplified query to fetch all courses without complex joins.
     const { data, error } = await supabase
       .from('lms_courses')
       .select('*')
@@ -68,8 +69,8 @@ export default function SuperAdminManageCoursesPage() {
 
   useEffect(() => {
     const adminId = localStorage.getItem('currentUserId');
+    setCurrentAdminUserId(adminId);
     if (adminId) {
-      setCurrentAdminUserId(adminId);
       fetchCourses();
     } else {
       setIsLoading(false);
@@ -375,6 +376,4 @@ export default function SuperAdminManageCoursesPage() {
     </div>
   );
 }
-    
 
-    
