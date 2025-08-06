@@ -51,7 +51,6 @@ export default function SuperAdminManageCoursesPage() {
   
   const fetchCourses = useCallback(async () => {
     setIsLoading(true);
-    // Correct, simplified query to fetch all courses without complex joins.
     const { data, error } = await supabase
       .from('lms_courses')
       .select('*')
@@ -165,7 +164,7 @@ export default function SuperAdminManageCoursesPage() {
       const result = await deleteCourseAction(courseId);
       toast({ title: result.ok ? "Course Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
       if (result.ok) {
-        fetchCourses();
+        await fetchCourses();
       }
       setIsSubmitting(false);
     }
@@ -206,7 +205,7 @@ export default function SuperAdminManageCoursesPage() {
         title="Global LMS Course Management"
         description="Create, edit, and manage global courses that can be assigned to schools."
         actions={
-          <Button onClick={() => handleOpenCourseDialog()} disabled={isLoading || isSubmitting}>
+          <Button onClick={() => handleOpenCourseDialog()} disabled={isSubmitting}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Global Course
           </Button>
         }
@@ -218,7 +217,7 @@ export default function SuperAdminManageCoursesPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
+            <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading courses...</div>
           ) : paginatedCourses.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">No courses created yet.</p>
           ) : (
@@ -237,7 +236,7 @@ export default function SuperAdminManageCoursesPage() {
                 {paginatedCourses.map((course) => (
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
-                    <TableCell>{course.school_id ? `School: ${course.school_id.substring(0,8)}...` : 'Global'}</TableCell>
+                    <TableCell>{course.school_id ? `School Specific` : 'Global'}</TableCell>
                     <TableCell>{course.subscription_plan?.replace('_', ' ') || 'N/A'}</TableCell>
                     <TableCell>₹{course.price?.toFixed(2) || '0.00'}</TableCell>
                     <TableCell>{course.max_users_allowed || 'Unlimited'}</TableCell>
@@ -377,3 +376,4 @@ export default function SuperAdminManageCoursesPage() {
   );
 }
 
+    
