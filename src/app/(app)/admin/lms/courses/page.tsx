@@ -11,7 +11,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 import { getCoursesForSchoolAction, assignCourseToSchoolAudienceAction } from './actions';
-import { Library, Settings, UserPlus, Loader2, BookCheck, Eye, ChevronsRight, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard } from 'lucide-react';
+import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -110,6 +110,22 @@ export default function SchoolLmsCoursesPage() {
     }
     setIsSubmitting(false);
   }
+  
+  const handleEnrollOrSubscribe = async (course: Course) => {
+      // For both free and paid, "enrolling" means the school adopts it.
+      // This is a placeholder for a more complex subscription flow.
+      // For now, we'll just simulate success and update the UI state.
+      setIsSubmitting(true);
+      toast({title: "Processing...", description: `Enrolling your school in "${course.title}".`});
+      await new Promise(res => setTimeout(res, 1000)); // Simulate network latency
+
+      setCourses(prev => prev.map(c => c.id === course.id ? {...c, isEnrolled: true} : c));
+
+      toast({title: "Success!", description: `Your school now has access to "${course.title}". You can assign it to users.`});
+      setIsSubscriptionDialogOpen(false);
+      setCourseToAction(null);
+      setIsSubmitting(false);
+  };
 
   const filteredCourses = courses.filter(course =>
     course.title.toLowerCase().includes(searchTerm.toLowerCase())
@@ -164,9 +180,9 @@ export default function SchoolLmsCoursesPage() {
                                 objectFit="cover"
                                 data-ai-hint="course cover"
                             />
-                            <div className="absolute top-2 right-2 flex gap-1">
+                             <div className="absolute top-2 right-2 flex gap-1">
                                 {course.is_paid ? (
-                                    <Badge variant="secondary" className="flex items-center"><Lock className="mr-1 h-3 w-3"/> Paid</Badge>
+                                    <Badge variant="destructive" className="flex items-center"><Lock className="mr-1 h-3 w-3"/> Paid</Badge>
                                 ) : (
                                     <Badge className="bg-green-600 hover:bg-green-700 flex items-center"><Unlock className="mr-1 h-3 w-3"/> Free</Badge>
                                 )}
@@ -179,20 +195,36 @@ export default function SchoolLmsCoursesPage() {
                              <CardDescription className="line-clamp-3">{course.description || "No description available."}</CardDescription>
                         </CardContent>
                         <CardFooter className="flex-col sm:flex-row gap-2">
-                             <Button asChild className="w-full" variant="secondary">
+                           {course.isEnrolled ? (
+                             <>
+                              <Button asChild className="w-full" variant="secondary">
                                 <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                                    <UserPlus className="mr-2 h-4 w-4"/> Enroll Users
+                                    <UserPlus className="mr-2 h-4 w-4"/> Manage Enrollments
                                 </Link>
-                             </Button>
-                             {course.is_paid ? (
-                                <Button className="w-full" variant="outline" onClick={() => handleOpenSubscriptionDialog(course)}>
-                                    <CreditCard className="mr-2 h-4 w-4" /> View Subscription
-                                </Button>
-                             ) : (
-                                <Button className="w-full" variant="outline" onClick={() => handleOpenAssignDialog(course)}>
-                                    Assign To
-                                </Button>
-                             )}
+                              </Button>
+                              <Button className="w-full" variant="outline" onClick={() => handleOpenAssignDialog(course)}>
+                                Assign To
+                              </Button>
+                             </>
+                           ) : (
+                             <>
+                               <Button asChild variant="outline" className="w-full">
+                                <Link href={`/lms/courses/${course.id}?preview=true`}>
+                                  <Eye className="mr-2 h-4 w-4"/> Preview
+                                </Link>
+                               </Button>
+                               {course.is_paid ? (
+                                  <Button onClick={() => handleOpenSubscriptionDialog(course)} className="w-full">
+                                    <CreditCard className="mr-2 h-4 w-4"/> Subscribe
+                                  </Button>
+                               ) : (
+                                  <Button onClick={() => handleEnrollOrSubscribe(course)} className="w-full" disabled={isSubmitting}>
+                                      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
+                                      Enroll School (Free)
+                                  </Button>
+                               )}
+                             </>
+                           )}
                         </CardFooter>
                     </Card>
                 ))}
@@ -225,8 +257,11 @@ export default function SchoolLmsCoursesPage() {
                 <div className="flex justify-between items-baseline"><span className="text-muted-foreground">User Limit:</span> <span className="font-semibold">{courseToAction?.max_users_allowed || 'Unlimited'}</span></div>
             </div>
              <DialogFooter>
-                <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
-                <Button asChild><Link href={`/admin/lms/courses/${courseToAction?.id}/enrollments`}>Manage Enrollments</Link></Button>
+                <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                <Button onClick={() => courseToAction && handleEnrollOrSubscribe(courseToAction)} disabled={isSubmitting}>
+                   {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4" />}
+                   Pay Now & Activate
+                </Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
