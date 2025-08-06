@@ -213,22 +213,57 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
     }
 }
 
-export async function updateCourseAudienceInSchoolAction(
-    courseId: string, 
-    schoolId: string, 
-    targetAudience: 'student' | 'teacher' | 'both'
-): Promise<{ ok: boolean; message: string }> {
-     const supabase = createSupabaseServerClient();
-     const { error } = await supabase
-        .from('lms_course_school_availability')
-        .update({ target_audience_in_school: targetAudience })
-        .eq('course_id', courseId)
-        .eq('school_id', schoolId);
-    if (error) {
-        return { ok: false, message: `Failed to update audience: ${error.message}` };
+export async function assignCourseToSchoolAudienceAction(params: {
+  courseId: string;
+  schoolId: string;
+  targetAudience: 'all_students' | 'all_teachers' | 'class';
+  classId?: string;
+}): Promise<{ ok: boolean; message: string }> {
+  const { courseId, schoolId, targetAudience, classId } = params;
+  const supabase = createSupabaseServerClient();
+
+  try {
+    let userProfileIds: string[] = [];
+    let userType: 'student' | 'teacher' | undefined = undefined;
+
+    if (targetAudience === 'all_students') {
+      userType = 'student';
+      const { data, error } = await supabase.from('students').select('id').eq('school_id', schoolId);
+      if (error) throw error;
+      userProfileIds = data.map(s => s.id);
+    } else if (targetAudience === 'all_teachers') {
+      userType = 'teacher';
+      const { data, error } = await supabase.from('teachers').select('id').eq('school_id', schoolId);
+      if (error) throw error;
+      userProfileIds = data.map(t => t.id);
+    } else if (targetAudience === 'class' && classId) {
+      userType = 'student';
+      const { data, error } = await supabase.from('students').select('id').eq('school_id', schoolId).eq('class_id', classId);
+      if (error) throw error;
+      userProfileIds = data.map(s => s.id);
     }
-    revalidatePath('/admin/lms/courses');
-    return { ok: true, message: "Course audience updated successfully." };
+
+    if (!userType || userProfileIds.length === 0) {
+      return { ok: true, message: "No users found for the selected audience." };
+    }
+    
+    let enrolledCount = 0;
+    for (const profileId of userProfileIds) {
+      const result = await enrollUserInCourseAction({
+        course_id: courseId,
+        user_profile_id: profileId,
+        user_type: userType,
+        school_id: schoolId,
+      });
+      if (result.ok) {
+        enrolledCount++;
+      }
+    }
+    
+    return { ok: true, message: `Successfully enrolled ${enrolledCount} new user(s).` };
+  } catch (error: any) {
+    return { ok: false, message: error.message || "An unexpected error occurred." };
+  }
 }
 
 

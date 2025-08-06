@@ -13,7 +13,7 @@ import type { Course, Student, Teacher, UserRole } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus, UserMinus, Users, Briefcase, Loader2, Info } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { enrollUserInCourseAction, unenrollUserFromCourseAction, getEnrolledStudentsForCourseAction, getEnrolledTeachersForCourseAction } from '../actions';
+import { enrollUserInCourseAction, unenrollUserFromCourseAction, getEnrolledStudentsForCourseAction, getEnrolledTeachersForCourseAction } from '../../actions';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
     const { data: userRec, error: userErr } = await supabase.from('users').select('school_id').eq('id', adminUserId).single();
@@ -263,14 +263,8 @@ export default function ManageCourseEnrollmentsPage() {
       <PageHeader title={`Manage Enrollments: ${course.title}`} description="Enroll or unenroll users from this course." />
       
       <div className="grid md:grid-cols-2 gap-6">
-        {course.target_audience === 'student' && renderStudentEnrollmentCard()}
-        {course.target_audience === 'teacher' && renderTeacherEnrollmentCard()}
-        {course.target_audience === 'both' && (
-          <>
-            {renderStudentEnrollmentCard()}
-            {renderTeacherEnrollmentCard()}
-          </>
-        )}
+        {renderStudentEnrollmentCard()}
+        {renderTeacherEnrollmentCard()}
       </div>
       
        <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} className="mt-4 self-start" disabled={isSubmitting}>
