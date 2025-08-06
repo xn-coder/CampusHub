@@ -26,7 +26,7 @@ const ITEMS_PER_PAGE = 10;
 
 export default function SuperAdminManageCoursesPage() {
   const { toast } = useToast();
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [courses, setCourses] = useState<(Course & { school: { name: string } | null })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -62,19 +62,19 @@ export default function SuperAdminManageCoursesPage() {
       toast({ title: "Error", description: `Failed to fetch courses: ${error.message}`, variant: "destructive" });
       setCourses([]);
     } else {
-      setCourses(data || []);
+      setCourses(data as (Course & { school: { name: string } | null })[] || []);
     }
     setIsLoading(false);
   }, [toast]);
 
   useEffect(() => {
     const adminId = localStorage.getItem('currentUserId');
-    setCurrentAdminUserId(adminId);
-    if(adminId) {
-        fetchCourses();
+    if (adminId) {
+      setCurrentAdminUserId(adminId);
+      fetchCourses();
     } else {
-        setIsLoading(false);
-        toast({ title: "Error", description: "Could not identify Super Admin user.", variant: "destructive"});
+      setIsLoading(false);
+      toast({ title: "Error", description: "Could not identify Super Admin user.", variant: "destructive"});
     }
   }, [fetchCourses, toast]);
 
@@ -237,10 +237,10 @@ export default function SuperAdminManageCoursesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedCourses.map((course: any) => (
+                {paginatedCourses.map((course) => (
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
-                    <TableCell>{course.school_id ? course.school.name : 'Global'}</TableCell>
+                    <TableCell>{course.school_id ? course.school?.name : 'Global'}</TableCell>
                     <TableCell>{course.subscription_plan?.replace('_', ' ') || 'N/A'}</TableCell>
                     <TableCell>₹{course.price?.toFixed(2) || '0.00'}</TableCell>
                     <TableCell>{course.max_users_allowed || 'Unlimited'}</TableCell>
