@@ -52,11 +52,10 @@ export default function SuperAdminManageCoursesPage() {
   
   const fetchCourses = async () => {
     setIsLoading(true);
-    // Superadmin sees only global courses (school_id is null)
+    // Superadmin sees all courses. Join with schools to get school name.
     const { data, error } = await supabase
       .from('lms_courses')
-      .select('*, target_class:target_class_id(name,division)')
-      .is('school_id', null)
+      .select('*, school:school_id(name)')
       .order('created_at', { ascending: false });
     
     if (error) {
@@ -82,7 +81,7 @@ export default function SuperAdminManageCoursesPage() {
     setTitle('');
     setDescription('');
     setFeatureImageFile(null);
-    setSubscriptionPlan('one_time');
+    setSubscriptionPlan('free');
     setPrice('');
     setMaxUsers('');
     setEditingCourse(null);
@@ -94,7 +93,7 @@ export default function SuperAdminManageCoursesPage() {
       setTitle(course.title);
       setDescription(course.description || '');
       setFeatureImageFile(null);
-      setSubscriptionPlan(course.subscription_plan || 'one_time');
+      setSubscriptionPlan(course.subscription_plan || 'free');
       setPrice(course.price ?? '');
       setMaxUsers(course.max_users_allowed ?? '');
     } else {
@@ -120,13 +119,15 @@ export default function SuperAdminManageCoursesPage() {
     }
     setIsSubmitting(true);
 
+    const isPaid = subscriptionPlan !== 'free';
+
     const formData = new FormData();
     formData.append('title', title.trim());
     formData.append('description', description.trim());
     formData.append('school_id', ''); // Global course
     formData.append('created_by_user_id', currentAdminUserId);
-    formData.append('is_paid', subscriptionPlan !== 'one_time'); // Consider monthly/yearly as paid
-    formData.append('price', String(price || 0));
+    formData.append('is_paid', String(isPaid));
+    formData.append('price', String(isPaid ? price || 0 : 0));
     formData.append('subscription_plan', subscriptionPlan);
     formData.append('max_users_allowed', String(maxUsers || 0));
 
@@ -211,19 +212,20 @@ export default function SuperAdminManageCoursesPage() {
       />
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><Library className="mr-2 h-5 w-5" />Global Course Library</CardTitle>
-          <CardDescription>These are master courses. Assign them to schools from the school's admin panel or using the 'Assign' action here.</CardDescription>
+          <CardTitle className="flex items-center"><Library className="mr-2 h-5 w-5" />Course Library</CardTitle>
+          <CardDescription>A list of all courses in the system. Use 'Assign' to manage school access.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
           ) : paginatedCourses.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No global courses created yet.</p>
+            <p className="text-muted-foreground text-center py-4">No courses created yet.</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
+                  <TableHead>Scope</TableHead>
                   <TableHead>Plan</TableHead>
                   <TableHead>Price</TableHead>
                   <TableHead>Users</TableHead>
@@ -231,9 +233,10 @@ export default function SuperAdminManageCoursesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedCourses.map((course) => (
+                {paginatedCourses.map((course: any) => (
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
+                    <TableCell>{course.school_id ? course.school.name : 'Global'}</TableCell>
                     <TableCell>{course.subscription_plan?.replace('_', ' ') || 'N/A'}</TableCell>
                     <TableCell>₹{course.price?.toFixed(2) || '0.00'}</TableCell>
                     <TableCell>{course.max_users_allowed || 'Unlimited'}</TableCell>
@@ -340,6 +343,7 @@ export default function SuperAdminManageCoursesPage() {
                 <Select value={subscriptionPlan} onValueChange={(val) => setSubscriptionPlan(val as SubscriptionPlan)} required disabled={isSubmitting}>
                   <SelectTrigger><SelectValue/></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="free">Free</SelectItem>
                     <SelectItem value="one_time">One-Time Payment</SelectItem>
                     <SelectItem value="monthly">Monthly Subscription</SelectItem>
                     <SelectItem value="yearly">Yearly Subscription</SelectItem>
@@ -349,7 +353,7 @@ export default function SuperAdminManageCoursesPage() {
               <div className="grid grid-cols-2 gap-4">
                  <div>
                     <Label htmlFor="price">Price (₹)</Label>
-                    <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 499" step="0.01" min="0" required disabled={isSubmitting}/>
+                    <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 499" step="0.01" min="0" required disabled={isSubmitting || subscriptionPlan === 'free'}/>
                   </div>
                   <div>
                     <Label htmlFor="maxUsers">Allowed Users</Label>
@@ -371,4 +375,3 @@ export default function SuperAdminManageCoursesPage() {
     </div>
   );
 }
-

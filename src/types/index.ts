@@ -12,7 +12,7 @@ export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Frida
 export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 export type TCRequestStatus = 'Pending' | 'Approved' | 'Rejected';
-export type SubscriptionPlan = 'monthly' | 'yearly' | 'one_time';
+export type SubscriptionPlan = 'free' | 'monthly' | 'yearly' | 'one_time';
 
 
 export interface User {
