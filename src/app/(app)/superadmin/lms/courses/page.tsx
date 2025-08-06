@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -14,8 +13,15 @@ import type { Course, UserRole, SchoolEntry, SubscriptionPlan } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
-import { supabase } from '@/lib/supabaseClient';
-import { getCoursesForSuperAdminAction, createCourseAction, updateCourseAction, deleteCourseAction, assignCourseToSchoolsAction } from './actions';
+import { 
+    getCoursesForSuperAdminAction, 
+    createCourseAction, 
+    updateCourseAction, 
+    deleteCourseAction, 
+    assignCourseToSchoolsAction,
+    getAllSchoolsAction,
+    getAssignmentsForCourseAction
+} from './actions';
 import { PlusCircle, Edit2, Trash2, Save, Library, Settings, Loader2, MoreHorizontal, ChevronLeft, ChevronRight, Send } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -169,16 +175,27 @@ export default function SuperAdminManageCoursesPage() {
 
   const handleOpenAssignDialog = async (course: Course) => {
     setCourseToAssign(course);
-    setIsSubmitting(true);
-    const { data: schoolsData, error } = await supabase.from('schools').select('*').order('name');
-    if (error) {
-      toast({ title: "Error fetching schools", variant: "destructive" });
-      setAllSchools([]);
+    setIsSubmitting(true); // Used as a loading indicator for the dialog
+    
+    const [schoolsResult, assignmentsResult] = await Promise.all([
+      getAllSchoolsAction(),
+      getAssignmentsForCourseAction(course.id)
+    ]);
+
+    if (schoolsResult.ok && schoolsResult.schools) {
+        setAllSchools(schoolsResult.schools);
     } else {
-      setAllSchools(schoolsData || []);
+        toast({ title: "Error", description: "Could not fetch schools list.", variant: "destructive"});
+        setAllSchools([]);
     }
-    const { data: existingAssignments } = await supabase.from('lms_course_school_availability').select('school_id').eq('course_id', course.id);
-    setSelectedSchoolIds(existingAssignments?.map(a => a.school_id) || []);
+
+    if (assignmentsResult.ok && assignmentsResult.assignedSchoolIds) {
+        setSelectedSchoolIds(assignmentsResult.assignedSchoolIds);
+    } else {
+        toast({ title: "Error", description: "Could not fetch current school assignments.", variant: "destructive"});
+        setSelectedSchoolIds([]);
+    }
+
     setIsSubmitting(false);
     setIsAssignDialogOpen(true);
   };

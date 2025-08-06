@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -169,22 +168,41 @@ export async function deleteCourseAction(id: string): Promise<{ ok: boolean; mes
   return { ok: true, message: 'Course and all related data have been deleted successfully.' };
 }
 
+export async function getAllSchoolsAction(): Promise<{ ok: boolean, schools?: SchoolEntry[] }> {
+    const supabase = createSupabaseServerClient();
+    const { data, error } = await supabase.from('schools').select('*').order('name');
+    if (error) {
+        console.error("Error fetching schools for assignment:", error);
+        return { ok: false };
+    }
+    return { ok: true, schools: data as SchoolEntry[] };
+}
+
+export async function getAssignmentsForCourseAction(courseId: string): Promise<{ ok: boolean, assignedSchoolIds?: string[] }> {
+    const supabase = createSupabaseServerClient();
+    const { data, error } = await supabase.from('lms_course_school_availability').select('school_id').eq('course_id', courseId);
+    if (error) {
+        console.error("Error fetching course assignments:", error);
+        return { ok: false };
+    }
+    return { ok: true, assignedSchoolIds: data.map(a => a.school_id) };
+}
+
 
 export async function assignCourseToSchoolsAction(
     courseId: string, 
     schoolIds: string[],
 ): Promise<{ ok: boolean; message: string, successCount: number }> {
     const supabase = createSupabaseServerClient();
+    
+    // First, remove all old assignments for this course to handle de-selections
+    const { error: deleteError } = await supabase.from('lms_course_school_availability').delete().eq('course_id', courseId);
+
+    if (deleteError) {
+        return { ok: false, message: `Failed to clear old assignments: ${deleteError.message}`, successCount: 0 };
+    }
+
     if (schoolIds.length === 0) {
-        // If no schools are selected, it means we need to remove all existing assignments for this course.
-        const { error: deleteError } = await supabase
-            .from('lms_course_school_availability')
-            .delete()
-            .eq('course_id', courseId);
-        
-        if (deleteError) {
-             return { ok: false, message: `Failed to clear existing assignments: ${deleteError.message}`, successCount: 0 };
-        }
         revalidatePath('/superadmin/lms/courses');
         return { ok: true, message: "All school assignments for this course have been removed.", successCount: 0 };
     }
@@ -195,9 +213,6 @@ export async function assignCourseToSchoolsAction(
         target_audience_in_school: 'both' as 'student' | 'teacher' | 'both'
     }));
 
-    // First, remove all old assignments for this course to handle de-selections
-    await supabase.from('lms_course_school_availability').delete().eq('course_id', courseId);
-    
     // Then, insert the new set of assignments
     const { error, count } = await supabase.from('lms_course_school_availability').insert(recordsToInsert);
 
@@ -205,6 +220,7 @@ export async function assignCourseToSchoolsAction(
         console.error("Error assigning course to schools:", error);
         return { ok: false, message: `Failed to assign course to schools: ${error.message}`, successCount: 0 };
     }
+
     revalidatePath('/superadmin/lms/courses');
     revalidatePath('/admin/lms/courses');
     return { ok: true, message: `Course assigned to ${count || 0} school(s) successfully.`, successCount: count || 0 };
