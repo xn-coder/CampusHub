@@ -240,7 +240,7 @@ export default function SuperAdminManageCoursesPage() {
                 {paginatedCourses.map((course) => (
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
-                    <TableCell>{course.school_id ? course.school?.name : 'Global'}</TableCell>
+                    <TableCell>{course.school?.name || 'Global'}</TableCell>
                     <TableCell>{course.subscription_plan?.replace('_', ' ') || 'N/A'}</TableCell>
                     <TableCell>₹{course.price?.toFixed(2) || '0.00'}</TableCell>
                     <TableCell>{course.max_users_allowed || 'Unlimited'}</TableCell>
