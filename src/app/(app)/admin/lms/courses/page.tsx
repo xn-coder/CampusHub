@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 
 const ITEMS_PER_PAGE = 9;
 
@@ -133,6 +134,12 @@ export default function SchoolLmsCoursesPage() {
   
   const paginatedCourses = filteredCourses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const totalPages = Math.ceil(filteredCourses.length / ITEMS_PER_PAGE);
+
+  const finalPrice = useMemo(() => {
+    if (!courseToAction?.price) return 0;
+    const discount = courseToAction.discount_percentage || 0;
+    return courseToAction.price * (1 - discount / 100);
+  }, [courseToAction]);
 
   return (
     <>
@@ -251,16 +258,38 @@ export default function SchoolLmsCoursesPage() {
                 <DialogTitle>Subscription Details: {courseToAction?.title}</DialogTitle>
                 <DialogDescription>Information about this paid course offering.</DialogDescription>
             </DialogHeader>
-            <div className="py-4 space-y-3">
-                <div className="flex justify-between items-baseline"><span className="text-muted-foreground">Plan:</span> <span className="font-semibold capitalize">{courseToAction?.subscription_plan?.replace('_', ' ')}</span></div>
-                <div className="flex justify-between items-baseline"><span className="text-muted-foreground">Price:</span> <span className="font-semibold">₹{courseToAction?.price?.toFixed(2)}</span></div>
-                <div className="flex justify-between items-baseline"><span className="text-muted-foreground">User Limit:</span> <span className="font-semibold">{courseToAction?.max_users_allowed || 'Unlimited'}</span></div>
+            <div className="py-4 space-y-4">
+                <div className="flex justify-between items-baseline">
+                    <span className="text-muted-foreground">Plan</span>
+                    <span className="font-semibold capitalize">{courseToAction?.subscription_plan?.replace('_', ' ')}</span>
+                </div>
+                <div className="flex justify-between items-baseline">
+                    <span className="text-muted-foreground">List Price</span>
+                    <span className="font-semibold">₹{courseToAction?.price?.toFixed(2)}</span>
+                </div>
+                {courseToAction?.discount_percentage && courseToAction.discount_percentage > 0 && (
+                    <div className="flex justify-between items-baseline text-destructive">
+                        <span className="text-muted-foreground">Discount</span>
+                        <span className="font-semibold">{courseToAction.discount_percentage}%</span>
+                    </div>
+                )}
+                <Separator />
+                <div className="flex justify-between items-baseline text-lg">
+                    <span className="font-semibold">Final Price</span>
+                    <span className="font-bold">
+                        ₹{finalPrice.toFixed(2)}
+                    </span>
+                </div>
+                <div className="flex justify-between items-baseline">
+                    <span className="text-muted-foreground">User Limit</span>
+                    <span className="font-semibold">{courseToAction?.max_users_allowed || 'Unlimited'}</span>
+                </div>
             </div>
              <DialogFooter>
                 <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
                 <Button onClick={() => courseToAction && handleEnrollOrSubscribe(courseToAction)} disabled={isSubmitting}>
                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4" />}
-                   Pay Now & Activate
+                   Pay {finalPrice > 0 ? `₹${finalPrice.toFixed(2)}` : ''} & Activate
                 </Button>
             </DialogFooter>
         </DialogContent>
