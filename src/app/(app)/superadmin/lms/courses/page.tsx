@@ -18,7 +18,6 @@ import { createCourseAction, updateCourseAction, deleteCourseAction, assignCours
 import { PlusCircle, Edit2, Trash2, Save, Library, Settings, KeyRound, Loader2, Upload, Percent, MoreHorizontal, ChevronLeft, ChevronRight, ChevronsRight, Send } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 
@@ -150,10 +149,11 @@ export default function SuperAdminManageCoursesPage() {
       toast({ title: editingCourse ? "Course Updated" : "Course Added", description: result.message });
       setIsCourseDialogOpen(false);
       await fetchCourses(); // Refetch courses
+      resetCourseForm();
       if (!editingCourse && result.course) {
+        // Automatically open assign dialog for new courses
         handleOpenAssignDialog(result.course);
       }
-      resetCourseForm();
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
