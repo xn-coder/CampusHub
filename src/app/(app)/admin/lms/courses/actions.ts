@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -212,83 +211,6 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
     } catch (e: any) {
         return { ok: false, message: e.message || 'An unexpected error occurred.' };
     }
-}
-
-export async function assignCourseToSchoolAction(
-    courseId: string, 
-    schoolId: string,
-    targetAudience: 'student' | 'teacher' | 'both'
-): Promise<{ ok: boolean; message: string }> {
-    const supabase = createSupabaseServerClient();
-    const { error } = await supabase.from('lms_course_school_availability').insert({
-        course_id: courseId,
-        school_id: schoolId,
-        target_audience_in_school: targetAudience
-    });
-
-    if (error) {
-        if (error.code === '23505') { // unique constraint violation
-            return { ok: false, message: "This course is already assigned to the school." };
-        }
-        return { ok: false, message: `Failed to assign course: ${error.message}` };
-    }
-    revalidatePath('/admin/lms/courses');
-    return { ok: true, message: "Course assigned to school successfully." };
-}
-
-export async function assignCourseToSchoolsAction(
-    courseId: string, 
-    schoolIds: string[],
-): Promise<{ ok: boolean; message: string, successCount: number }> {
-    const supabase = createSupabaseServerClient();
-    if (schoolIds.length === 0) return { ok: true, message: "No schools selected.", successCount: 0 };
-    
-    const recordsToInsert = schoolIds.map(schoolId => ({
-        course_id: courseId,
-        school_id: schoolId,
-        target_audience_in_school: 'both' as 'student' | 'teacher' | 'both'
-    }));
-
-    const { error, count } = await supabase.from('lms_course_school_availability').insert(recordsToInsert, { onConflict: 'course_id, school_id' });
-
-    if (error) {
-        console.error("Error assigning course to schools:", error);
-        return { ok: false, message: `Failed to assign course to some schools: ${error.message}`, successCount: 0 };
-    }
-    revalidatePath('/admin/lms/courses');
-    revalidatePath('/superadmin/lms/courses');
-    return { ok: true, message: `Course assigned to ${count || 0} school(s) successfully.`, successCount: count || 0 };
-}
-
-
-export async function unassignCourseFromSchoolAction(
-    courseId: string, 
-    schoolId: string
-): Promise<{ ok: boolean; message: string }> {
-    const supabase = createSupabaseServerClient();
-    const { error } = await supabase
-        .from('lms_course_school_availability')
-        .delete()
-        .eq('course_id', courseId)
-        .eq('school_id', schoolId);
-    
-    if (error) {
-        return { ok: false, message: `Failed to unassign course: ${error.message}` };
-    }
-    // You might also want to unenroll all users from that school for that course
-    const { data: students } = await supabase.from('students').select('id').eq('school_id', schoolId);
-    if(students && students.length > 0) {
-        await supabase.from('lms_student_course_enrollments').delete().eq('course_id', courseId).in('student_id', students.map(s => s.id));
-    }
-
-    const { data: teachers } = await supabase.from('teachers').select('id').eq('school_id', schoolId);
-    if(teachers && teachers.length > 0) {
-        await supabase.from('lms_teacher_course_enrollments').delete().eq('course_id', courseId).in('teacher_id', teachers.map(t => t.id));
-    }
-
-
-    revalidatePath('/admin/lms/courses');
-    return { ok: true, message: "Course unassigned and all relevant enrollments cleared." };
 }
 
 export async function updateCourseAudienceInSchoolAction(
