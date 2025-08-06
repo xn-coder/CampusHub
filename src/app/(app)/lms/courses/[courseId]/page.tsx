@@ -221,7 +221,7 @@ function ViewCoursePageContent() {
       <Card>
           <CardHeader>
               <CardTitle>{isPreview ? 'Course Preview' : 'Course Content'}</CardTitle>
-              <CardDescription>{isPreview ? 'This is a preview. Enroll to access the content.' : 'Work your way through the lessons below.'}</CardDescription>
+              <CardDescription>{isPreview ? 'This is a preview. Enroll to access the full content.' : 'Work your way through the lessons below.'}</CardDescription>
           </CardHeader>
           <CardContent>
             {lessons.length > 0 ? (
@@ -232,7 +232,7 @@ function ViewCoursePageContent() {
                     onValueChange={setOpenLessons}
                 >
                  {lessons.map((lesson, lessonIndex) => {
-                    const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
+                    const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[];
                     
                     return (
                         <AccordionItem value={lesson.id} key={lesson.id} className="border rounded-md">
@@ -242,7 +242,7 @@ function ViewCoursePageContent() {
                             <AccordionContent className="px-4 pt-2 border-t">
                                <div className="space-y-2 py-2">
                                    {lessonContents.length > 0 ? lessonContents.map(res => {
-                                       const isLocked = !isAdminViewing && isPreview && course.is_paid && lessonIndex > 0;
+                                       const isLocked = isPreview && lessonIndex > 0;
                                        return (
                                            <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
                                                 <Link href={isLocked ? '#' : `/lms/courses/${courseId}/${res.id}${isPreview ? '?preview=true' : ''}`} className={`flex-grow ${isLocked ? 'cursor-not-allowed' : ''}`}>

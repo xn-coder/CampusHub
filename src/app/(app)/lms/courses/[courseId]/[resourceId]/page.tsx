@@ -1,10 +1,9 @@
 
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { getCourseForViewingAction } from '../actions';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole } from '@/types';
 import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -26,6 +25,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
 export default function CourseResourcePage() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const { toast } = useToast();
+
     const [course, setCourse] = useState<(Course & { resources: CourseResource[] }) | null>(null);
     const [resource, setResource] = useState<LessonContentResource | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -46,9 +48,9 @@ export default function CourseResourcePage() {
     const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
     const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
 
-    // isPreview state
+    // Preview and access control state
     const [isPreviewing, setIsPreviewing] = useState(false);
-
+    const [isContentLocked, setIsContentLocked] = useState(false);
 
     // PDF viewer state
     const [numPages, setNumPages] = useState<number | null>(null);
@@ -90,17 +92,17 @@ export default function CourseResourcePage() {
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
-          const searchParams = new URLSearchParams(window.location.search);
+          const previewParam = searchParams.get('preview') === 'true';
           const role = localStorage.getItem('currentUserRole') as UserRole | null;
           setCurrentUserRole(role);
           const isAdmin = role === 'admin' || role === 'superadmin';
-          setIsPreviewing(!isAdmin && searchParams.get('preview') === 'true');
+          setIsPreviewing(isAdmin && previewParam);
 
           const storedProgressString = localStorage.getItem(`progress_${courseId}`);
           const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
           setIsCompleted(!!storedProgress[resourceId]);
         }
-    }, [courseId, resourceId]);
+    }, [courseId, resourceId, searchParams]);
 
 
     useEffect(() => {
@@ -114,7 +116,8 @@ export default function CourseResourcePage() {
 
             getCourseForViewingAction(courseId).then(async result => {
                 if (result.ok && result.course) {
-                    setCourse(result.course); // Set course first for progress calculation
+                    const loadedCourse = result.course;
+                    setCourse(loadedCourse);
                     
                     const userId = localStorage.getItem('currentUserId');
                     if(userId) {
@@ -131,7 +134,7 @@ export default function CourseResourcePage() {
                     const storedProgressString = localStorage.getItem(`progress_${courseId}`);
                     const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
                     
-                    const lessons = result.course.resources.filter(r => r.type === 'note');
+                    const lessons = loadedCourse.resources.filter(r => r.type === 'note');
                     const allLessonContents = lessons.flatMap(lesson => {
                         try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } 
                         catch { return []; }
@@ -140,37 +143,34 @@ export default function CourseResourcePage() {
                         const completedCount = allLessonContents.filter(res => storedProgress[res.id]).length;
                         setOverallProgress(Math.round((completedCount / allLessonContents.length) * 100));
                     }
+                    
+                    const firstLessonId = lessons.length > 0 ? lessons[0].id : null;
+                    const resourcesInFirstLesson = firstLessonId ? JSON.parse(lessons[0].url_or_content || '[]').map((r: LessonContentResource) => r.id) : [];
 
-
-                    const allFlattenedResources: LessonContentResource[] = [];
-                    for (const lesson of result.course.resources) {
-                        if (lesson.type === 'note') {
-                            try {
-                                const contents = JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[];
-                                allFlattenedResources.push(...contents);
-                            } catch (e) {
-                                console.error("Failed to parse lesson content", e);
-                            }
-                        }
-                    }
-
-                    const currentIndex = allFlattenedResources.findIndex(r => r.id === resourceId);
+                    const currentIndex = allLessonContents.findIndex(r => r.id === resourceId);
 
                     if (currentIndex !== -1) {
-                        const currentResource = allFlattenedResources[currentIndex];
+                        const currentResource = allLessonContents[currentIndex];
                         setResource(currentResource);
                         
-                        if (currentResource.type === 'quiz') {
-                          try {
-                            const questions = JSON.parse(currentResource.url_or_content) as QuizQuestion[];
-                            setQuizQuestions(questions);
-                          } catch(e) {
-                            setError("Failed to load quiz questions.");
-                          }
+                        // Check if content should be locked for admin preview
+                        const isAdminPreviewing = (currentUserRole === 'admin' || currentUserRole === 'superadmin') && searchParams.get('preview') === 'true';
+                        if (isAdminPreviewing && !resourcesInFirstLesson.includes(resourceId)) {
+                            setIsContentLocked(true);
+                        } else {
+                           setIsContentLocked(false);
+                           if (currentResource.type === 'quiz') {
+                              try {
+                                const questions = JSON.parse(currentResource.url_or_content) as QuizQuestion[];
+                                setQuizQuestions(questions);
+                              } catch(e) {
+                                setError("Failed to load quiz questions.");
+                              }
+                            }
                         }
 
-                        const prevResource = currentIndex > 0 ? allFlattenedResources[currentIndex - 1] : null;
-                        const nextResource = currentIndex < allLessonContents.length - 1 ? allFlattenedResources[currentIndex + 1] : null;
+                        const prevResource = currentIndex > 0 ? allLessonContents[currentIndex - 1] : null;
+                        const nextResource = currentIndex < allLessonContents.length - 1 ? allLessonContents[currentIndex + 1] : null;
 
                         setPreviousResourceId(prevResource ? prevResource.id : null);
                         setPreviousResourceTitle(prevResource ? prevResource.title : null);
@@ -187,7 +187,7 @@ export default function CourseResourcePage() {
                 setIsLoading(false);
             });
         }
-    }, [courseId, resourceId]);
+    }, [courseId, resourceId, searchParams, currentUserRole]);
 
     const pdfFile = useMemo(() => (
       resource?.url_or_content ? { url: resource.url_or_content } : null
@@ -223,7 +223,7 @@ export default function CourseResourcePage() {
 
     const handlePreviousQuestion = () => {
         if (currentQuestionIndex > 0) {
-            setCurrentQuestionIndex(prev => prev + 1);
+            setCurrentQuestionIndex(prev => prev - 1);
         }
     };
 
@@ -309,6 +309,18 @@ export default function CourseResourcePage() {
                     </div>
                 </CardHeader>
                 <CardContent className="min-h-[60vh]">
+                     {isContentLocked ? (
+                        <div className="flex flex-col items-center justify-center h-full text-center bg-muted/50 rounded-lg p-8">
+                            <Lock className="h-16 w-16 text-muted-foreground mb-4"/>
+                            <h2 className="text-2xl font-bold">Content Locked</h2>
+                            <p className="text-muted-foreground mt-2">This is part of the course preview.</p>
+                            <p className="text-muted-foreground">Enroll in or subscribe to this course to unlock all lessons.</p>
+                             <Button asChild className="mt-6" onClick={() => router.push('/admin/lms/courses')}>
+                                Back to Course Management
+                            </Button>
+                        </div>
+                    ) : (
+                    <>
                     {resource.type === 'video' && resource.url_or_content && (
                         <video 
                             controls 
@@ -358,7 +370,7 @@ export default function CourseResourcePage() {
                             frameBorder='0'
                             className="rounded-md"
                         >
-                            This is an embedded <a target='_blank' href='http://office.com'>Microsoft Office</a> presentation, powered by <a target='_blank' href='http://office.com/webapps'>Office Online</a>.
+                            This is an embedded <a target='_blank' rel="noreferrer" href='http://office.com'>Microsoft Office</a> presentation, powered by <a target='_blank' rel="noreferrer" href='http://office.com/webapps'>Office Online</a>.
                         </iframe>
                     )}
 
@@ -424,6 +436,8 @@ export default function CourseResourcePage() {
                             )}
                         </div>
                     )}
+                    </>
+                    )}
                 </CardContent>
                  <CardFooter className="flex justify-between items-center flex-wrap gap-2">
                     <Button variant="outline" asChild disabled={!previousResourceId}>
@@ -440,16 +454,16 @@ export default function CourseResourcePage() {
                          <Button
                             asChild
                             variant="outline"
-                            disabled={isNextDisabled}
-                            title={isNextDisabled ? (isPreviewing ? "Enroll to access next lesson" : "Complete this lesson to proceed") : ""}
+                            disabled={isNextDisabled || isContentLocked}
+                            title={isNextDisabled ? (isPreviewing ? "Enroll to access next lesson" : "Complete this lesson to proceed") : isContentLocked ? "Enroll to access next lesson" : ""}
                         >
-                            <Link href={isNextDisabled ? "#" : `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true' : ''}`} className={`max-w-xs ${isNextDisabled ? 'cursor-not-allowed' : ''}`}>
-                                {isNextDisabled && <Lock className="mr-2 h-4 w-4 shrink-0" />}
+                            <Link href={isNextDisabled || isContentLocked ? "#" : `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true' : ''}`} className={`max-w-xs ${(isNextDisabled || isContentLocked) ? 'cursor-not-allowed' : ''}`}>
+                                {(isNextDisabled || isContentLocked) && <Lock className="mr-2 h-4 w-4 shrink-0" />}
                                 <div className="flex flex-col items-end">
                                     <span className="text-xs text-muted-foreground">Next</span>
                                     <span className="truncate">{nextResourceTitle || '...'}</span>
                                 </div>
-                                {!isNextDisabled && <ArrowRight className="ml-2 h-4 w-4 shrink-0" />}
+                                {!(isNextDisabled || isContentLocked) && <ArrowRight className="ml-2 h-4 w-4 shrink-0" />}
                             </Link>
                         </Button>
                     ) : (

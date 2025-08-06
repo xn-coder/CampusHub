@@ -60,12 +60,17 @@ export async function checkUserEnrollmentForCourseViewAction(
   const supabase = createSupabaseServerClient();
 
   try {
-    // Admins and superadmins always have access, enrolled or not.
-    if (userRole === 'admin' || userRole === 'superadmin') {
+    // Superadmin has full access to all course content, not considered a student/teacher enrollment
+    if (userRole === 'superadmin') {
       return { ok: true, isEnrolled: true }; 
     }
     
-    // For other roles, if it's a preview, they are not considered "enrolled" for content access purposes.
+    // For admins, they are considered "enrolled" for full access, unless they are specifically previewing
+    if (userRole === 'admin') {
+      return { ok: true, isEnrolled: !preview };
+    }
+
+    // For other roles (student/teacher), if it's a preview, they are not considered "enrolled" for content access.
     if (preview) { 
       return { ok: true, isEnrolled: false };
     }
