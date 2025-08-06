@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import { getCoursesForSchoolAction, assignCourseToSchoolAudienceAction } from './actions';
+import { getCoursesForSchoolAction, assignCourseToSchoolAudienceAction, enrollSchoolInCourseAction } from './actions';
 import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -113,16 +113,22 @@ export default function SchoolLmsCoursesPage() {
   }
   
   const handleEnrollOrSubscribe = async (course: Course) => {
-      // For both free and paid, "enrolling" means the school adopts it.
-      // This is a placeholder for a more complex subscription flow.
-      // For now, we'll just simulate success and update the UI state.
+      if (!currentSchoolId) {
+        toast({ title: "Error", description: "School context is missing.", variant: "destructive" });
+        return;
+      }
       setIsSubmitting(true);
       toast({title: "Processing...", description: `Enrolling your school in "${course.title}".`});
-      await new Promise(res => setTimeout(res, 1000)); // Simulate network latency
+      
+      const result = await enrollSchoolInCourseAction(course.id, currentSchoolId);
 
-      setCourses(prev => prev.map(c => c.id === course.id ? {...c, isEnrolled: true} : c));
+      if(result.ok) {
+        toast({title: "Success!", description: `Your school now has access to "${course.title}". You can assign it to users.`});
+        await fetchSchoolData(currentSchoolId);
+      } else {
+        toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
+      }
 
-      toast({title: "Success!", description: `Your school now has access to "${course.title}". You can assign it to users.`});
       setIsSubscriptionDialogOpen(false);
       setCourseToAction(null);
       setIsSubmitting(false);

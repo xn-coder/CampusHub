@@ -202,7 +202,7 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
             const availInfo = availability.find(a => a.course_id === c.id);
             return {
                 ...c,
-                isEnrolled: false, // This field is more relevant for student/teacher view
+                isEnrolled: true, // If it's in the availability table for this school, it's enrolled.
                 target_audience_in_school: availInfo?.target_audience_in_school,
             };
         });
@@ -211,6 +211,27 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
     } catch (e: any) {
         return { ok: false, message: e.message || 'An unexpected error occurred.' };
     }
+}
+
+export async function enrollSchoolInCourseAction(courseId: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
+    const supabase = createSupabaseServerClient();
+    const { error } = await supabase
+        .from('lms_course_school_availability')
+        .insert({
+            course_id: courseId,
+            school_id: schoolId,
+            target_audience_in_school: 'both' // Default to both, admin can change later
+        });
+
+    if (error) {
+        if (error.code === '23505') { // unique constraint violation
+            return { ok: true, message: "School is already enrolled in this course." };
+        }
+        console.error("Error enrolling school in course:", error);
+        return { ok: false, message: `Failed to enroll school: ${error.message}` };
+    }
+    revalidatePath('/admin/lms/courses');
+    return { ok: true, message: "School successfully enrolled in the course." };
 }
 
 export async function assignCourseToSchoolAudienceAction(params: {
