@@ -20,6 +20,12 @@ import {
   verifyCoursePaymentAndEnrollAction
 } from '@/app/(app)/admin/lms/courses/actions';
 
+declare global {
+  interface Window {
+    Razorpay: new (options: any) => any;
+  }
+}
+
 function ActivateLmsForm() {
   const { toast } = useToast();
   const router = useRouter();
@@ -52,7 +58,6 @@ function ActivateLmsForm() {
     }
     setCurrentUserId(userIdFromStorage);
     setCurrentUserName(userNameFromStorage);
-    // You might need to fetch email if not in local storage
     if (userEmailFromStorage) setCurrentUserEmail(userEmailFromStorage);
 
     const result = await getCourseActivationPageInitialDataAction(courseIdFromQuery, userIdFromStorage);
@@ -126,7 +131,6 @@ function ActivateLmsForm() {
         return;
     }
 
-    // Handle mock payment success
     if (orderResult.isMock) {
         toast({ title: "Course Activated!", description: orderResult.message });
         setMessage({type: 'success', text: orderResult.message});
@@ -137,7 +141,6 @@ function ActivateLmsForm() {
         return;
     }
 
-    // Proceed with real Razorpay payment
     if (orderResult.order) {
         const options = {
             key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
@@ -169,6 +172,7 @@ function ActivateLmsForm() {
             },
             notes: {
                 course_id: targetCourse.id,
+                user_id: currentUserId,
             },
             theme: {
                 color: "#3399cc"

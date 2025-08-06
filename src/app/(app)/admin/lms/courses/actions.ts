@@ -30,6 +30,7 @@ export async function createCourseAction(
   const description = formData.get('description') as string | null;
   const is_paid = formData.get('is_paid') === 'true';
   const price = formData.get('price') ? Number(formData.get('price')) : undefined;
+  const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
   const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null;
   const school_id = formData.get('school_id') as string | null;
@@ -60,6 +61,7 @@ export async function createCourseAction(
       feature_image_url,
       is_paid,
       price: is_paid ? price : null,
+      discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
       created_by_user_id,
       subscription_plan,
@@ -98,6 +100,7 @@ export async function updateCourseAction(
   const description = formData.get('description') as string | null;
   const is_paid = formData.get('is_paid') === 'true';
   const price = formData.get('price') ? Number(formData.get('price')) : undefined;
+  const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const school_id = formData.get('school_id') as string | null;
   const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
   const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null;
@@ -109,6 +112,7 @@ export async function updateCourseAction(
       description,
       is_paid,
       price: is_paid ? price : null,
+      discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
       subscription_plan,
       max_users_allowed: max_users_allowed && max_users_allowed > 0 ? max_users_allowed : null,
@@ -191,18 +195,23 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
         }
 
         const courseIds = availability.map(a => a.course_id);
-        const { data: coursesData, error: coursesError } = await supabase
-            .from('lms_courses')
-            .select('*')
-            .in('id', courseIds);
+        const [coursesRes, subscriptionsRes] = await Promise.all([
+          supabase.from('lms_courses').select('*').in('id', courseIds),
+          supabase.from('lms_school_subscriptions').select('course_id').eq('school_id', schoolId).eq('status', 'active')
+        ]);
 
-        if (coursesError) throw coursesError;
+        if (coursesRes.error) throw coursesRes.error;
+        if (subscriptionsRes.error) console.warn("Could not fetch school subscriptions:", subscriptionsRes.error.message);
+
+        const subscribedCourseIds = new Set((subscriptionsRes.data || []).map(sub => sub.course_id));
         
-        const coursesWithSchoolStatus = coursesData.map(c => {
+        const coursesWithSchoolStatus = (coursesRes.data || []).map(c => {
             const availInfo = availability.find(a => a.course_id === c.id);
+            // A course is considered "enrolled" by the school if it's free OR if a subscription exists for it.
+            const isEnrolled = !c.is_paid || subscribedCourseIds.has(c.id);
             return {
                 ...c,
-                isEnrolled: true, // If it's in the availability table for this school, it's enrolled.
+                isEnrolled,
                 target_audience_in_school: availInfo?.target_audience_in_school,
             };
         });
@@ -215,23 +224,24 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
 
 export async function enrollSchoolInCourseAction(courseId: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
     const supabase = createSupabaseServerClient();
+    const { data: course, error: courseError } = await supabase.from('lms_courses').select('is_paid').eq('id', courseId).single();
+    if(courseError || !course) return { ok: false, message: "Course not found." };
+    if(course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription." };
+
     const { error } = await supabase
         .from('lms_course_school_availability')
-        .insert({
+        .upsert({
             course_id: courseId,
             school_id: schoolId,
-            target_audience_in_school: 'both' // Default to both, admin can change later
-        });
+            target_audience_in_school: 'both' // Default to both
+        }, { onConflict: 'course_id, school_id' }); // Use upsert to avoid errors if already available
 
     if (error) {
-        if (error.code === '23505') { // unique constraint violation
-            return { ok: true, message: "School is already enrolled in this course." };
-        }
-        console.error("Error enrolling school in course:", error);
+        console.error("Error enrolling school in free course:", error);
         return { ok: false, message: `Failed to enroll school: ${error.message}` };
     }
     revalidatePath('/admin/lms/courses');
-    return { ok: true, message: "School successfully enrolled in the course." };
+    return { ok: true, message: "School successfully enrolled in the free course." };
 }
 
 export async function assignCourseToSchoolAudienceAction(params: {
@@ -997,6 +1007,15 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
     const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
     if(userError || !user) return { ok: false, message: "User not found." };
     const userRole = user.role as UserRole;
+    
+    // For school admins, payment is handled differently (subscribing the school)
+    if(userRole === 'admin' || userRole === 'superadmin') {
+      const { data: courseData } = await supabase.from('lms_courses').select('id, price, discount_percentage').eq('id', courseId).single();
+      const finalPrice = (courseData?.price || 0) * (1 - (courseData?.discount_percentage || 0) / 100);
+      return createSchoolSubscriptionOrderAction(courseId, user.school_id!, finalPrice);
+    }
+    
+    // For students/teachers
     const profileTable = userRole === 'student' ? 'students' : 'teachers';
     const { data: profile, error: profileError } = await supabase.from(profileTable).select('id').eq('user_id', userId).single();
     if(profileError || !profile) return {ok: false, message: "User profile for enrollment not found."};
@@ -1035,6 +1054,7 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
         notes: {
             course_id: courseId,
             user_id: userId,
+            type: 'user_enrollment'
         },
     };
 
@@ -1046,6 +1066,50 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
         const errorMessage = error?.error?.description || error?.message || 'Unknown error';
         return { ok: false, message: `Failed to create payment order: ${errorMessage}` };
     }
+}
+
+
+export async function createSchoolSubscriptionOrderAction(courseId: string, schoolId: string, amount: number): Promise<{
+    ok: boolean;
+    message: string;
+    order?: any;
+    isMock?: boolean;
+}> {
+  const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
+
+  if (!isRazorpayEnabled) {
+      const { error } = await supabase.from('lms_school_subscriptions').insert({
+          course_id: courseId,
+          school_id: schoolId,
+          amount_paid: amount,
+          status: 'active',
+          razorpay_payment_id: `MOCK_${uuidv4()}`
+      });
+      if (error) return { ok: false, message: `Mock subscription failed: ${error.message}`};
+      revalidatePath('/admin/lms/courses');
+      return { ok: true, isMock: true, message: "Mock subscription successful!" };
+  }
+  
+  if (!razorpayInstance) return { ok: false, message: "Payment gateway is not configured." };
+
+  const options = {
+      amount: Math.round(amount * 100), // amount in paisa
+      currency: "INR",
+      receipt: `sch_sub_${uuidv4().substring(0, 8)}`,
+      notes: {
+          course_id: courseId,
+          school_id: schoolId,
+          type: 'school_subscription'
+      },
+  };
+
+  try {
+      const order = await razorpayInstance.orders.create(options);
+      return { ok: true, message: "Order created.", order };
+  } catch (error: any) {
+      console.error("Razorpay school subscription order error:", error);
+      return { ok: false, message: `Failed to create payment order: ${error.message || 'Unknown error'}` };
+  }
 }
 
 export async function verifyCoursePaymentAndEnrollAction(
@@ -1068,34 +1132,53 @@ export async function verifyCoursePaymentAndEnrollAction(
     try {
         const orderDetails = await razorpayInstance.orders.fetch(razorpay_order_id);
         const courseId = orderDetails.notes?.course_id;
-        const userId = orderDetails.notes?.user_id;
-
-        if (!courseId || !userId) {
-            return { ok: false, message: "Order details are missing required information." };
-        }
-        
+        const paymentType = orderDetails.notes?.type;
         const supabase = createSupabaseServerClient();
-        const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
-        if (userError || !user) return { ok: false, message: "User associated with payment not found." };
 
-        const userRole = user.role as UserRole;
-        const profileTable = userRole === 'student' ? 'students' : 'teachers';
-        const { data: profile, error: profileError } = await supabase.from(profileTable).select('id').eq('user_id', userId).single();
-        if(profileError || !profile) return {ok: false, message: "User profile for enrollment not found."};
-        
-        const enrollmentResult = await enrollUserInCourseAction({
-            course_id: ""+courseId,
-            user_profile_id: profile.id,
-            user_type: userRole,
-            school_id: user.school_id!
-        });
+        if (paymentType === 'school_subscription') {
+            const schoolId = orderDetails.notes?.school_id;
+            if (!courseId || !schoolId) return { ok: false, message: "School subscription details missing."};
 
-        if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
-            return { ok: false, message: `Payment verified, but enrollment failed: ${enrollmentResult.message}` };
+            const { error } = await supabase.from('lms_school_subscriptions').insert({
+                course_id: courseId,
+                school_id: schoolId,
+                razorpay_payment_id: razorpay_payment_id,
+                razorpay_order_id: razorpay_order_id,
+                razorpay_signature: razorpay_signature,
+                amount_paid: orderDetails.amount_paid / 100,
+                currency: orderDetails.currency,
+                status: 'active'
+            });
+            if (error) return { ok: false, message: `Payment verified but failed to save subscription: ${error.message}` };
+            revalidatePath('/admin/lms/courses');
+            return { ok: true, message: "School subscription successful!", courseId };
+
+        } else { // user_enrollment
+            const userId = orderDetails.notes?.user_id;
+            if (!courseId || !userId) return { ok: false, message: "User enrollment details are missing." };
+            
+            const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
+            if (userError || !user) return { ok: false, message: "User associated with payment not found." };
+
+            const userRole = user.role as UserRole;
+            const profileTable = userRole === 'student' ? 'students' : 'teachers';
+            const { data: profile, error: profileError } = await supabase.from(profileTable).select('id').eq('user_id', userId).single();
+            if(profileError || !profile) return {ok: false, message: "User profile for enrollment not found."};
+            
+            const enrollmentResult = await enrollUserInCourseAction({
+                course_id: ""+courseId,
+                user_profile_id: profile.id,
+                user_type: userRole,
+                school_id: user.school_id!
+            });
+
+            if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
+                return { ok: false, message: `Payment verified, but enrollment failed: ${enrollmentResult.message}` };
+            }
+            revalidatePath('/lms/available-courses');
+            return { ok: true, message: "Payment successful and you are now enrolled!", courseId };
         }
 
-        revalidatePath('/lms/available-courses');
-        return { ok: true, message: "Payment successful and you are now enrolled!", courseId };
     } catch (error: any) {
         console.error("Error during course payment verification:", error);
         return { ok: false, message: `An unexpected error occurred during verification: ${error.message}` };
