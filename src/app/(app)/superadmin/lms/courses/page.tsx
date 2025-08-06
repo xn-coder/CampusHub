@@ -51,7 +51,7 @@ export default function SuperAdminManageCoursesPage() {
   
   const fetchCourses = useCallback(async () => {
     setIsLoading(true);
-    // Superadmin sees all courses. Join with schools to get school name.
+    // Correct query to fetch all courses and join with schools to get school name.
     const { data, error } = await supabase
       .from('lms_courses')
       .select('*, school:school_id(name)')
@@ -65,6 +65,7 @@ export default function SuperAdminManageCoursesPage() {
     }
     setIsLoading(false);
   }, [toast]);
+
 
   useEffect(() => {
     const adminId = localStorage.getItem('currentUserId');
@@ -149,9 +150,8 @@ export default function SuperAdminManageCoursesPage() {
       toast({ title: editingCourse ? "Course Updated" : "Course Added", description: result.message });
       setIsCourseDialogOpen(false);
       resetCourseForm();
-      await fetchCourses(); // Refetch courses
+      await fetchCourses(); 
       if (!editingCourse && result.course) {
-        // Automatically open assign dialog for new courses
         handleOpenAssignDialog(result.course);
       }
     } else {
@@ -379,3 +379,5 @@ export default function SuperAdminManageCoursesPage() {
     </div>
   );
 }
+
+    
