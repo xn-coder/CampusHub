@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -55,7 +56,7 @@ export async function createCourseAction(
 
       if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
-      const { data: publicUrlData } = supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
+      const { data: publicUrlData } = await supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
       feature_image_url = publicUrlData?.publicUrl;
     }
 
@@ -127,7 +128,7 @@ export async function updateCourseAction(
 
       if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
-      const { data: publicUrlData } = supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
+      const { data: publicUrlData } = await supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
       updateData.feature_image_url = publicUrlData.publicUrl;
     }
     
