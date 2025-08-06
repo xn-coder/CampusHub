@@ -65,16 +65,23 @@ export async function checkUserEnrollmentForCourseViewAction(
       return { ok: true, isEnrolled: true }; 
     }
     
-    // For admins, they are considered "enrolled" for full access, unless they are specifically previewing
+    // For admins, they are considered "enrolled" for full access IF they own the course OR it's assigned to their school.
+    // They are NEVER considered enrolled if they are specifically previewing.
     if (userRole === 'admin') {
-      return { ok: true, isEnrolled: !preview };
+      if (preview) {
+        return { ok: true, isEnrolled: false, message: "Admin is in preview mode." };
+      }
+      // Check if admin is from the school the course is assigned to.
+      const { data: userSchool, error: userSchoolError } = await supabase.from('users').select('school_id').eq('id', userId).single();
+      if (userSchoolError || !userSchool) return { ok: false, isEnrolled: false, message: "Could not verify admin's school." };
+      
+      const { data: course, error: courseError } = await supabase.from('lms_course_school_availability').select('school_id').eq('course_id', courseId).eq('school_id', userSchool.school_id).maybeSingle();
+      if (courseError) return { ok: false, isEnrolled: false, message: "Error checking course assignment." };
+
+      return { ok: true, isEnrolled: !!course };
     }
 
-    // For other roles (student/teacher), if it's a preview, they are not considered "enrolled" for content access.
-    if (preview) { 
-      return { ok: true, isEnrolled: false };
-    }
-
+    // For other roles (student/teacher), they must be explicitly enrolled.
     let userProfileId: string | null = null;
     if (userRole === 'student') {
       const { data: studentProfile, error: studentError } = await supabase

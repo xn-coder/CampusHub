@@ -79,14 +79,15 @@ function ViewCoursePageContent() {
       
       if (courseResult.ok && courseResult.course) {
         setCourse(courseResult.course);
-        // Fetch user and school name for certificate
-        const { data: user } = await supabase.from('users').select('name, school_id').eq('id', userId).single();
-        setCurrentStudentName(user?.name || 'Valued Student');
-        if (user?.school_id) {
-          const { data: school } = await supabase.from('schools').select('name').eq('id', user.school_id).single();
-          setCurrentSchoolName(school?.name || 'CampusHub');
-        } else {
-            setCurrentSchoolName('CampusHub');
+        if (role === 'student') {
+            const { data: user } = await supabase.from('users').select('name, school_id').eq('id', userId).single();
+            setCurrentStudentName(user?.name || 'Valued Student');
+            if (user?.school_id) {
+              const { data: school } = await supabase.from('schools').select('name').eq('id', user.school_id).single();
+              setCurrentSchoolName(school?.name || 'CampusHub');
+            } else {
+                setCurrentSchoolName('CampusHub');
+            }
         }
       } else {
         setPageError(courseResult.message || "Failed to load course details.");

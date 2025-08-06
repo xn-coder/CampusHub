@@ -145,8 +145,8 @@ export default function CourseResourcePage() {
                         setOverallProgress(Math.round((completedCount / allLessonContents.length) * 100));
                     }
                     
-                    const firstLessonId = lessons.length > 0 ? lessons[0].id : null;
-                    const resourcesInFirstLesson = firstLessonId ? JSON.parse(lessons[0].url_or_content || '[]').map((r: LessonContentResource) => r.id) : [];
+                    const firstLesson = lessons.length > 0 ? lessons[0] : null;
+                    const resourcesInFirstLessonIds = firstLesson ? (JSON.parse(firstLesson.url_or_content || '[]') as LessonContentResource[]).map(r => r.id) : [];
 
                     const currentIndex = allLessonContents.findIndex(r => r.id === resourceId);
 
@@ -156,7 +156,8 @@ export default function CourseResourcePage() {
                         
                         // Check if content should be locked for admin preview
                         const isAdminPreviewing = (currentUserRole === 'admin' || currentUserRole === 'superadmin') && searchParams.get('preview') === 'true';
-                        if (isAdminPreviewing && !resourcesInFirstLesson.includes(resourceId)) {
+                        
+                        if (isAdminPreviewing && !resourcesInFirstLessonIds.includes(resourceId)) {
                             setIsContentLocked(true);
                         } else {
                            setIsContentLocked(false);
