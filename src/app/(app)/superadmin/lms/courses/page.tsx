@@ -25,7 +25,7 @@ const ITEMS_PER_PAGE = 10;
 
 export default function SuperAdminManageCoursesPage() {
   const { toast } = useToast();
-  const [courses, setCourses] = useState<(Course & { school: { name: string } | null })[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -51,17 +51,16 @@ export default function SuperAdminManageCoursesPage() {
   
   const fetchCourses = useCallback(async () => {
     setIsLoading(true);
-    // Correct query to fetch all courses and join with schools to get school name.
     const { data, error } = await supabase
       .from('lms_courses')
-      .select('*, school:school_id(name)')
+      .select('*')
       .order('created_at', { ascending: false });
     
     if (error) {
       toast({ title: "Error", description: `Failed to fetch courses: ${error.message}`, variant: "destructive" });
       setCourses([]);
     } else {
-      setCourses(data as (Course & { school: { name: string } | null })[] || []);
+      setCourses(data as Course[] || []);
     }
     setIsLoading(false);
   }, [toast]);
@@ -151,9 +150,6 @@ export default function SuperAdminManageCoursesPage() {
       setIsCourseDialogOpen(false);
       resetCourseForm();
       await fetchCourses(); 
-      if (!editingCourse && result.course) {
-        handleOpenAssignDialog(result.course);
-      }
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -240,7 +236,7 @@ export default function SuperAdminManageCoursesPage() {
                 {paginatedCourses.map((course) => (
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
-                    <TableCell>{course.school?.name || 'Global'}</TableCell>
+                    <TableCell>{course.school_id ? `School: ${course.school_id.substring(0,8)}...` : 'Global'}</TableCell>
                     <TableCell>{course.subscription_plan?.replace('_', ' ') || 'N/A'}</TableCell>
                     <TableCell>₹{course.price?.toFixed(2) || '0.00'}</TableCell>
                     <TableCell>{course.max_users_allowed || 'Unlimited'}</TableCell>
@@ -379,5 +375,6 @@ export default function SuperAdminManageCoursesPage() {
     </div>
   );
 }
+    
 
     
