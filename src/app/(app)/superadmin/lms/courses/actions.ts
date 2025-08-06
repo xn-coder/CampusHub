@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -36,6 +37,7 @@ export async function createCourseAction(
   const description = formData.get('description') as string | null;
   const is_paid = formData.get('is_paid') === 'true';
   const price = formData.get('price') ? Number(formData.get('price')) : undefined;
+  const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
   const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null;
   const school_id = formData.get('school_id') as string | null;
@@ -66,6 +68,7 @@ export async function createCourseAction(
       feature_image_url,
       is_paid,
       price: is_paid ? price : null,
+      discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
       created_by_user_id,
       subscription_plan,
@@ -100,6 +103,7 @@ export async function updateCourseAction(
   const description = formData.get('description') as string | null;
   const is_paid = formData.get('is_paid') === 'true';
   const price = formData.get('price') ? Number(formData.get('price')) : undefined;
+  const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const school_id = formData.get('school_id') as string | null;
   const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
   const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null;
@@ -111,6 +115,7 @@ export async function updateCourseAction(
       description,
       is_paid,
       price: is_paid ? price : null,
+      discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
       subscription_plan,
       max_users_allowed: max_users_allowed && max_users_allowed > 0 ? max_users_allowed : null,

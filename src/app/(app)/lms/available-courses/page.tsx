@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -7,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import type { Course, UserRole, CourseWithEnrollmentStatus } from '@/types';
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Library, Lock, Unlock, Eye, ShoppingCart, Loader2, Percent, BookOpen } from 'lucide-react';
+import { Library, Lock, Unlock, Eye, ShoppingCart, Loader2, Percent, BookOpen, Settings } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
@@ -90,7 +91,7 @@ export default function AvailableLmsCoursesPage() {
 
 
   const handleEnrollUnpaid = async (courseId: string) => {
-    if (!currentUserProfileId || !currentUserRole || (currentUserRole !== 'student' && currentUserRole !== 'teacher')) {
+    if (!currentUserProfileId || !currentUserRole || (currentUserRole !== 'student' && currentUserRole !== 'teacher') || !currentSchoolId) {
       toast({ title: "Error", description: "User profile not identified or role invalid for enrollment.", variant: "destructive"});
       return;
     }
@@ -100,6 +101,7 @@ export default function AvailableLmsCoursesPage() {
       course_id: courseId,
       user_profile_id: currentUserProfileId,
       user_type: currentUserRole as 'student' | 'teacher', // Cast because we checked
+      school_id: currentSchoolId,
     });
     setIsEnrolling(prev => ({ ...prev, [courseId]: false }));
 
@@ -175,7 +177,7 @@ export default function AvailableLmsCoursesPage() {
                   {canEnroll && course.isEnrolled ? (
                      <Button asChild className="w-full" variant="secondary">
                        <Link href={`/lms/courses/${course.id}`}>
-                         <Eye className="mr-2 h-4 w-4"/> View Course
+                         <BookOpen className="mr-2 h-4 w-4"/> Open Course
                        </Link>
                      </Button>
                   ) : canEnroll && course.is_paid ? (
@@ -186,7 +188,7 @@ export default function AvailableLmsCoursesPage() {
                             </Link>
                         </Button>
                         <Button asChild className="flex-1">
-                           <Link href={`/lms/activate?courseId=${course.id}`}>
+                           <Link href={`/student/lms/activate?courseId=${course.id}`}>
                             <ShoppingCart className="mr-2 h-4 w-4"/> Buy Course
                            </Link>
                         </Button>

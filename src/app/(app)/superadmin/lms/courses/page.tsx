@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -54,6 +55,7 @@ export default function SuperAdminManageCoursesPage() {
   const [featureImageFile, setFeatureImageFile] = useState<File | null>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>('free');
   const [price, setPrice] = useState<number | ''>('');
+  const [discountPercentage, setDiscountPercentage] = useState<number | ''>('');
   const [maxUsers, setMaxUsers] = useState<number | ''>('');
   
   const fetchCourses = useCallback(async () => {
@@ -89,6 +91,7 @@ export default function SuperAdminManageCoursesPage() {
     setFeatureImageFile(null);
     setSubscriptionPlan('free');
     setPrice('');
+    setDiscountPercentage('');
     setMaxUsers('');
     setEditingCourse(null);
   };
@@ -101,6 +104,7 @@ export default function SuperAdminManageCoursesPage() {
       setFeatureImageFile(null);
       setSubscriptionPlan(course.subscription_plan || 'free');
       setPrice(course.price ?? '');
+      setDiscountPercentage(course.discount_percentage ?? '');
       setMaxUsers(course.max_users_allowed ?? '');
     } else {
       resetCourseForm();
@@ -134,6 +138,7 @@ export default function SuperAdminManageCoursesPage() {
     formData.append('created_by_user_id', currentAdminUserId);
     formData.append('is_paid', String(isPaid));
     formData.append('price', String(isPaid ? price || 0 : 0));
+    formData.append('discount_percentage', String(isPaid ? discountPercentage || 0 : 0));
     formData.append('subscription_plan', subscriptionPlan);
     formData.append('max_users_allowed', String(maxUsers || 0));
 
@@ -252,7 +257,14 @@ export default function SuperAdminManageCoursesPage() {
                     <TableCell className="font-medium">{course.title}</TableCell>
                     <TableCell>{(course as any).school?.name ? (course as any).school.name : 'Global'}</TableCell>
                     <TableCell>{course.subscription_plan?.replace('_', ' ') || 'N/A'}</TableCell>
-                    <TableCell>₹{course.price?.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell>
+                      {course.is_paid && course.price ? (
+                        <span>
+                          ₹{course.price.toFixed(2)}
+                          {course.discount_percentage && course.discount_percentage > 0 && <span className="text-xs text-destructive ml-1">(-{course.discount_percentage}%)</span>}
+                        </span>
+                      ) : 'Free'}
+                    </TableCell>
                     <TableCell>{course.max_users_allowed || 'Unlimited'}</TableCell>
                     <TableCell className="text-right">
                        <Button variant="outline" size="sm" onClick={() => handleOpenAssignDialog(course)} disabled={isSubmitting}>
@@ -368,6 +380,10 @@ export default function SuperAdminManageCoursesPage() {
                  <div>
                     <Label htmlFor="price">Price (₹)</Label>
                     <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 499" step="0.01" min="0" required={subscriptionPlan !== 'free'} disabled={isSubmitting || subscriptionPlan === 'free'}/>
+                  </div>
+                 <div>
+                    <Label htmlFor="discount_percentage">Discount (%)</Label>
+                    <Input id="discount_percentage" type="number" value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 10" step="1" min="0" max="100" disabled={isSubmitting || subscriptionPlan === 'free'}/>
                   </div>
                   <div>
                     <Label htmlFor="maxUsers">Allowed Users</Label>
