@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -23,7 +22,7 @@ import {
     getAllSchoolsAction,
     getAssignmentsForCourseAction
 } from './actions';
-import { PlusCircle, Edit2, Trash2, Save, Library, Settings, Loader2, MoreHorizontal, ChevronLeft, ChevronRight, Send } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Library, Settings, Loader2, MoreHorizontal, ChevronLeft, ChevronRight, Send, Percent } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
@@ -218,6 +217,24 @@ export default function SuperAdminManageCoursesPage() {
     setIsSubmitting(false);
   };
 
+  const PriceDisplay = ({ course }: { course: Course }) => {
+    if (!course.is_paid || !course.price) return <span>Free</span>;
+
+    const discount = course.discount_percentage || 0;
+    const finalPrice = course.price * (1 - discount / 100);
+
+    if (discount > 0) {
+      return (
+        <div className="flex flex-col">
+          <span className="font-semibold">₹{finalPrice.toFixed(2)}</span>
+          <span className="text-xs text-muted-foreground line-through">₹{course.price.toFixed(2)}</span>
+        </div>
+      );
+    }
+
+    return <span>₹{course.price.toFixed(2)}</span>;
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -258,12 +275,7 @@ export default function SuperAdminManageCoursesPage() {
                     <TableCell>{(course as any).school?.name ? (course as any).school.name : 'Global'}</TableCell>
                     <TableCell>{course.subscription_plan?.replace('_', ' ') || 'N/A'}</TableCell>
                     <TableCell>
-                      {course.is_paid && course.price ? (
-                        <span>
-                          ₹{course.price.toFixed(2)}
-                          {course.discount_percentage && course.discount_percentage > 0 && <span className="text-xs text-destructive ml-1">(-{course.discount_percentage}%)</span>}
-                        </span>
-                      ) : 'Free'}
+                      <PriceDisplay course={course} />
                     </TableCell>
                     <TableCell>{course.max_users_allowed || 'Unlimited'}</TableCell>
                     <TableCell className="text-right">
