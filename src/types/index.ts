@@ -12,6 +12,7 @@ export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Frida
 export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 export type TCRequestStatus = 'Pending' | 'Approved' | 'Rejected';
+export type SubscriptionPlan = 'monthly' | 'yearly' | 'one_time';
 
 
 export interface User {
@@ -419,6 +420,8 @@ export interface Course {
   created_by_user_id: string;
   created_at?: string;
   updated_at?: string;
+  subscription_plan?: SubscriptionPlan | null;
+  max_users_allowed?: number | null;
 }
 
 export interface CourseWithEnrollmentStatus extends Course {

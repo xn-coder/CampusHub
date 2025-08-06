@@ -5,7 +5,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion, SchoolEntry, SchoolDetails } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion, SchoolEntry, SchoolDetails, SubscriptionPlan } from '@/types';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -31,15 +31,11 @@ export async function createCourseAction(
   const description = formData.get('description') as string | null;
   const is_paid = formData.get('is_paid') === 'true';
   const price = formData.get('price') ? Number(formData.get('price')) : undefined;
-  const currency = formData.get('currency') as 'INR' | 'USD' | 'EUR' | undefined;
-  const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : 0;
+  const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
+  const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null;
   const school_id = formData.get('school_id') as string | null;
-  const target_audience = formData.get('target_audience') as 'student' | 'teacher' | 'both';
-  let target_class_id = formData.get('target_class_id') as string | null;
   const created_by_user_id = formData.get('created_by_user_id') as string;
   const featureImageFile = formData.get('feature_image_url') as File | null;
-  
-  if (target_class_id === '' || target_class_id === 'all_students_in_school' || target_class_id === 'none') target_class_id = null;
   
   let feature_image_url: string | undefined = undefined;
 
@@ -54,7 +50,7 @@ export async function createCourseAction(
 
       if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
-      const { data: publicUrlData } = supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
+      const { data: publicUrlData } = await supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
       feature_image_url = publicUrlData?.publicUrl;
     }
 
@@ -65,12 +61,10 @@ export async function createCourseAction(
       feature_image_url,
       is_paid,
       price: is_paid ? price : null,
-      currency: is_paid ? (currency || 'INR') : null,
-      discount_percentage: is_paid ? discount_percentage : null,
-      school_id: school_id === '' ? null : school_id, // Ensure empty string becomes null
-      target_audience,
-      target_class_id,
+      school_id: school_id === '' ? null : school_id,
       created_by_user_id,
+      subscription_plan,
+      max_users_allowed: max_users_allowed && max_users_allowed > 0 ? max_users_allowed : null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -105,14 +99,10 @@ export async function updateCourseAction(
   const description = formData.get('description') as string | null;
   const is_paid = formData.get('is_paid') === 'true';
   const price = formData.get('price') ? Number(formData.get('price')) : undefined;
-  const currency = formData.get('currency') as 'INR' | 'USD' | 'EUR' | undefined;
-  const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : 0;
   const school_id = formData.get('school_id') as string | null;
-  const target_audience = formData.get('target_audience') as 'student' | 'teacher' | 'both';
-  let target_class_id = formData.get('target_class_id') as string | null;
+  const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
+  const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null;
   const featureImageFile = formData.get('feature_image_url') as File | null;
-  
-  if (target_class_id === '' || target_class_id === 'all_students_in_school' || target_class_id === 'none') target_class_id = null;
   
   try {
     const updateData: Partial<Course> = {
@@ -120,11 +110,9 @@ export async function updateCourseAction(
       description,
       is_paid,
       price: is_paid ? price : null,
-      currency: is_paid ? (currency || 'INR') : null,
-      discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
-      target_audience,
-      target_class_id,
+      subscription_plan,
+      max_users_allowed: max_users_allowed && max_users_allowed > 0 ? max_users_allowed : null,
       updated_at: new Date().toISOString(),
     };
 
@@ -138,7 +126,7 @@ export async function updateCourseAction(
 
       if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
-      const { data: publicUrlData } = supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
+      const { data: publicUrlData } = await supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
       updateData.feature_image_url = publicUrlData.publicUrl;
     }
     
@@ -288,8 +276,16 @@ export async function unassignCourseFromSchoolAction(
         return { ok: false, message: `Failed to unassign course: ${error.message}` };
     }
     // You might also want to unenroll all users from that school for that course
-    await supabase.from('lms_student_course_enrollments').delete().eq('course_id', courseId).in('student_id', (await supabase.from('students').select('id').eq('school_id', schoolId)).data?.map(s => s.id) || []);
-    await supabase.from('lms_teacher_course_enrollments').delete().eq('course_id', courseId).in('teacher_id', (await supabase.from('teachers').select('id').eq('school_id', schoolId)).data?.map(t => t.id) || []);
+    const { data: students } = await supabase.from('students').select('id').eq('school_id', schoolId);
+    if(students && students.length > 0) {
+        await supabase.from('lms_student_course_enrollments').delete().eq('course_id', courseId).in('student_id', students.map(s => s.id));
+    }
+
+    const { data: teachers } = await supabase.from('teachers').select('id').eq('school_id', schoolId);
+    if(teachers && teachers.length > 0) {
+        await supabase.from('lms_teacher_course_enrollments').delete().eq('course_id', courseId).in('teacher_id', teachers.map(t => t.id));
+    }
+
 
     revalidatePath('/admin/lms/courses');
     return { ok: true, message: "Course unassigned and all relevant enrollments cleared." };

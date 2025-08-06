@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import type { Course, UserRole, SchoolEntry } from '@/types';
+import type { Course, UserRole, SchoolEntry, SubscriptionPlan } from '@/types';
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
@@ -19,6 +19,8 @@ import { createCourseAction, updateCourseAction, deleteCourseAction, assignCours
 import { PlusCircle, Edit2, Trash2, Save, Library, Settings, KeyRound, Loader2, Upload, Percent, MoreHorizontal, ChevronLeft, ChevronRight, ChevronsRight, Send } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 
 const ITEMS_PER_PAGE = 10;
@@ -45,6 +47,9 @@ export default function SuperAdminManageCoursesPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [featureImageFile, setFeatureImageFile] = useState<File | null>(null);
+  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>('one_time');
+  const [price, setPrice] = useState<number | ''>('');
+  const [maxUsers, setMaxUsers] = useState<number | ''>('');
   
   const fetchCourses = async () => {
     setIsLoading(true);
@@ -78,6 +83,9 @@ export default function SuperAdminManageCoursesPage() {
     setTitle('');
     setDescription('');
     setFeatureImageFile(null);
+    setSubscriptionPlan('one_time');
+    setPrice('');
+    setMaxUsers('');
     setEditingCourse(null);
   };
 
@@ -87,6 +95,9 @@ export default function SuperAdminManageCoursesPage() {
       setTitle(course.title);
       setDescription(course.description || '');
       setFeatureImageFile(null);
+      setSubscriptionPlan(course.subscription_plan || 'one_time');
+      setPrice(course.price ?? '');
+      setMaxUsers(course.max_users_allowed ?? '');
     } else {
       resetCourseForm();
     }
@@ -113,10 +124,13 @@ export default function SuperAdminManageCoursesPage() {
     const formData = new FormData();
     formData.append('title', title.trim());
     formData.append('description', description.trim());
-    formData.append('is_paid', 'false'); // Global courses are metadata, pricing is handled at school level if needed.
     formData.append('school_id', ''); // Global course
-    formData.append('target_audience', 'both'); // Global courses are for everyone by default
     formData.append('created_by_user_id', currentAdminUserId);
+    formData.append('is_paid', subscriptionPlan !== 'one_time'); // Consider monthly/yearly as paid
+    formData.append('price', String(price || 0));
+    formData.append('subscription_plan', subscriptionPlan);
+    formData.append('max_users_allowed', String(maxUsers || 0));
+
     if(featureImageFile) {
         formData.append('feature_image_url', featureImageFile);
     }
@@ -133,7 +147,6 @@ export default function SuperAdminManageCoursesPage() {
       resetCourseForm();
       setIsCourseDialogOpen(false);
       await fetchCourses(); // Refetch courses
-      // Automatically open assign dialog for new courses
       if (!editingCourse && result.course) {
         handleOpenAssignDialog(result.course);
       }
@@ -200,7 +213,7 @@ export default function SuperAdminManageCoursesPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><Library className="mr-2 h-5 w-5" />Global Course Library</CardTitle>
-          <CardDescription>These are master courses. Assign them to schools from the school's admin panel.</CardDescription>
+          <CardDescription>These are master courses. Assign them to schools from the school's admin panel or using the 'Assign' action here.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -212,6 +225,9 @@ export default function SuperAdminManageCoursesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
+                  <TableHead>Plan</TableHead>
+                  <TableHead>Price</TableHead>
+                  <TableHead>Users</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -219,9 +235,12 @@ export default function SuperAdminManageCoursesPage() {
                 {paginatedCourses.map((course) => (
                   <TableRow key={course.id}>
                     <TableCell className="font-medium">{course.title}</TableCell>
+                    <TableCell>{course.subscription_plan?.replace('_', ' ') || 'N/A'}</TableCell>
+                    <TableCell>₹{course.price?.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell>{course.max_users_allowed || 'Unlimited'}</TableCell>
                     <TableCell className="text-right">
                        <Button variant="outline" size="sm" onClick={() => handleOpenAssignDialog(course)} disabled={isSubmitting}>
-                            <Send className="mr-2 h-4 w-4" /> Assign to Schools
+                            <Send className="mr-2 h-4 w-4" /> Assign
                         </Button>
                        <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -317,6 +336,28 @@ export default function SuperAdminManageCoursesPage() {
                 <Label htmlFor="feature_image_url">Feature Image (Optional, &lt;2MB)</Label>
                 <Input id="feature_image_url" type="file" onChange={handleFileChange} accept="image/png, image/jpeg, image/webp" disabled={isSubmitting}/>
               </div>
+               <div>
+                <Label>Subscription Plan</Label>
+                <Select value={subscriptionPlan} onValueChange={(val) => setSubscriptionPlan(val as SubscriptionPlan)} required disabled={isSubmitting}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="one_time">One-Time Payment</SelectItem>
+                    <SelectItem value="monthly">Monthly Subscription</SelectItem>
+                    <SelectItem value="yearly">Yearly Subscription</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                 <div>
+                    <Label htmlFor="price">Price (₹)</Label>
+                    <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 499" step="0.01" min="0" required disabled={isSubmitting}/>
+                  </div>
+                  <div>
+                    <Label htmlFor="maxUsers">Allowed Users</Label>
+                    <Input id="maxUsers" type="number" value={maxUsers} onChange={(e) => setMaxUsers(e.target.value === '' ? '' : parseInt(e.target.value))} placeholder="Leave blank for unlimited" min="0" disabled={isSubmitting}/>
+                  </div>
+              </div>
+
             </div>
             <DialogFooter className="mt-4">
               <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
@@ -331,6 +372,7 @@ export default function SuperAdminManageCoursesPage() {
     </div>
   );
 }
+
 
 
 
