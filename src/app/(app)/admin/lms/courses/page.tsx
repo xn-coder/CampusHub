@@ -4,20 +4,28 @@
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { CourseWithEnrollmentStatus as Course, UserRole, ClassData } from '@/types';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import type { CourseWithEnrollmentStatus as Course, UserRole, ClassData, SchoolDetails, SubscriptionPlan } from '@/types';
+import { useState, useEffect, useMemo, useCallback, type FormEvent } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import { getCoursesForSchoolAction, assignCourseToSchoolAudienceAction, enrollSchoolInCourseAction } from './actions';
-import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard } from 'lucide-react';
+import { 
+    getCoursesForSchoolAction, 
+    assignCourseToSchoolAudienceAction, 
+    enrollSchoolInCourseAction,
+    updateCourseAction,
+} from './actions';
+import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard, Edit2, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from "@/components/ui/checkbox"
+import { Save } from "lucide-react";
 
 const ITEMS_PER_PAGE = 9;
 
@@ -27,17 +35,27 @@ export default function SchoolLmsCoursesPage() {
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentSchool, setCurrentSchool] = useState<SchoolDetails | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Dialog states
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+  const [isEditCourseDialogOpen, setIsEditCourseDialogOpen] = useState(false);
   const [courseToAction, setCourseToAction] = useState<Course | null>(null);
   const [assignTarget, setAssignTarget] = useState<'all_students' | 'all_teachers' | 'class'>('all_students');
   const [assignTargetClassId, setAssignTargetClassId] = useState<string>('');
   
+  // Edit Form State
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editFeatureImageFile, setEditFeatureImageFile] = useState<File | null>(null);
+  const [editIsPaid, setEditIsPaid] = useState(false);
+  const [editPrice, setEditPrice] = useState<number | ''>('');
+  const [editDiscount, setEditDiscount] = useState<number | ''>('');
+
 
   const fetchSchoolData = useCallback(async (schoolId: string) => {
     setIsLoading(true);
@@ -64,10 +82,23 @@ export default function SchoolLmsCoursesPage() {
   useEffect(() => {
     const adminUserId = localStorage.getItem('currentUserId');
     if (adminUserId) {
-      supabase.from('users').select('school_id').eq('id', adminUserId).single().then(({ data, error }) => {
-        if (data?.school_id) {
-          setCurrentSchoolId(data.school_id);
-          fetchSchoolData(data.school_id);
+        setCurrentUserId(adminUserId);
+      supabase.from('users').select('school_id').eq('id', adminUserId).single().then(({ data: user, error: userError }) => {
+        if(userError) {
+          toast({ title: "Error fetching user context", description: userError.message, variant: "destructive"});
+          setIsLoading(false);
+          return;
+        }
+        if (user?.school_id) {
+          supabase.from('schools').select('*').eq('id', user.school_id).single().then(({data: school, error: schoolError}) => {
+            if(schoolError){
+              toast({title: "Error fetching school details", description: schoolError.message, variant: "destructive"});
+              setIsLoading(false);
+              return;
+            }
+            setCurrentSchool(school);
+            fetchSchoolData(user.school_id);
+          });
         } else {
           toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
           setIsLoading(false);
@@ -82,9 +113,61 @@ export default function SchoolLmsCoursesPage() {
     setAssignTargetClassId('');
     setIsAssignDialogOpen(true);
   };
+  
+  const handleOpenEditDialog = (course: Course) => {
+      setCourseToAction(course);
+      setEditTitle(course.title);
+      setEditDescription(course.description || '');
+      setEditIsPaid(course.is_paid);
+      setEditPrice(course.price || '');
+      setEditDiscount(course.discount_percentage || '');
+      setEditFeatureImageFile(null);
+      setIsEditCourseDialogOpen(true);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file && file.size > 2 * 1024 * 1024) { // 2MB limit
+      toast({ title: "File is too large", description: "Image must be smaller than 2MB.", variant: "destructive" });
+      return;
+    }
+    setEditFeatureImageFile(file);
+  };
+
+  const handleEditCourseSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!courseToAction || !currentSchool || !currentUserId) return;
+    setIsSubmitting(true);
+    
+    const formData = new FormData();
+    formData.append('title', editTitle);
+    formData.append('description', editDescription);
+    formData.append('is_paid', String(editIsPaid));
+    formData.append('price', String(editPrice || '0'));
+    formData.append('discount_percentage', String(editDiscount || '0'));
+    formData.append('school_id', currentSchool.id);
+    formData.append('created_by_user_id', currentUserId);
+
+    if (editFeatureImageFile) {
+        formData.append('feature_image_url', editFeatureImageFile);
+    }
+    
+    const result = await updateCourseAction(courseToAction.id, formData);
+
+    if (result.ok) {
+        toast({ title: "Course Updated", description: "Course details have been saved."});
+        setIsEditCourseDialogOpen(false);
+        if(currentSchool) fetchSchoolData(currentSchool.id);
+    } else {
+        toast({ title: "Update Failed", description: result.message, variant: "destructive"});
+    }
+    
+    setIsSubmitting(false);
+  };
+
 
   const handleAssignCourse = async () => {
-    if (!courseToAction || !currentSchoolId || !assignTarget) return;
+    if (!courseToAction || !currentSchool || !assignTarget) return;
     if (assignTarget === 'class' && !assignTargetClassId) {
       toast({ title: "Error", description: "Please select a class.", variant: "destructive" });
       return;
@@ -92,7 +175,7 @@ export default function SchoolLmsCoursesPage() {
     setIsSubmitting(true);
     const result = await assignCourseToSchoolAudienceAction({
       courseId: courseToAction.id,
-      schoolId: currentSchoolId,
+      schoolId: currentSchool.id,
       targetAudience: assignTarget,
       classId: assignTarget === 'class' ? assignTargetClassId : undefined
     });
@@ -107,18 +190,18 @@ export default function SchoolLmsCoursesPage() {
   }
   
   const handleEnrollFreeCourse = async (course: Course) => {
-      if (!currentSchoolId) {
+      if (!currentSchool) {
         toast({ title: "Error", description: "School context is missing.", variant: "destructive" });
         return;
       }
       setIsSubmitting(true);
       toast({title: "Processing...", description: `Enrolling your school in "${course.title}".`});
       
-      const result = await enrollSchoolInCourseAction(course.id, currentSchoolId);
+      const result = await enrollSchoolInCourseAction(course.id, currentSchool.id);
 
       if(result.ok) {
         toast({title: "Success!", description: `Your school now has access to "${course.title}". You can assign it to users.`});
-        await fetchSchoolData(currentSchoolId);
+        await fetchSchoolData(currentSchool.id);
       } else {
         toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
       }
@@ -202,9 +285,14 @@ export default function SchoolLmsCoursesPage() {
                                     <UserPlus className="mr-2 h-4 w-4"/> Manage Enrollments
                                 </Link>
                               </Button>
-                              <Button className="w-full" variant="outline" onClick={() => handleOpenAssignDialog(course)}>
-                                Assign To
-                              </Button>
+                              <div className="flex w-full gap-2">
+                                <Button className="flex-1" variant="outline" onClick={() => handleOpenAssignDialog(course)}>
+                                  Assign To
+                                </Button>
+                                <Button size="icon" variant="ghost" onClick={() => handleOpenEditDialog(course)}>
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                              </>
                            ) : (
                              <>
@@ -286,6 +374,35 @@ export default function SchoolLmsCoursesPage() {
             </DialogFooter>
         </DialogContent>
     </Dialog>
+
+    <Dialog open={isEditCourseDialogOpen} onOpenChange={setIsEditCourseDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+                <DialogTitle>Edit Course Details: {courseToAction?.title}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleEditCourseSubmit}>
+                <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
+                    <div><Label htmlFor="edit-title">Course Title</Label><Input id="edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required disabled={isSubmitting}/></div>
+                    <div><Label htmlFor="edit-description">Description</Label><Textarea id="edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} disabled={isSubmitting}/></div>
+                    <div><Label htmlFor="edit-feature-image">Feature Image (Optional)</Label><Input id="edit-feature-image" type="file" onChange={handleFileChange} accept="image/*" disabled={isSubmitting}/></div>
+                    <div className="flex items-center space-x-2"><Checkbox id="edit-is-paid" checked={editIsPaid} onCheckedChange={(c) => setEditIsPaid(!!c)}/><Label htmlFor="edit-is-paid">This is a paid course</Label></div>
+                    {editIsPaid && (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><Label htmlFor="edit-price">Price (₹)</Label><Input id="edit-price" type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} disabled={isSubmitting}/></div>
+                            <div><Label htmlFor="edit-discount">Discount (%)</Label><Input id="edit-discount" type="number" value={editDiscount} onChange={(e) => setEditDiscount(e.target.value === '' ? '' : parseFloat(e.target.value))} disabled={isSubmitting}/></div>
+                        </div>
+                    )}
+                </div>
+                <DialogFooter className="mt-4">
+                    <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                    <Button type="submit" disabled={isSubmitting}>
+                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save Changes
+                    </Button>
+                </DialogFooter>
+            </form>
+        </DialogContent>
+    </Dialog>
     </>
   );
 }
+
