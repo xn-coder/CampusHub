@@ -6,6 +6,48 @@ import { revalidatePath } from 'next/cache';
 import type { CourseWithEnrollmentStatus, UserRole } from '@/types';
 
 
+export async function getLmsPageContextAction(
+  userId: string,
+  userRole: UserRole
+): Promise<{
+  ok: boolean;
+  message?: string;
+  userProfileId: string | null;
+  userSchoolId: string | null;
+}> {
+  if (!userId || !userRole) {
+    return { ok: false, message: 'User context is missing.', userProfileId: null, userSchoolId: null };
+  }
+  
+  const supabase = createSupabaseServerClient();
+  
+  try {
+    const { data: user, error: userError } = await supabase.from('users').select('school_id').eq('id', userId).single();
+    if (userError || !user) {
+      return { ok: false, message: 'Could not load user context.', userProfileId: null, userSchoolId: null };
+    }
+    
+    const userSchoolId = user.school_id;
+    let userProfileId: string | null = null;
+    
+    if (userRole === 'student') {
+      const { data: profile, error } = await supabase.from('students').select('id').eq('user_id', userId).single();
+      if (error || !profile) return { ok: false, message: 'Could not load student profile.', userProfileId: null, userSchoolId };
+      userProfileId = profile.id;
+    } else if (userRole === 'teacher') {
+      const { data: profile, error } = await supabase.from('teachers').select('id').eq('user_id', userId).single();
+      if (error || !profile) return { ok: false, message: 'Could not load teacher profile.', userProfileId: null, userSchoolId };
+      userProfileId = profile.id;
+    }
+
+    return { ok: true, userProfileId, userSchoolId };
+
+  } catch (e: any) {
+    return { ok: false, message: e.message || 'An unexpected error occurred.', userProfileId: null, userSchoolId: null };
+  }
+}
+
+
 export async function getAvailableCoursesWithEnrollmentStatusAction(
   input: {
     userProfileId: string | null;

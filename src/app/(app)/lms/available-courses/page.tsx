@@ -10,8 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Library, Lock, Unlock, Eye, BookCheck, Loader2, BookOpen, Settings } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { supabase } from '@/lib/supabaseClient';
-import { getAvailableCoursesWithEnrollmentStatusAction, enrollUserInCourseAction } from '@/app/(app)/lms/actions';
+import { getAvailableCoursesWithEnrollmentStatusAction, enrollUserInCourseAction, getLmsPageContextAction } from '@/app/(app)/lms/actions';
 import { Badge } from '@/components/ui/badge';
 
 
@@ -39,30 +38,16 @@ export default function AvailableLmsCoursesPage() {
         setCurrentUserId(uIdToFetch);
 
         if (uIdToFetch && userRoleToFetch) {
-            const { data: userRec, error } = await supabase.from('users').select('school_id').eq('id', uIdToFetch).single();
-            if (error || !userRec) {
-                toast({ title: "Error", description: "Could not load user context.", variant: "destructive" });
-                setIsLoading(false);
-                return;
-            }
-            userSchoolIdToFetch = userRec.school_id;
-            setCurrentSchoolId(userSchoolIdToFetch);
-
-            if (userRoleToFetch === 'student' || userRoleToFetch === 'teacher') {
-                const profileTable = userRoleToFetch === 'student' ? 'students' : 'teachers';
-                const { data: profile, error: profileError } = await supabase
-                    .from(profileTable)
-                    .select('id')
-                    .eq('user_id', uIdToFetch)
-                    .single();
-
-                if (profileError || !profile) {
-                    toast({ title: "Error", description: `Could not load your ${userRoleToFetch} profile.`, variant: "destructive" });
-                    setIsLoading(false);
-                    return;
-                }
-                userProfileIdToFetch = profile.id;
-                setCurrentUserProfileId(profile.id);
+            const contextResult = await getLmsPageContextAction(uIdToFetch, userRoleToFetch);
+            if(contextResult.ok) {
+                userSchoolIdToFetch = contextResult.userSchoolId;
+                userProfileIdToFetch = contextResult.userProfileId;
+                setCurrentSchoolId(userSchoolIdToFetch);
+                setCurrentUserProfileId(userProfileIdToFetch);
+            } else {
+                 toast({ title: "Error", description: contextResult.message || "Could not load user context.", variant: "destructive" });
+                 setIsLoading(false);
+                 return;
             }
         }
     }
@@ -178,4 +163,3 @@ export default function AvailableLmsCoursesPage() {
     </div>
   );
 }
-
