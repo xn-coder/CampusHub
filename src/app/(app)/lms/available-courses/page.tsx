@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -12,7 +11,7 @@ import { Library, Lock, Unlock, Eye, BookCheck, Loader2, BookOpen, Settings } fr
 import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import { enrollUserInCourseAction, getAvailableCoursesWithEnrollmentStatusAction } from '@/app/(app)/admin/lms/courses/actions';
+import { getAvailableCoursesWithEnrollmentStatusAction, enrollUserInCourseAction } from '@/app/(app)/lms/actions';
 import { Badge } from '@/components/ui/badge';
 
 
@@ -40,29 +39,30 @@ export default function AvailableLmsCoursesPage() {
         setCurrentUserId(uIdToFetch);
 
         if (uIdToFetch && userRoleToFetch) {
+            const { data: userRec, error } = await supabase.from('users').select('school_id').eq('id', uIdToFetch).single();
+            if (error || !userRec) {
+                toast({ title: "Error", description: "Could not load user context.", variant: "destructive" });
+                setIsLoading(false);
+                return;
+            }
+            userSchoolIdToFetch = userRec.school_id;
+            setCurrentSchoolId(userSchoolIdToFetch);
+
             if (userRoleToFetch === 'student' || userRoleToFetch === 'teacher') {
                 const profileTable = userRoleToFetch === 'student' ? 'students' : 'teachers';
-                const { data: profile, error } = await supabase
+                const { data: profile, error: profileError } = await supabase
                     .from(profileTable)
-                    .select('id, school_id')
+                    .select('id')
                     .eq('user_id', uIdToFetch)
                     .single();
 
-                if (error || !profile) {
+                if (profileError || !profile) {
                     toast({ title: "Error", description: `Could not load your ${userRoleToFetch} profile.`, variant: "destructive" });
                     setIsLoading(false);
                     return;
                 }
                 userProfileIdToFetch = profile.id;
-                userSchoolIdToFetch = profile.school_id;
                 setCurrentUserProfileId(profile.id);
-                setCurrentSchoolId(profile.school_id);
-            } else if (userRoleToFetch === 'admin' || userRoleToFetch === 'superadmin') {
-                const { data: userRec, error } = await supabase.from('users').select('school_id').eq('id', uIdToFetch).single();
-                if (userRec) {
-                    userSchoolIdToFetch = userRec.school_id;
-                    setCurrentSchoolId(userSchoolIdToFetch);
-                }
             }
         }
     }
@@ -178,3 +178,4 @@ export default function AvailableLmsCoursesPage() {
     </div>
   );
 }
+
