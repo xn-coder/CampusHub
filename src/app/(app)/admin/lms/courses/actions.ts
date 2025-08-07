@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion, SchoolEntry, SchoolDetails, SubscriptionPlan, ClassData } from '@/types';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
+import { addMonths, addYears } from 'date-fns';
 
 let razorpayInstance: Razorpay | null = null;
 if (process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
@@ -831,14 +832,20 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       const availableCourseIds = availableRecords?.map(rec => rec.course_id) || [];
       if (availableCourseIds.length === 0) return { ok: true, courses: [] };
 
-      let courseIdsForUser = [];
+      let courseIdsForUser: string[] = [];
       
       if (userRole === 'teacher') {
           courseIdsForUser = availableRecords
               ?.filter(rec => rec.target_audience_in_school === 'both' || rec.target_audience_in_school === 'teacher')
               .map(rec => rec.course_id) || [];
       } else if (userRole === 'student') {
-          const { data: studentData } = await supabase.from('students').select('class_id').eq('id', userProfileId).single();
+          if (!userProfileId) {
+            return { ok: false, message: "Student profile ID is required but was not provided." };
+          }
+          const { data: studentData, error: studentError } = await supabase.from('students').select('class_id').eq('id', userProfileId).single();
+          if (studentError) {
+            return { ok: false, message: "Could not fetch student's class information."};
+          }
           const studentClassId = studentData?.class_id;
 
           const coursesForMyClass = availableRecords
