@@ -66,33 +66,36 @@ export async function deleteSchoolAction(
 ): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   try {
-    const { data: schoolToDelete, error: fetchError } = await supabaseAdmin
-        .from('schools')
-        .select('id, admin_user_id')
-        .eq('id', schoolId)
-        .single();
+    const dependencies = [
+      { table: 'students', label: 'Student' },
+      { table: 'teachers', label: 'Teacher' },
+      { table: 'classes', label: 'Class' },
+      { table: 'academic_years', label: 'Academic Year' },
+      { table: 'subjects', label: 'Subject' },
+      { table: 'expenses', label: 'Expense Record' },
+    ];
 
-    if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('Error fetching school for deletion:', fetchError);
-        return { ok: false, message: "Error finding school to delete."};
-    }
-    if (!schoolToDelete) {
-        return { ok: false, message: "School not found."};
-    }
+    for (const dep of dependencies) {
+      const { count, error } = await supabaseAdmin
+        .from(dep.table)
+        .select('id', { count: 'exact', head: true })
+        .eq('school_id', schoolId);
 
-    const { data: academicYears, error: ayError, count: ayCount } = await supabaseAdmin
-      .from('academic_years')
-      .select('id', { count: 'exact', head: true })
-      .eq('school_id', schoolId);
-
-    if (ayError) {
-      console.error('Error checking academic years for school:', ayError);
-      return { ok: false, message: `Failed to check school dependencies: ${ayError.message}` };
+      if (error) {
+        // If a table doesn't exist, it's not a blocking error, just a warning.
+        if (error.message.includes('relation') && error.message.includes('does not exist')) {
+          console.warn(`Dependency check skipped: table "${dep.table}" does not exist.`);
+          continue;
+        }
+        console.error(`Error checking ${dep.label} dependencies for school:`, error);
+        return { ok: false, message: `Failed to check school dependencies for ${dep.label} records.` };
+      }
+      if (count && count > 0) {
+        return { ok: false, message: `Failed to delete school: It has ${count} associated ${dep.label}(s). Please remove them first.` };
+      }
     }
-    if (ayCount && ayCount > 0) {
-      return { ok: false, message: `Failed to delete school: It has ${ayCount} associated academic year(s). Please remove them first.` };
-    }
-
+    
+    // If we've passed all dependency checks, proceed with deletion
     const { error: deleteError } = await supabaseAdmin
       .from('schools')
       .delete()
