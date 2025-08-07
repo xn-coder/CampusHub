@@ -27,7 +27,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from "@/components/ui/checkbox"
 import { Save } from "lucide-react";
 import { formatDistanceToNow, addDays, addMonths, addYears } from 'date-fns';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 
 const ITEMS_PER_PAGE = 9;
@@ -426,3 +426,6 @@ export default function SchoolLmsCoursesPage() {
   );
 }
 
+
+
+    
