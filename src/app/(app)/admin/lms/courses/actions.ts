@@ -327,6 +327,7 @@ export async function assignCourseToSchoolAudienceAction(params: {
     }
     
     let enrolledCount = 0;
+    let skippedCount = 0;
     for (const profileId of userProfileIds) {
       const result = await enrollUserInCourseAction({
         course_id: courseId,
@@ -336,10 +337,12 @@ export async function assignCourseToSchoolAudienceAction(params: {
       });
       if (result.ok) {
         enrolledCount++;
+      } else if (result.message.includes('already enrolled')) {
+        skippedCount++;
       }
     }
     
-    return { ok: true, message: `Successfully enrolled ${enrolledCount} new user(s).` };
+    return { ok: true, message: `Successfully enrolled ${enrolledCount} new user(s). Skipped ${skippedCount} already enrolled user(s).` };
   } catch (error: any) {
     return { ok: false, message: error.message || "An unexpected error occurred." };
   }
@@ -1289,6 +1292,7 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
 

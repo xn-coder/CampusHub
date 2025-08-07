@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -26,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from "@/components/ui/checkbox"
 import { Save } from "lucide-react";
 import { formatDistanceToNow, addDays, addMonths, addYears } from 'date-fns';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 
 const ITEMS_PER_PAGE = 9;
@@ -289,9 +291,24 @@ export default function SchoolLmsCoursesPage() {
                                 </Link>
                               </Button>
                               <div className="flex w-full gap-2">
-                                <Button className="flex-1" variant="outline" onClick={() => handleOpenAssignDialog(course)}>
-                                  Assign Course
-                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button className="flex-1" variant="outline">Assign Course</Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Confirm Course Assignment</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        This will enroll all selected users into the course "{course.title}". 
+                                        Already enrolled users will be skipped. Are you sure you want to proceed?
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleOpenAssignDialog(course)}>Proceed</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
                                 <Button size="icon" variant="ghost" onClick={() => handleOpenEditDialog(course)}>
                                   <Edit2 className="h-4 w-4" />
                                 </Button>
@@ -342,7 +359,7 @@ export default function SchoolLmsCoursesPage() {
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>Assign Course: {courseToAction?.title}</DialogTitle>
-                <DialogDescription>Make this course available to specific groups within your school.</DialogDescription>
+                <DialogDescription>Enroll a specific group of users from your school into this course.</DialogDescription>
             </DialogHeader>
              <div className="py-4 space-y-4">
                 <div>
@@ -408,3 +425,4 @@ export default function SchoolLmsCoursesPage() {
     </>
   );
 }
+
