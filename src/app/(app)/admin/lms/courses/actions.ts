@@ -142,7 +142,6 @@ export async function updateCourseAction(
   const price = formData.get('price') ? Number(formData.get('price')) : undefined;
   const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const school_id = formData.get('school_id') as string | null;
-  const created_by_user_id = formData.get('created_by_user_id') as string;
   
   try {
     const updateData: Partial<Course> = {
@@ -247,7 +246,7 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
 
         const subscribedCourseIds = new Set((subscriptionsRes.data || []).map(sub => sub.course_id));
         const subscriptionDates = new Map((subscriptionsRes.data || []).map(sub => [sub.course_id, sub.subscription_date]));
-
+        
         const coursesWithSchoolStatus = (coursesRes.data || []).map(c => {
             const availInfo = availability.find(a => a.course_id === c.id);
             const isEnrolled = subscribedCourseIds.has(c.id);
@@ -842,18 +841,20 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
           const { data: studentData } = await supabase.from('students').select('class_id').eq('id', userProfileId).single();
           const studentClassId = studentData?.class_id;
 
-          courseIdsForUser = availableRecords
-              ?.filter(rec => {
-                  const isForStudents = rec.target_audience_in_school === 'both' || rec.target_audience_in_school === 'student';
-                  if (!isForStudents) return false;
-                  // If course is for a specific class, student must be in that class.
-                  if (rec.target_class_id) {
-                      return rec.target_class_id === studentClassId;
-                  }
-                  // If not targeted to a specific class, it's available to all students (matching audience).
-                  return true;
-              })
+          const coursesForMyClass = availableRecords
+              ?.filter(rec => rec.target_class_id === studentClassId)
               .map(rec => rec.course_id) || [];
+          
+          const coursesForAllStudents = availableRecords
+              ?.filter(rec => rec.target_audience_in_school === 'student' && !rec.target_class_id)
+              .map(rec => rec.course_id) || [];
+          
+          const coursesForAllUsers = availableRecords
+              ?.filter(rec => rec.target_audience_in_school === 'both' && !rec.target_class_id)
+              .map(rec => rec.course_id) || [];
+
+          courseIdsForUser = [...new Set([...coursesForMyClass, ...coursesForAllStudents, ...coursesForAllUsers])];
+
       } else if (userRole === 'admin' || userRole === 'superadmin') {
           courseIdsForUser = availableCourseIds;
       }
@@ -1307,3 +1308,4 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
