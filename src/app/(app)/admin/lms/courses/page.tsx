@@ -313,7 +313,7 @@ export default function SchoolLmsCoursesPage() {
                                ) : (
                                   <Button onClick={() => handleEnrollFreeCourse(course.id)} className="w-full" disabled={isSubmitting}>
                                       {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
-                                      Enroll School (Free)
+                                      Enroll
                                   </Button>
                                )}
                              </>
