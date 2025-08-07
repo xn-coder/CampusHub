@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -15,8 +14,10 @@ import {
     assignCourseToSchoolAudienceAction, 
     enrollSchoolInCourseAction,
     updateCourseAction,
+    createCoursePaymentOrderAction,
+    verifyCoursePaymentAndEnrollAction
 } from './actions';
-import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard, Edit2, Trash2, CalendarDays } from 'lucide-react';
+import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard, Edit2, Trash2, CalendarDays, ShoppingCart, CheckCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -28,6 +29,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Save } from "lucide-react";
 import { formatDistanceToNow, addDays, addMonths, addYears } from 'date-fns';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import Script from 'next/script';
 
 
 const ITEMS_PER_PAGE = 9;
@@ -176,15 +178,124 @@ export default function SchoolLmsCoursesPage() {
       setIsSubmitting(false);
   };
 
+  const handleSubscribeCourse = async (course: Course) => {
+    if (!currentUserId) {
+      toast({ title: "Error", description: "User ID not found.", variant: "destructive" });
+      return;
+    }
+    setIsSubmitting(true);
+    const result = await createCoursePaymentOrderAction(course.id, currentUserId);
+    setIsSubmitting(false);
+
+    if (!result.ok) {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+        return;
+    }
+    if(result.isMock) {
+        toast({ title: "Success!", description: result.message });
+        if(currentUserId) fetchPageData(currentUserId);
+        return;
+    }
+    if (result.order) {
+        const rzpOptions = {
+            key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+            amount: result.order.amount,
+            currency: "INR",
+            name: "CampusHub Course Subscription",
+            description: `Payment for ${course.title}`,
+            order_id: result.order.id,
+            handler: async (response: any) => {
+                const verifyResult = await verifyCoursePaymentAndEnrollAction(
+                    response.razorpay_payment_id,
+                    response.razorpay_order_id,
+                    response.razorpay_signature
+                );
+                if (verifyResult.ok) {
+                    toast({ title: "Success", description: verifyResult.message });
+                    if(currentUserId) fetchPageData(currentUserId);
+                } else {
+                    toast({ title: "Payment Verification Failed", description: verifyResult.message, variant: "destructive" });
+                }
+            },
+            prefill: {
+                name: currentSchool?.admin_name,
+                email: currentSchool?.admin_email,
+                contact: currentSchool?.contact_phone,
+            },
+            theme: { color: "#3399cc" },
+        };
+        const rzp1 = new (window as any).Razorpay(rzpOptions);
+        rzp1.open();
+    }
+  };
+
   const filteredCourses = courses.filter(course =>
     course.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
   const paginatedCourses = filteredCourses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const totalPages = Math.ceil(filteredCourses.length / ITEMS_PER_PAGE);
+  
+  const PriceDisplay = ({ course }: { course: Course }) => {
+    if (!course.is_paid || !course.price) return <Badge variant="secondary">Free</Badge>;
+    const discount = course.discount_percentage || 0;
+    const finalPrice = course.price * (1 - discount / 100);
+    return (
+        <div className="flex items-center gap-2">
+            <span className="font-semibold text-lg">₹{finalPrice.toFixed(2)}</span>
+            {discount > 0 && <span className="text-xs text-muted-foreground line-through">₹{course.price.toFixed(2)}</span>}
+        </div>
+    );
+  };
+
+  const CourseCardActions = ({ course }: { course: Course }) => {
+      if (course.isEnrolled) {
+          return (
+             <div className="flex w-full gap-2">
+                <Button asChild className="flex-1" variant="secondary">
+                <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
+                    <UserPlus className="mr-2 h-4 w-4"/> Enroll Users
+                </Link>
+                </Button>
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                    <Button className="flex-1" variant="outline">Assign</Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Assign Course Visibility</AlertDialogTitle>
+                        <AlertDialogDescription>
+                        This will make the course "{course.title}" visible to the selected group of users. They will then be able to enroll themselves.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleOpenAssignDialog(course)}>Proceed</AlertDialogAction>
+                    </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </div>
+          );
+      }
+      
+      if (course.is_paid) {
+          return (
+             <Button className="w-full" onClick={() => handleSubscribeCourse(course)} disabled={isSubmitting}>
+                <ShoppingCart className="mr-2 h-4 w-4" /> Subscribe Now
+            </Button>
+          )
+      }
+
+      return (
+          <Button className="w-full" onClick={() => handleEnrollFreeCourse(course.id)} disabled={isSubmitting}>
+            <CheckCheck className="mr-2 h-4 w-4" /> Enroll School (Free)
+          </Button>
+      )
+  }
 
   return (
     <>
+    <Script id="razorpay-checkout-js" src="https://checkout.razorpay.com/v1/checkout.js" />
     <div className="flex flex-col gap-6">
       <PageHeader
         title="LMS Courses for Your School"
@@ -230,43 +341,39 @@ export default function SchoolLmsCoursesPage() {
                                 data-ai-hint="course cover"
                             />
                              <div className="absolute top-2 right-2 flex gap-1">
-                                <Badge className="bg-green-600 hover:bg-green-700 flex items-center"><Unlock className="mr-1 h-3 w-3"/> Available</Badge>
+                                {course.isEnrolled ? (
+                                    <Badge className="bg-green-600 hover:bg-green-700 flex items-center"><Unlock className="mr-1 h-3 w-3"/> Enrolled</Badge>
+                                ) : (
+                                    <Badge variant="destructive" className="flex items-center"><Lock className="mr-1 h-3 w-3"/> Not Enrolled</Badge>
+                                )}
                             </div>
                         </div>
-                        <CardHeader>
+                        <CardHeader className="flex-row justify-between items-start">
                             <CardTitle className="line-clamp-2">{course.title}</CardTitle>
+                            <PriceDisplay course={course} />
                         </CardHeader>
                         <CardContent className="flex-grow">
                              <CardDescription className="line-clamp-3">{course.description || "No description available."}</CardDescription>
                         </CardContent>
                         <CardFooter className="flex-col sm:flex-row gap-2">
-                            <Button asChild className="w-full" variant="secondary">
-                            <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                                <UserPlus className="mr-2 h-4 w-4"/> Enroll Users
-                            </Link>
-                            </Button>
-                            <div className="flex w-full gap-2">
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                <Button className="flex-1" variant="outline">Assign</Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>Assign Course Visibility</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                    This will make the course "{course.title}" visible to the selected group of users. They will then be able to enroll themselves.
-                                    </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleOpenAssignDialog(course)}>Proceed</AlertDialogAction>
-                                </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                            <Button size="icon" variant="ghost" onClick={() => handleOpenEditDialog(course)}>
-                                <Edit2 className="h-4 w-4" />
-                            </Button>
-                            </div>
+                           <CourseCardActions course={course} />
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button size="icon" variant="ghost" className="shrink-0">
+                                        <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem asChild>
+                                         <Link href={`/admin/lms/courses/${course.id}/content?preview=true`}>
+                                            <Eye className="mr-2 h-4 w-4"/> Preview Content
+                                        </Link>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleOpenEditDialog(course)}>
+                                        <Edit2 className="mr-2 h-4 w-4" /> Edit Details
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </CardFooter>
                     </Card>
                 ))}
@@ -354,7 +461,3 @@ export default function SchoolLmsCoursesPage() {
     </>
   );
 }
-
-
-
-    

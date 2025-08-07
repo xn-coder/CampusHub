@@ -3,7 +3,7 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
-import type { CourseWithEnrollmentStatus, UserRole } from '@/types';
+import type { Course, CourseWithEnrollmentStatus, UserRole } from '@/types';
 
 
 export async function getLmsPageContextAction(
@@ -95,9 +95,8 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
           
           courseIdsForUser = availableRecords
             .filter(rec => 
-                (rec.target_audience_in_school === 'student' && !rec.target_class_id) || 
-                (rec.target_class_id && rec.target_class_id === studentClassId) ||
-                (rec.target_audience_in_school === 'both' && !rec.target_class_id)
+                (rec.target_audience_in_school === 'student' || rec.target_audience_in_school === 'both') && !rec.target_class_id || 
+                (rec.target_class_id && rec.target_class_id === studentClassId)
             )
             .map(rec => rec.course_id);
       }

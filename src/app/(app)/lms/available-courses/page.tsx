@@ -149,8 +149,8 @@ export default function AvailableLmsCoursesPage() {
                     </div>
                   ) : ( // Admin/Superadmin view or user cannot enroll
                      <Button asChild className="w-full" variant="outline">
-                       <Link href={`/admin/lms/courses/${course.id}/content`}>
-                         <Settings className="mr-2 h-4 w-4"/> Manage Course
+                       <Link href={`/admin/lms/courses`}>
+                         <Settings className="mr-2 h-4 w-4"/> Manage Courses
                        </Link>
                      </Button>
                   )}
