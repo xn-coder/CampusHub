@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -819,54 +818,51 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
   if (!userRole) {
     return { ok: false, message: "User role not provided." };
   }
+  if (userRole !== 'superadmin' && !userSchoolId) {
+    return { ok: true, courses: [] }; // No school context, so no courses.
+  }
 
   try {
     let courseQuery = supabase.from('lms_courses').select('*');
     
-    // Non-superadmins should only see courses available to their school or global courses if they don't have a school
     if (userRole !== 'superadmin') {
-      if (!userSchoolId) {
-        // User with no school context (e.g., student not fully registered) sees only global courses
-        courseQuery = courseQuery.is('school_id', null);
-      } else {
-        // Regular users (student, teacher, admin) see courses available to their school
-        const { data: availableRecords, error: availabilityError } = await supabase
-            .from('lms_course_school_availability')
-            .select('course_id, target_audience_in_school, target_class_id')
-            .eq('school_id', userSchoolId);
-        
-        if (availabilityError) throw availabilityError;
-        if (!availableRecords || availableRecords.length === 0) return { ok: true, courses: [] };
+      const { data: availableRecords, error: availabilityError } = await supabase
+          .from('lms_course_school_availability')
+          .select('course_id, target_audience_in_school, target_class_id')
+          .eq('school_id', userSchoolId!);
+      
+      if (availabilityError) throw availabilityError;
+      if (!availableRecords || availableRecords.length === 0) return { ok: true, courses: [] };
 
-        let courseIdsForUser: string[] = [];
-        if (userRole === 'admin') {
-            courseIdsForUser = availableRecords.map(rec => rec.course_id);
-        } else if (userRole === 'teacher') {
-            courseIdsForUser = availableRecords
-                .filter(rec => rec.target_audience_in_school === 'both' || rec.target_audience_in_school === 'teacher')
-                .map(rec => rec.course_id);
-        } else if (userRole === 'student') {
-            if (!userProfileId) {
-              return { ok: false, message: "Student profile ID is required but was not provided." };
-            }
-            const { data: studentData, error: studentError } = await supabase.from('students').select('class_id').eq('id', userProfileId).single();
-            if (studentError) {
-              return { ok: false, message: "Could not fetch student's class information."};
-            }
-            const studentClassId = studentData?.class_id;
+      let courseIdsForUser: string[] = [];
 
-            courseIdsForUser = availableRecords
-                .filter(rec => 
-                    (rec.target_audience_in_school === 'both' && !rec.target_class_id) || // Available to all users
-                    (rec.target_audience_in_school === 'student' && !rec.target_class_id) || // Available to all students
-                    (rec.target_audience_in_school === 'student' && rec.target_class_id === studentClassId) // Available to student's specific class
-                )
-                .map(rec => rec.course_id);
-        }
-        
-        if (courseIdsForUser.length === 0) return { ok: true, courses: [] };
-        courseQuery = courseQuery.in('id', courseIdsForUser);
+      if (userRole === 'admin') {
+          courseIdsForUser = availableRecords.map(rec => rec.course_id);
+      } else if (userRole === 'teacher') {
+          courseIdsForUser = availableRecords
+              .filter(rec => rec.target_audience_in_school === 'both' || rec.target_audience_in_school === 'teacher')
+              .map(rec => rec.course_id);
+      } else if (userRole === 'student') {
+          if (!userProfileId) {
+            return { ok: false, message: "Student profile ID is required but was not provided." };
+          }
+          const { data: studentData, error: studentError } = await supabase.from('students').select('class_id').eq('id', userProfileId).single();
+          if (studentError) {
+            return { ok: false, message: "Could not fetch student's class information."};
+          }
+          const studentClassId = studentData?.class_id;
+
+          courseIdsForUser = availableRecords
+              .filter(rec => 
+                  (rec.target_audience_in_school === 'both' && !rec.target_class_id) ||
+                  (rec.target_audience_in_school === 'student' && !rec.target_class_id) ||
+                  (rec.target_audience_in_school === 'student' && rec.target_class_id === studentClassId)
+              )
+              .map(rec => rec.course_id);
       }
+      
+      if (courseIdsForUser.length === 0) return { ok: true, courses: [] };
+      courseQuery = courseQuery.in('id', courseIdsForUser);
     }
 
     const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
@@ -1313,5 +1309,6 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
