@@ -250,14 +250,11 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
         
         const coursesWithSchoolStatus = (coursesRes.data || []).map(c => {
             const availInfo = availability.find(a => a.course_id === c.id);
-            // A school is considered enrolled if it has an active subscription for a paid course.
-            // For a free course, enrollment is handled client-side by an explicit action, so `isEnrolled` should be false
-            // by default for free courses, giving the admin the option to enroll.
-            const isEnrolled = c.is_paid && subscribedCourseIds.has(c.id);
+            const isEnrolled = subscribedCourseIds.has(c.id);
 
             return {
                 ...c,
-                isEnrolled: isEnrolled,
+                isEnrolled,
                 target_audience_in_school: availInfo?.target_audience_in_school,
             };
         });
@@ -270,22 +267,28 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
 
 export async function enrollSchoolInCourseAction(courseId: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
     const supabase = createSupabaseServerClient();
-    const { data: course, error: courseError } = await supabase.from('lms_courses').select('is_paid').eq('id', courseId).single();
+    
+    const { data: course, error: courseError } = await supabase.from('lms_courses').select('is_paid, price').eq('id', courseId).single();
     if(courseError || !course) return { ok: false, message: "Course not found." };
-    if(course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription." };
+    if(course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription via the payment flow." };
 
-    const { error } = await supabase
-        .from('lms_course_school_availability')
-        .upsert({
-            course_id: courseId,
-            school_id: schoolId,
-            target_audience_in_school: 'both' // Default to both
-        }, { onConflict: 'course_id, school_id' }); // Use upsert to avoid errors if already available
+    // For free courses, create a mock subscription record to signify enrollment
+    const { error: subscriptionError } = await supabase.from('lms_school_subscriptions').insert({
+        course_id: courseId,
+        school_id: schoolId,
+        amount_paid: 0,
+        status: 'active',
+        razorpay_payment_id: 'FREE_ENROLLMENT'
+    });
 
-    if (error) {
-        console.error("Error enrolling school in free course:", error);
-        return { ok: false, message: `Failed to enroll school: ${error.message}` };
+    if (subscriptionError) {
+        if(subscriptionError.code === '23505') { // unique constraint violation
+            return { ok: true, message: "School is already enrolled in this course."};
+        }
+        console.error("Error enrolling school in free course (creating subscription record):", subscriptionError);
+        return { ok: false, message: `Failed to enroll school in course: ${subscriptionError.message}` };
     }
+
     revalidatePath('/admin/lms/courses');
     return { ok: true, message: "School successfully enrolled in the free course." };
 }
@@ -1287,6 +1290,7 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
 

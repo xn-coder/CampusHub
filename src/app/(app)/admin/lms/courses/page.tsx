@@ -159,24 +159,22 @@ export default function SchoolLmsCoursesPage() {
     setIsSubmitting(false);
   }
   
-  const handleEnrollFreeCourse = async (course: Course) => {
-      if (!currentSchool) {
-        toast({ title: "Error", description: "School context is missing.", variant: "destructive" });
+  const handleEnrollFreeCourse = async (courseId: string) => {
+      if (!currentSchool || !currentUserId) {
+        toast({ title: "Error", description: "School context or user is missing.", variant: "destructive" });
         return;
       }
       setIsSubmitting(true);
-      toast({title: "Processing...", description: `Enrolling your school in "${course.title}".`});
       
-      const result = await enrollSchoolInCourseAction(course.id, currentSchool.id);
+      const result = await enrollSchoolInCourseAction(courseId, currentSchool.id);
 
       if(result.ok) {
-        toast({title: "Success!", description: `Your school now has access to "${course.title}". You can assign it to users.`});
-        if(currentUserId) await fetchPageData(currentUserId);
+        toast({title: "Success!", description: `Your school now has access to this course. You can assign it to users.`});
+        await fetchPageData(currentUserId);
       } else {
         toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
       }
 
-      setCourseToAction(null);
       setIsSubmitting(false);
   };
 
@@ -278,7 +276,7 @@ export default function SchoolLmsCoursesPage() {
                                       </Link>
                                   </Button>
                                ) : (
-                                  <Button onClick={() => handleEnrollFreeCourse(course)} className="w-full" disabled={isSubmitting}>
+                                  <Button onClick={() => handleEnrollFreeCourse(course.id)} className="w-full" disabled={isSubmitting}>
                                       {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
                                       Enroll School (Free)
                                   </Button>
