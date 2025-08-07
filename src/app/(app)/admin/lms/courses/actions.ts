@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -818,13 +819,15 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
   if (!userRole) {
     return { ok: false, message: "User role not provided." };
   }
+  // All roles (except superadmin) must have a school context to see courses.
   if (userRole !== 'superadmin' && !userSchoolId) {
-    return { ok: true, courses: [] }; // No school context, so no courses.
+    return { ok: true, courses: [] }; 
   }
 
   try {
     let courseQuery = supabase.from('lms_courses').select('*');
     
+    // --- Step 1: Determine which courses are even VISIBLE to the user based on their school and role ---
     if (userRole !== 'superadmin') {
       const { data: availableRecords, error: availabilityError } = await supabase
           .from('lms_course_school_availability')
@@ -837,27 +840,29 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       let courseIdsForUser: string[] = [];
 
       if (userRole === 'admin') {
+          // Admins see all courses available to their school
           courseIdsForUser = availableRecords.map(rec => rec.course_id);
       } else if (userRole === 'teacher') {
+          // Teachers see courses assigned to 'all_teachers' or 'both'
           courseIdsForUser = availableRecords
-              .filter(rec => rec.target_audience_in_school === 'both' || rec.target_audience_in_school === 'teacher')
+              .filter(rec => rec.target_audience_in_school === 'teacher' || rec.target_audience_in_school === 'both')
               .map(rec => rec.course_id);
       } else if (userRole === 'student') {
-          if (!userProfileId) {
-            return { ok: false, message: "Student profile ID is required but was not provided." };
-          }
+          if (!userProfileId) return { ok: false, message: "Student profile ID is required but was not provided." };
+          
           const { data: studentData, error: studentError } = await supabase.from('students').select('class_id').eq('id', userProfileId).single();
-          if (studentError) {
-            return { ok: false, message: "Could not fetch student's class information."};
-          }
+          if (studentError) return { ok: false, message: "Could not fetch student's class information."};
+          
           const studentClassId = studentData?.class_id;
 
+          // Students see courses assigned to 'all_students', or their specific class
           courseIdsForUser = availableRecords
-              .filter(rec => 
-                  (rec.target_audience_in_school === 'both' && !rec.target_class_id) ||
-                  (rec.target_audience_in_school === 'student' && !rec.target_class_id) ||
-                  (rec.target_audience_in_school === 'student' && rec.target_class_id === studentClassId)
-              )
+              .filter(rec => {
+                  const isForStudents = rec.target_audience_in_school === 'student' || rec.target_audience_in_school === 'both';
+                  if (!isForStudents) return false;
+                  // It's for students, now check if it's for their class or all students
+                  return !rec.target_class_id || rec.target_class_id === studentClassId;
+              })
               .map(rec => rec.course_id);
       }
       
@@ -865,16 +870,13 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       courseQuery = courseQuery.in('id', courseIdsForUser);
     }
 
+    // --- Step 2: Fetch the actual course details for the visible courses ---
     const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
 
-    if (coursesError) {
-      console.error("Error fetching courses:", coursesError);
-      return { ok: false, message: `Failed to fetch courses: ${coursesError.message}` };
-    }
-    if (!coursesData) {
-      return { ok: true, courses: [] };
-    }
+    if (coursesError) throw coursesError;
+    if (!coursesData) return { ok: true, courses: [] };
 
+    // --- Step 3: Check the enrollment status for the visible courses ---
     let enrolledCourseIds: string[] = [];
     if (userProfileId && (userRole === 'student' || userRole === 'teacher')) {
       const enrollmentTable = userRole === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
@@ -891,10 +893,17 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
         enrolledCourseIds = enrollments.map(e => e.course_id);
       }
     }
+    
+    // Admins are considered enrolled if the school has a subscription
+    if (userRole === 'admin' && userSchoolId) {
+        const { data: subscriptions } = await supabase.from('lms_school_subscriptions').select('course_id').eq('school_id', userSchoolId);
+        enrolledCourseIds = subscriptions?.map(s => s.course_id) || [];
+    }
+
 
     const coursesWithStatus: CourseWithEnrollmentStatus[] = coursesData.map(course => ({
       ...course,
-      isEnrolled: (userRole === 'admin' || userRole === 'superadmin') ? true : enrolledCourseIds.includes(course.id),
+      isEnrolled: (userRole === 'superadmin') ? true : enrolledCourseIds.includes(course.id),
     }));
     
     return { ok: true, courses: coursesWithStatus };
@@ -1309,6 +1318,7 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
 
