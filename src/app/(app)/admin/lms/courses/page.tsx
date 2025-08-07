@@ -9,9 +9,8 @@ import { useState, useEffect, useMemo, useCallback, type FormEvent } from 'react
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import Image from 'next/image';
-import { supabase } from '@/lib/supabaseClient';
 import { 
-    getCoursesForSchoolAction, 
+    getAdminLmsPageData,
     assignCourseToSchoolAudienceAction, 
     enrollSchoolInCourseAction,
     updateCourseAction,
@@ -57,55 +56,26 @@ export default function SchoolLmsCoursesPage() {
   const [editDiscount, setEditDiscount] = useState<number | ''>('');
 
 
-  const fetchSchoolData = useCallback(async (schoolId: string) => {
+  const fetchPageData = useCallback(async (adminUserId: string) => {
     setIsLoading(true);
-    const [coursesResult, classesResult] = await Promise.all([
-      getCoursesForSchoolAction(schoolId),
-      supabase.from('classes').select('*').eq('school_id', schoolId)
-    ]);
-    
-    if (coursesResult.ok && coursesResult.courses) {
-      setCourses(coursesResult.courses);
+    const result = await getAdminLmsPageData(adminUserId);
+    if (result.ok) {
+        setCourses(result.courses || []);
+        setClasses(result.classes || []);
+        setCurrentSchool(result.school || null);
     } else {
-      toast({ title: "Error", description: coursesResult.message || "Failed to load school courses.", variant: "destructive" });
+        toast({ title: "Error", description: result.message || "Failed to load page data.", variant: "destructive" });
     }
-
-    if(classesResult.error) {
-       toast({ title: "Error", description: "Failed to load class list for assignment.", variant: "destructive" });
-    } else {
-       setClasses(classesResult.data || []);
-    }
-
     setIsLoading(false);
   }, [toast]);
 
   useEffect(() => {
     const adminUserId = localStorage.getItem('currentUserId');
     if (adminUserId) {
-        setCurrentUserId(adminUserId);
-      supabase.from('users').select('school_id').eq('id', adminUserId).single().then(({ data: user, error: userError }) => {
-        if(userError) {
-          toast({ title: "Error fetching user context", description: userError.message, variant: "destructive"});
-          setIsLoading(false);
-          return;
-        }
-        if (user?.school_id) {
-          supabase.from('schools').select('*').eq('id', user.school_id).single().then(({data: school, error: schoolError}) => {
-            if(schoolError){
-              toast({title: "Error fetching school details", description: schoolError.message, variant: "destructive"});
-              setIsLoading(false);
-              return;
-            }
-            setCurrentSchool(school);
-            fetchSchoolData(user.school_id);
-          });
-        } else {
-          toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
-          setIsLoading(false);
-        }
-      });
+      setCurrentUserId(adminUserId);
+      fetchPageData(adminUserId);
     }
-  }, [toast, fetchSchoolData]);
+  }, [toast, fetchPageData]);
   
   const handleOpenAssignDialog = (course: Course) => {
     setCourseToAction(course);
@@ -157,7 +127,7 @@ export default function SchoolLmsCoursesPage() {
     if (result.ok) {
         toast({ title: "Course Updated", description: "Course details have been saved."});
         setIsEditCourseDialogOpen(false);
-        if(currentSchool) fetchSchoolData(currentSchool.id);
+        if(currentUserId) fetchPageData(currentUserId);
     } else {
         toast({ title: "Update Failed", description: result.message, variant: "destructive"});
     }
@@ -201,7 +171,7 @@ export default function SchoolLmsCoursesPage() {
 
       if(result.ok) {
         toast({title: "Success!", description: `Your school now has access to "${course.title}". You can assign it to users.`});
-        await fetchSchoolData(currentSchool.id);
+        if(currentUserId) await fetchPageData(currentUserId);
       } else {
         toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
       }
@@ -405,4 +375,5 @@ export default function SchoolLmsCoursesPage() {
     </>
   );
 }
+
 

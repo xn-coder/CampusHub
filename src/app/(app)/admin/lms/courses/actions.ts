@@ -5,7 +5,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion, SchoolEntry, SchoolDetails, SubscriptionPlan } from '@/types';
+import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion, SchoolEntry, SchoolDetails, SubscriptionPlan, ClassData } from '@/types';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -17,6 +17,47 @@ if (process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) 
     });
 } else {
     console.warn("Razorpay credentials not found for LMS. Payment gateway will not function.");
+}
+
+
+export async function getAdminLmsPageData(adminUserId: string): Promise<{
+  ok: boolean;
+  message?: string;
+  school?: SchoolDetails | null;
+  courses?: CourseWithEnrollmentStatus[];
+  classes?: ClassData[];
+}> {
+  if (!adminUserId) {
+    return { ok: false, message: "Admin user ID is required." };
+  }
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data: user, error: userError } = await supabase.from('users').select('school_id').eq('id', adminUserId).single();
+    if (userError) throw new Error(userError.message);
+    if (!user?.school_id) {
+      return { ok: false, message: "Admin is not linked to a school." };
+    }
+    const schoolId = user.school_id;
+
+    const [schoolResult, coursesResult, classesResult] = await Promise.all([
+      supabase.from('schools').select('*').eq('id', schoolId).single(),
+      getCoursesForSchoolAction(schoolId),
+      supabase.from('classes').select('*').eq('school_id', schoolId)
+    ]);
+
+    if (schoolResult.error) throw new Error(`Failed to fetch school details: ${schoolResult.error.message}`);
+    if (!coursesResult.ok) throw new Error(coursesResult.message || "Failed to fetch courses.");
+    if (classesResult.error) throw new Error(`Failed to fetch classes: ${classesResult.error.message}`);
+
+    return {
+      ok: true,
+      school: schoolResult.data,
+      courses: coursesResult.courses,
+      classes: classesResult.data
+    };
+  } catch (e: any) {
+    return { ok: false, message: e.message || "An unexpected error occurred." };
+  }
 }
 
 
@@ -159,6 +200,7 @@ export async function updateCourseAction(
 export async function deleteCourseAction(id: string): Promise<{ ok: boolean; message: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   
+  await supabaseAdmin.from('lms_school_subscriptions').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_school_availability').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_resources').delete().eq('course_id', id);
   await supabaseAdmin.from('lms_course_activation_codes').delete().eq('course_id', id);
@@ -1242,5 +1284,6 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
