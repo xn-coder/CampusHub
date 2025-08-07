@@ -302,48 +302,45 @@ export async function assignCourseToSchoolAudienceAction(params: {
   const supabase = createSupabaseServerClient();
 
   try {
-    let userProfileIds: string[] = [];
-    let userType: 'student' | 'teacher' | undefined = undefined;
-
+    let audience: 'student' | 'teacher' | 'both';
+    let targetClass: string | null = null;
+    let messageAudience = '';
+    
     if (targetAudience === 'all_students') {
-      userType = 'student';
-      const { data, error } = await supabase.from('students').select('id').eq('school_id', schoolId);
-      if (error) throw error;
-      userProfileIds = data.map(s => s.id);
+      audience = 'student';
+      messageAudience = 'all students';
     } else if (targetAudience === 'all_teachers') {
-      userType = 'teacher';
-      const { data, error } = await supabase.from('teachers').select('id').eq('school_id', schoolId);
-      if (error) throw error;
-      userProfileIds = data.map(t => t.id);
+      audience = 'teacher';
+      messageAudience = 'all teachers';
     } else if (targetAudience === 'class' && classId) {
-      userType = 'student';
-      const { data, error } = await supabase.from('students').select('id').eq('school_id', schoolId).eq('class_id', classId);
-      if (error) throw error;
-      userProfileIds = data.map(s => s.id);
+      audience = 'student';
+      targetClass = classId;
+      const { data: classData } = await supabase.from('classes').select('name, division').eq('id', classId).single();
+      messageAudience = `class ${classData?.name}-${classData?.division}`;
+    } else {
+        return { ok: false, message: "Invalid audience selection." };
+    }
+    
+    const { error } = await supabase
+      .from('lms_course_school_availability')
+      .update({
+        target_audience_in_school: audience,
+        target_class_id: targetClass
+      })
+      .eq('course_id', courseId)
+      .eq('school_id', schoolId);
+    
+    if (error) {
+      throw error;
     }
 
-    if (!userType || userProfileIds.length === 0) {
-      return { ok: true, message: "No users found for the selected audience." };
-    }
+    revalidatePath('/admin/lms/courses');
+    revalidatePath('/lms/available-courses');
     
-    let enrolledCount = 0;
-    let skippedCount = 0;
-    for (const profileId of userProfileIds) {
-      const result = await enrollUserInCourseAction({
-        course_id: courseId,
-        user_profile_id: profileId,
-        user_type: userType,
-        school_id: schoolId,
-      });
-      if (result.ok) {
-        enrolledCount++;
-      } else if (result.message.includes('already enrolled')) {
-        skippedCount++;
-      }
-    }
+    return { ok: true, message: `Course is now visible to ${messageAudience}. They can now enroll themselves.` };
     
-    return { ok: true, message: `Successfully enrolled ${enrolledCount} new user(s). Skipped ${skippedCount} already enrolled user(s).` };
   } catch (error: any) {
+    console.error("Error assigning course to audience:", error);
     return { ok: false, message: error.message || "An unexpected error occurred." };
   }
 }
@@ -820,17 +817,14 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
   try {
     let courseQuery = supabase.from('lms_courses').select('*');
 
-    if (userRole === 'admin' || userRole === 'superadmin') {
-      // Admins see courses assigned to their school. Superadmins see all.
-      if (userRole === 'admin' && userSchoolId) {
-        courseQuery = courseQuery.eq('school_id', userSchoolId);
-      }
-      // No filter for superadmin to see all courses
-    } else if (userSchoolId) {
-      // Students and Teachers see courses assigned to their school
+    if (!userSchoolId) {
+      // User with no school context sees only global courses
+      courseQuery = courseQuery.is('school_id', null);
+    } else {
+       // Regular users see courses assigned to their school
       const { data: availableRecords, error: availabilityError } = await supabase
           .from('lms_course_school_availability')
-          .select('course_id, target_audience_in_school')
+          .select('course_id, target_audience_in_school, target_class_id')
           .eq('school_id', userSchoolId);
       
       if (availabilityError) throw availabilityError;
@@ -838,20 +832,37 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       const availableCourseIds = availableRecords?.map(rec => rec.course_id) || [];
       if (availableCourseIds.length === 0) return { ok: true, courses: [] };
 
-      const audienceFilter = userRole; // 'student' or 'teacher'
-
-      const courseIdsForRole = availableRecords
-          ?.filter(rec => rec.target_audience_in_school === 'both' || rec.target_audience_in_school === audienceFilter)
-          .map(rec => rec.course_id) || [];
+      let courseIdsForUser = [];
       
-      if(courseIdsForRole.length === 0) return { ok: true, courses: [] };
+      if (userRole === 'teacher') {
+          courseIdsForUser = availableRecords
+              ?.filter(rec => rec.target_audience_in_school === 'both' || rec.target_audience_in_school === 'teacher')
+              .map(rec => rec.course_id) || [];
+      } else if (userRole === 'student') {
+          const { data: studentData } = await supabase.from('students').select('class_id').eq('id', userProfileId).single();
+          const studentClassId = studentData?.class_id;
 
-      courseQuery = courseQuery.in('id', courseIdsForRole);
-    } else {
-      // User with no school sees only global courses
-      courseQuery = courseQuery.is('school_id', null);
+          courseIdsForUser = availableRecords
+              ?.filter(rec => {
+                  const isForStudents = rec.target_audience_in_school === 'both' || rec.target_audience_in_school === 'student';
+                  if (!isForStudents) return false;
+                  // If course is for a specific class, student must be in that class.
+                  if (rec.target_class_id) {
+                      return rec.target_class_id === studentClassId;
+                  }
+                  // If not targeted to a specific class, it's available to all students (matching audience).
+                  return true;
+              })
+              .map(rec => rec.course_id) || [];
+      } else if (userRole === 'admin' || userRole === 'superadmin') {
+          courseIdsForUser = availableCourseIds;
+      }
+      
+      if(courseIdsForUser.length === 0) return { ok: true, courses: [] };
+
+      courseQuery = courseQuery.in('id', courseIdsForUser);
     }
-    
+
     const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
 
     if (coursesError) {
@@ -1296,12 +1307,3 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
-
-
-
-
-
-
-
-
-

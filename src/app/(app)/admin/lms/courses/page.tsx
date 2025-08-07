@@ -297,10 +297,9 @@ export default function SchoolLmsCoursesPage() {
                                   </AlertDialogTrigger>
                                   <AlertDialogContent>
                                     <AlertDialogHeader>
-                                      <AlertDialogTitle>Confirm Course Assignment</AlertDialogTitle>
+                                      <AlertDialogTitle>Assign Course Visibility</AlertDialogTitle>
                                       <AlertDialogDescription>
-                                        This will enroll all selected users into the course "{course.title}". 
-                                        Already enrolled users will be skipped. Are you sure you want to proceed?
+                                        This will make the course "{course.title}" visible to the selected group of users. They will then be able to enroll themselves. This will not automatically enroll them.
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
@@ -359,7 +358,7 @@ export default function SchoolLmsCoursesPage() {
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>Assign Course: {courseToAction?.title}</DialogTitle>
-                <DialogDescription>Enroll a specific group of users from your school into this course.</DialogDescription>
+                <DialogDescription>Make this course visible to a specific group of users in your school. They will then be able to enroll themselves.</DialogDescription>
             </DialogHeader>
              <div className="py-4 space-y-4">
                 <div>
