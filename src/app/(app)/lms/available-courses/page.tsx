@@ -41,7 +41,7 @@ export default function AvailableLmsCoursesPage() {
     if (typeof window !== 'undefined') {
       userRoleToFetch = localStorage.getItem('currentUserRole') as UserRole | null;
       uIdToFetch = localStorage.getItem('currentUserId');
-      setCurrentUserRole(userRoleToFetch); // Update state for immediate use in this render cycle if needed
+      setCurrentUserRole(userRoleToFetch); 
       setCurrentUserId(uIdToFetch);
 
       if (uIdToFetch && userRoleToFetch) {
@@ -57,21 +57,21 @@ export default function AvailableLmsCoursesPage() {
           } else {
             userProfileIdToFetch = profile.id;
             userSchoolIdToFetch = profile.school_id;
-            setCurrentUserProfileId(profile.id); // Update state
-            setCurrentSchoolId(profile.school_id); // Update state
+            setCurrentUserProfileId(profile.id);
+            setCurrentSchoolId(profile.school_id);
           }
         } else if (userRoleToFetch === 'admin' || userRoleToFetch === 'superadmin') {
           const { data: userRec, error: userErr } = await supabase.from('users').select('school_id').eq('id', uIdToFetch).single();
           if (userRec) {
             userSchoolIdToFetch = userRec.school_id;
-            setCurrentSchoolId(userSchoolIdToFetch); // Update state
+            setCurrentSchoolId(userSchoolIdToFetch);
           }
         }
       }
     }
 
     const result = await getAvailableCoursesWithEnrollmentStatusAction({
-        userProfileId: userProfileIdToFetch, // Use fetched values for this call
+        userProfileId: userProfileIdToFetch,
         userRole: userRoleToFetch,
         userSchoolId: userSchoolIdToFetch,
     });
@@ -83,7 +83,7 @@ export default function AvailableLmsCoursesPage() {
       setCourses([]);
     }
     setIsLoading(false);
-  }, [toast]); // toast is stable, so this effectively runs on mount and when fetchData is called manually
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -154,8 +154,8 @@ export default function AvailableLmsCoursesPage() {
                   <Image 
                       src={course.feature_image_url || `https://placehold.co/600x400.png`}
                       alt={course.title}
-                      layout="fill"
-                      objectFit="cover"
+                      fill
+                      className="object-cover"
                       data-ai-hint="course cover"
                   />
                   <div className="absolute top-2 right-2 flex gap-1">

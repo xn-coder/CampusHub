@@ -142,6 +142,7 @@ export async function updateCourseAction(
   const price = formData.get('price') ? Number(formData.get('price')) : undefined;
   const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const school_id = formData.get('school_id') as string | null;
+  const created_by_user_id = formData.get('created_by_user_id') as string;
   
   try {
     const updateData: Partial<Course> = {
@@ -271,7 +272,6 @@ export async function enrollSchoolInCourseAction(courseId: string, schoolId: str
     if(courseError || !course) return { ok: false, message: "Course not found." };
     if(course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription via the payment flow." };
 
-    // For free courses, create a mock subscription record to signify enrollment
     const { error: subscriptionError } = await supabase.from('lms_school_subscriptions').insert({
         course_id: courseId,
         school_id: schoolId,
@@ -820,11 +820,14 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
   try {
     let courseQuery = supabase.from('lms_courses').select('*');
 
-    if (!userSchoolId) {
-      // User with no school context sees only global courses
-      courseQuery = courseQuery.is('school_id', null);
-    } else {
-       // Regular users see courses assigned to their school
+    if (userRole === 'admin' || userRole === 'superadmin') {
+      // Admins see courses assigned to their school. Superadmins see all.
+      if (userRole === 'admin' && userSchoolId) {
+        courseQuery = courseQuery.eq('school_id', userSchoolId);
+      }
+      // No filter for superadmin to see all courses
+    } else if (userSchoolId) {
+      // Students and Teachers see courses assigned to their school
       const { data: availableRecords, error: availabilityError } = await supabase
           .from('lms_course_school_availability')
           .select('course_id, target_audience_in_school')
@@ -835,9 +838,7 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       const availableCourseIds = availableRecords?.map(rec => rec.course_id) || [];
       if (availableCourseIds.length === 0) return { ok: true, courses: [] };
 
-      let audienceFilter = 'both';
-      if (userRole === 'student') audienceFilter = 'student';
-      if (userRole === 'teacher') audienceFilter = 'teacher';
+      const audienceFilter = userRole; // 'student' or 'teacher'
 
       const courseIdsForRole = availableRecords
           ?.filter(rec => rec.target_audience_in_school === 'both' || rec.target_audience_in_school === audienceFilter)
@@ -846,8 +847,11 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       if(courseIdsForRole.length === 0) return { ok: true, courses: [] };
 
       courseQuery = courseQuery.in('id', courseIdsForRole);
+    } else {
+      // User with no school sees only global courses
+      courseQuery = courseQuery.is('school_id', null);
     }
-
+    
     const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
 
     if (coursesError) {
@@ -1056,8 +1060,8 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
     order?: any;
     isMock?: boolean;
 }> {
-    const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
     const supabase = createSupabaseServerClient();
+    const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
     
     const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
     if(userError || !user) return { ok: false, message: "User not found." };
@@ -1292,6 +1296,7 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
 
