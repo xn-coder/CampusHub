@@ -19,6 +19,7 @@ import {
   createCoursePaymentOrderAction,
   verifyCoursePaymentAndEnrollAction
 } from '@/app/(app)/admin/lms/courses/actions';
+import { Separator } from '@/components/ui/separator';
 
 declare global {
   interface Window {
@@ -132,10 +133,12 @@ function ActivateLmsForm() {
     }
 
     if (orderResult.isMock) {
-        toast({ title: "Course Activated!", description: orderResult.message });
-        setMessage({type: 'success', text: orderResult.message});
+        const successMessage = orderResult.message || "Mock payment successful!";
+        toast({ title: "Action Successful!", description: successMessage });
+        setMessage({type: 'success', text: successMessage});
         setTimeout(() => {
-            router.push(`/lms/courses/${targetCourse.id}`);
+            const destination = currentUserRole === 'admin' ? '/admin/lms/courses' : `/lms/courses/${targetCourse.id}`;
+            router.push(destination);
         }, 2000);
         setIsLoading(false);
         return;
@@ -159,7 +162,8 @@ function ActivateLmsForm() {
                     toast({ title: 'Payment Successful', description: verifyResult.message });
                     setMessage({type: 'success', text: verifyResult.message});
                     setTimeout(() => {
-                        if (verifyResult.courseId) router.push(`/lms/courses/${verifyResult.courseId}`);
+                        const destination = currentUserRole === 'admin' ? '/admin/lms/courses' : `/lms/courses/${verifyResult.courseId}`;
+                        router.push(destination);
                     }, 2000);
                 } else {
                     toast({ title: 'Payment Failed', description: verifyResult.message, variant: 'destructive' });
@@ -167,7 +171,7 @@ function ActivateLmsForm() {
                 }
             },
             prefill: {
-                name: currentUserName || "Student",
+                name: currentUserName || "User",
                 email: currentUserEmail || undefined,
             },
             notes: {
@@ -214,6 +218,9 @@ function ActivateLmsForm() {
     );
   }
 
+  const isStudent = currentUserRole === 'student';
+  const isAdmin = currentUserRole === 'admin';
+
 
   return (
     <>
@@ -221,49 +228,84 @@ function ActivateLmsForm() {
       <div className="flex flex-col gap-6">
         <PageHeader 
           title="Activate LMS Course" 
-          description="Enter your activation code or pay to get access to a paid course." 
+          description={isAdmin ? "Confirm subscription details for your school." : "Enter your activation code or pay to get access to a paid course."} 
         />
         <Card className="max-w-lg mx-auto w-full">
           <CardHeader>
             <CardTitle className="flex items-center"><KeyRound className="mr-2 h-5 w-5" /> Course Activation</CardTitle>
             {targetCourse && <CardDescription>You are activating: <strong>{targetCourse.title}</strong></CardDescription>}
           </CardHeader>
-          <form onSubmit={handleSubmitCode}>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="activationCode">Activation Code</Label>
-                <Input 
-                  id="activationCode" 
-                  value={activationCode} 
-                  onChange={(e) => setActivationCode(e.target.value.toUpperCase())} 
-                  placeholder="Enter code from vendor..." 
-                  disabled={isLoading || isPageLoading}
-                />
-              </div>
-            </CardContent>
-            <CardFooter className="flex flex-col gap-3">
-              <Button type="submit" className="w-full" disabled={isLoading || isPageLoading || !activationCode.trim()}>
-                {isLoading && activationCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-                {isLoading && activationCode ? 'Activating...' : 'Activate with Code'}
-              </Button>
-              {targetCourse?.is_paid && (
-                  <>
+          
+          {isStudent && (
+             <form onSubmit={handleSubmitCode}>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="activationCode">Activation Code</Label>
+                  <Input 
+                    id="activationCode" 
+                    value={activationCode} 
+                    onChange={(e) => setActivationCode(e.target.value.toUpperCase())} 
+                    placeholder="Enter code from vendor..." 
+                    disabled={isLoading || isPageLoading}
+                  />
+                </div>
+              </CardContent>
+              <CardFooter>
+                 <Button type="submit" className="w-full" disabled={isLoading || isPageLoading || !activationCode.trim()}>
+                  {isLoading && activationCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                  {isLoading && activationCode ? 'Activating...' : 'Activate with Code'}
+                </Button>
+              </CardFooter>
+            </form>
+          )}
+
+          {targetCourse?.is_paid && (
+             <CardContent className="space-y-4">
+                 {isStudent && (
                       <div className="relative flex py-2 items-center w-full">
                           <div className="flex-grow border-t border-muted"></div>
                           <span className="flex-shrink mx-4 text-muted-foreground text-xs">OR</span>
                           <div className="flex-grow border-t border-muted"></div>
                       </div>
-                      <Button type="button" onClick={handlePayment} className="w-full" disabled={isLoading || isPageLoading || !targetCourse}>
-                          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
-                          Pay <span className="font-mono mx-1">₹</span>{finalPrice.toFixed(2)} and Enroll
-                           {targetCourse.discount_percentage && targetCourse.discount_percentage > 0 && targetCourse.price && (
-                                <span className="ml-2 line-through text-xs text-muted-foreground">₹{targetCourse.price.toFixed(2)}</span>
-                            )}
-                      </Button>
-                  </>
-              )}
+                  )}
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-baseline">
+                        <span className="text-muted-foreground">Plan</span>
+                        <span className="font-semibold capitalize">{targetCourse?.subscription_plan?.replace('_', ' ')}</span>
+                    </div>
+                    {targetCourse?.price && (
+                      <div className="flex justify-between items-baseline">
+                          <span className="text-muted-foreground">List Price</span>
+                          <span className="font-semibold">₹{targetCourse.price.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {targetCourse?.discount_percentage && targetCourse.discount_percentage > 0 && (
+                        <div className="flex justify-between items-baseline text-destructive">
+                            <span className="text-muted-foreground">Discount</span>
+                            <span className="font-semibold">{targetCourse.discount_percentage}%</span>
+                        </div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-between items-baseline text-lg">
+                        <span className="font-semibold">Final Price</span>
+                        <span className="font-bold">
+                            ₹{finalPrice.toFixed(2)}
+                        </span>
+                    </div>
+                  </div>
+             </CardContent>
+          )}
+          
+          {targetCourse?.is_paid && (
+            <CardFooter>
+                <Button type="button" onClick={handlePayment} className="w-full" disabled={isLoading || isPageLoading || !targetCourse}>
+                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+                    Pay <span className="font-mono mx-1">₹</span>{finalPrice.toFixed(2)} and {isAdmin ? 'Subscribe School' : 'Enroll'}
+                </Button>
             </CardFooter>
-          </form>
+          )}
+
           <CardContent>
               {message && (
                 <div className={`p-3 rounded-md text-sm ${message.type === 'success' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'}`}>
@@ -285,3 +327,4 @@ export default function ActivateLmsCoursePage() {
     </Suspense>
   );
 }
+

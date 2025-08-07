@@ -34,7 +34,6 @@ export default function SchoolLmsCoursesPage() {
 
   // Dialog states
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
-  const [isSubscriptionDialogOpen, setIsSubscriptionDialogOpen] = useState(false);
   const [courseToAction, setCourseToAction] = useState<Course | null>(null);
   const [assignTarget, setAssignTarget] = useState<'all_students' | 'all_teachers' | 'class'>('all_students');
   const [assignTargetClassId, setAssignTargetClassId] = useState<string>('');
@@ -84,11 +83,6 @@ export default function SchoolLmsCoursesPage() {
     setIsAssignDialogOpen(true);
   };
 
-  const handleOpenSubscriptionDialog = (course: Course) => {
-    setCourseToAction(course);
-    setIsSubscriptionDialogOpen(true);
-  }
-
   const handleAssignCourse = async () => {
     if (!courseToAction || !currentSchoolId || !assignTarget) return;
     if (assignTarget === 'class' && !assignTargetClassId) {
@@ -112,7 +106,7 @@ export default function SchoolLmsCoursesPage() {
     setIsSubmitting(false);
   }
   
-  const handleEnrollOrSubscribe = async (course: Course) => {
+  const handleEnrollFreeCourse = async (course: Course) => {
       if (!currentSchoolId) {
         toast({ title: "Error", description: "School context is missing.", variant: "destructive" });
         return;
@@ -129,7 +123,6 @@ export default function SchoolLmsCoursesPage() {
         toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
       }
 
-      setIsSubscriptionDialogOpen(false);
       setCourseToAction(null);
       setIsSubmitting(false);
   };
@@ -140,12 +133,6 @@ export default function SchoolLmsCoursesPage() {
   
   const paginatedCourses = filteredCourses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const totalPages = Math.ceil(filteredCourses.length / ITEMS_PER_PAGE);
-
-  const finalPrice = useMemo(() => {
-    if (!courseToAction?.price) return 0;
-    const discount = courseToAction.discount_percentage || 0;
-    return courseToAction.price * (1 - discount / 100);
-  }, [courseToAction]);
 
   return (
     <>
@@ -227,11 +214,13 @@ export default function SchoolLmsCoursesPage() {
                                 </Link>
                                </Button>
                                {course.is_paid ? (
-                                  <Button onClick={() => handleOpenSubscriptionDialog(course)} className="w-full">
-                                    <CreditCard className="mr-2 h-4 w-4"/> Subscribe
+                                  <Button asChild className="w-full">
+                                      <Link href={`/student/lms/activate?courseId=${course.id}`}>
+                                        <CreditCard className="mr-2 h-4 w-4"/> Subscribe
+                                      </Link>
                                   </Button>
                                ) : (
-                                  <Button onClick={() => handleEnrollOrSubscribe(course)} className="w-full" disabled={isSubmitting}>
+                                  <Button onClick={() => handleEnrollFreeCourse(course)} className="w-full" disabled={isSubmitting}>
                                       {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
                                       Enroll School (Free)
                                   </Button>
@@ -257,49 +246,6 @@ export default function SchoolLmsCoursesPage() {
           )}
       </Card>
     </div>
-
-    <Dialog open={isSubscriptionDialogOpen} onOpenChange={setIsSubscriptionDialogOpen}>
-        <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Subscription Details: {courseToAction?.title}</DialogTitle>
-                <DialogDescription>Information about this paid course offering.</DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-4">
-                <div className="flex justify-between items-baseline">
-                    <span className="text-muted-foreground">Plan</span>
-                    <span className="font-semibold capitalize">{courseToAction?.subscription_plan?.replace('_', ' ')}</span>
-                </div>
-                <div className="flex justify-between items-baseline">
-                    <span className="text-muted-foreground">List Price</span>
-                    <span className="font-semibold">₹{courseToAction?.price?.toFixed(2)}</span>
-                </div>
-                {courseToAction?.discount_percentage && courseToAction.discount_percentage > 0 && (
-                    <div className="flex justify-between items-baseline text-destructive">
-                        <span className="text-muted-foreground">Discount</span>
-                        <span className="font-semibold">{courseToAction.discount_percentage}%</span>
-                    </div>
-                )}
-                <Separator />
-                <div className="flex justify-between items-baseline text-lg">
-                    <span className="font-semibold">Final Price</span>
-                    <span className="font-bold">
-                        ₹{finalPrice.toFixed(2)}
-                    </span>
-                </div>
-                <div className="flex justify-between items-baseline">
-                    <span className="text-muted-foreground">User Limit</span>
-                    <span className="font-semibold">{courseToAction?.max_users_allowed || 'Unlimited'}</span>
-                </div>
-            </div>
-             <DialogFooter>
-                <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                <Button onClick={() => courseToAction && handleEnrollOrSubscribe(courseToAction)} disabled={isSubmitting}>
-                   {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4" />}
-                   Pay {finalPrice > 0 ? `₹${finalPrice.toFixed(2)}` : ''} & Activate
-                </Button>
-            </DialogFooter>
-        </DialogContent>
-    </Dialog>
     
     <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
         <DialogContent>
