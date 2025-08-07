@@ -55,9 +55,7 @@ export default function SchoolLmsCoursesPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editFeatureImageFile, setEditFeatureImageFile] = useState<File | null>(null);
-  const [editIsPaid, setEditIsPaid] = useState(false);
-  const [editPrice, setEditPrice] = useState<number | ''>('');
-  const [editDiscount, setEditDiscount] = useState<number | ''>('');
+  const [editMaxUsers, setEditMaxUsers] = useState<number | ''>('');
 
 
   const fetchPageData = useCallback(async (adminUserId: string) => {
@@ -92,10 +90,8 @@ export default function SchoolLmsCoursesPage() {
       setCourseToAction(course);
       setEditTitle(course.title);
       setEditDescription(course.description || '');
-      setEditIsPaid(course.is_paid);
-      setEditPrice(course.price || '');
-      setEditDiscount(course.discount_percentage || '');
       setEditFeatureImageFile(null);
+      setEditMaxUsers(course.max_users_allowed ?? '');
       setIsEditCourseDialogOpen(true);
   };
 
@@ -116,11 +112,9 @@ export default function SchoolLmsCoursesPage() {
     const formData = new FormData();
     formData.append('title', editTitle);
     formData.append('description', editDescription);
-    formData.append('is_paid', String(editIsPaid));
-    formData.append('price', String(editPrice || '0'));
-    formData.append('discount_percentage', String(editDiscount || '0'));
     formData.append('school_id', currentSchool.id);
     formData.append('created_by_user_id', currentUserId);
+    formData.append('max_users_allowed', String(editMaxUsers || ''));
 
     if (editFeatureImageFile) {
         formData.append('feature_image_url', editFeatureImageFile);
@@ -155,7 +149,7 @@ export default function SchoolLmsCoursesPage() {
     });
 
     if (result.ok) {
-      toast({ title: "Course Assigned", description: result.message });
+      toast({ title: "Course Visibility Set", description: result.message });
       setIsAssignDialogOpen(false);
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive"});
@@ -188,56 +182,19 @@ export default function SchoolLmsCoursesPage() {
   
   const paginatedCourses = filteredCourses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const totalPages = Math.ceil(filteredCourses.length / ITEMS_PER_PAGE);
-  
-  const getSubscriptionStatus = (course: Course) => {
-    if (!course.isEnrolled) return null;
-    if (!course.is_paid) return <Badge className="bg-green-600 hover:bg-green-700 flex items-center"><Unlock className="mr-1 h-3 w-3"/> Free</Badge>;
-    if (!course.subscription_plan || !course.subscription_date) return <Badge variant="destructive">Error</Badge>;
-
-    const subscriptionDate = new Date(course.subscription_date);
-    let expiryDate;
-    
-    switch (course.subscription_plan) {
-      case 'monthly':
-        expiryDate = addMonths(subscriptionDate, 1);
-        break;
-      case 'yearly':
-        expiryDate = addYears(subscriptionDate, 1);
-        break;
-      case 'one_time':
-        return <Badge className="flex items-center">Lifetime Access</Badge>;
-      default:
-        return <Badge className="flex items-center">Enrolled</Badge>;
-    }
-
-    const now = new Date();
-    if (now > expiryDate) {
-      return <Badge variant="destructive">Expired</Badge>;
-    }
-    
-    const remainingTime = formatDistanceToNow(expiryDate, { addSuffix: true });
-
-    return (
-      <Badge className="flex items-center" variant="secondary">
-        <CalendarDays className="mr-1 h-3 w-3" />
-        Expires {remainingTime}
-      </Badge>
-    );
-  };
-
 
   return (
     <>
     <div className="flex flex-col gap-6">
       <PageHeader
         title="LMS Courses for Your School"
-        description="Manage courses assigned to your school and enroll your users."
+        description="Manage courses assigned to your school and make them visible to your users."
       />
       <Card>
         <CardHeader>
           <CardTitle>Assigned Courses</CardTitle>
            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <CardDescription>Courses available for enrollment at your school.</CardDescription>
+            <CardDescription>Courses available for your school. Use 'Assign' to make them visible to students/teachers.</CardDescription>
             <div className="relative w-full md:w-auto">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
@@ -273,7 +230,7 @@ export default function SchoolLmsCoursesPage() {
                                 data-ai-hint="course cover"
                             />
                              <div className="absolute top-2 right-2 flex gap-1">
-                                {getSubscriptionStatus(course)}
+                                <Badge className="bg-green-600 hover:bg-green-700 flex items-center"><Unlock className="mr-1 h-3 w-3"/> Available</Badge>
                             </div>
                         </div>
                         <CardHeader>
@@ -283,57 +240,33 @@ export default function SchoolLmsCoursesPage() {
                              <CardDescription className="line-clamp-3">{course.description || "No description available."}</CardDescription>
                         </CardContent>
                         <CardFooter className="flex-col sm:flex-row gap-2">
-                           {course.isEnrolled ? (
-                             <>
-                              <Button asChild className="w-full" variant="secondary">
-                                <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                                    <UserPlus className="mr-2 h-4 w-4"/> User List
-                                </Link>
-                              </Button>
-                              <div className="flex w-full gap-2">
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button className="flex-1" variant="outline">Assign Course</Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Assign Course Visibility</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will make the course "{course.title}" visible to the selected group of users. They will then be able to enroll themselves. This will not automatically enroll them.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleOpenAssignDialog(course)}>Proceed</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                                <Button size="icon" variant="ghost" onClick={() => handleOpenEditDialog(course)}>
-                                  <Edit2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                             </>
-                           ) : (
-                             <>
-                               <Button asChild variant="outline" className="w-full">
-                                <Link href={`/lms/courses/${course.id}?preview=true`}>
-                                  <Eye className="mr-2 h-4 w-4"/> Preview
-                                </Link>
-                               </Button>
-                               {course.is_paid ? (
-                                  <Button asChild className="w-full">
-                                      <Link href={`/student/lms/activate?courseId=${course.id}`}>
-                                        <CreditCard className="mr-2 h-4 w-4"/> Subscribe
-                                      </Link>
-                                  </Button>
-                               ) : (
-                                  <Button onClick={() => handleEnrollFreeCourse(course.id)} className="w-full" disabled={isSubmitting}>
-                                      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Unlock className="mr-2 h-4 w-4"/>}
-                                      Enroll
-                                  </Button>
-                               )}
-                             </>
-                           )}
+                            <Button asChild className="w-full" variant="secondary">
+                            <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
+                                <UserPlus className="mr-2 h-4 w-4"/> Enroll Users
+                            </Link>
+                            </Button>
+                            <div className="flex w-full gap-2">
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                <Button className="flex-1" variant="outline">Assign</Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Assign Course Visibility</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                    This will make the course "{course.title}" visible to the selected group of users. They will then be able to enroll themselves.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleOpenAssignDialog(course)}>Proceed</AlertDialogAction>
+                                </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                            <Button size="icon" variant="ghost" onClick={() => handleOpenEditDialog(course)}>
+                                <Edit2 className="h-4 w-4" />
+                            </Button>
+                            </div>
                         </CardFooter>
                     </Card>
                 ))}
@@ -404,13 +337,10 @@ export default function SchoolLmsCoursesPage() {
                     <div><Label htmlFor="edit-title">Course Title</Label><Input id="edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required disabled={isSubmitting}/></div>
                     <div><Label htmlFor="edit-description">Description</Label><Textarea id="edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} disabled={isSubmitting}/></div>
                     <div><Label htmlFor="edit-feature-image">Feature Image (Optional)</Label><Input id="edit-feature-image" type="file" onChange={handleFileChange} accept="image/*" disabled={isSubmitting}/></div>
-                    <div className="flex items-center space-x-2"><Checkbox id="edit-is-paid" checked={editIsPaid} onCheckedChange={(c) => setEditIsPaid(!!c)}/><Label htmlFor="edit-is-paid">This is a paid course</Label></div>
-                    {editIsPaid && (
-                        <div className="grid grid-cols-2 gap-4">
-                            <div><Label htmlFor="edit-price">Price (₹)</Label><Input id="edit-price" type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} disabled={isSubmitting}/></div>
-                            <div><Label htmlFor="edit-discount">Discount (%)</Label><Input id="edit-discount" type="number" value={editDiscount} onChange={(e) => setEditDiscount(e.target.value === '' ? '' : parseFloat(e.target.value))} disabled={isSubmitting}/></div>
-                        </div>
-                    )}
+                    <div>
+                        <Label htmlFor="maxUsers">Allowed Users</Label>
+                        <Input id="maxUsers" type="number" value={editMaxUsers} onChange={(e) => setEditMaxUsers(e.target.value === '' ? '' : parseInt(e.target.value))} placeholder="Leave blank for unlimited" min="0" disabled={isSubmitting}/>
+                    </div>
                 </div>
                 <DialogFooter className="mt-4">
                     <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>

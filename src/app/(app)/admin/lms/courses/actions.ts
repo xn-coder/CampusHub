@@ -6,19 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { Course, CourseResource, CourseActivationCode, CourseResourceType, Student, Teacher, UserRole, CourseWithEnrollmentStatus, LessonContentResource, QuizQuestion, SchoolEntry, SchoolDetails, SubscriptionPlan, ClassData } from '@/types';
-import Razorpay from 'razorpay';
-import crypto from 'crypto';
 import { addMonths, addYears } from 'date-fns';
-
-let razorpayInstance: Razorpay | null = null;
-if (process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
-    razorpayInstance = new Razorpay({
-        key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        key_secret: process.env.RAZORPAY_KEY_SECRET,
-    });
-} else {
-    console.warn("Razorpay credentials not found for LMS. Payment gateway will not function.");
-}
 
 
 export async function getAdminLmsPageData(adminUserId: string): Promise<{
@@ -71,9 +59,6 @@ export async function createCourseAction(
 
   const title = formData.get('title') as string;
   const description = formData.get('description') as string | null;
-  const is_paid = formData.get('is_paid') === 'true';
-  const price = formData.get('price') ? Number(formData.get('price')) : undefined;
-  const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const school_id = formData.get('school_id') as string | null;
   const created_by_user_id = formData.get('created_by_user_id') as string;
   const featureImageFile = formData.get('feature_image_url') as File | null;
@@ -95,20 +80,18 @@ export async function createCourseAction(
       feature_image_url = publicUrlData?.publicUrl;
     }
 
-    const insertData = {
+    const insertData: Omit<Course, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string } = {
       id: courseId,
       title,
       description,
       feature_image_url,
-      is_paid,
-      price: is_paid ? price : null,
-      discount_percentage: is_paid ? discount_percentage : null,
+      is_paid: false, // All courses are free now
+      price: null,
+      discount_percentage: null,
       school_id: school_id === '' ? null : school_id,
       created_by_user_id,
-      subscription_plan: formData.get('subscription_plan') as SubscriptionPlan | null,
+      subscription_plan: 'free',
       max_users_allowed: formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     };
 
     const { error, data: courseData } = await supabaseAdmin
@@ -139,21 +122,17 @@ export async function updateCourseAction(
 
   const title = formData.get('title') as string;
   const description = formData.get('description') as string | null;
-  const is_paid = formData.get('is_paid') === 'true';
-  const price = formData.get('price') ? Number(formData.get('price')) : undefined;
-  const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const school_id = formData.get('school_id') as string | null;
-  const created_by_user_id = formData.get('created_by_user_id') as string;
   
   try {
     const updateData: Partial<Course> = {
       title,
       description,
-      is_paid,
-      price: is_paid ? price : null,
-      discount_percentage: is_paid ? discount_percentage : null,
+      is_paid: false,
+      price: null,
+      discount_percentage: null,
       school_id: school_id === '' ? null : school_id,
-      subscription_plan: formData.get('subscription_plan') as SubscriptionPlan | null,
+      subscription_plan: 'free',
       max_users_allowed: formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null,
       updated_at: new Date().toISOString(),
     };
@@ -246,17 +225,12 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
         if (coursesRes.error) throw coursesRes.error;
         if (subscriptionsRes.error) console.warn("Could not fetch school subscriptions:", subscriptionsRes.error.message);
 
-        const subscribedCourseIds = new Set((subscriptionsRes.data || []).map(sub => sub.course_id));
-        const subscriptionDates = new Map((subscriptionsRes.data || []).map(sub => [sub.course_id, sub.subscription_date]));
-        
         const coursesWithSchoolStatus = (coursesRes.data || []).map(c => {
             const availInfo = availability.find(a => a.course_id === c.id);
-            const isEnrolled = subscribedCourseIds.has(c.id);
             return {
                 ...c,
-                isEnrolled,
+                isEnrolled: true, // School is always considered enrolled if the course is in the availability table.
                 target_audience_in_school: availInfo?.target_audience_in_school,
-                subscription_date: isEnrolled ? subscriptionDates.get(c.id) : undefined,
             };
         });
 
@@ -269,29 +243,38 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
 export async function enrollSchoolInCourseAction(courseId: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
     const supabase = createSupabaseServerClient();
     
-    const { data: course, error: courseError } = await supabase.from('lms_courses').select('is_paid, price').eq('id', courseId).single();
-    if(courseError || !course) return { ok: false, message: "Course not found." };
-    if(course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription via the payment flow." };
+    // Check if it's already available to prevent duplicates, though upsert handles this.
+    const { data: existing, error: checkError } = await supabase
+        .from('lms_course_school_availability')
+        .select('course_id')
+        .eq('course_id', courseId)
+        .eq('school_id', schoolId)
+        .maybeSingle();
 
-    const { error: subscriptionError } = await supabase.from('lms_school_subscriptions').insert({
-        course_id: courseId,
-        school_id: schoolId,
-        amount_paid: 0,
-        status: 'active',
-        razorpay_payment_id: 'FREE_ENROLLMENT'
-    });
-
-    if (subscriptionError) {
-        if(subscriptionError.code === '23505') { // unique constraint violation
-            return { ok: true, message: "School is already enrolled in this course."};
-        }
-        console.error("Error enrolling school in free course (creating subscription record):", subscriptionError);
-        return { ok: false, message: `Failed to enroll school in course: ${subscriptionError.message}` };
+    if (checkError) {
+        return { ok: false, message: `Database error checking availability: ${checkError.message}` };
+    }
+    if (existing) {
+        return { ok: true, message: "Course is already available to your school." };
     }
 
+    const { error } = await supabase
+        .from('lms_course_school_availability')
+        .insert({
+            course_id: courseId,
+            school_id: schoolId,
+            target_audience_in_school: 'both' // Default to both
+        });
+
+    if (error) {
+        console.error("Error making course available to school:", error);
+        return { ok: false, message: `Failed to make course available: ${error.message}` };
+    }
+    
     revalidatePath('/admin/lms/courses');
-    return { ok: true, message: "School successfully enrolled in the free course." };
+    return { ok: true, message: "Course successfully made available to your school." };
 }
+
 
 export async function assignCourseToSchoolAudienceAction(params: {
   courseId: string;
@@ -314,7 +297,7 @@ export async function assignCourseToSchoolAudienceAction(params: {
       audience = 'teacher';
       messageAudience = 'all teachers';
     } else if (targetAudience === 'class' && classId) {
-      audience = 'student'; // Assigning to a class implies the target is students in that class
+      audience = 'student'; 
       targetClass = classId;
       const { data: classData } = await supabase.from('classes').select('name, division').eq('id', classId).single();
       messageAudience = `class ${classData?.name}-${classData?.division}`;
@@ -467,9 +450,6 @@ export async function deleteCourseResourceAction(
 }
 
 
-// ==================================================================
-// NEW ACTION: To create a secure URL for direct client-side file uploads
-// ==================================================================
 export async function createSignedUploadUrlAction(
     courseId: string,
     fileName: string,
@@ -478,9 +458,6 @@ export async function createSignedUploadUrlAction(
     const supabase = createSupabaseServerClient();
 
     try {
-        // Optional but recommended: Check if the current user has permission to upload to this course.
-        // For example, fetch user role and verify they are an admin or teacher for this course.
-
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
         const filePath = `public/course-uploads/${courseId}/${uuidv4()}-${sanitizedFileName}`;
 
@@ -515,10 +492,6 @@ export async function createSignedUploadUrlAction(
 }
 
 
-// ==================================================================
-// MODIFIED ACTION: No longer handles file uploads directly.
-// It now only saves the metadata (including the URL) to the database.
-// ==================================================================
 export async function addResourceToLessonAction(formData: FormData): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
   
@@ -526,14 +499,12 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
   const courseId = formData.get('courseId') as string;
   const resourceTitle = formData.get('resourceTitle') as string;
   const resourceType = formData.get('resourceType') as CourseResourceType;
-  // This will now contain the final public URL for uploaded files, a user-entered URL, or JSON for a quiz.
   const urlOrContent = formData.get('urlOrContent') as string | null;
 
   if (!lessonId || !courseId || !resourceTitle || !resourceType) {
     return { ok: false, message: "Missing required fields for adding resource." };
   }
 
-  // Basic validation: ensure urlOrContent is present for types that need it.
   if (!urlOrContent && ['ebook', 'video', 'webinar', 'quiz', 'note', 'ppt'].includes(resourceType)) {
       if (resourceType === 'note' && urlOrContent === '') {
           // allow empty note
@@ -587,60 +558,6 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
     return { ok: false, message: e.message || "An unexpected error occurred." };
   }
 }
-
-
-// --- Activation Code Management (Rest of the file is unchanged) ---
-// ... (the rest of your original file from generateActivationCodesAction down to the end) ...
-
-interface GenerateCodesInput {
-  course_id: string;
-  num_codes: number;
-  expires_in_days: number;
-  school_id?: string; 
-}
-
-export async function generateActivationCodesAction(
-  input: GenerateCodesInput
-): Promise<{ ok: boolean; message: string; generatedCodes?: string[] }> {
-  const supabaseAdmin = createSupabaseServerClient();
-  const { course_id, num_codes, expires_in_days } = input; 
-  const newCodes: Partial<CourseActivationCode>[] = [];
-  const displayableCodes: string[] = [];
-  const currentDate = new Date();
-  
-  let expiryDate: string | undefined = undefined;
-  if (expires_in_days > 0) {
-    const tempExpiryDate = new Date(currentDate);
-    tempExpiryDate.setDate(currentDate.getDate() + expires_in_days);
-    expiryDate = tempExpiryDate.toISOString();
-  }
-
-
-  for (let i = 0; i < num_codes; i++) {
-    const uniqueCode = `CRS-${course_id.substring(0, 4).toUpperCase()}-${uuidv4().substring(0, 4).toUpperCase()}-${uuidv4().substring(9, 13).toUpperCase()}`;
-    newCodes.push({
-      id: uuidv4(),
-      course_id,
-      code: uniqueCode,
-      is_used: false,
-      generated_date: currentDate.toISOString(),
-      expiry_date: expiryDate,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-    displayableCodes.push(uniqueCode);
-  }
-
-  const { error } = await supabaseAdmin.from('lms_course_activation_codes').insert(newCodes);
-
-  if (error) {
-    console.error("Error generating activation codes:", error);
-    return { ok: false, message: `Failed to generate codes: ${error.message}` };
-  }
-  revalidatePath(`/admin/lms/courses/${course_id}/activation-codes`); 
-  return { ok: true, message: `${num_codes} activation code(s) generated.`, generatedCodes: displayableCodes };
-}
-
 
 // --- Enrollment Management ---
 interface ManageEnrollmentInput {
@@ -827,7 +744,7 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
   try {
     let courseQuery = supabase.from('lms_courses').select('*');
     
-    // --- Step 1: Determine which courses are even VISIBLE to the user based on their school and role ---
+    // Step 1: Determine which courses are even VISIBLE to the user based on their school and role
     if (userRole !== 'superadmin') {
       const { data: availableRecords, error: availabilityError } = await supabase
           .from('lms_course_school_availability')
@@ -868,7 +785,6 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       courseQuery = courseQuery.in('id', [...new Set(courseIdsForUser)]);
     }
 
-    // --- Step 2: Fetch the actual course details for the visible courses ---
     const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
 
     if (coursesError) throw coursesError;
@@ -892,10 +808,9 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       }
     }
     
-    // Admins are considered enrolled if the school has a subscription
     if (userRole === 'admin' && userSchoolId) {
-        const { data: subscriptions } = await supabase.from('lms_school_subscriptions').select('course_id').eq('school_id', userSchoolId);
-        enrolledCourseIds = subscriptions?.map(s => s.course_id) || [];
+        const { data: schoolAssignments } = await supabase.from('lms_course_school_availability').select('course_id').eq('school_id', userSchoolId);
+        enrolledCourseIds = schoolAssignments?.map(s => s.course_id) || [];
     }
 
 
@@ -910,359 +825,6 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
     console.error("Error in getAvailableCoursesWithEnrollmentStatusAction:", error);
     return { ok: false, message: error.message || "An unexpected error occurred." };
   }
-}
-
-
-// --- Actions for Course Activation Page ---
-interface CourseActivationPageData {
-    targetCourse?: Course | null;
-    userProfileId?: string | null;
-    userSchoolId?: string | null;
-    userRole?: UserRole | null;
-}
-export async function getCourseActivationPageInitialDataAction(
-  courseIdFromQuery: string | null,
-  userId: string // This is users.id
-): Promise<{ ok: boolean; data?: CourseActivationPageData; message?: string }> {
-  const supabase = createSupabaseServerClient();
-  const resultData: CourseActivationPageData = {};
-
-  try {
-    // Fetch user details including role and school_id
-    const { data: userRec, error: userError } = await supabase
-      .from('users')
-      .select('id, role, school_id')
-      .eq('id', userId)
-      .single();
-
-    if (userError || !userRec) {
-      return { ok: false, message: userError?.message || "User record not found." };
-    }
-    resultData.userRole = userRec.role as UserRole;
-    resultData.userSchoolId = userRec.school_id;
-
-    // Fetch specific user profile (student or teacher)
-    if (resultData.userRole === 'student') {
-      const { data: studentProfile, error: studentError } = await supabase
-        .from('students')
-        .select('id') // students.id
-        .eq('user_id', userId)
-        .single();
-      if (studentError || !studentProfile) {
-        return { ok: false, message: studentError?.message || "Student profile not found." };
-      }
-      resultData.userProfileId = studentProfile.id;
-    } else if (resultData.userRole === 'teacher') {
-      const { data: teacherProfile, error: teacherError } = await supabase
-        .from('teachers')
-        .select('id') // teachers.id
-        .eq('user_id', userId)
-        .single();
-      if (teacherError || !teacherProfile) {
-         return { ok: false, message: teacherError?.message || "Teacher profile not found."};
-      }
-      resultData.userProfileId = teacherProfile.id;
-    }
-
-    // Fetch target course details if courseIdFromQuery is provided
-    if (courseIdFromQuery) {
-      const { data: courseData, error: courseError } = await supabase
-        .from('lms_courses')
-        .select('*')
-        .eq('id', courseIdFromQuery)
-        .single();
-      if (courseError || !courseData) {
-        console.warn(`Could not fetch target course ${courseIdFromQuery}: ${courseError?.message}`);
-      } else {
-        resultData.targetCourse = courseData as Course;
-      }
-    }
-
-    return { ok: true, data: resultData };
-
-  } catch (error: any) {
-    console.error("Error in getCourseActivationPageInitialDataAction:", error);
-    return { ok: false, message: error.message || "An unexpected error occurred." };
-  }
-}
-
-
-interface ActivateCourseWithCodeInput {
-  activationCode: string;
-  userProfileId: string; // students.id or teachers.id
-  userId: string; // users.id (for marking code as used)
-  userRole: UserRole;
-  schoolId: string | null; // User's school_id, can be null for global courses/users
-}
-export async function activateCourseWithCodeAction(
-  input: ActivateCourseWithCodeInput
-): Promise<{ ok: boolean; message: string; activatedCourse?: { id: string; title: string | null } }> {
-  const supabase = createSupabaseServerClient();
-  const { activationCode, userProfileId, userId, userRole, schoolId } = input;
-
-  try {
-    const { data: codeToActivate, error: codeError } = await supabase
-      .from('lms_course_activation_codes')
-      .select('*')
-      .eq('code', activationCode.toUpperCase())
-      .single();
-
-    if (codeError || !codeToActivate) {
-      return { ok: false, message: "Invalid activation code." };
-    }
-    if (codeToActivate.is_used) {
-      return { ok: false, message: "This activation code has already been used." };
-    }
-    if (codeToActivate.expiry_date && new Date() > new Date(codeToActivate.expiry_date)) {
-      return { ok: false, message: "This activation code has expired." };
-    }
-    
-    const { data: courseDetails, error: courseDetailsError } = await supabase
-        .from('lms_courses')
-        .select('id, title, school_id')
-        .eq('id', codeToActivate.course_id)
-        .single();
-
-    if (courseDetailsError || !courseDetails) {
-        return { ok: false, message: "Course associated with this code not found."};
-    }
-
-    if (courseDetails.school_id && courseDetails.school_id !== schoolId) {
-        return { ok: false, message: "This activation code is for a course not available to your school."};
-    }
-
-
-    const enrollmentResult = await enrollUserInCourseAction({
-      course_id: codeToActivate.course_id,
-      user_profile_id: userProfileId,
-      user_type: userRole,
-      school_id: schoolId!, // If it gets here, schoolId must be valid
-    });
-
-    if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
-      return { ok: false, message: `Enrollment failed: ${enrollmentResult.message}` };
-    }
-
-    const { error: updateCodeError } = await supabase
-      .from('lms_course_activation_codes')
-      .update({ is_used: true, used_by_user_id: userId, used_at: new Date().toISOString() })
-      .eq('id', codeToActivate.id);
-
-    if (updateCodeError) {
-      console.error("Critical: Failed to mark activation code as used after enrollment:", updateCodeError);
-      return { 
-        ok: true, 
-        message: "Course enrolled, but there was an issue finalizing the activation code. Please contact support if problems persist.",
-        activatedCourse: { id: courseDetails.id, title: courseDetails.title }
-      };
-    }
-
-    revalidatePath('/lms/available-courses');
-    revalidatePath(`/lms/courses/${codeToActivate.course_id}`);
-
-    return { 
-      ok: true, 
-      message: `Successfully activated and enrolled in: ${courseDetails.title || 'the course'}.`, 
-      activatedCourse: { id: courseDetails.id, title: courseDetails.title }
-    };
-
-  } catch (error: any) {
-    console.error("Error in activateCourseWithCodeAction:", error);
-    return { ok: false, message: error.message || "An unexpected error occurred during course activation." };
-  }
-}
-
-// --- Razorpay Payment Actions for Courses ---
-
-export async function createCoursePaymentOrderAction(courseId: string, userId: string): Promise<{
-    ok: boolean;
-    message: string;
-    order?: any;
-    isMock?: boolean;
-}> {
-    const supabase = createSupabaseServerClient();
-    const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
-    
-    const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
-    if(userError || !user) return { ok: false, message: "User not found." };
-    const userRole = user.role as UserRole;
-    
-    // For school admins, payment is handled differently (subscribing the school)
-    if(userRole === 'admin' || userRole === 'superadmin') {
-      const { data: courseData } = await supabase.from('lms_courses').select('id, price, discount_percentage').eq('id', courseId).single();
-      const finalPrice = (courseData?.price || 0) * (1 - (courseData?.discount_percentage || 0) / 100);
-      return createSchoolSubscriptionOrderAction(courseId, user.school_id!, finalPrice);
-    }
-    
-    // For students/teachers
-    const profileTable = userRole === 'student' ? 'students' : 'teachers';
-    const { data: profile, error: profileError } = await supabase.from(profileTable).select('id').eq('user_id', userId).single();
-    if(profileError || !profile) return {ok: false, message: "User profile for enrollment not found."};
-
-    if (!isRazorpayEnabled) {
-        console.log("Razorpay is disabled. Simulating successful payment and enrolling user.");
-        const enrollmentResult = await enrollUserInCourseAction({
-            course_id: courseId,
-            user_profile_id: profile.id,
-            user_type: userRole,
-            school_id: user.school_id!
-        });
-        
-        if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
-            return { ok: false, message: `Mock payment failed: Could not enroll user. Reason: ${enrollmentResult.message}` };
-        }
-        revalidatePath('/lms/available-courses');
-        return { ok: true, isMock: true, message: "Mock payment successful and you are now enrolled!" };
-    }
-    
-    if (!razorpayInstance) return { ok: false, message: "Payment gateway is not configured." };
-    
-    const { data: course, error: courseError } = await supabase.from('lms_courses').select('price, discount_percentage').eq('id', courseId).single();
-    if (courseError || !course || !course.price || course.price <= 0) {
-        return { ok: false, message: "Course not found or has no price." };
-    }
-    
-    const discount = course.discount_percentage || 0;
-    const finalPrice = course.price * (1 - discount / 100);
-    const amountInPaisa = Math.round(finalPrice * 100);
-
-    const options = {
-        amount: amountInPaisa,
-        currency: "INR",
-        receipt: `crs_${uuidv4().substring(0, 12)}`,
-        notes: {
-            course_id: courseId,
-            user_id: userId,
-            type: 'user_enrollment'
-        },
-    };
-
-    try {
-        const order = await razorpayInstance.orders.create(options);
-        return { ok: true, message: "Order created.", order };
-    } catch (error: any) {
-        console.error("Razorpay course order creation error:", error);
-        const errorMessage = error?.error?.description || error?.message || 'Unknown error';
-        return { ok: false, message: `Failed to create payment order: ${errorMessage}` };
-    }
-}
-
-
-export async function createSchoolSubscriptionOrderAction(courseId: string, schoolId: string, amount: number): Promise<{
-    ok: boolean;
-    message: string;
-    order?: any;
-    isMock?: boolean;
-}> {
-  const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
-  const supabase = createSupabaseServerClient();
-
-  if (!isRazorpayEnabled) {
-      const { error } = await supabase.from('lms_school_subscriptions').insert({
-          course_id: courseId,
-          school_id: schoolId,
-          amount_paid: amount,
-          status: 'active',
-          razorpay_payment_id: `MOCK_${uuidv4()}`
-      });
-      if (error) return { ok: false, message: `Mock subscription failed: ${error.message}`};
-      revalidatePath('/admin/lms/courses');
-      return { ok: true, isMock: true, message: "Mock subscription successful!" };
-  }
-  
-  if (!razorpayInstance) return { ok: false, message: "Payment gateway is not configured." };
-
-  const options = {
-      amount: Math.round(amount * 100), // amount in paisa
-      currency: "INR",
-      receipt: `sch_sub_${uuidv4().substring(0, 8)}`,
-      notes: {
-          course_id: courseId,
-          school_id: schoolId,
-          type: 'school_subscription'
-      },
-  };
-
-  try {
-      const order = await razorpayInstance.orders.create(options);
-      return { ok: true, message: "Order created.", order };
-  } catch (error: any) {
-      console.error("Razorpay school subscription order error:", error);
-      return { ok: false, message: `Failed to create payment order: ${error.message || 'Unknown error'}` };
-  }
-}
-
-export async function verifyCoursePaymentAndEnrollAction(
-    razorpay_payment_id: string,
-    razorpay_order_id: string,
-    razorpay_signature: string
-): Promise<{ ok: boolean, message: string, courseId?: string }> {
-    const secret = process.env.RAZORPAY_KEY_SECRET;
-    if (!secret || !razorpayInstance) {
-        return { ok: false, message: "Payment gateway is not configured on the server." };
-    }
-
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto.createHmac("sha256", secret).update(body).digest("hex");
-
-    if (expectedSignature !== razorpay_signature) {
-        return { ok: false, message: "Payment verification failed: Invalid signature." };
-    }
-
-    try {
-        const orderDetails = await razorpayInstance.orders.fetch(razorpay_order_id);
-        const courseId = orderDetails.notes?.course_id;
-        const paymentType = orderDetails.notes?.type;
-        const supabase = createSupabaseServerClient();
-
-        if (paymentType === 'school_subscription') {
-            const schoolId = orderDetails.notes?.school_id;
-            if (!courseId || !schoolId) return { ok: false, message: "School subscription details missing."};
-
-            const { error } = await supabase.from('lms_school_subscriptions').insert({
-                course_id: courseId,
-                school_id: schoolId,
-                razorpay_payment_id: razorpay_payment_id,
-                razorpay_order_id: razorpay_order_id,
-                razorpay_signature: razorpay_signature,
-                amount_paid: orderDetails.amount_paid / 100,
-                currency: orderDetails.currency,
-                status: 'active'
-            });
-            if (error) return { ok: false, message: `Payment verified but failed to save subscription: ${error.message}` };
-            revalidatePath('/admin/lms/courses');
-            return { ok: true, message: "School subscription successful!", courseId };
-
-        } else { // user_enrollment
-            const userId = orderDetails.notes?.user_id;
-            if (!courseId || !userId) return { ok: false, message: "User enrollment details are missing." };
-            
-            const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
-            if (userError || !user) return { ok: false, message: "User associated with payment not found." };
-
-            const userRole = user.role as UserRole;
-            const profileTable = userRole === 'student' ? 'students' : 'teachers';
-            const { data: profile, error: profileError } = await supabase.from(profileTable).select('id').eq('user_id', userId).single();
-            if(profileError || !profile) return {ok: false, message: "User profile for enrollment not found."};
-            
-            const enrollmentResult = await enrollUserInCourseAction({
-                course_id: ""+courseId,
-                user_profile_id: profile.id,
-                user_type: userRole,
-                school_id: user.school_id!
-            });
-
-            if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
-                return { ok: false, message: `Payment verified, but enrollment failed: ${enrollmentResult.message}` };
-            }
-            revalidatePath('/lms/available-courses');
-            return { ok: true, message: "Payment successful and you are now enrolled!", courseId };
-        }
-
-    } catch (error: any) {
-        console.error("Error during course payment verification:", error);
-        return { ok: false, message: `An unexpected error occurred during verification: ${error.message}` };
-    }
 }
 
 // --- New action for navigation ---
@@ -1316,6 +878,7 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
 
