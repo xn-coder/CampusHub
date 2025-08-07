@@ -46,29 +46,30 @@ export default function ManageCourseEnrollmentsPage() {
   const [selectedStudentIdToEnroll, setSelectedStudentIdToEnroll] = useState<string>('');
   const [selectedTeacherIdToEnroll, setSelectedTeacherIdToEnroll] = useState<string>('');
   
-  const fetchCurrentlyEnrolledUsers = useCallback(async (cId: string) => {
-    if (!cId) return;
+  const fetchCurrentlyEnrolledUsers = useCallback(async (cId: string, schoolId: string | null) => {
+    if (!cId || !schoolId) return;
     setIsLoadingEnrollments(true);
+
     const [studentsResult, teachersResult] = await Promise.all([
-        getEnrolledStudentsForCourseAction(cId),
-        getEnrolledTeachersForCourseAction(cId)
+        getEnrolledStudentsForCourseAction(cId, schoolId),
+        getEnrolledTeachersForCourseAction(cId, schoolId)
     ]);
 
     if (studentsResult.ok && studentsResult.students) {
-        setEnrolledStudents(studentsResult.students.filter(s => s.school_id === currentSchoolId));
+        setEnrolledStudents(studentsResult.students);
     } else {
         toast({ title: "Error fetching enrolled students", description: studentsResult.message, variant: "destructive"});
         setEnrolledStudents([]);
     }
 
     if (teachersResult.ok && teachersResult.teachers) {
-        setEnrolledTeachers(teachersResult.teachers.filter(t => t.school_id === currentSchoolId));
+        setEnrolledTeachers(teachersResult.teachers);
     } else {
         toast({ title: "Error fetching enrolled teachers", description: teachersResult.message, variant: "destructive"});
         setEnrolledTeachers([]);
     }
     setIsLoadingEnrollments(false);
-  }, [currentSchoolId, toast]);
+  }, [toast]);
 
   const fetchCourseDetailsAndPotentialEnrollees = useCallback(async (cId: string, adminSchoolId: string | null) => {
     setIsLoadingPage(true);
@@ -103,7 +104,7 @@ export default function ManageCourseEnrollmentsPage() {
         setCurrentSchoolId(schoolId); 
         if (courseId) {
           fetchCourseDetailsAndPotentialEnrollees(courseId, schoolId);
-          fetchCurrentlyEnrolledUsers(courseId);
+          fetchCurrentlyEnrolledUsers(courseId, schoolId);
         } else {
             setIsLoadingPage(false);
         }
@@ -136,7 +137,7 @@ export default function ManageCourseEnrollmentsPage() {
 
     if (result.ok) {
       toast({ title: `${userType.charAt(0).toUpperCase() + userType.slice(1)} Enrolled`, description: result.message });
-      fetchCurrentlyEnrolledUsers(course.id); 
+      fetchCurrentlyEnrolledUsers(course.id, currentSchoolId); 
       if(userType === 'student') setSelectedStudentIdToEnroll(''); else setSelectedTeacherIdToEnroll('');
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -155,7 +156,7 @@ export default function ManageCourseEnrollmentsPage() {
       });
       if (result.ok) {
         toast({ title: `${userType.charAt(0).toUpperCase() + userType.slice(1)} Unenrolled`, variant: "destructive" });
-        fetchCurrentlyEnrolledUsers(course.id);
+        fetchCurrentlyEnrolledUsers(course.id, currentSchoolId);
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
       }
@@ -263,8 +264,14 @@ export default function ManageCourseEnrollmentsPage() {
       <PageHeader title={`Manage Enrollments: ${course.title}`} description="Enroll or unenroll users from this course." />
       
       <div className="grid md:grid-cols-2 gap-6">
-        {renderStudentEnrollmentCard()}
-        {renderTeacherEnrollmentCard()}
+        {course.target_audience_in_school === 'student' && renderStudentEnrollmentCard()}
+        {course.target_audience_in_school === 'teacher' && renderTeacherEnrollmentCard()}
+        {course.target_audience_in_school === 'both' && (
+          <>
+            {renderStudentEnrollmentCard()}
+            {renderTeacherEnrollmentCard()}
+          </>
+        )}
       </div>
       
        <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} className="mt-4 self-start" disabled={isSubmitting}>

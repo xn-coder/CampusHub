@@ -677,14 +677,16 @@ export async function unenrollUserFromCourseAction(
 
 // --- Fetching Enrolled Users ---
 export async function getEnrolledStudentsForCourseAction(
-  courseId: string
+  courseId: string,
+  schoolId: string
 ): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
   
   const { data: enrollments, error: enrollmentError } = await supabaseAdmin
     .from('lms_student_course_enrollments')
     .select('student_id') 
-    .eq('course_id', courseId);
+    .eq('course_id', courseId)
+    .eq('school_id', schoolId);
 
   if (enrollmentError) {
     console.error("Error fetching student enrollments:", enrollmentError);
@@ -714,14 +716,16 @@ export async function getEnrolledStudentsForCourseAction(
 }
 
 export async function getEnrolledTeachersForCourseAction(
-  courseId: string
+  courseId: string,
+  schoolId: string
 ): Promise<{ ok: boolean; teachers?: Teacher[]; message?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
 
   const { data: enrollments, error: enrollmentError } = await supabaseAdmin
     .from('lms_teacher_course_enrollments')
     .select('teacher_id') 
-    .eq('course_id', courseId);
+    .eq('course_id', courseId)
+    .eq('school_id', schoolId);
 
   if (enrollmentError) {
     console.error("Error fetching teacher enrollments:", enrollmentError);
@@ -1238,4 +1242,5 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
