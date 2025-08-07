@@ -855,20 +855,17 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
           
           const studentClassId = studentData?.class_id;
 
-          // Students see courses assigned to 'all_students' OR their specific class
-          const coursesForEveryone = availableRecords
-            .filter(rec => rec.target_audience_in_school === 'student' && !rec.target_class_id)
+          // Students see courses assigned to 'all_students' (where target_class is null) OR their specific class
+          courseIdsForUser = availableRecords
+            .filter(rec => 
+                (rec.target_audience_in_school === 'student' && !rec.target_class_id) || 
+                (rec.target_class_id && rec.target_class_id === studentClassId)
+            )
             .map(rec => rec.course_id);
-          
-          const coursesForClass = availableRecords
-            .filter(rec => rec.target_class_id === studentClassId)
-            .map(rec => rec.course_id);
-
-          courseIdsForUser = [...new Set([...coursesForEveryone, ...coursesForClass])];
       }
       
       if (courseIdsForUser.length === 0) return { ok: true, courses: [] };
-      courseQuery = courseQuery.in('id', courseIdsForUser);
+      courseQuery = courseQuery.in('id', [...new Set(courseIdsForUser)]);
     }
 
     // --- Step 2: Fetch the actual course details for the visible courses ---
@@ -1319,6 +1316,7 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
 
