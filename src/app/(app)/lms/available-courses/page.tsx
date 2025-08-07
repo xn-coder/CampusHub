@@ -45,21 +45,21 @@ export default function AvailableLmsCoursesPage() {
       setCurrentUserId(uIdToFetch);
 
       if (uIdToFetch && userRoleToFetch) {
-        const profileTable = userRoleToFetch === 'student' ? 'students' : userRoleToFetch === 'teacher' ? 'teachers' : null;
-        if (profileTable) {
-          const { data: profile, error: profileError } = await supabase
-            .from(profileTable)
-            .select('id, school_id')
-            .eq('user_id', uIdToFetch)
-            .single();
-          if (profileError || !profile) {
-            toast({ title: "Error", description: "Could not load user profile.", variant: "destructive" });
-          } else {
-            userProfileIdToFetch = profile.id;
-            userSchoolIdToFetch = profile.school_id;
-            setCurrentUserProfileId(profile.id);
-            setCurrentSchoolId(profile.school_id);
-          }
+        if (userRoleToFetch === 'student' || userRoleToFetch === 'teacher') {
+            const profileTable = userRoleToFetch === 'student' ? 'students' : 'teachers';
+            const { data: profile, error: profileError } = await supabase
+              .from(profileTable)
+              .select('id, school_id')
+              .eq('user_id', uIdToFetch)
+              .single();
+            if (profileError || !profile) {
+              toast({ title: "Error", description: "Could not load user profile.", variant: "destructive" });
+            } else {
+              userProfileIdToFetch = profile.id;
+              userSchoolIdToFetch = profile.school_id;
+              setCurrentUserProfileId(profile.id);
+              setCurrentSchoolId(profile.school_id);
+            }
         } else if (userRoleToFetch === 'admin' || userRoleToFetch === 'superadmin') {
           const { data: userRec, error: userErr } = await supabase.from('users').select('school_id').eq('id', uIdToFetch).single();
           if (userRec) {
