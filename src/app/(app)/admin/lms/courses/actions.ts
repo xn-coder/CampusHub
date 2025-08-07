@@ -848,22 +848,23 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
               .filter(rec => rec.target_audience_in_school === 'teacher' || rec.target_audience_in_school === 'both')
               .map(rec => rec.course_id);
       } else if (userRole === 'student') {
-          if (!userProfileId) return { ok: false, message: "Student profile ID is required but was not provided." };
+          if (!userProfileId) return { ok: false, message: "Could not load student profile." };
           
           const { data: studentData, error: studentError } = await supabase.from('students').select('class_id').eq('id', userProfileId).single();
           if (studentError) return { ok: false, message: "Could not fetch student's class information."};
           
           const studentClassId = studentData?.class_id;
 
-          // Students see courses assigned to 'all_students', or their specific class
-          courseIdsForUser = availableRecords
-              .filter(rec => {
-                  const isForStudents = rec.target_audience_in_school === 'student' || rec.target_audience_in_school === 'both';
-                  if (!isForStudents) return false;
-                  // It's for students, now check if it's for their class or all students
-                  return !rec.target_class_id || rec.target_class_id === studentClassId;
-              })
-              .map(rec => rec.course_id);
+          // Students see courses assigned to 'all_students' OR their specific class
+          const coursesForEveryone = availableRecords
+            .filter(rec => rec.target_audience_in_school === 'student' && !rec.target_class_id)
+            .map(rec => rec.course_id);
+          
+          const coursesForClass = availableRecords
+            .filter(rec => rec.target_class_id === studentClassId)
+            .map(rec => rec.course_id);
+
+          courseIdsForUser = [...new Set([...coursesForEveryone, ...coursesForClass])];
       }
       
       if (courseIdsForUser.length === 0) return { ok: true, courses: [] };
@@ -1318,6 +1319,7 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
 
