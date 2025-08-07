@@ -375,5 +375,3 @@ export default function SchoolLmsCoursesPage() {
     </>
   );
 }
-
-

@@ -250,16 +250,10 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
         
         const coursesWithSchoolStatus = (coursesRes.data || []).map(c => {
             const availInfo = availability.find(a => a.course_id === c.id);
-            // A course is considered "enrolled" if it's a paid course and the school has an active subscription,
-            // OR if it's a free course (which doesn't require a subscription record to be considered enrolled).
-            // This logic was flawed before. The school has to explicitly enroll in free courses too.
-            // A school is enrolled if it has a subscription (for paid) or if it's free. But enrollment is an action.
-            // Let's refine. The key is what `isEnrolled` means. It means the school has access.
-            // A school has access if it has a subscription for a paid course. For a free course, it's always considered enrolled once available.
-            
-            const isSubscribedToPaidCourse = c.is_paid && subscribedCourseIds.has(c.id);
-            const isEnrolledInFreeCourse = !c.is_paid;
-            const isEnrolled = isSubscribedToPaidCourse || isEnrolledInFreeCourse;
+            // A school is considered enrolled if it has an active subscription for a paid course.
+            // For a free course, enrollment is handled client-side by an explicit action, so `isEnrolled` should be false
+            // by default for free courses, giving the admin the option to enroll.
+            const isEnrolled = c.is_paid && subscribedCourseIds.has(c.id);
 
             return {
                 ...c,
@@ -1293,6 +1287,7 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
 
