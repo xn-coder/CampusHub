@@ -37,37 +37,39 @@ export default function AvailableLmsCoursesPage() {
     let userSchoolIdToFetch: string | null = null;
     let userRoleToFetch: UserRole | null = null;
     let uIdToFetch: string | null = null;
-
+    
     if (typeof window !== 'undefined') {
-      userRoleToFetch = localStorage.getItem('currentUserRole') as UserRole | null;
-      uIdToFetch = localStorage.getItem('currentUserId');
-      setCurrentUserRole(userRoleToFetch); 
-      setCurrentUserId(uIdToFetch);
+        userRoleToFetch = localStorage.getItem('currentUserRole') as UserRole | null;
+        uIdToFetch = localStorage.getItem('currentUserId');
+        setCurrentUserRole(userRoleToFetch);
+        setCurrentUserId(uIdToFetch);
 
-      if (uIdToFetch && userRoleToFetch) {
-        if (userRoleToFetch === 'student' || userRoleToFetch === 'teacher') {
-            const profileTable = userRoleToFetch === 'student' ? 'students' : 'teachers';
-            const { data: profile, error: profileError } = await supabase
-              .from(profileTable)
-              .select('id, school_id')
-              .eq('user_id', uIdToFetch)
-              .single();
-            if (profileError || !profile) {
-              toast({ title: "Error", description: "Could not load user profile.", variant: "destructive" });
-            } else {
-              userProfileIdToFetch = profile.id;
-              userSchoolIdToFetch = profile.school_id;
-              setCurrentUserProfileId(profile.id);
-              setCurrentSchoolId(profile.school_id);
+        if (uIdToFetch && userRoleToFetch) {
+            if (userRoleToFetch === 'student' || userRoleToFetch === 'teacher') {
+                const profileTable = userRoleToFetch === 'student' ? 'students' : 'teachers';
+                const { data: profile, error } = await supabase
+                    .from(profileTable)
+                    .select('id, school_id')
+                    .eq('user_id', uIdToFetch)
+                    .single();
+
+                if (error || !profile) {
+                    toast({ title: "Error", description: `Could not load your ${userRoleToFetch} profile.`, variant: "destructive" });
+                    setIsLoading(false);
+                    return;
+                }
+                userProfileIdToFetch = profile.id;
+                userSchoolIdToFetch = profile.school_id;
+                setCurrentUserProfileId(profile.id);
+                setCurrentSchoolId(profile.school_id);
+            } else if (userRoleToFetch === 'admin' || userRoleToFetch === 'superadmin') {
+                const { data: userRec, error } = await supabase.from('users').select('school_id').eq('id', uIdToFetch).single();
+                if (userRec) {
+                    userSchoolIdToFetch = userRec.school_id;
+                    setCurrentSchoolId(userSchoolIdToFetch);
+                }
             }
-        } else if (userRoleToFetch === 'admin' || userRoleToFetch === 'superadmin') {
-          const { data: userRec, error: userErr } = await supabase.from('users').select('school_id').eq('id', uIdToFetch).single();
-          if (userRec) {
-            userSchoolIdToFetch = userRec.school_id;
-            setCurrentSchoolId(userSchoolIdToFetch);
-          }
         }
-      }
     }
 
     const result = await getAvailableCoursesWithEnrollmentStatusAction({
@@ -145,7 +147,7 @@ export default function AvailableLmsCoursesPage() {
       {isLoading ? (
         <Card><CardContent className="pt-6 text-center text-muted-foreground flex items-center justify-center"><Loader2 className="mr-2 h-6 w-6 animate-spin"/>Loading courses...</CardContent></Card>
       ) : courses.length === 0 ? (
-        <Card><CardContent className="pt-6 text-center text-muted-foreground">No LMS courses available at this time.</CardContent></Card>
+        <Card><CardContent className="pt-6 text-center text-muted-foreground">No LMS courses available to you at this time.</CardContent></Card>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {courses.map((course) => (
