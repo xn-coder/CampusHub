@@ -73,8 +73,6 @@ export async function createCourseAction(
   const is_paid = formData.get('is_paid') === 'true';
   const price = formData.get('price') ? Number(formData.get('price')) : undefined;
   const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
-  const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
-  const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null;
   const school_id = formData.get('school_id') as string | null;
   const created_by_user_id = formData.get('created_by_user_id') as string;
   const featureImageFile = formData.get('feature_image_url') as File | null;
@@ -106,8 +104,8 @@ export async function createCourseAction(
       discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
       created_by_user_id,
-      subscription_plan,
-      max_users_allowed: max_users_allowed && max_users_allowed > 0 ? max_users_allowed : null,
+      subscription_plan: formData.get('subscription_plan') as SubscriptionPlan | null,
+      max_users_allowed: formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -144,9 +142,6 @@ export async function updateCourseAction(
   const price = formData.get('price') ? Number(formData.get('price')) : undefined;
   const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const school_id = formData.get('school_id') as string | null;
-  const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
-  const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null;
-  const featureImageFile = formData.get('feature_image_url') as File | null;
   
   try {
     const updateData: Partial<Course> = {
@@ -156,23 +151,26 @@ export async function updateCourseAction(
       price: is_paid ? price : null,
       discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
-      subscription_plan,
-      max_users_allowed: max_users_allowed && max_users_allowed > 0 ? max_users_allowed : null,
+      subscription_plan: formData.get('subscription_plan') as SubscriptionPlan | null,
+      max_users_allowed: formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null,
       updated_at: new Date().toISOString(),
     };
 
-    if (featureImageFile && featureImageFile.size > 0) {
-      const sanitizedFileName = featureImageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const filePath = `public/course-feature-images/${school_id || 'global'}/${id}-${sanitizedFileName}`;
+    if (formData.has('feature_image_url') && formData.get('feature_image_url') instanceof File) {
+      const featureImageFile = formData.get('feature_image_url') as File;
+      if (featureImageFile && featureImageFile.size > 0) {
+        const sanitizedFileName = featureImageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+        const filePath = `public/course-feature-images/${school_id || 'global'}/${id}-${sanitizedFileName}`;
 
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from('campushub')
-        .upload(filePath, featureImageFile, { upsert: true });
+        const { error: uploadError } = await supabaseAdmin.storage
+          .from('campushub')
+          .upload(filePath, featureImageFile, { upsert: true });
 
-      if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
+        if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
-      const { data: publicUrlData } = await supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
-      updateData.feature_image_url = publicUrlData.publicUrl;
+        const { data: publicUrlData } = await supabaseAdmin.storage.from('campushub').getPublicUrl(filePath);
+        updateData.feature_image_url = publicUrlData.publicUrl;
+      }
     }
     
     const { error, data } = await supabaseAdmin
@@ -240,22 +238,23 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
         const courseIds = availability.map(a => a.course_id);
         const [coursesRes, subscriptionsRes] = await Promise.all([
           supabase.from('lms_courses').select('*').in('id', courseIds),
-          supabase.from('lms_school_subscriptions').select('course_id').eq('school_id', schoolId).eq('status', 'active')
+          supabase.from('lms_school_subscriptions').select('course_id, subscription_date').eq('school_id', schoolId).eq('status', 'active')
         ]);
 
         if (coursesRes.error) throw coursesRes.error;
         if (subscriptionsRes.error) console.warn("Could not fetch school subscriptions:", subscriptionsRes.error.message);
 
         const subscribedCourseIds = new Set((subscriptionsRes.data || []).map(sub => sub.course_id));
-        
+        const subscriptionDates = new Map((subscriptionsRes.data || []).map(sub => [sub.course_id, sub.subscription_date]));
+
         const coursesWithSchoolStatus = (coursesRes.data || []).map(c => {
             const availInfo = availability.find(a => a.course_id === c.id);
             const isEnrolled = subscribedCourseIds.has(c.id);
-
             return {
                 ...c,
                 isEnrolled,
                 target_audience_in_school: availInfo?.target_audience_in_school,
+                subscription_date: isEnrolled ? subscriptionDates.get(c.id) : undefined,
             };
         });
 
@@ -1290,6 +1289,7 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
 
 
 

@@ -15,7 +15,7 @@ import {
     enrollSchoolInCourseAction,
     updateCourseAction,
 } from './actions';
-import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard, Edit2, Trash2 } from 'lucide-react';
+import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard, Edit2, Trash2, CalendarDays } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -25,6 +25,8 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from "@/components/ui/checkbox"
 import { Save } from "lucide-react";
+import { formatDistanceToNow, addDays, addMonths, addYears } from 'date-fns';
+
 
 const ITEMS_PER_PAGE = 9;
 
@@ -184,6 +186,43 @@ export default function SchoolLmsCoursesPage() {
   
   const paginatedCourses = filteredCourses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const totalPages = Math.ceil(filteredCourses.length / ITEMS_PER_PAGE);
+  
+  const getSubscriptionStatus = (course: Course) => {
+    if (!course.isEnrolled) return null;
+    if (!course.is_paid) return <Badge className="bg-green-600 hover:bg-green-700 flex items-center"><Unlock className="mr-1 h-3 w-3"/> Free</Badge>;
+    if (!course.subscription_plan || !course.subscription_date) return <Badge variant="destructive">Error</Badge>;
+
+    const subscriptionDate = new Date(course.subscription_date);
+    let expiryDate;
+    
+    switch (course.subscription_plan) {
+      case 'monthly':
+        expiryDate = addMonths(subscriptionDate, 1);
+        break;
+      case 'yearly':
+        expiryDate = addYears(subscriptionDate, 1);
+        break;
+      case 'one_time':
+        return <Badge className="flex items-center">Lifetime Access</Badge>;
+      default:
+        return <Badge className="flex items-center">Enrolled</Badge>;
+    }
+
+    const now = new Date();
+    if (now > expiryDate) {
+      return <Badge variant="destructive">Expired</Badge>;
+    }
+    
+    const remainingTime = formatDistanceToNow(expiryDate, { addSuffix: true });
+
+    return (
+      <Badge className="flex items-center" variant="secondary">
+        <CalendarDays className="mr-1 h-3 w-3" />
+        Expires {remainingTime}
+      </Badge>
+    );
+  };
+
 
   return (
     <>
@@ -220,23 +259,19 @@ export default function SchoolLmsCoursesPage() {
                 </p>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {paginatedCourses.map((course) => (
                     <Card key={course.id} className="flex flex-col overflow-hidden group">
                         <div className="relative aspect-video">
                             <Image 
                                 src={course.feature_image_url || `https://placehold.co/600x400.png`}
                                 alt={course.title}
-                                layout="fill"
-                                objectFit="cover"
+                                fill
+                                className="object-cover"
                                 data-ai-hint="course cover"
                             />
                              <div className="absolute top-2 right-2 flex gap-1">
-                                {course.is_paid ? (
-                                    <Badge variant="destructive" className="flex items-center"><Lock className="mr-1 h-3 w-3"/> Paid</Badge>
-                                ) : (
-                                    <Badge className="bg-green-600 hover:bg-green-700 flex items-center"><Unlock className="mr-1 h-3 w-3"/> Free</Badge>
-                                )}
+                                {getSubscriptionStatus(course)}
                             </div>
                         </div>
                         <CardHeader>
@@ -250,12 +285,12 @@ export default function SchoolLmsCoursesPage() {
                              <>
                               <Button asChild className="w-full" variant="secondary">
                                 <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                                    <UserPlus className="mr-2 h-4 w-4"/> Manage Enrollments
+                                    <UserPlus className="mr-2 h-4 w-4"/> User List
                                 </Link>
                               </Button>
                               <div className="flex w-full gap-2">
                                 <Button className="flex-1" variant="outline" onClick={() => handleOpenAssignDialog(course)}>
-                                  Assign To
+                                  Assign Course
                                 </Button>
                                 <Button size="icon" variant="ghost" onClick={() => handleOpenEditDialog(course)}>
                                   <Edit2 className="h-4 w-4" />
