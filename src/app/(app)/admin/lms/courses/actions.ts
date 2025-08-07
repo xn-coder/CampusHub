@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -1002,8 +1003,8 @@ export async function createCoursePaymentOrderAction(courseId: string, userId: s
     isMock?: boolean;
 }> {
     const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
-
     const supabase = createSupabaseServerClient();
+    
     const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
     if(userError || !user) return { ok: false, message: "User not found." };
     const userRole = user.role as UserRole;
@@ -1076,6 +1077,7 @@ export async function createSchoolSubscriptionOrderAction(courseId: string, scho
     isMock?: boolean;
 }> {
   const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
+  const supabase = createSupabaseServerClient();
 
   if (!isRazorpayEnabled) {
       const { error } = await supabase.from('lms_school_subscriptions').insert({
@@ -1236,3 +1238,4 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
