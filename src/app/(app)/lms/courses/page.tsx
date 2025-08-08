@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -9,7 +10,7 @@ import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
-import { getCoursesForSchoolAction, assignCourseToSchoolAction, unassignCourseFromSchoolAction, updateCourseAudienceInSchoolAction } from './actions';
+import { getCoursesForSchoolAction, assignCourseToSchoolAction, unassignCourseFromSchoolAction, updateCourseAudienceInSchoolAction } from '@/app/(app)/admin/lms/courses/actions';
 import { Library, Settings, UserPlus, Loader2, BookCheck, Eye, ChevronsRight, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
