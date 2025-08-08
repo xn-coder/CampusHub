@@ -199,7 +199,6 @@ export default function SchoolLmsCoursesPage() {
     );
   };
 
-
   return (
     <>
     <Script id="razorpay-checkout-js" src="https://checkout.razorpay.com/v1/checkout.js" />
@@ -267,12 +266,12 @@ export default function SchoolLmsCoursesPage() {
                                 <>
                                     <Button asChild className="w-full" variant="secondary">
                                         <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                                            <UserPlus className="mr-2 h-4 w-4"/> Manage Enrollments
+                                            <UserPlus className="mr-2 h-4 w-4"/> User list
                                         </Link>
                                     </Button>
                                     <AlertDialog>
                                         <AlertDialogTrigger asChild>
-                                            <Button className="w-full" variant="outline">Assign Visibility</Button>
+                                            <Button className="w-full" variant="outline">Assign course</Button>
                                         </AlertDialogTrigger>
                                         <AlertDialogContent>
                                             <AlertDialogHeader>
