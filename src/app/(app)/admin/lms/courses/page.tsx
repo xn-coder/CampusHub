@@ -35,6 +35,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import Script from 'next/script';
+import { differenceInDays, parseISO, isPast } from 'date-fns';
 
 
 const ITEMS_PER_PAGE = 9;
@@ -188,16 +189,47 @@ export default function SchoolLmsCoursesPage() {
   const totalPages = Math.ceil(filteredCourses.length / ITEMS_PER_PAGE);
   
   const PriceDisplay = ({ course }: { course: Course }) => {
-    if (!course.is_paid || !course.price) return <Badge variant="secondary">Free</Badge>;
+    const tagClass = "absolute bottom-2 right-2 bg-black/50 text-white text-xs font-bold px-2 py-1 rounded";
+    if (!course.is_paid || !course.price) return <div className={tagClass}>Free</div>;
+
     const discount = course.discount_percentage || 0;
     const finalPrice = course.price * (1 - discount / 100);
+
     return (
-        <div className="flex items-center gap-2">
-            <span className="font-semibold text-lg">₹{finalPrice.toFixed(2)}</span>
-            {discount > 0 && <span className="text-xs text-muted-foreground line-through">₹{course.price.toFixed(2)}</span>}
+        <div className={`${tagClass} flex items-baseline gap-1.5`}>
+            {discount > 0 && <span className="line-through opacity-70">₹{course.price.toFixed(2)}</span>}
+            <span>₹{finalPrice.toFixed(2)}</span>
         </div>
     );
   };
+  
+  const SubscriptionBadge = ({ course }: { course: Course }) => {
+    if (!course.isEnrolled || !course.is_paid || !course.subscription_end_date) {
+        return null;
+    }
+
+    const endDate = parseISO(course.subscription_end_date);
+    const now = new Date();
+    const daysLeft = differenceInDays(endDate, now);
+    
+    let variant: "default" | "destructive" | "secondary" = "default";
+    let text = `${daysLeft} days left`;
+
+    if (isPast(endDate)) {
+        variant = "destructive";
+        text = "Expired";
+    } else if (daysLeft <= 7) {
+        variant = "destructive";
+    } else if (daysLeft <= 30) {
+        variant = "secondary";
+    }
+
+    return (
+        <Badge variant={variant} className="absolute top-2 right-2">
+            <CalendarDays className="mr-1.5 h-3 w-3" /> {text}
+        </Badge>
+    );
+  }
 
   return (
     <>
@@ -246,22 +278,16 @@ export default function SchoolLmsCoursesPage() {
                                 className="object-cover"
                                 data-ai-hint="course cover"
                             />
-                             <div className="absolute top-2 right-2 flex gap-1">
-                                {course.isEnrolled ? (
-                                    <Badge className="bg-green-600 hover:bg-green-700 flex items-center"><Unlock className="mr-1 h-3 w-3"/> Enrolled</Badge>
-                                ) : (
-                                    <Badge variant="destructive" className="flex items-center"><Lock className="mr-1 h-3 w-3"/> Not Enrolled</Badge>
-                                )}
-                            </div>
-                        </div>
-                        <CardHeader className="flex-row justify-between items-start">
-                            <CardTitle className="line-clamp-2">{course.title}</CardTitle>
+                            <SubscriptionBadge course={course} />
                             <PriceDisplay course={course} />
+                        </div>
+                        <CardHeader>
+                            <CardTitle className="line-clamp-2">{course.title}</CardTitle>
                         </CardHeader>
                         <CardContent className="flex-grow">
                              <CardDescription className="line-clamp-3">{course.description || "No description available."}</CardDescription>
                         </CardContent>
-                        <CardFooter className="flex-col sm:flex-row gap-2">
+                        <CardFooter className="flex flex-col sm:flex-row gap-2">
                            {course.isEnrolled ? (
                                 <>
                                     <Button asChild className="w-full" variant="secondary">
@@ -290,7 +316,7 @@ export default function SchoolLmsCoursesPage() {
                             ) : (
                                 <>
                                     <Button asChild className="w-full" variant="outline">
-                                        <Link href={`/admin/lms/courses/${course.id}/content?preview=true`}>
+                                        <Link href={`/lms/courses/${course.id}?preview=true`}>
                                             <Eye className="mr-2 h-4 w-4"/> Preview
                                         </Link>
                                     </Button>
