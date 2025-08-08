@@ -87,18 +87,28 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
               .filter(rec => rec.target_audience_in_school === 'teacher' || rec.target_audience_in_school === 'both')
               .map(rec => rec.course_id);
       } else if (userRole === 'student') {
-          if (!userProfileId) return { ok: false, message: "Could not load student profile." };
+          if (!userProfileId) {
+             console.error("Student profile ID not provided for course lookup.");
+             return { ok: false, message: "Could not load student profile." };
+          }
           
           const { data: studentData, error: studentError } = await supabase.from('students').select('class_id').eq('id', userProfileId).single();
-          if (studentError) return { ok: false, message: "Could not fetch student's class information."};
+          if (studentError) {
+            console.error("Error fetching student's class:", studentError);
+            return { ok: false, message: "Could not fetch student's class information."};
+          }
           
           const studentClassId = studentData?.class_id;
           
           courseIdsForUser = availableRecords
-            .filter(rec => 
-                (rec.target_audience_in_school === 'student' || rec.target_audience_in_school === 'both') && !rec.target_class_id || 
-                (rec.target_class_id && rec.target_class_id === studentClassId)
-            )
+            .filter(rec => {
+                const isForStudentAudience = rec.target_audience_in_school === 'student' || rec.target_audience_in_school === 'both';
+                const isClassSpecific = rec.target_class_id !== null;
+                const isGeneral = !isClassSpecific;
+                
+                // Visible if: it's for students AND (it's a general course OR it matches the student's class)
+                return isForStudentAudience && (isGeneral || (isClassSpecific && rec.target_class_id === studentClassId));
+            })
             .map(rec => rec.course_id);
       }
       
@@ -128,14 +138,16 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       }
     }
     
+    // For admins, their "enrollment" is determined by the school's subscription to paid courses. Free courses are not auto-enrolled.
     if (userRole === 'admin' && userSchoolId) {
-        const { data: schoolAssignments } = await supabase.from('lms_course_school_availability').select('course_id').eq('school_id', userSchoolId);
-        enrolledCourseIds = schoolAssignments?.map(s => s.course_id) || [];
+        const { data: schoolSubscriptions } = await supabase.from('lms_school_subscriptions').select('course_id').eq('school_id', userSchoolId);
+        enrolledCourseIds = schoolSubscriptions?.map(s => s.course_id) || [];
     }
 
     const coursesWithStatus: CourseWithEnrollmentStatus[] = coursesData.map(course => ({
       ...course,
-      isEnrolled: (userRole === 'superadmin') ? true : enrolledCourseIds.includes(course.id),
+      isEnrolled: (userRole === 'superadmin') ? true : 
+                  (course.is_paid ? enrolledCourseIds.includes(course.id) : enrolledCourseIds.includes(course.id)),
     }));
     
     return { ok: true, courses: coursesWithStatus };

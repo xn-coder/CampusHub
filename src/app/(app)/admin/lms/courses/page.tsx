@@ -131,21 +131,22 @@ export default function SchoolLmsCoursesPage() {
   };
 
   const handleSubscribeCourse = async (course: Course) => {
-    if (!currentUserId) {
-      toast({ title: "Error", description: "User ID not found.", variant: "destructive" });
+    if (!currentUserId || !currentSchool) {
+      toast({ title: "Error", description: "User ID or School ID not found.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
     const result = await createCoursePaymentOrderAction(course.id, currentUserId);
-    setIsSubmitting(false);
-
+    
     if (!result.ok) {
         toast({ title: "Error", description: result.message, variant: "destructive" });
+        setIsSubmitting(false);
         return;
     }
     if(result.isMock) {
         toast({ title: "Success!", description: result.message });
         if(currentUserId) fetchPageData(currentUserId);
+        setIsSubmitting(false);
         return;
     }
     if (result.order) {
@@ -157,6 +158,7 @@ export default function SchoolLmsCoursesPage() {
             description: `Payment for ${course.title}`,
             order_id: result.order.id,
             handler: async (response: any) => {
+                setIsSubmitting(true);
                 const verifyResult = await verifyCoursePaymentAndEnrollAction(
                     response.razorpay_payment_id,
                     response.razorpay_order_id,
@@ -164,10 +166,11 @@ export default function SchoolLmsCoursesPage() {
                 );
                 if (verifyResult.ok) {
                     toast({ title: "Success", description: verifyResult.message });
-                    if(currentUserId) fetchPageData(currentUserId);
+                    if(currentUserId) await fetchPageData(currentUserId);
                 } else {
                     toast({ title: "Payment Verification Failed", description: verifyResult.message, variant: "destructive" });
                 }
+                setIsSubmitting(false);
             },
             prefill: {
                 name: currentSchool?.admin_name,
@@ -175,9 +178,16 @@ export default function SchoolLmsCoursesPage() {
                 contact: currentSchool?.contact_phone,
             },
             theme: { color: "#3399cc" },
+            modal: {
+                ondismiss: () => {
+                    setIsSubmitting(false); // Stop loading if user closes payment modal
+                }
+            }
         };
         const rzp1 = new (window as any).Razorpay(rzpOptions);
         rzp1.open();
+    } else {
+       setIsSubmitting(false);
     }
   };
 
@@ -287,7 +297,7 @@ export default function SchoolLmsCoursesPage() {
                         <CardContent className="flex-grow">
                              <CardDescription className="line-clamp-3">{course.description || "No description available."}</CardDescription>
                         </CardContent>
-                        <CardFooter className="flex flex-col sm:flex-row gap-2">
+                        <CardFooter className="flex-col sm:flex-row gap-2">
                            {course.isEnrolled ? (
                                 <>
                                     <Button asChild className="w-full" variant="secondary">
@@ -295,23 +305,7 @@ export default function SchoolLmsCoursesPage() {
                                             <UserPlus className="mr-2 h-4 w-4"/> User list
                                         </Link>
                                     </Button>
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                            <Button className="w-full" variant="outline">Assign course</Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle>Assign Course Visibility</AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    This will make the course "{course.title}" visible to the selected group of users. They will then be able to enroll themselves.
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
-                                            <AlertDialogFooter>
-                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                <AlertDialogAction onClick={() => handleOpenAssignDialog(course)}>Proceed</AlertDialogAction>
-                                            </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
+                                    <Button onClick={() => handleOpenAssignDialog(course)} className="w-full" variant="outline">Assign course</Button>
                                 </>
                             ) : (
                                 <>
@@ -322,11 +316,11 @@ export default function SchoolLmsCoursesPage() {
                                     </Button>
                                     {course.is_paid ? (
                                         <Button className="w-full" onClick={() => handleSubscribeCourse(course)} disabled={isSubmitting}>
-                                            <ShoppingCart className="mr-2 h-4 w-4" /> Subscribe
+                                            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <ShoppingCart className="mr-2 h-4 w-4" />} Subscribe
                                         </Button>
                                     ) : (
                                         <Button className="w-full" onClick={() => handleEnrollFreeCourse(course.id)} disabled={isSubmitting}>
-                                            <CheckCheck className="mr-2 h-4 w-4" /> Enroll School (Free)
+                                            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCheck className="mr-2 h-4 w-4" />} Enroll School
                                         </Button>
                                     )}
                                 </>
@@ -393,3 +387,4 @@ export default function SchoolLmsCoursesPage() {
     </>
   );
 }
+

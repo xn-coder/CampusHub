@@ -564,6 +564,168 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
 }
 
 
+// --- Enrollment Management ---
+interface ManageEnrollmentInput {
+  course_id: string;
+  user_profile_id: string; 
+  user_type: UserRole;
+  school_id: string;
+}
+
+export async function enrollUserInCourseAction(
+  input: ManageEnrollmentInput
+): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  const { course_id, user_profile_id, user_type, school_id } = input; 
+
+  const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
+  const fkColumnNameInEnrollmentTable = user_type === 'student' ? 'student_id' : 'teacher_id';
+  
+  const { data: existingEnrollment, error: fetchError } = await supabaseAdmin
+    .from(enrollmentTable)
+    .select('id')
+    .eq(fkColumnNameInEnrollmentTable, user_profile_id)
+    .eq('course_id', course_id)
+    .maybeSingle(); 
+  
+  if (fetchError && fetchError.code !== 'PGRST116') { 
+    console.error(`Error checking existing enrollment for ${user_type}:`, fetchError);
+    return { ok: false, message: `Database error checking enrollment: ${fetchError.message}` };
+  }
+  if (existingEnrollment) {
+    return { ok: false, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} is already enrolled in this course.` };
+  }
+  
+  const enrollmentData: any = { 
+      id: uuidv4(), 
+      course_id, 
+  };
+  enrollmentData[fkColumnNameInEnrollmentTable] = user_profile_id;
+  enrollmentData['school_id'] = school_id;
+
+  if (user_type === 'student') {
+    enrollmentData.enrolled_at = new Date().toISOString();
+  } else { // teacher
+    enrollmentData.assigned_at = new Date().toISOString();
+  }
+
+  const { error } = await supabaseAdmin.from(enrollmentTable).insert(enrollmentData);
+
+  if (error) {
+    console.error(`Error enrolling ${user_type}:`, error);
+    return { ok: false, message: `Failed to enroll ${user_type}: ${error.message}` };
+  }
+  revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
+  revalidatePath(`/lms/courses/${course_id}`);
+  revalidatePath('/lms/available-courses');
+  return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} enrolled successfully.` };
+}
+
+export async function unenrollUserFromCourseAction(
+  input: Omit<ManageEnrollmentInput, 'school_id'>
+): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  const { course_id, user_profile_id, user_type } = input;
+
+  const enrollmentTable = user_type === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
+  const fkColumnNameInEnrollmentTable = user_type === 'student' ? 'student_id' : 'teacher_id';
+  
+  const { error } = await supabaseAdmin
+    .from(enrollmentTable)
+    .delete()
+    .eq(fkColumnNameInEnrollmentTable, user_profile_id)
+    .eq('course_id', course_id);
+  
+  if (error) {
+    console.error(`Error unenrolling ${user_type}:`, error);
+    return { ok: false, message: `Failed to unenroll ${user_type}: ${error.message}` };
+  }
+  revalidatePath(`/admin/lms/courses/${course_id}/enrollments`);
+  revalidatePath(`/lms/courses/${course_id}`);
+  revalidatePath('/lms/available-courses');
+  return { ok: true, message: `${user_type.charAt(0).toUpperCase() + user_type.slice(1)} unenrolled successfully.` };
+}
+
+// --- Fetching Enrolled Users ---
+export async function getEnrolledStudentsForCourseAction(
+  courseId: string,
+  schoolId: string
+): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  
+  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
+    .from('lms_student_course_enrollments')
+    .select('student_id') 
+    .eq('course_id', courseId)
+    .eq('school_id', schoolId);
+
+  if (enrollmentError) {
+    console.error("Error fetching student enrollments:", enrollmentError);
+    return { ok: false, message: `Failed to fetch student enrollments: ${enrollmentError.message}` };
+  }
+
+  if (!enrollments || enrollments.length === 0) {
+    return { ok: true, students: [] };
+  }
+
+  const studentIdsFromEnrollments = enrollments.map(e => e.student_id).filter(id => !!id);
+  if (studentIdsFromEnrollments.length === 0) {
+    return { ok: true, students: [] };
+  }
+  
+  const { data: studentsData, error: studentsError } = await supabaseAdmin
+    .from('students') 
+    .select('*') 
+    .in('id', studentIdsFromEnrollments); 
+
+  if (studentsError) {
+    console.error("Error fetching student details:", studentsError);
+    return { ok: false, message: `Failed to fetch student details: ${studentsError.message}` };
+  }
+
+  return { ok: true, students: (studentsData as Student[]) || [] };
+}
+
+export async function getEnrolledTeachersForCourseAction(
+  courseId: string,
+  schoolId: string
+): Promise<{ ok: boolean; teachers?: Teacher[]; message?: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+
+  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
+    .from('lms_teacher_course_enrollments')
+    .select('teacher_id') 
+    .eq('course_id', courseId)
+    .eq('school_id', schoolId);
+
+  if (enrollmentError) {
+    console.error("Error fetching teacher enrollments:", enrollmentError);
+    return { ok: false, message: `Failed to fetch teacher enrollments: ${enrollmentError.message}` };
+  }
+
+  if (!enrollments || enrollments.length === 0) {
+    return { ok: true, teachers: [] };
+  }
+
+  const teacherIds = enrollments.map(e => e.teacher_id).filter(id => !!id);
+  if (teacherIds.length === 0) {
+    return { ok: true, teachers: [] };
+  }
+
+  const { data: teachersData, error: teachersError } = await supabaseAdmin
+    .from('teachers')
+    .select('*') 
+    .in('id', teacherIds);
+
+  if (teachersError) {
+    console.error("Error fetching teacher details:", teachersError);
+    return { ok: false, message: `Failed to fetch teacher details: ${teachersError.message}` };
+  }
+
+  return { ok: true, teachers: (teachersData as Teacher[]) || [] };
+}
+
+
 // --- Razorpay Payment Actions for Courses ---
 
 export async function createCoursePaymentOrderAction(courseId: string, userId: string): Promise<{
