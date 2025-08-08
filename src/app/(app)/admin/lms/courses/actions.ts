@@ -238,7 +238,7 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
         
         const coursesWithSchoolStatus = (coursesRes.data || []).map(c => {
             const availInfo = availability.find(a => a.course_id === c.id);
-            // A course is considered "enrolled" if a subscription record exists (this applies to both free and paid after their respective enrollment/subscription actions).
+            // A course is considered "enrolled" if a subscription record exists. This applies to both free and paid.
             const isEnrolled = subscribedCourseIds.has(c.id);
             
             return {
@@ -262,6 +262,7 @@ export async function enrollSchoolInCourseAction(courseId: string, schoolId: str
     if (course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription." };
 
     // For free courses, enrolling creates a "mock" subscription record to signify access.
+    // Use upsert to prevent creating duplicate records.
     const { error } = await supabase
         .from('lms_school_subscriptions')
         .upsert({
