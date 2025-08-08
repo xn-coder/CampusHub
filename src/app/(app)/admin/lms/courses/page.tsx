@@ -58,6 +58,7 @@ export default function SchoolLmsCoursesPage() {
   const [assignTarget, setAssignTarget] = useState<'all_students' | 'all_teachers' | 'class'>('all_students');
   const [assignTargetClassId, setAssignTargetClassId] = useState<string>('');
   
+  const [isSubscribeDialogOpen, setIsSubscribeDialogOpen] = useState(false);
 
   const fetchPageData = useCallback(async (adminUserId: string) => {
     setIsLoading(true);
@@ -130,23 +131,30 @@ export default function SchoolLmsCoursesPage() {
       setIsSubmitting(false);
   };
 
-  const handleSubscribeCourse = async (course: Course) => {
-    if (!currentUserId || !currentSchool) {
+  const handleOpenSubscriptionDialog = (course: Course) => {
+    setCourseToAction(course);
+    setIsSubscribeDialogOpen(true);
+  };
+
+  const handleSubscribeCourse = async () => {
+    if (!currentUserId || !currentSchool || !courseToAction) {
       toast({ title: "Error", description: "User ID or School ID not found.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
-    const result = await createCoursePaymentOrderAction(course.id, currentUserId);
+    const result = await createCoursePaymentOrderAction(courseToAction.id, currentUserId);
     
     if (!result.ok) {
         toast({ title: "Error", description: result.message, variant: "destructive" });
         setIsSubmitting(false);
+        setIsSubscribeDialogOpen(false);
         return;
     }
     if(result.isMock) {
         toast({ title: "Success!", description: result.message });
         if(currentUserId) fetchPageData(currentUserId);
         setIsSubmitting(false);
+        setIsSubscribeDialogOpen(false);
         return;
     }
     if (result.order) {
@@ -155,7 +163,7 @@ export default function SchoolLmsCoursesPage() {
             amount: result.order.amount,
             currency: "INR",
             name: "CampusHub Course Subscription",
-            description: `Payment for ${course.title}`,
+            description: `Payment for ${courseToAction.title}`,
             order_id: result.order.id,
             handler: async (response: any) => {
                 setIsSubmitting(true);
@@ -171,6 +179,7 @@ export default function SchoolLmsCoursesPage() {
                     toast({ title: "Payment Verification Failed", description: verifyResult.message, variant: "destructive" });
                 }
                 setIsSubmitting(false);
+                setIsSubscribeDialogOpen(false);
             },
             prefill: {
                 name: currentSchool?.admin_name,
@@ -180,7 +189,8 @@ export default function SchoolLmsCoursesPage() {
             theme: { color: "#3399cc" },
             modal: {
                 ondismiss: () => {
-                    setIsSubmitting(false); // Stop loading if user closes payment modal
+                    setIsSubmitting(false);
+                    setIsSubscribeDialogOpen(false);
                 }
             }
         };
@@ -188,6 +198,7 @@ export default function SchoolLmsCoursesPage() {
         rzp1.open();
     } else {
        setIsSubmitting(false);
+       setIsSubscribeDialogOpen(false);
     }
   };
 
@@ -315,7 +326,7 @@ export default function SchoolLmsCoursesPage() {
                                         </Link>
                                     </Button>
                                     {course.is_paid ? (
-                                        <Button className="w-full" onClick={() => handleSubscribeCourse(course)} disabled={isSubmitting}>
+                                        <Button className="w-full" onClick={() => handleOpenSubscriptionDialog(course)} disabled={isSubmitting}>
                                             {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <ShoppingCart className="mr-2 h-4 w-4" />} Subscribe
                                         </Button>
                                     ) : (
@@ -384,7 +395,39 @@ export default function SchoolLmsCoursesPage() {
             </DialogFooter>
         </DialogContent>
     </Dialog>
+    
+    <Dialog open={isSubscribeDialogOpen} onOpenChange={setIsSubscribeDialogOpen}>
+      <DialogContent>
+          <DialogHeader>
+              <DialogTitle>Subscribe to: {courseToAction?.title}</DialogTitle>
+              <DialogDescription>Review the subscription details before proceeding to payment.</DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-2">
+              <div className="flex justify-between items-baseline">
+                  <span className="text-muted-foreground">Price:</span>
+                  <span className="font-semibold text-lg">₹{courseToAction?.price?.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-baseline">
+                  <span className="text-muted-foreground">Discount:</span>
+                  <span className="font-semibold">{courseToAction?.discount_percentage || 0}%</span>
+              </div>
+              <hr className="my-2" />
+              <div className="flex justify-between items-baseline text-xl">
+                  <span className="font-bold">Total Payable:</span>
+                  <span className="font-bold">₹{((courseToAction?.price || 0) * (1 - ((courseToAction?.discount_percentage || 0) / 100))).toFixed(2)}</span>
+              </div>
+          </div>
+          <DialogFooter>
+              <DialogClose asChild>
+                  <Button variant="outline" disabled={isSubmitting}>Cancel</Button>
+              </DialogClose>
+              <Button onClick={handleSubscribeCourse} disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4" />}
+                  Pay Now
+              </Button>
+          </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
-
