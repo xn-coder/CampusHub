@@ -218,37 +218,34 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
             .eq('school_id', schoolId);
         
         if (availabilityError) throw availabilityError;
-
-        if (!availability || availability.length === 0) {
-            return { ok: true, courses: [] };
-        }
+        if (!availability || availability.length === 0) return { ok: true, courses: [] };
 
         const courseIds = availability.map(a => a.course_id);
+        
         const [coursesRes, subscriptionsRes] = await Promise.all([
           supabase.from('lms_courses').select('*').in('id', courseIds),
-          supabase.from('lms_school_subscriptions').select('course_id, end_date').eq('school_id', schoolId).eq('status', 'active')
+          supabase.from('lms_school_subscriptions').select('course_id, end_date').eq('school_id', schoolId)
         ]);
 
         if (coursesRes.error) throw coursesRes.error;
         if (subscriptionsRes.error) console.warn("Could not fetch school subscriptions:", subscriptionsRes.error.message);
 
-        const subscribedCourses = (subscriptionsRes.data || []).reduce((acc, sub) => {
-            acc[sub.course_id] = { end_date: sub.end_date };
+        const subscribedCourseIds = new Set((subscriptionsRes.data || []).map(sub => sub.course_id));
+        const subscriptionEndDateMap = (subscriptionsRes.data || []).reduce((acc, sub) => {
+            acc[sub.course_id] = sub.end_date;
             return acc;
-        }, {} as Record<string, { end_date?: string | null }>);
+        }, {} as Record<string, string | null>);
         
         const coursesWithSchoolStatus = (coursesRes.data || []).map(c => {
             const availInfo = availability.find(a => a.course_id === c.id);
-            const subscriptionInfo = subscribedCourses[c.id];
+            // A course is considered "enrolled" if a subscription record exists (this applies to both free and paid after their respective enrollment/subscription actions).
+            const isEnrolled = subscribedCourseIds.has(c.id);
             
-            // A course is considered "enrolled" by the school if it's free OR if a subscription exists for it.
-            const isEnrolled = !c.is_paid || !!subscriptionInfo;
-
             return {
                 ...c,
                 isEnrolled,
                 target_audience_in_school: availInfo?.target_audience_in_school,
-                subscription_end_date: subscriptionInfo?.end_date
+                subscription_end_date: subscriptionEndDateMap[c.id] || null,
             };
         });
 
@@ -261,19 +258,22 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
 export async function enrollSchoolInCourseAction(courseId: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
     const supabase = createSupabaseServerClient();
     const { data: course, error: courseError } = await supabase.from('lms_courses').select('is_paid').eq('id', courseId).single();
-    if(courseError || !course) return { ok: false, message: "Course not found." };
-    if(course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription." };
+    if (courseError || !course) return { ok: false, message: "Course not found." };
+    if (course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription." };
 
+    // For free courses, enrolling creates a "mock" subscription record to signify access.
     const { error } = await supabase
-        .from('lms_course_school_availability')
+        .from('lms_school_subscriptions')
         .upsert({
             course_id: courseId,
             school_id: schoolId,
-            target_audience_in_school: 'both' // Default to both
-        }, { onConflict: 'course_id, school_id' }); // Use upsert to avoid errors if already available
+            status: 'active',
+            amount_paid: 0,
+            razorpay_payment_id: `FREE_ENROLL_${uuidv4()}`
+        }, { onConflict: 'course_id, school_id' });
 
     if (error) {
-        console.error("Error enrolling school in free course:", error);
+        console.error("Error enrolling school in free course (creating subscription record):", error);
         return { ok: false, message: `Failed to enroll school: ${error.message}` };
     }
     revalidatePath('/admin/lms/courses');
