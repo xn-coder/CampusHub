@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -237,7 +238,6 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
         
         const coursesWithSchoolStatus = (coursesRes.data || []).map(c => {
             const availInfo = availability.find(a => a.course_id === c.id);
-            // A course is considered "enrolled" if a subscription record exists. This applies to both free and paid.
             const isEnrolled = subscribedCourseIds.has(c.id);
             
             return {
@@ -260,8 +260,6 @@ export async function enrollSchoolInCourseAction(courseId: string, schoolId: str
     if (courseError || !course) return { ok: false, message: "Course not found." };
     if (course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription." };
 
-    // For free courses, enrolling creates a "mock" subscription record to signify access.
-    // Use upsert to prevent creating duplicate records.
     const { error } = await supabase
         .from('lms_school_subscriptions')
         .upsert({
@@ -270,7 +268,7 @@ export async function enrollSchoolInCourseAction(courseId: string, schoolId: str
             status: 'active',
             amount_paid: 0,
             razorpay_payment_id: `FREE_ENROLL_${uuidv4()}`
-        }, { onConflict: 'course_id, school_id' });
+        }, { onConflict: 'course_id, school_id' }); 
 
     if (error) {
         console.error("Error enrolling school in free course (creating subscription record):", error);
