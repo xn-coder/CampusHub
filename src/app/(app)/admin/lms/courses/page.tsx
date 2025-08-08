@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -54,17 +55,10 @@ export default function SchoolLmsCoursesPage() {
 
   // Dialog states
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
-  const [isEditCourseDialogOpen, setIsEditCourseDialogOpen] = useState(false);
   const [courseToAction, setCourseToAction] = useState<Course | null>(null);
   const [assignTarget, setAssignTarget] = useState<'all_students' | 'all_teachers' | 'class'>('all_students');
   const [assignTargetClassId, setAssignTargetClassId] = useState<string>('');
   
-  // Edit Form State
-  const [editTitle, setEditTitle] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editFeatureImageFile, setEditFeatureImageFile] = useState<File | null>(null);
-  const [editMaxUsers, setEditMaxUsers] = useState<number | ''>('');
-
 
   const fetchPageData = useCallback(async (adminUserId: string) => {
     setIsLoading(true);
@@ -94,53 +88,6 @@ export default function SchoolLmsCoursesPage() {
     setIsAssignDialogOpen(true);
   };
   
-  const handleOpenEditDialog = (course: Course) => {
-      setCourseToAction(course);
-      setEditTitle(course.title);
-      setEditDescription(course.description || '');
-      setEditFeatureImageFile(null);
-      setEditMaxUsers(course.max_users_allowed ?? '');
-      setIsEditCourseDialogOpen(true);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null;
-    if (file && file.size > 2 * 1024 * 1024) { // 2MB limit
-      toast({ title: "File is too large", description: "Image must be smaller than 2MB.", variant: "destructive" });
-      return;
-    }
-    setEditFeatureImageFile(file);
-  };
-
-  const handleEditCourseSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!courseToAction || !currentSchool || !currentUserId) return;
-    setIsSubmitting(true);
-    
-    const formData = new FormData();
-    formData.append('title', editTitle);
-    formData.append('description', editDescription);
-    formData.append('school_id', currentSchool.id);
-    formData.append('created_by_user_id', currentUserId);
-    formData.append('max_users_allowed', String(editMaxUsers || ''));
-
-    if (editFeatureImageFile) {
-        formData.append('feature_image_url', editFeatureImageFile);
-    }
-    
-    const result = await updateCourseAction(courseToAction.id, formData);
-
-    if (result.ok) {
-        toast({ title: "Course Updated", description: "Course details have been saved."});
-        setIsEditCourseDialogOpen(false);
-        if(currentUserId) fetchPageData(currentUserId);
-    } else {
-        toast({ title: "Update Failed", description: result.message, variant: "destructive"});
-    }
-    
-    setIsSubmitting(false);
-  };
-
 
   const handleAssignCourse = async () => {
     if (!courseToAction || !currentSchool || !assignTarget) return;
@@ -375,9 +322,6 @@ export default function SchoolLmsCoursesPage() {
                                             <Eye className="mr-2 h-4 w-4"/> Preview Content
                                         </Link>
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleOpenEditDialog(course)}>
-                                        <Edit2 className="mr-2 h-4 w-4" /> Edit Details
-                                    </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </CardFooter>
@@ -439,32 +383,6 @@ export default function SchoolLmsCoursesPage() {
             </DialogFooter>
         </DialogContent>
     </Dialog>
-
-    <Dialog open={isEditCourseDialogOpen} onOpenChange={setIsEditCourseDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-                <DialogTitle>Edit Course Details: {courseToAction?.title}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleEditCourseSubmit}>
-                <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
-                    <div><Label htmlFor="edit-title">Course Title</Label><Input id="edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required disabled={isSubmitting}/></div>
-                    <div><Label htmlFor="edit-description">Description</Label><Textarea id="edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} disabled={isSubmitting}/></div>
-                    <div><Label htmlFor="edit-feature-image">Feature Image (Optional)</Label><Input id="edit-feature-image" type="file" onChange={handleFileChange} accept="image/*" disabled={isSubmitting}/></div>
-                    <div>
-                        <Label htmlFor="maxUsers">Allowed Users</Label>
-                        <Input id="maxUsers" type="number" value={editMaxUsers} onChange={(e) => setEditMaxUsers(e.target.value === '' ? '' : parseInt(e.target.value))} placeholder="Leave blank for unlimited" min="0" disabled={isSubmitting}/>
-                    </div>
-                </div>
-                <DialogFooter className="mt-4">
-                    <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                    <Button type="submit" disabled={isSubmitting}>
-                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save Changes
-                    </Button>
-                </DialogFooter>
-            </form>
-        </DialogContent>
-    </Dialog>
     </>
   );
 }
-
