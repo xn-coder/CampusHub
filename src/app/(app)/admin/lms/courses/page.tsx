@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -152,7 +151,7 @@ export default function SchoolLmsCoursesPage() {
     }
     if(result.isMock) {
         toast({ title: "Success!", description: result.message });
-        if(currentUserId) fetchPageData(currentUserId);
+        if(currentUserId) await fetchPageData(currentUserId);
         setIsSubmitting(false);
         setIsSubscribeDialogOpen(false);
         return;
@@ -225,11 +224,11 @@ export default function SchoolLmsCoursesPage() {
   };
   
   const SubscriptionBadge = ({ course }: { course: Course }) => {
-    if (!course.isEnrolled || !course.is_paid || !course.subscription_end_date) {
+    if (!course.isEnrolled || !course.is_paid || !(course as any).subscription_end_date) {
         return null;
     }
 
-    const endDate = parseISO(course.subscription_end_date);
+    const endDate = parseISO((course as any).subscription_end_date);
     const now = new Date();
     const daysLeft = differenceInDays(endDate, now);
     
@@ -405,7 +404,7 @@ export default function SchoolLmsCoursesPage() {
           <div className="py-4 space-y-2">
               <div className="flex justify-between items-baseline">
                   <span className="text-muted-foreground">Price:</span>
-                  <span className="font-semibold text-lg">₹{courseToAction?.price?.toFixed(2)}</span>
+                  <span className="font-semibold text-lg">₹{(courseToAction?.price || 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between items-baseline">
                   <span className="text-muted-foreground">Discount:</span>
