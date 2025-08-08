@@ -14,7 +14,6 @@ import {
     getAdminLmsPageData,
     assignCourseToSchoolAudienceAction, 
     enrollSchoolInCourseAction,
-    updateCourseAction,
     createCoursePaymentOrderAction,
     verifyCoursePaymentAndEnrollAction
 } from './actions';
@@ -24,18 +23,17 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from "@/components/ui/checkbox"
-import { Save } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { formatDistanceToNow, addDays, addMonths, addYears } from 'date-fns';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import Script from 'next/script';
 
 
@@ -201,50 +199,6 @@ export default function SchoolLmsCoursesPage() {
     );
   };
 
-  const CourseCardActions = ({ course }: { course: Course }) => {
-      if (course.isEnrolled) {
-          return (
-             <div className="flex w-full gap-2">
-                <Button asChild className="flex-1" variant="secondary">
-                <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                    <UserPlus className="mr-2 h-4 w-4"/> Enroll Users
-                </Link>
-                </Button>
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                    <Button className="flex-1" variant="outline">Assign</Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Assign Course Visibility</AlertDialogTitle>
-                        <AlertDialogDescription>
-                        This will make the course "{course.title}" visible to the selected group of users. They will then be able to enroll themselves.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleOpenAssignDialog(course)}>Proceed</AlertDialogAction>
-                    </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            </div>
-          );
-      }
-      
-      if (course.is_paid) {
-          return (
-             <Button className="w-full" onClick={() => handleSubscribeCourse(course)} disabled={isSubmitting}>
-                <ShoppingCart className="mr-2 h-4 w-4" /> Subscribe Now
-            </Button>
-          )
-      }
-
-      return (
-          <Button className="w-full" onClick={() => handleEnrollFreeCourse(course.id)} disabled={isSubmitting}>
-            <CheckCheck className="mr-2 h-4 w-4" /> Enroll School (Free)
-          </Button>
-      )
-  }
 
   return (
     <>
@@ -309,21 +263,49 @@ export default function SchoolLmsCoursesPage() {
                              <CardDescription className="line-clamp-3">{course.description || "No description available."}</CardDescription>
                         </CardContent>
                         <CardFooter className="flex-col sm:flex-row gap-2">
-                           <CourseCardActions course={course} />
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button size="icon" variant="ghost" className="shrink-0">
-                                        <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuItem asChild>
-                                         <Link href={`/admin/lms/courses/${course.id}/content?preview=true`}>
-                                            <Eye className="mr-2 h-4 w-4"/> Preview Content
+                           {course.isEnrolled ? (
+                                <>
+                                    <Button asChild className="w-full" variant="secondary">
+                                        <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
+                                            <UserPlus className="mr-2 h-4 w-4"/> Manage Enrollments
                                         </Link>
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                                    </Button>
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <Button className="w-full" variant="outline">Assign Visibility</Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle>Assign Course Visibility</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                    This will make the course "{course.title}" visible to the selected group of users. They will then be able to enroll themselves.
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction onClick={() => handleOpenAssignDialog(course)}>Proceed</AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                </>
+                            ) : (
+                                <>
+                                    <Button asChild className="w-full" variant="outline">
+                                        <Link href={`/admin/lms/courses/${course.id}/content?preview=true`}>
+                                            <Eye className="mr-2 h-4 w-4"/> Preview
+                                        </Link>
+                                    </Button>
+                                    {course.is_paid ? (
+                                        <Button className="w-full" onClick={() => handleSubscribeCourse(course)} disabled={isSubmitting}>
+                                            <ShoppingCart className="mr-2 h-4 w-4" /> Subscribe
+                                        </Button>
+                                    ) : (
+                                        <Button className="w-full" onClick={() => handleEnrollFreeCourse(course.id)} disabled={isSubmitting}>
+                                            <CheckCheck className="mr-2 h-4 w-4" /> Enroll School (Free)
+                                        </Button>
+                                    )}
+                                </>
+                           )}
                         </CardFooter>
                     </Card>
                 ))}
