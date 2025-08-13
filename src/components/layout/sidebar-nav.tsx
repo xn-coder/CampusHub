@@ -62,6 +62,7 @@ const superAdminNavItems: NavItem[] = [
   { href: '/superadmin/create-school', label: 'Create School', icon: Building },
   { href: '/superadmin/manage-school', label: 'Manage Schools', icon: Settings },
   { href: '/superadmin/lms/courses', label: 'LMS Courses', icon: Library },
+  { href: '/superadmin/lms/reports', label: 'LMS Reports', icon: BarChart3 },
   { href: '/communication', label: 'Announcements', icon: Megaphone }, 
 ];
 
@@ -73,6 +74,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/manage-accountants', label: 'Manage Accountants', icon: Wallet },
   { href: '/class-management', label: 'Class Management', icon: Presentation },
   { href: '/admin/lms/courses', label: 'LMS Courses', icon: Library }, 
+  { href: '/admin/lms/reports', label: 'LMS Reports', icon: BarChart3 },
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
   { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
   { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
@@ -89,7 +91,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/class-schedule', label: 'Class Schedule', icon: Clock },
   { href: '/communication', label: 'Announcements', icon: Megaphone },
   { href: '/calendar-events', label: 'Calendar & Events', icon: CalendarDays },
-  { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/admin/reports', label: 'Activity Reports', icon: BarChart3 },
   { href: '/admin/leave-management', label: 'Leave Management', icon: ClipboardEdit, badgeId: 'pendingLeaveRequests' }, 
 ];
 
