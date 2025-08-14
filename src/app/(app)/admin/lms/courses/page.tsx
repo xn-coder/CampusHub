@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -93,6 +94,7 @@ export default function SchoolLmsCoursesPage() {
     if (result.ok) {
       toast({ title: "Course Visibility Set", description: result.message });
       setIsAssignDialogOpen(false);
+      if(currentUserId) await fetchPageData(currentUserId); // Refetch data
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive"});
     }
@@ -110,7 +112,7 @@ export default function SchoolLmsCoursesPage() {
 
       if(result.ok) {
         toast({title: "Success!", description: `Your school now has access to this course. You can assign it to users.`});
-        await fetchPageData(currentUserId);
+        if (currentUserId) await fetchPageData(currentUserId);
       } else {
         toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
       }
@@ -244,18 +246,20 @@ export default function SchoolLmsCoursesPage() {
     <Script id="razorpay-checkout-js" src="https://checkout.razorpay.com/v1/checkout.js" />
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="LMS Courses for Your School"
-        description="Manage courses assigned to your school and make them visible to your users."
+        title="Course Catalog"
+        description="Browse, enroll in, or subscribe to courses to make them available for assignment to your users."
       />
       <Card>
         <CardHeader>
-          <CardTitle>Assigned Courses</CardTitle>
            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <CardDescription>Courses available for your school. Use 'Assign' to make them visible to students/teachers.</CardDescription>
+            <div>
+              <CardTitle>Available Courses</CardTitle>
+              <CardDescription>Courses your school can enroll in. Enrolled courses can be assigned to users.</CardDescription>
+            </div>
             <div className="relative w-full md:w-auto">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
-                    placeholder="Search assigned courses..."
+                    placeholder="Search courses..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-8 w-full md:w-64"
@@ -271,7 +275,7 @@ export default function SchoolLmsCoursesPage() {
                 <Library className="mx-auto h-12 w-12 text-muted-foreground" />
                 <h3 className="mt-4 text-lg font-semibold">No Courses Found</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    {searchTerm ? 'No courses match your search.' : 'No courses have been assigned to your school yet.'}
+                    {searchTerm ? 'No courses match your search.' : 'There are no courses currently available.'}
                 </p>
             </div>
           ) : (
@@ -343,77 +347,73 @@ export default function SchoolLmsCoursesPage() {
       </Card>
     </div>
     
-    <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
+     <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
         <DialogContent>
             <DialogHeader>
-                <DialogTitle>Assign Course: {courseToAction?.title}</DialogTitle>
-                <DialogDescription>Make this course visible to a specific group of users in your school. They will then be able to enroll themselves.</DialogDescription>
+                <DialogTitle>Assign Course Visibility</DialogTitle>
+                <DialogDescription>
+                    Choose which group of users within your school should be able to see and enroll in "{courseToAction?.title}".
+                </DialogDescription>
             </DialogHeader>
-             <div className="py-4 space-y-4">
+            <div className="py-4 space-y-4">
                 <div>
-                  <Label>Assign To</Label>
-                  <Select value={assignTarget} onValueChange={(val) => setAssignTarget(val as any)}>
-                    <SelectTrigger><SelectValue/></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all_students">All Students</SelectItem>
-                      <SelectItem value="all_teachers">All Teachers</SelectItem>
-                      <SelectItem value="class">A Specific Class</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Label>Target Audience</Label>
+                    <Select value={assignTarget} onValueChange={(val) => setAssignTarget(val as 'all_students' | 'all_teachers' | 'class')}>
+                        <SelectTrigger><SelectValue/></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all_students">All Students</SelectItem>
+                            <SelectItem value="all_teachers">All Teachers</SelectItem>
+                            <SelectItem value="class">Specific Class (Students)</SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
                 {assignTarget === 'class' && (
-                  <div>
-                    <Label>Select Class</Label>
-                    <Select value={assignTargetClassId} onValueChange={setAssignTargetClassId}>
-                      <SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger>
-                      <SelectContent>
-                        {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    <div>
+                        <Label>Select Class</Label>
+                        <Select value={assignTargetClassId} onValueChange={setAssignTargetClassId}>
+                            <SelectTrigger><SelectValue placeholder="Select a class..."/></SelectTrigger>
+                            <SelectContent>
+                                {classes.length > 0 ? classes.map(c => (
+                                    <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>
+                                )) : <SelectItem value="" disabled>No classes found</SelectItem>}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 )}
             </div>
             <DialogFooter>
                 <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                <Button onClick={handleAssignCourse} disabled={isSubmitting}>
+                <Button onClick={handleAssignCourse} disabled={isSubmitting || (assignTarget === 'class' && !assignTargetClassId)}>
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                    Confirm Assignment
+                    Set Visibility
                 </Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
-    
     <Dialog open={isSubscribeDialogOpen} onOpenChange={setIsSubscribeDialogOpen}>
-      <DialogContent>
-          <DialogHeader>
-              <DialogTitle>Subscribe to: {courseToAction?.title}</DialogTitle>
-              <DialogDescription>Review the subscription details before proceeding to payment.</DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-2">
-              <div className="flex justify-between items-baseline">
-                  <span className="text-muted-foreground">Price:</span>
-                  <span className="font-semibold text-lg">₹{(courseToAction?.price || 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-baseline">
-                  <span className="text-muted-foreground">Discount:</span>
-                  <span className="font-semibold">{courseToAction?.discount_percentage || 0}%</span>
-              </div>
-              <hr className="my-2" />
-              <div className="flex justify-between items-baseline text-xl">
-                  <span className="font-bold">Total Payable:</span>
-                  <span className="font-bold">₹{((courseToAction?.price || 0) * (1 - ((courseToAction?.discount_percentage || 0) / 100))).toFixed(2)}</span>
-              </div>
-          </div>
-          <DialogFooter>
-              <DialogClose asChild>
-                  <Button variant="outline" disabled={isSubmitting}>Cancel</Button>
-              </DialogClose>
-              <Button onClick={handleSubscribeCourse} disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4" />}
-                  Pay Now
-              </Button>
-          </DialogFooter>
-      </DialogContent>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Subscribe to: {courseToAction?.title}</DialogTitle>
+                <DialogDescription>Review the details below and proceed to payment to unlock this course for your school.</DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+                <p><strong>Plan:</strong> One-Time Payment</p>
+                <p><strong>Amount:</strong> ₹{(courseToAction?.price || 0).toFixed(2)}</p>
+                {courseToAction?.discount_percentage && courseToAction.discount_percentage > 0 &&
+                    <p><strong>Discount:</strong> {courseToAction.discount_percentage}%</p>
+                }
+                <p className="text-lg font-bold mt-2">
+                    Total Payable: ₹{((courseToAction?.price || 0) * (1 - (courseToAction?.discount_percentage || 0) / 100)).toFixed(2)}
+                </p>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                <Button onClick={handleSubscribeCourse} disabled={isSubmitting}>
+                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
+                    Pay Now & Subscribe
+                </Button>
+            </DialogFooter>
+        </DialogContent>
     </Dialog>
     </>
   );
