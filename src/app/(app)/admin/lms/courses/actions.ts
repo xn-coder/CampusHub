@@ -1,3 +1,4 @@
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -204,61 +205,63 @@ export async function deleteCourseAction(id: string): Promise<{ ok: boolean; mes
 }
 
 export async function getCoursesForSchoolAction(schoolId: string): Promise<{
-  ok: boolean;
-  courses?: CourseWithEnrollmentStatus[];
-  message?: string;
+    ok: boolean;
+    courses?: CourseWithEnrollmentStatus[];
+    message?: string;
 }> {
-  const supabase = createSupabaseServerClient();
-  try {
-      // 1. Get all courses that are either global (school_id is null) or specific to this school
-      const { data: allCourses, error: coursesError } = await supabase
-          .from('lms_courses')
-          .select('*')
-          .or(`school_id.is.null,school_id.eq.${schoolId}`);
+    const supabase = createSupabaseServerClient();
+    try {
+        // 1. Get all courses this school has access to (via the availability table)
+        const { data: availability, error: availabilityError } = await supabase
+            .from('lms_course_school_availability')
+            .select('course_id, target_audience_in_school')
+            .eq('school_id', schoolId);
+        
+        if (availabilityError) throw availabilityError;
 
-      if (coursesError) throw coursesError;
-      if (!allCourses) return { ok: true, courses: [] };
+        if (!availability || availability.length === 0) {
+            return { ok: true, courses: [] };
+        }
 
-      // 2. Get this school's specific subscription and availability data in parallel
-      const [subscriptionsRes, availabilityRes] = await Promise.all([
-        supabase.from('lms_school_subscriptions').select('course_id, end_date').eq('school_id', schoolId),
-        supabase.from('lms_course_school_availability').select('course_id, target_audience_in_school').eq('school_id', schoolId)
-      ]);
-      
-      if (subscriptionsRes.error) console.warn("Could not fetch subscriptions:", subscriptionsRes.error.message);
-      if (availabilityRes.error) console.warn("Could not fetch availability:", availabilityRes.error.message);
+        const courseIds = availability.map(a => a.course_id);
 
-      const subscriptions = subscriptionsRes.data || [];
-      const availability = availabilityRes.data || [];
+        // 2. Fetch details for those courses AND the school's subscriptions in parallel
+        const [coursesRes, subscriptionsRes] = await Promise.all([
+          supabase.from('lms_courses').select('*').in('id', courseIds),
+          supabase.from('lms_school_subscriptions').select('course_id, end_date').eq('school_id', schoolId)
+        ]);
 
-      // 3. Create maps for efficient lookup
-      const subscribedCourseIds = new Set(subscriptions.map(sub => sub.course_id));
-      const subscriptionEndDateMap = subscriptions.reduce((acc, sub) => {
-          acc[sub.course_id] = sub.end_date;
-          return acc;
-      }, {} as Record<string, string | null>);
-      const availabilityMap = availability.reduce((acc, avail) => {
-          acc[avail.course_id] = avail.target_audience_in_school;
-          return acc;
-      }, {} as Record<string, string | null>);
+        if (coursesRes.error) throw coursesRes.error;
+        if (subscriptionsRes.error) console.warn("Could not fetch school subscriptions:", subscriptionsRes.error.message);
 
-      // 4. Enrich course data with school-specific status
-      const coursesWithStatus = allCourses.map(c => {
-          const isEnrolled = subscribedCourseIds.has(c.id);
-          return {
-              ...c,
-              isEnrolled,
-              target_audience_in_school: availabilityMap[c.id] || null,
-              subscription_end_date: subscriptionEndDateMap[c.id] || null,
-          };
-      });
+        // 3. Create a simple Set of subscribed course IDs for quick lookup
+        const subscribedCourseIds = new Set((subscriptionsRes.data || []).map(sub => sub.course_id));
+        
+        const subscriptionEndDateMap = (subscriptionsRes.data || []).reduce((acc, sub) => {
+            acc[sub.course_id] = sub.end_date;
+            return acc;
+        }, {} as Record<string, string | null>);
 
-      return { ok: true, courses: coursesWithStatus };
-  } catch (e: any) {
-      console.error("Error in getCoursesForSchoolAction:", e);
-      return { ok: false, message: e.message || 'An unexpected error occurred.' };
-  }
+        // 4. Map through the available courses and determine their enrollment status
+        const coursesWithSchoolStatus = (coursesRes.data || []).map(course => {
+            // A course is considered "enrolled" if a record for it exists in the subscriptions table.
+            const isEnrolled = subscribedCourseIds.has(course.id);
+            const availInfo = availability.find(a => a.course_id === course.id);
+            return {
+                ...course,
+                isEnrolled,
+                target_audience_in_school: availInfo?.target_audience_in_school,
+                subscription_end_date: subscriptionEndDateMap[course.id] || null,
+            };
+        });
+
+        return { ok: true, courses: coursesWithSchoolStatus };
+    } catch (e: any) {
+        console.error("Error in getCoursesForSchoolAction:", e);
+        return { ok: false, message: e.message || 'An unexpected error occurred.' };
+    }
 }
+
 
 export async function assignCourseToSchoolAudienceAction(params: {
   courseId: string;
@@ -559,7 +562,7 @@ export async function enrollSchoolInCourseAction(courseId: string, schoolId: str
   if (courseError || !course) return { ok: false, message: "Course not found." };
   if (course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription." };
 
-  // Step 1: Create the subscription record
+  // This will either insert a new subscription record for the free course or do nothing if one already exists.
   const { error: subError } = await supabase
       .from('lms_school_subscriptions')
       .upsert({
@@ -568,30 +571,17 @@ export async function enrollSchoolInCourseAction(courseId: string, schoolId: str
           status: 'active',
           amount_paid: 0,
           razorpay_payment_id: `FREE_ENROLL_${uuidv4()}`
-      }, { onConflict: 'course_id, school_id' }); 
+      }, { onConflict: 'course_id, school_id' }); // Correct ON CONFLICT constraint
 
   if (subError) {
       console.error("Error enrolling school in free course (creating subscription record):", subError);
       return { ok: false, message: `Failed to enroll school: ${subError.message}` };
   }
 
-  // Step 2: Make the course available to the school for assignment (New addition)
-  const { error: availError } = await supabase
-    .from('lms_course_school_availability')
-    .upsert({
-      course_id: courseId,
-      school_id: schoolId,
-    }, { onConflict: 'course_id, school_id' });
-
-  if (availError) {
-      // This is an inconsistent state, but we notify the user. A transaction would be ideal here.
-      console.error("Enrollment sub-record created, but availability record failed:", availError);
-      return { ok: false, message: `Enrollment partially failed. Please contact support. Error: ${availError.message}` };
-  }
-
   revalidatePath('/admin/lms/courses');
   return { ok: true, message: "School successfully enrolled in the free course." };
 }
+
 
 
 export async function enrollUserInCourseAction(
@@ -749,7 +739,6 @@ export async function getEnrolledTeachersForCourseAction(
 
 
 // --- Razorpay Payment Actions for Courses ---
-
 export async function createCoursePaymentOrderAction(courseId: string, userId: string): Promise<{
     ok: boolean;
     message: string;
@@ -908,25 +897,89 @@ export async function verifyCoursePaymentAndEnrollAction(
           });
           if (subError) return { ok: false, message: `Payment verified but failed to save subscription: ${subError.message}` };
           
-          // Step 2: Make the course available to the school for assignment (New addition)
-          const { error: availError } = await supabase
-            .from('lms_course_school_availability')
-            .upsert({ course_id: courseId, school_id: schoolId }, { onConflict: 'course_id, school_id' });
-
-          if (availError) {
-            console.error("Paid subscription recorded, but availability record failed:", availError);
-            // Log inconsistency but proceed as payment was successful
-          }
-
           revalidatePath('/admin/lms/courses');
           return { ok: true, message: "School subscription successful!", courseId };
 
-      } else { // user_enrollment logic remains the same
-          // ... (user enrollment logic) ...
+      } else { // user_enrollment logic
+          const userId = orderDetails.notes?.user_id;
+          if (!courseId || !userId) return { ok: false, message: "User enrollment details are missing." };
+          
+          const { data: user, error: userError } = await supabase.from('users').select('id, role, school_id').eq('id', userId).single();
+          if (userError || !user) return { ok: false, message: "User associated with payment not found." };
+
+          const userRole = user.role as UserRole;
+          const profileTable = userRole === 'student' ? 'students' : 'teachers';
+          const { data: profile, error: profileError } = await supabase.from(profileTable).select('id').eq('user_id', userId).single();
+          if(profileError || !profile) return {ok: false, message: "User profile for enrollment not found."};
+          
+          const enrollmentResult = await enrollUserInCourseAction({
+              course_id: ""+courseId,
+              user_profile_id: profile.id,
+              user_type: userRole,
+              school_id: user.school_id!
+          });
+
+          if (!enrollmentResult.ok && !enrollmentResult.message.includes("already enrolled")) {
+              return { ok: false, message: `Payment verified, but enrollment failed: ${enrollmentResult.message}` };
+          }
+          revalidatePath('/lms/available-courses');
+          return { ok: true, message: "Payment successful and you are now enrolled!", courseId };
       }
 
   } catch (error: any) {
       console.error("Error during course payment verification:", error);
       return { ok: false, message: `An unexpected error occurred during verification: ${error.message}` };
   }
+}
+
+// --- New action for navigation ---
+export async function getAllCoursesForAdminNavAction(input: {
+  schoolId: string | null;
+  adminUserId: string | null;
+  userRole: UserRole | null;
+}): Promise<{ ok: boolean; courses?: { id: string; title: string }[] }> {
+  const { schoolId, adminUserId, userRole } = input;
+  const supabase = createSupabaseServerClient();
+
+  let query = supabase
+    .from('lms_courses')
+    .select('id, title')
+    .order('created_at', { ascending: false });
+
+  if (userRole === 'superadmin') {
+    // No filter for superadmin, they see all
+  } else if (schoolId) {
+    // Admin/Teacher/etc. see their school's courses + global courses
+    query = query.or(`school_id.eq.${schoolId},school_id.is.null`);
+  } else if (adminUserId && userRole !== 'superadmin') {
+    // A user with no school context (if possible) sees only global courses
+    query = query.is('school_id', null);
+  } else {
+    // Unhandled case, return no courses
+    return { ok: true, courses: [] };
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error("Error fetching courses for nav:", error);
+    return { ok: false };
+  }
+  return { ok: true, courses: data || [] };
+}
+
+
+// --- New action for LMS sidebar count ---
+export async function getAssignedCoursesCountForSchool(schoolId: string): Promise<number> {
+    if (!schoolId) return 0;
+    const supabase = createSupabaseServerClient();
+    const { count, error } = await supabase
+        .from('lms_course_school_availability')
+        .select('course_id', { count: 'exact', head: true })
+        .eq('school_id', schoolId);
+    
+    if (error) {
+        console.error("Error fetching assigned course count:", error);
+        return 0;
+    }
+    return count || 0;
 }
