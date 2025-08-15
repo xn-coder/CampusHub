@@ -103,7 +103,7 @@ export default function AdminLeaveManagementPage() {
 
   const leaveSummaryData = useMemo(() => {
     const summaryMap: Record<string, LeaveSummary> = {};
-    const ASSUMED_ALLOTTED_LEAVES = 20;
+    const ASSUMED_ALLOTTED_LEAVES = 3;
 
     allLeaveRequests.forEach(req => {
         if (!summaryMap[req.applicant_user_id]) {
@@ -213,7 +213,7 @@ export default function AdminLeaveManagementPage() {
              <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center"><BarChart3 className="mr-2 h-5 w-5" />Employee Leave Summary</CardTitle>
-                  <CardDescription>An overview of approved leave balances. Allotted leaves are assumed to be 20 for this report.</CardDescription>
+                  <CardDescription>An overview of approved leave balances. Allotted leaves are assumed to be 3 for this report.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {isLoading ? (
