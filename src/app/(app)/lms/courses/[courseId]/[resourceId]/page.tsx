@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
@@ -33,6 +34,10 @@ const getEmbedUrl = (url: string, type: CourseResourceType): string | null => {
         if (url.includes("youtu.be/")) {
             const videoId = url.split('youtu.be/')[1]?.split('?')[0];
             return `https://www.youtube.com/embed/${videoId}`;
+        }
+        if (url.includes("open.spotify.com/track/")) {
+            const trackId = url.split('track/')[1]?.split('?')[0];
+            return `https://open.spotify.com/embed/track/${trackId}`;
         }
         
         if (type === 'ebook' && url.includes("drive.google.com/file/d/")) {
@@ -384,13 +389,24 @@ export default function CourseResourcePage() {
                         </div>
                     ) : (
                     <>
-                    {(resource.type === 'video' || (resource.type === 'ebook' && embedUrl)) && embedUrl ? (
+                    {((resource.type === 'video' || resource.type === 'ebook') && embedUrl?.includes('drive.google.com')) || (resource.type === 'video' && embedUrl?.includes('youtube.com')) ? (
                         <iframe
                             src={embedUrl}
                             title={resource.title}
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                             allowFullScreen
                             className="w-full rounded-md aspect-video bg-black"
+                        ></iframe>
+                    ) : (resource.type === 'audio' && embedUrl?.includes('spotify.com')) ? (
+                         <iframe
+                            src={embedUrl}
+                            width="100%"
+                            height="352"
+                            frameBorder="0"
+                            allowFullScreen
+                            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                            loading="lazy"
+                            className="rounded-md"
                         ></iframe>
                     ) : resource.type === 'video' && resource.url_or_content && !embedUrl ? (
                          <video
@@ -404,7 +420,7 @@ export default function CourseResourcePage() {
                         </video>
                     ) : null}
 
-                    {resource.type === 'audio' && resource.url_or_content && (
+                    {resource.type === 'audio' && resource.url_or_content && !embedUrl && (
                          <audio
                             controls
                             autoPlay
@@ -447,7 +463,7 @@ export default function CourseResourcePage() {
                                 file={pdfFile}
                                 onLoadSuccess={onDocumentLoadSuccess}
                                 loading={<div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
-                                error={<div className="text-destructive text-center p-4">Could not load the PDF file. Please ensure the URL is correct and accessible.</div>}
+                                error={<div className="text-destructive text-center p-4">Could not load the PDF file. Please ensure the URL is a direct link to a PDF.</div>}
                             >
                                 {numPages && (
                                     <HTMLFlipBook 
@@ -592,3 +608,5 @@ export default function CourseResourcePage() {
         </div>
     );
 }
+
+    
