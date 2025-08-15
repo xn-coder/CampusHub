@@ -1,25 +1,40 @@
+
 "use server";
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { Course } from '@/types';
 
-export interface LmsGlobalReportData extends Pick<Course, 'id' | 'title'> {
+export interface LmsGlobalReportData extends Pick<Course, 'id' | 'title' | 'created_at'> {
     schoolName: string | null;
     assignedSchoolCount: number;
     totalEnrollments: number;
 }
 
-export async function getLmsGlobalReportAction(): Promise<{
+interface GetLmsGlobalReportInput {
+    startDate?: string;
+    endDate?: string;
+}
+
+export async function getLmsGlobalReportAction(input: GetLmsGlobalReportInput): Promise<{
     ok: boolean;
     reportData?: LmsGlobalReportData[];
     message?: string;
 }> {
     const supabase = createSupabaseServerClient();
     try {
-        const { data: courses, error: coursesError } = await supabase
+        let courseQuery = supabase
             .from('lms_courses')
             .select('*, school:school_id(name)')
             .order('created_at', { ascending: false });
+
+        if (input.startDate) {
+            courseQuery = courseQuery.gte('created_at', input.startDate);
+        }
+        if (input.endDate) {
+            courseQuery = courseQuery.lte('created_at', input.endDate);
+        }
+
+        const { data: courses, error: coursesError } = await courseQuery;
 
         if (coursesError) throw new Error(`Failed to fetch courses: ${coursesError.message}`);
         if (!courses || courses.length === 0) return { ok: true, reportData: [] };
@@ -57,6 +72,7 @@ export async function getLmsGlobalReportAction(): Promise<{
             return {
                 id: courseId,
                 title: course.title,
+                created_at: course.created_at,
                 schoolName: (course.school as any)?.name || null,
                 assignedSchoolCount: schoolAssignmentCounts[courseId] || 0,
                 totalEnrollments: totalEnrollments,
