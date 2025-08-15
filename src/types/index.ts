@@ -9,7 +9,7 @@ export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt';
+export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 export type TCRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type SubscriptionPlan = 'free' | 'monthly' | 'yearly' | 'one_time';
@@ -433,7 +433,7 @@ export interface CourseWithEnrollmentStatus extends Course {
 // used to structure content in a JSON blob within a 'lesson' type CourseResource.
 export interface LessonContentResource {
     id: string;
-    type: 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt';
+    type: 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio';
     title: string;
     // For 'note', it holds a JSON string of page content: string[]
     // For 'quiz', it holds a JSON string of QuizQuestion[]

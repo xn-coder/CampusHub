@@ -4,7 +4,7 @@ import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock } from 'lucide-react';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -264,6 +264,7 @@ export default function CourseResourcePage() {
             case 'webinar': return <Users {...props} />;
             case 'quiz': return <FileQuestion {...props} />;
             case 'ppt': return <Presentation {...props} />;
+            case 'audio': return <Music {...props} />;
             default: return null;
         }
     };
@@ -402,6 +403,18 @@ export default function CourseResourcePage() {
                         Your browser does not support the video tag.
                         </video>
                     ) : null}
+
+                    {resource.type === 'audio' && resource.url_or_content && (
+                         <audio
+                            controls
+                            autoPlay
+                            src={resource.url_or_content}
+                            className="w-full rounded-md"
+                            controlsList="nodownload"
+                        >
+                        Your browser does not support the audio element.
+                        </audio>
+                    )}
 
                     {resource.type === 'note' && notePages.length > 0 && (
                        <HTMLFlipBook 
