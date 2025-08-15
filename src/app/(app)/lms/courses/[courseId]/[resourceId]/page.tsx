@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
@@ -21,6 +20,29 @@ import { useToast } from "@/hooks/use-toast";
 
 // Configure the worker to be served from the public directory
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
+
+
+// Function to get the correct embed URL for different video services
+const getEmbedUrl = (url: string): string | null => {
+    if (url.includes("youtube.com/watch?v=")) {
+        const videoId = url.split('v=')[1]?.split('&')[0];
+        return `https://www.youtube.com/embed/${videoId}`;
+    }
+    if (url.includes("youtu.be/")) {
+        const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+        return `https://www.youtube.com/embed/${videoId}`;
+    }
+    if (url.includes("drive.google.com/file/d/")) {
+        const fileId = url.split('/d/')[1]?.split('/')[0];
+        return `https://drive.google.com/file/d/${fileId}/preview`;
+    }
+    // For direct video links (.mp4, etc.)
+    if (url.match(/\.(mp4|webm|ogg)$/i)) {
+        return url;
+    }
+    // Return null if it's not a recognized embeddable video URL format
+    return null;
+};
 
 
 export default function CourseResourcePage() {
@@ -195,6 +217,14 @@ export default function CourseResourcePage() {
       resource?.url_or_content ? { url: resource.url_or_content } : null
     ), [resource?.url_or_content]);
     
+    const embedUrl = useMemo(() => {
+        if (resource?.type === 'video' && resource.url_or_content) {
+            return getEmbedUrl(resource.url_or_content);
+        }
+        return null;
+    }, [resource]);
+
+
     const getResourceIcon = (type: string) => {
         const props = { className: "mr-2 h-5 w-5 text-primary" };
         switch(type) {
@@ -324,15 +354,29 @@ export default function CourseResourcePage() {
                     ) : (
                     <>
                     {resource.type === 'video' && resource.url_or_content && (
-                        <video 
-                            controls 
-                            autoPlay 
-                            src={resource.url_or_content} 
-                            className="w-full rounded-md aspect-video bg-black"
-                            controlsList="nodownload nofullscreen noremoteplayback"
-                        >
-                          Your browser does not support the video tag.
-                        </video>
+                        embedUrl ? (
+                            embedUrl.startsWith('https://') ? (
+                                <iframe
+                                    src={embedUrl}
+                                    title={resource.title}
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                    className="w-full rounded-md aspect-video bg-black"
+                                ></iframe>
+                            ) : (
+                                <video
+                                    controls
+                                    autoPlay
+                                    src={embedUrl}
+                                    className="w-full rounded-md aspect-video bg-black"
+                                    controlsList="nodownload nofullscreen noremoteplayback"
+                                >
+                                Your browser does not support the video tag.
+                                </video>
+                            )
+                        ) : (
+                            <p className="text-destructive">Unsupported video URL format.</p>
+                        )
                     )}
                     {resource.type === 'note' && (
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap">{resource.url_or_content}</p>
