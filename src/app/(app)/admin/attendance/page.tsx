@@ -15,7 +15,7 @@ import { getAdminAttendancePageDataAction, fetchAttendanceForReportAction } from
 import type jsPDF from 'jspdf';
 import type { UserOptions } from 'jspdf-autotable';
 import { Calendar } from '@/components/ui/calendar';
-import { isValid, parseISO, format, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
+import { isValid, parseISO, format, startOfMonth, endOfMonth, startOfYear, endOfYear, addDays } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   ChartContainer,
@@ -24,6 +24,7 @@ import {
   ChartConfig,
 } from "@/components/ui/chart";
 import { Bar, BarChart, CartesianGrid, XAxis, Tooltip, Cell, ResponsiveContainer } from "recharts";
+import type { DateRange } from 'react-day-picker';
 
 interface JsPDFWithAutoTable extends jsPDF {
   autoTable: (options: UserOptions) => jsPDF;
@@ -59,9 +60,12 @@ export default function AdminAttendancePage() {
   
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [filterType, setFilterType] = useState<'all_year' | 'month' | 'date'>('all_year');
+  const [filterType, setFilterType] = useState<'all_year' | 'month' | 'date_range'>('all_year');
   const [selectedMonth, setSelectedMonth] = useState<string>((new Date().getMonth() + 1).toString());
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date()),
+  });
   
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
@@ -111,14 +115,14 @@ export default function AdminAttendancePage() {
         const monthIndex = parseInt(selectedMonth) - 1;
         startDate = startOfMonth(new Date(selectedYear, monthIndex));
         endDate = endOfMonth(new Date(selectedYear, monthIndex));
-    } else { // 'date'
-        if (!selectedDate) {
-            toast({title: "Error", description: "Please select a specific date.", variant: "destructive"});
+    } else { // 'date_range'
+        if (!dateRange?.from || !dateRange?.to) {
+            toast({title: "Error", description: "Please select a valid date range.", variant: "destructive"});
             setIsLoadingReport(false);
             return;
         }
-        startDate = selectedDate;
-        endDate = selectedDate;
+        startDate = dateRange.from;
+        endDate = dateRange.to;
     }
     
     const result = await fetchAttendanceForReportAction(currentSchoolId, selectedClassId, startDate, endDate);
@@ -244,7 +248,7 @@ export default function AdminAttendancePage() {
                     <SelectContent>
                         <SelectItem value="all_year">All Year</SelectItem>
                         <SelectItem value="month">By Month</SelectItem>
-                        <SelectItem value="date">Specific Date</SelectItem>
+                        <SelectItem value="date_range">Date Range</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -260,18 +264,37 @@ export default function AdminAttendancePage() {
                     </Select>
                 </div>
             )}
-            {filterType === 'date' && (
-                <div>
-                    <Label>Date</Label>
+            {filterType === 'date_range' && (
+                <div className="lg:col-span-2">
+                    <Label>Date Range</Label>
                     <Popover>
                         <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full justify-start text-left font-normal">
+                            <Button
+                                id="date"
+                                variant={"outline"}
+                                className="w-full justify-start text-left font-normal"
+                            >
                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                {selectedDate ? format(selectedDate, 'PPP') : <span>Pick a date</span>}
+                                {dateRange?.from ? (
+                                    dateRange.to ? (
+                                        `${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}`
+                                    ) : (
+                                        format(dateRange.from, "LLL dd, y")
+                                    )
+                                ) : (
+                                    <span>Pick a date range</span>
+                                )}
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                            <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus/>
+                        <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                                initialFocus
+                                mode="range"
+                                defaultMonth={dateRange?.from}
+                                selected={dateRange}
+                                onSelect={setDateRange}
+                                numberOfMonths={2}
+                            />
                         </PopoverContent>
                     </Popover>
                 </div>
