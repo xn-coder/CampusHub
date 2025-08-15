@@ -24,25 +24,35 @@ import { v4 as uuidv4 } from 'uuid';
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
 
 
-// Function to get the correct embed URL for different video services
-const getEmbedUrl = (url: string): string | null => {
-    if (url.includes("youtube.com/watch?v=")) {
-        const videoId = url.split('v=')[1]?.split('&')[0];
-        return `https://www.youtube.com/embed/${videoId}`;
+// Function to get the correct embed URL for different services
+const getEmbedUrl = (url: string, type: CourseResourceType): string | null => {
+    try {
+        if (type === 'video') {
+            if (url.includes("youtube.com/watch?v=")) {
+                const videoId = url.split('v=')[1]?.split('&')[0];
+                return `https://www.youtube.com/embed/${videoId}`;
+            }
+            if (url.includes("youtu.be/")) {
+                const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+                return `https://www.youtube.com/embed/${videoId}`;
+            }
+        }
+        
+        if (url.includes("drive.google.com/file/d/")) {
+            const fileId = url.split('/d/')[1]?.split('/')[0];
+            return `https://drive.google.com/file/d/${fileId}/preview`;
+        }
+
+        // For direct video links that can be played by the <video> tag
+        if (type === 'video' && url.match(/\.(mp4|webm|ogg)$/i)) {
+            return url;
+        }
+
+    } catch (e) {
+        console.error("Error parsing URL for embed:", e);
+        return null;
     }
-    if (url.includes("youtu.be/")) {
-        const videoId = url.split('youtu.be/')[1]?.split('?')[0];
-        return `https://www.youtube.com/embed/${videoId}`;
-    }
-    if (url.includes("drive.google.com/file/d/")) {
-        const fileId = url.split('/d/')[1]?.split('/')[0];
-        return `https://drive.google.com/file/d/${fileId}/preview`;
-    }
-    // For direct video links (.mp4, etc.)
-    if (url.match(/\.(mp4|webm|ogg)$/i)) {
-        return url;
-    }
-    // Return null if it's not a recognized embeddable video URL format
+
     return null;
 };
 
@@ -222,15 +232,15 @@ export default function CourseResourcePage() {
     }, [courseId, resourceId, searchParams, currentUserRole]);
 
     const pdfFile = useMemo(() => (
-      (resource?.url_or_content.endsWith('.pdf')) && resource.url_or_content
+      (resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf')) && resource.url_or_content
         ? { url: resource.url_or_content }
         : null
-    ), [resource?.url_or_content]);
+    ), [resource]);
 
     
     const embedUrl = useMemo(() => {
-        if (resource?.type === 'video' && resource.url_or_content) {
-            return getEmbedUrl(resource.url_or_content);
+        if (resource?.type && resource.url_or_content) {
+            return getEmbedUrl(resource.url_or_content, resource.type);
         }
         return null;
     }, [resource]);
@@ -364,7 +374,7 @@ export default function CourseResourcePage() {
                         </div>
                     ) : (
                     <>
-                    {resource.type === 'video' && embedUrl ? (
+                    {(resource.type === 'video' || resource.type === 'ebook') && embedUrl ? (
                         <iframe
                             src={embedUrl}
                             title={resource.title}
