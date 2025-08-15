@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
@@ -14,6 +13,7 @@ import Link from 'next/link';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from "@/hooks/use-toast";
+import { v4 as uuidv4 } from 'uuid';
 
 function ViewCoursePageContent() {
   const params = useParams();
@@ -210,7 +210,7 @@ function ViewCoursePageContent() {
             {progress === 100 && (
                 <CardFooter>
                      <Button asChild>
-                        <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                        <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
                             <Award className="mr-2 h-4 w-4" /> Generate Certificate
                         </Link>
                     </Button>

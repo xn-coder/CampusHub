@@ -17,6 +17,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from "@/hooks/use-toast";
+import { v4 as uuidv4 } from 'uuid';
 
 // Configure the worker to be served from the public directory
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
@@ -331,7 +332,7 @@ export default function CourseResourcePage() {
                               </Button>
                               {isCompleted && (
                                   <Button asChild size="sm">
-                                      <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                                      <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
                                           <Award className="mr-2 h-4 w-4" /> Get Certificate
                                       </Link>
                                   </Button>
@@ -515,7 +516,7 @@ export default function CourseResourcePage() {
                     ) : (
                         isCompleted && overallProgress === 100 ? (
                            <Button asChild>
-                                <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}`}>
+                                <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
                                     <Award className="mr-2 h-4 w-4" /> Course Complete! Get Certificate
                                 </Link>
                             </Button>
