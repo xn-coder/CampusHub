@@ -160,6 +160,12 @@ export async function markResourceAsCompleteAction(
   );
   
   if (error) {
+    if (error.message.includes('relation "public.lms_completion" does not exist')) {
+      console.warn("LMS Completion table does not exist. Progress cannot be saved.");
+      // Return ok:true so the UI can still update visually, even if backend saving fails.
+      // This prevents a disruptive error for the user for a non-critical feature if DB is not updated.
+      return { ok: true, message: "Progress could not be saved to the database. The 'lms_completion' table is missing." };
+    }
     console.error("Error saving resource completion:", error);
     return { ok: false, message: `Failed to save progress: ${error.message}` };
   }
@@ -190,12 +196,16 @@ export async function getCompletionStatusAction(
     .eq('course_id', courseId);
     
   if (error) {
+    if (error.message.includes('relation "public.lms_completion" does not exist')) {
+        console.warn("LMS Completion table does not exist. Cannot fetch completion status.");
+        return { ok: true, completedResources: {} }; // Return empty object gracefully
+    }
     console.error("Error fetching completion status:", error);
     return { ok: false, completedResources: {} };
   }
 
   const completedMap: Record<string, boolean> = {};
-  data.forEach(item => {
+  (data || []).forEach(item => {
     completedMap[item.resource_id] = true;
   });
 

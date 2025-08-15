@@ -84,7 +84,14 @@ export async function getLmsSchoolReportAction(
     if (resourcesRes.error) throw new Error(`Failed to fetch resources: ${resourcesRes.error.message}`);
     if (studentEnrollmentsRes.error) throw new Error(`Failed to fetch student enrollments: ${studentEnrollmentsRes.error.message}`);
     if (teacherEnrollmentsRes.error) throw new Error(`Failed to fetch teacher enrollments: ${teacherEnrollmentsRes.error.message}`);
-    if (completionsRes.error) throw new Error(`Failed to fetch completions: ${completionsRes.error.message}`);
+    
+    // Gracefully handle missing lms_completion table
+    if (completionsRes.error && completionsRes.error.message.includes('relation "public.lms_completion" does not exist')) {
+        console.warn("LMS Completion table does not exist. Completion data will not be available in reports.");
+    } else if (completionsRes.error) {
+        throw new Error(`Failed to fetch completions: ${completionsRes.error.message}`);
+    }
+
 
     const allResources = resourcesRes.data || [];
     const studentEnrollments = studentEnrollmentsRes.data || [];
