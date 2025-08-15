@@ -222,10 +222,10 @@ export default function CourseResourcePage() {
     }, [courseId, resourceId, searchParams, currentUserRole]);
 
     const pdfFile = useMemo(() => (
-      (resource?.type === 'ebook' || resource?.url_or_content.endsWith('.pdf')) && resource.url_or_content
+      (resource?.url_or_content.endsWith('.pdf')) && resource.url_or_content
         ? { url: resource.url_or_content }
         : null
-    ), [resource?.url_or_content, resource?.type]);
+    ), [resource?.url_or_content]);
 
     
     const embedUrl = useMemo(() => {
