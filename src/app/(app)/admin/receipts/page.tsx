@@ -8,22 +8,29 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, Loader2, Save, ReceiptText, FileText } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { PlusCircle, Trash2, Loader2, Save, ReceiptText, FileText, Calendar as CalendarIcon } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfDay, endOfDay, subDays } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
-import { createReceiptAction, getReceiptsAction, type ReceiptDB, type ReceiptItemInput } from './actions';
+import { createReceiptAction, getReceiptsAction, type ReceiptDB, type ReceiptItemInput, type ReceiptItemDB } from './actions';
 import Link from 'next/link';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import type { DateRange } from 'react-day-picker';
+import { Calendar } from '@/components/ui/calendar';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: user, error } = await supabase.from('users').select('school_id').eq('id', adminUserId).single();
   return user?.school_id || null;
 }
 
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+
 export default function ReceiptsPage() {
   const { toast } = useToast();
-  const [receipts, setReceipts] = useState<ReceiptDB[]>([]);
+  const [allReceipts, setAllReceipts] = useState<ReceiptDB[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
@@ -34,26 +41,67 @@ export default function ReceiptsPage() {
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [narration, setNarration] = useState('');
   const [items, setItems] = useState<ReceiptItemInput[]>([{ ledger: '', description: '', amount: 0 }]);
+  
+  // Filtering state
+  const [filterPreset, setFilterPreset] = useState('this_month');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: startOfDay(new Date(new Date().setDate(1))),
+    to: endOfDay(new Date()),
+  });
 
-  useEffect(() => {
-    async function loadData() {
-      const userId = localStorage.getItem('currentUserId');
-      if (userId) {
-        setCurrentUserId(userId);
-        const schoolId = await fetchAdminSchoolId(userId);
-        if (schoolId) {
-          setCurrentSchoolId(schoolId);
-          const result = await getReceiptsAction(schoolId);
-          if (result.ok) setReceipts(result.receipts || []);
-          else toast({ title: "Error", description: "Failed to load receipts.", variant: "destructive" });
-        } else {
-          toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
-        }
+  const loadData = useCallback(async () => {
+    const userId = localStorage.getItem('currentUserId');
+    if (userId) {
+      setCurrentUserId(userId);
+      const schoolId = await fetchAdminSchoolId(userId);
+      if (schoolId) {
+        setCurrentSchoolId(schoolId);
+        const result = await getReceiptsAction(schoolId);
+        if (result.ok) setAllReceipts(result.receipts || []);
+        else toast({ title: "Error", description: "Failed to load receipts.", variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
       }
-      setIsLoading(false);
     }
-    loadData();
+    setIsLoading(false);
   }, [toast]);
+  
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleFilterChange = (value: string) => {
+    setFilterPreset(value);
+    const now = new Date();
+    if (value === 'this_year') {
+      setDateRange({ from: startOfDay(new Date(now.getFullYear(), 0, 1)), to: endOfDay(now) });
+    } else if (value === 'this_month') {
+      setDateRange({ from: startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)), to: endOfDay(now) });
+    } else if (value === 'last_7_days') {
+      setDateRange({ from: startOfDay(subDays(now, 6)), to: endOfDay(now) });
+    } else { // custom
+      // Let the date picker handle it
+    }
+  };
+
+  const filteredReceipts = useMemo(() => {
+    if (!dateRange?.from || !dateRange?.to) return allReceipts;
+    return allReceipts.filter(receipt => {
+        const receiptDate = parseISO(receipt.payment_date);
+        return receiptDate >= dateRange.from! && receiptDate <= dateRange.to!;
+    });
+  }, [allReceipts, dateRange]);
+
+  const chartData = useMemo(() => {
+    const dataByPaymentMode = filteredReceipts.reduce((acc, receipt) => {
+        const mode = receipt.payment_mode || 'Other';
+        acc[mode] = (acc[mode] || 0) + receipt.total_amount;
+        return acc;
+    }, {} as Record<string, number>);
+
+    return Object.entries(dataByPaymentMode).map(([name, value]) => ({ name, value }));
+  }, [filteredReceipts]);
+
 
   const handleItemChange = (index: number, field: keyof ReceiptItemInput, value: string | number) => {
     const newItems = [...items];
@@ -61,14 +109,10 @@ export default function ReceiptsPage() {
     setItems(newItems);
   };
 
-  const handleAddItem = () => {
-    setItems([...items, { ledger: '', description: '', amount: 0 }]);
-  };
+  const handleAddItem = () => setItems([...items, { ledger: '', description: '', amount: 0 }]);
 
   const handleRemoveItem = (index: number) => {
-    if (items.length > 1) {
-      setItems(items.filter((_, i) => i !== index));
-    }
+    if (items.length > 1) setItems(items.filter((_, i) => i !== index));
   };
 
   const totalAmount = items.reduce((acc, item) => acc + Number(item.amount || 0), 0);
@@ -81,12 +125,8 @@ export default function ReceiptsPage() {
     }
     setIsSubmitting(true);
     const result = await createReceiptAction({
-      payment_date: paymentDate,
-      payment_mode: paymentMode,
-      narration,
-      items,
-      school_id: currentSchoolId,
-      created_by_user_id: currentUserId,
+      payment_date: paymentDate, payment_mode: paymentMode, narration, items,
+      school_id: currentSchoolId, created_by_user_id: currentUserId,
     });
     setIsSubmitting(false);
 
@@ -94,10 +134,7 @@ export default function ReceiptsPage() {
       toast({ title: "Success", description: "Receipt created successfully." });
       setItems([{ ledger: '', description: '', amount: 0 }]);
       setNarration('');
-      if (currentSchoolId) {
-        const newReceipts = await getReceiptsAction(currentSchoolId);
-        if (newReceipts.ok) setReceipts(newReceipts.receipts || []);
-      }
+      loadData();
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -115,49 +152,29 @@ export default function ReceiptsPage() {
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="paymentDate">Payment Date</Label>
-                  <Input id="paymentDate" type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} required disabled={isSubmitting} />
-                </div>
-                <div>
-                  <Label htmlFor="paymentMode">Payment Mode</Label>
-                  <Input id="paymentMode" value={paymentMode} onChange={e => setPaymentMode(e.target.value)} placeholder="e.g., Cash, Bank Transfer" required disabled={isSubmitting} />
-                </div>
+                <div><Label htmlFor="paymentDate">Payment Date</Label><Input id="paymentDate" type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} required disabled={isSubmitting} /></div>
+                <div><Label htmlFor="paymentMode">Payment Mode</Label><Input id="paymentMode" value={paymentMode} onChange={e => setPaymentMode(e.target.value)} placeholder="e.g., Cash, Bank Transfer" required disabled={isSubmitting} /></div>
               </div>
-              <div>
-                <Label htmlFor="narration">Narration</Label>
-                <Textarea id="narration" value={narration} onChange={e => setNarration(e.target.value)} placeholder="Brief description of the transaction" disabled={isSubmitting} />
-              </div>
-
+              <div><Label htmlFor="narration">Narration</Label><Textarea id="narration" value={narration} onChange={e => setNarration(e.target.value)} placeholder="Brief description of the transaction" disabled={isSubmitting} /></div>
               <div className="space-y-2 pt-2">
                 <Label>Ledger Items</Label>
-                <div className="border rounded-md">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Ledger</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="w-[150px]">Amount (₹)</TableHead>
-                        <TableHead className="w-[50px]"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.map((item, index) => (
-                        <TableRow key={index}>
-                          <TableCell><Input placeholder="e.g., School Dairy" value={item.ledger} onChange={e => handleItemChange(index, 'ledger', e.target.value)} required /></TableCell>
-                          <TableCell><Input placeholder="Optional details" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} /></TableCell>
-                          <TableCell><Input type="number" placeholder="0.00" value={item.amount || ''} onChange={e => handleItemChange(index, 'amount', Number(e.target.value))} required min="0.01" step="0.01" /></TableCell>
-                          <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemoveItem(index)} disabled={items.length === 1}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                <div className="border rounded-md"><Table>
+                  <TableHeader><TableRow>
+                    <TableHead>Ledger</TableHead><TableHead>Description</TableHead>
+                    <TableHead className="w-[150px]">Amount (₹)</TableHead><TableHead className="w-[50px]"></TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>{items.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell><Input placeholder="e.g., School Dairy" value={item.ledger} onChange={e => handleItemChange(index, 'ledger', e.target.value)} required /></TableCell>
+                      <TableCell><Input placeholder="Optional details" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} /></TableCell>
+                      <TableCell><Input type="number" placeholder="0.00" value={item.amount || ''} onChange={e => handleItemChange(index, 'amount', Number(e.target.value))} required min="0.01" step="0.01" /></TableCell>
+                      <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemoveItem(index)} disabled={items.length === 1}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
+                    </TableRow>))}
+                  </TableBody>
+                </Table></div>
                 <Button type="button" variant="outline" size="sm" onClick={handleAddItem} className="mt-2"><PlusCircle className="mr-2 h-4 w-4" /> Add Item</Button>
               </div>
-              <div className="text-right font-bold text-lg">
-                Total Amount: <span className="font-mono">₹{totalAmount.toFixed(2)}</span>
-              </div>
+              <div className="text-right font-bold text-lg">Total Amount: <span className="font-mono">₹{totalAmount.toFixed(2)}</span></div>
             </CardContent>
             <CardFooter>
               <Button type="submit" disabled={isSubmitting || totalAmount <= 0}>
@@ -167,29 +184,67 @@ export default function ReceiptsPage() {
           </form>
         </Card>
         
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Recent Receipts</CardTitle>
-            <CardDescription>A log of recently created receipts.</CardDescription>
-          </CardHeader>
-          <CardContent className="max-h-[500px] overflow-y-auto">
-            {isLoading ? <div className="text-center"><Loader2 className="h-6 w-6 animate-spin" /></div> : receipts.length === 0 ? <p className="text-muted-foreground text-center">No receipts found.</p> : (
-              <ul className="space-y-2">
-                {receipts.map(r => (
-                  <li key={r.id} className="p-2 border rounded-md flex justify-between items-center">
-                    <div>
-                      <p className="font-medium">Receipt #{r.receipt_no}</p>
-                      <p className="text-sm text-muted-foreground">₹{r.total_amount.toFixed(2)} - {format(parseISO(r.payment_date), 'PP')}</p>
-                    </div>
-                    <Button asChild variant="outline" size="sm"><Link href={`/admin/receipts/${r.id}/voucher`}><FileText className="mr-1 h-3 w-3" /> View</Link></Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <div className="lg:col-span-1 space-y-6">
+            <Card>
+                <CardHeader><CardTitle>Income by Payment Mode</CardTitle></CardHeader>
+                <CardContent>
+                    {isLoading ? <div className="text-center"><Loader2 className="h-6 w-6 animate-spin" /></div> :
+                     chartData.length === 0 ? <p className="text-muted-foreground text-center py-10">No receipt data for selected period.</p> :
+                    <ResponsiveContainer width="100%" height={250}>
+                        <PieChart>
+                            <Pie data={chartData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} outerRadius={80} fill="#8884d8" dataKey="value">
+                                {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                            </Pie>
+                            <Tooltip formatter={(value: number) => `₹${value.toFixed(2)}`} />
+                            <Legend />
+                        </PieChart>
+                    </ResponsiveContainer>}
+                </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle>Receipts Log</CardTitle><CardDescription>A log of recently created receipts.</CardDescription></CardHeader>
+              <CardContent className="space-y-4">
+                 <div className="flex flex-col sm:flex-row gap-2">
+                    <Select value={filterPreset} onValueChange={handleFilterChange}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="this_month">This Month</SelectItem>
+                            <SelectItem value="last_7_days">Last 7 Days</SelectItem>
+                            <SelectItem value="this_year">This Year</SelectItem>
+                            <SelectItem value="custom">Custom Range</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    {filterPreset === 'custom' && (
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button id="date" variant={"outline"} className="w-full justify-start text-left font-normal">
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {dateRange?.from ? (dateRange.to ? `${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}` : format(dateRange.from, "LLL dd, y")) : <span>Pick a date range</span>}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={1}/>
+                            </PopoverContent>
+                        </Popover>
+                    )}
+                 </div>
+                <div className="max-h-[500px] overflow-y-auto">
+                    {isLoading ? <div className="text-center"><Loader2 className="h-6 w-6 animate-spin" /></div> : filteredReceipts.length === 0 ? <p className="text-muted-foreground text-center">No receipts found.</p> : (
+                    <ul className="space-y-2">{filteredReceipts.map(r => (
+                        <li key={r.id} className="p-2 border rounded-md flex justify-between items-center">
+                        <div>
+                            <p className="font-medium">Receipt #{r.receipt_no}</p>
+                            <p className="text-sm text-muted-foreground">₹{r.total_amount.toFixed(2)} - {format(parseISO(r.payment_date), 'PP')}</p>
+                        </div>
+                        <Button asChild variant="outline" size="sm"><Link href={`/admin/receipts/${r.id}/voucher`}><FileText className="mr-1 h-3 w-3" /> View</Link></Button>
+                        </li>))}
+                    </ul>)}
+                </div>
+              </CardContent>
+            </Card>
+        </div>
       </div>
     </div>
   );
 }
-

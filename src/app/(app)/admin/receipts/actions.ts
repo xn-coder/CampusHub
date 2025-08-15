@@ -91,19 +91,32 @@ export async function createReceiptAction(
   }
 }
 
-export async function getReceiptsAction(schoolId: string): Promise<{ ok: boolean; receipts?: ReceiptDB[] }> {
+export async function getReceiptsAction(schoolId: string): Promise<{
+    ok: boolean;
+    receipts?: ReceiptDB[];
+    items?: ReceiptItemDB[];
+    message?: string;
+}> {
     const supabase = createSupabaseServerClient();
-    const { data, error } = await supabase
-        .from('receipts')
-        .select('*')
-        .eq('school_id', schoolId)
-        .order('receipt_no', { ascending: false });
-    
-    if(error) {
-        console.error('Error fetching receipts:', error);
-        return { ok: false };
+    try {
+        const [receiptsRes, itemsRes] = await Promise.all([
+            supabase.from('receipts').select('*').eq('school_id', schoolId).order('receipt_no', { ascending: false }),
+            supabase.from('receipt_items').select('*').eq('school_id', schoolId)
+        ]);
+
+        if(receiptsRes.error) throw new Error(`Failed to fetch receipts: ${receiptsRes.error.message}`);
+        if(itemsRes.error) throw new Error(`Failed to fetch receipt items: ${itemsRes.error.message}`);
+        
+        return { 
+            ok: true, 
+            receipts: receiptsRes.data as ReceiptDB[], 
+            items: itemsRes.data as ReceiptItemDB[] 
+        };
+
+    } catch(e: any) {
+        console.error("Error fetching receipts data:", e);
+        return { ok: false, message: e.message || 'An unexpected error occurred.' };
     }
-    return { ok: true, receipts: data as ReceiptDB[] };
 }
 
 export async function getVoucherDataAction(receiptId: string): Promise<{
