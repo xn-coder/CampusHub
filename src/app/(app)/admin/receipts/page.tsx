@@ -19,14 +19,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartConfig,
+} from "@/components/ui/chart";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: user, error } = await supabase.from('users').select('school_id').eq('id', adminUserId).single();
   return user?.school_id || null;
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+const chartConfig = {
+  amount: {
+    label: "Amount",
+    color: "hsl(var(--chart-1))",
+  },
+} satisfies ChartConfig;
 
 export default function ReceiptsPage() {
   const { toast } = useToast();
@@ -99,7 +110,7 @@ export default function ReceiptsPage() {
         return acc;
     }, {} as Record<string, number>);
 
-    return Object.entries(dataByPaymentMode).map(([name, value]) => ({ name, value }));
+    return Object.entries(dataByPaymentMode).map(([name, amount]) => ({ name, amount }));
   }, [filteredReceipts]);
 
 
@@ -190,15 +201,34 @@ export default function ReceiptsPage() {
                 <CardContent>
                     {isLoading ? <div className="text-center"><Loader2 className="h-6 w-6 animate-spin" /></div> :
                      chartData.length === 0 ? <p className="text-muted-foreground text-center py-10">No receipt data for selected period.</p> :
-                    <ResponsiveContainer width="100%" height={250}>
-                        <PieChart>
-                            <Pie data={chartData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} outerRadius={80} fill="#8884d8" dataKey="value">
-                                {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                            </Pie>
-                            <Tooltip formatter={(value: number) => `₹${value.toFixed(2)}`} />
-                            <Legend />
-                        </PieChart>
-                    </ResponsiveContainer>}
+                      <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
+                        <BarChart
+                          accessibilityLayer
+                          data={chartData}
+                          layout="vertical"
+                          margin={{
+                            left: 10,
+                          }}
+                        >
+                          <CartesianGrid horizontal={false} />
+                          <YAxis
+                            dataKey="name"
+                            type="category"
+                            tickLine={false}
+                            tickMargin={10}
+                            axisLine={false}
+                            className="text-xs"
+                          />
+                          <XAxis dataKey="amount" type="number" hide />
+                          <Tooltip
+                            cursor={{ fill: "hsl(var(--muted))" }}
+                            formatter={(value) => `₹${Number(value).toFixed(2)}`}
+                            content={<ChartTooltipContent indicator="line" />}
+                          />
+                          <Bar dataKey="amount" layout="vertical" fill="var(--color-amount)" radius={4} />
+                        </BarChart>
+                      </ChartContainer>
+                    }
                 </CardContent>
             </Card>
 
