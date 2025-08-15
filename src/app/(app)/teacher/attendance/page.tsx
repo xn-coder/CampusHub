@@ -104,24 +104,6 @@ export default function TeacherAttendancePage() {
           return;
       }
 
-      const eventOnDate = allDayEvents.find(event => {
-        try {
-            const eventDate = parseISO(event.date);
-            return format(eventDate, 'yyyy-MM-dd') === currentDate;
-        } catch (e) {
-            console.error("Invalid event date format:", event.date);
-            return false;
-        }
-      });
-
-      if (eventOnDate) {
-          const reason = `Attendance is disabled due to a school event: ${eventOnDate.title}.`;
-          setAttendanceDisabledReason(reason);
-          setStudentsInSelectedClass([]);
-          setIsAttendanceDisabled(true);
-          return;
-      }
-
       setIsAttendanceDisabled(false);
       setAttendanceDisabledReason(null);
 
