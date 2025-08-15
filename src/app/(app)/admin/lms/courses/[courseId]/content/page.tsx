@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import Editor from '@/components/shared/ck-editor';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2 } from 'lucide-react';
@@ -306,7 +306,7 @@ export default function ManageCourseContentPage() {
         <CardContent>
             <Accordion type="multiple" className="w-full space-y-2">
                 {lessons.map(lesson => {
-                    const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
+                    const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[];
                     return (
                         <AccordionItem value={lesson.id} key={lesson.id} className="border rounded-md bg-background">
                             <AccordionTrigger className="px-4 hover:no-underline">
@@ -368,7 +368,7 @@ export default function ManageCourseContentPage() {
                                                                   <Label htmlFor={`q-text-${q.id}`}>Question {qIndex + 1}</Label>
                                                                   {quizQuestions.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveQuizQuestion(qIndex)}><Trash2 className="h-4 w-4 text-destructive"/></Button>}
                                                               </div>
-                                                              <Textarea id={`q-text-${q.id}`} value={q.question} onChange={e => handleQuizQuestionChange(qIndex, e.target.value)} placeholder="Enter the question text" disabled={isSubmitting}/>
+                                                              <Input id={`q-text-${q.id}`} value={q.question} onChange={e => handleQuizQuestionChange(qIndex, e.target.value)} placeholder="Enter the question text" disabled={isSubmitting}/>
                                                               <div className="space-y-2">
                                                                 <Label>Options (select the correct answer)</Label>
                                                                 <RadioGroup value={String(q.correctAnswerIndex)} onValueChange={val => handleCorrectAnswerChange(qIndex, Number(val))}>
@@ -387,7 +387,13 @@ export default function ManageCourseContentPage() {
                                                 ) : resourceType === 'note' ? (
                                                    <div>
                                                       <Label htmlFor={`res-content-${lesson.id}`}>Content</Label>
-                                                      <Textarea id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='Enter text content...' required disabled={isSubmitting} />
+                                                      <div className="mt-1 prose prose-sm max-w-none dark:prose-invert [&_.ck-editor__main>.ck-editor__editable]:min-h-40 [&_.ck-editor__main>.ck-editor__editable]:bg-background [&_.ck-toolbar]:bg-muted [&_.ck-toolbar]:border-border [&_.ck-editor__main]:border-border [&_.ck-content]:text-foreground">
+                                                        <Editor
+                                                          value={resourceUrlOrContent}
+                                                          onChange={(data) => setResourceUrlOrContent(data)}
+                                                          disabled={isSubmitting}
+                                                        />
+                                                      </div>
                                                   </div>
                                                 ) : resourceType === 'webinar' ? (
                                                   <div>

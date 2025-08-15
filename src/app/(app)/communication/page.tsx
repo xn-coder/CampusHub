@@ -5,7 +5,7 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import Editor from '@/components/shared/ck-editor';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { AnnouncementDB as Announcement, UserRole, ClassData, Student, Exam, SchoolEntry } from '@/types';
@@ -107,7 +107,7 @@ function CommunicationPageForm() {
         setNewAnnouncement(prev => ({
             ...prev,
             title: `Re-exam Notification: ${examName}`,
-            content: `This is to inform all eligible students that a re-exam for "${examName}" has been scheduled.\n\nPlease contact the school administration or your class teacher for further details regarding the exact schedule and registration process.`,
+            content: `<p>This is to inform all eligible students that a re-exam for "<strong>${examName}</strong>" has been scheduled.</p><p>Please contact the school administration or your class teacher for further details regarding the exact schedule and registration process.</p>`,
             linkedExamId: examId,
             targetClassId: targetClassId,
             targetAudience: 'students',
@@ -148,10 +148,14 @@ function CommunicationPageForm() {
   }, [currentSchoolId, currentUserRole, currentUserId, availableClassesForTargeting, toast, isContextLoading]);
 
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setNewAnnouncement(prev => ({ ...prev, [name]: value }));
   };
+  
+  const handleEditorChange = (data: string) => {
+    setNewAnnouncement(prev => ({ ...prev, content: data }));
+  }
 
   const handleSelectChange = (name: keyof typeof newAnnouncement) => (value: string) => {
     setNewAnnouncement(prev => ({ ...prev, [name]: value === "none" ? "" : value }));
@@ -293,7 +297,13 @@ function CommunicationPageForm() {
 
               <div>
                 <Label htmlFor="content">Content</Label>
-                <Textarea id="content" name="content" value={newAnnouncement.content} onChange={handleInputChange} placeholder="Write your announcement here..." required rows={5} disabled={isSubmitting}/>
+                 <div className="mt-1 prose prose-sm max-w-none dark:prose-invert [&_.ck-editor__main>.ck-editor__editable]:min-h-40 [&_.ck-editor__main>.ck-editor__editable]:bg-background [&_.ck-toolbar]:bg-muted [&_.ck-toolbar]:border-border [&_.ck-editor__main]:border-border [&_.ck-content]:text-foreground">
+                    <Editor
+                        value={newAnnouncement.content}
+                        onChange={handleEditorChange}
+                        disabled={isSubmitting}
+                    />
+                </div>
               </div>
             </CardContent>
             <CardFooter>
@@ -329,7 +339,7 @@ function CommunicationPageForm() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="whitespace-pre-wrap">{announcement.content}</p>
+                <div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: announcement.content }} />
               </CardContent>
             </Card>
           )) : (

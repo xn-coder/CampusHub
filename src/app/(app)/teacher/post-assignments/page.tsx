@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import Editor from '@/components/shared/ck-editor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Assignment, ClassData, Subject, UserRole } from '@/types'; // Added Subject
 import { useState, useEffect, type FormEvent } from 'react';
@@ -145,7 +145,13 @@ export default function PostAssignmentsPage() {
             </div>
             <div>
               <Label htmlFor="description">Description / Instructions</Label>
-              <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Provide details about the assignment..." rows={5} required disabled={isLoading}/>
+              <div className="mt-1 prose prose-sm max-w-none dark:prose-invert [&_.ck-editor__main>.ck-editor__editable]:min-h-40 [&_.ck-editor__main>.ck-editor__editable]:bg-background [&_.ck-toolbar]:bg-muted [&_.ck-toolbar]:border-border [&_.ck-editor__main]:border-border [&_.ck-content]:text-foreground">
+                <Editor 
+                  value={description}
+                  onChange={(data) => setDescription(data)}
+                  disabled={isLoading}
+                />
+              </div>
             </div>
             <div>
               <Label htmlFor="dueDate">Due Date</Label>
