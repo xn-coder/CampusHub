@@ -3,7 +3,6 @@
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import type { ClassData, Student, AttendanceRecord, Holiday } from '@/types';
-import { startOfYear, endOfYear } from 'date-fns';
 
 async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
   if (!adminUserId) {
@@ -11,16 +10,17 @@ async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
     return null;
   }
   const supabaseAdmin = createSupabaseServerClient();
-  const { data: school, error } = await supabaseAdmin
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
+  const { data: user, error } = await supabaseAdmin
+    .from('users')
+    .select('school_id')
+    .eq('id', adminUserId)
     .single();
-  if (error || !school) {
+    
+  if (error || !user?.school_id) {
     console.error("Error fetching admin's school:", error?.message);
     return null;
   }
-  return school.id;
+  return user.school_id;
 }
 
 export async function getAdminAttendancePageDataAction(adminUserId: string): Promise<{
@@ -75,16 +75,14 @@ export async function getAdminAttendancePageDataAction(adminUserId: string): Pro
 export async function fetchAttendanceForReportAction(
   schoolId: string,
   classId: string,
-  year: number
+  startDate: Date,
+  endDate: Date
 ): Promise<{ ok: boolean; records?: Pick<AttendanceRecord, 'student_id' | 'status' | 'date'>[]; message?: string }> {
-  if (!schoolId || !classId || !year) {
-    return { ok: false, message: "School ID, Class ID, and Year are required." };
+  if (!schoolId || !classId || !startDate || !endDate) {
+    return { ok: false, message: "School ID, Class ID, and a valid date range are required." };
   }
   const supabaseAdmin = createSupabaseServerClient();
   try {
-    const startDate = startOfYear(new Date(year, 0, 1));
-    const endDate = endOfYear(new Date(year, 11, 31));
-
     const { data, error } = await supabaseAdmin
       .from('attendance_records')
       .select('student_id, status, date')
@@ -103,4 +101,3 @@ export async function fetchAttendanceForReportAction(
     return { ok: false, message: `Unexpected error: ${error.message}` };
   }
 }
-    
