@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
@@ -36,7 +35,7 @@ const getEmbedUrl = (url: string, type: CourseResourceType): string | null => {
             return `https://www.youtube.com/embed/${videoId}`;
         }
         
-        if (url.includes("drive.google.com/file/d/")) {
+        if (type === 'ebook' && url.includes("drive.google.com/file/d/")) {
             const fileId = url.split('/d/')[1]?.split('/')[0];
             return `https://drive.google.com/file/d/${fileId}/preview`;
         }
@@ -242,7 +241,7 @@ export default function CourseResourcePage() {
     }, [courseId, resourceId, searchParams, currentUserRole]);
 
     const pdfFile = useMemo(() => (
-      (resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf')) && resource.url_or_content
+      (resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf'))
         ? { url: resource.url_or_content }
         : null
     ), [resource]);
@@ -362,7 +361,7 @@ export default function CourseResourcePage() {
                               </Button>
                               {isCompleted && (
                                   <Button asChild size="sm">
-                                      <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
+                                      <Link href={`/admin/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
                                           <Award className="mr-2 h-4 w-4" /> Get Certificate
                                       </Link>
                                   </Button>
@@ -404,7 +403,7 @@ export default function CourseResourcePage() {
                         </video>
                     ) : null}
 
-                    {resource.type === 'note' && (
+                    {resource.type === 'note' && notePages.length > 0 && (
                        <HTMLFlipBook 
                            width={500} 
                            height={700}
@@ -562,7 +561,7 @@ export default function CourseResourcePage() {
                     ) : (
                         isCompleted && overallProgress === 100 ? (
                            <Button asChild>
-                                <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
+                                <Link href={`/admin/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
                                     <Award className="mr-2 h-4 w-4" /> Course Complete! Get Certificate
                                 </Link>
                             </Button>

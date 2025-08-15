@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useRef } from 'react';
@@ -510,6 +509,7 @@ export default function ManageCourseContentPage() {
         </CardContent>
         <CardFooter>
             <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} disabled={isSubmitting}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to All Courses
             </Button>
         </CardFooter>
