@@ -222,8 +222,11 @@ export default function CourseResourcePage() {
     }, [courseId, resourceId, searchParams, currentUserRole]);
 
     const pdfFile = useMemo(() => (
-      resource?.url_or_content ? { url: resource.url_or_content } : null
-    ), [resource?.url_or_content]);
+      (resource?.type === 'ebook' || resource?.url_or_content.endsWith('.pdf')) && resource.url_or_content
+        ? { url: resource.url_or_content }
+        : null
+    ), [resource?.url_or_content, resource?.type]);
+
     
     const embedUrl = useMemo(() => {
         if (resource?.type === 'video' && resource.url_or_content) {
@@ -361,36 +364,31 @@ export default function CourseResourcePage() {
                         </div>
                     ) : (
                     <>
-                    {resource.type === 'video' && resource.url_or_content && (
-                        embedUrl ? (
-                            embedUrl.startsWith('https://') ? (
-                                <iframe
-                                    src={embedUrl}
-                                    title={resource.title}
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                    allowFullScreen
-                                    className="w-full rounded-md aspect-video bg-black"
-                                ></iframe>
-                            ) : (
-                                <video
-                                    controls
-                                    autoPlay
-                                    src={embedUrl}
-                                    className="w-full rounded-md aspect-video bg-black"
-                                    controlsList="nodownload nofullscreen noremoteplayback"
-                                >
-                                Your browser does not support the video tag.
-                                </video>
-                            )
-                        ) : (
-                            <p className="text-destructive">Unsupported video URL format.</p>
-                        )
-                    )}
+                    {resource.type === 'video' && embedUrl ? (
+                        <iframe
+                            src={embedUrl}
+                            title={resource.title}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                            className="w-full rounded-md aspect-video bg-black"
+                        ></iframe>
+                    ) : resource.type === 'video' && resource.url_or_content && !embedUrl ? (
+                         <video
+                            controls
+                            autoPlay
+                            src={resource.url_or_content}
+                            className="w-full rounded-md aspect-video bg-black"
+                            controlsList="nodownload nofullscreen noremoteplayback"
+                        >
+                        Your browser does not support the video tag.
+                        </video>
+                    ) : null}
+
                     {resource.type === 'note' && (
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{resource.url_or_content}</p>
+                        <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: resource.url_or_content }} />
                     )}
                     
-                    {(resource.type === 'ebook' || (resource.url_or_content && resource.url_or_content.endsWith('.pdf'))) && resource.url_or_content && (
+                    {pdfFile && (
                         <div className="w-full overflow-auto" style={{ height: '70vh' }}>
                             <Document
                                 file={pdfFile}

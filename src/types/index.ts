@@ -425,7 +425,7 @@ export interface Course {
 export interface CourseWithEnrollmentStatus extends Course {
   isEnrolled?: boolean;
   target_audience_in_school?: 'student' | 'teacher' | 'both';
-  subscription_date?: string;
+  subscription_end_date?: string | null;
 }
 
 
