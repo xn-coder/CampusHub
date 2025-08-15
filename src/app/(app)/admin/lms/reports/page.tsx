@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Library, Users, Briefcase, Calendar as CalendarIcon, FileDown, BarChart3 } from 'lucide-react';
+import { Loader2, Library, Users, Briefcase, Calendar as CalendarIcon, FileDown, BarChart3, CheckCircle, CircleDashed, XCircle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { getLmsSchoolReportAction, type LmsSchoolReportData } from './actions';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ import {
   ChartConfig,
 } from "@/components/ui/chart";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
+import { Progress } from '@/components/ui/progress';
 
 const chartConfig = {
   enrollments: { label: "Enrollments", color: "hsl(var(--chart-1))" },
@@ -74,10 +75,10 @@ export default function AdminLmsReportsPage() {
             toast({ title: "No data to download", variant: "destructive" });
             return;
         }
-        const headers = ["Course Title", "Enrolled Students", "Enrolled Teachers", "Total Enrollments"];
+        const headers = ["Course Title", "Enrolled Students", "Completed", "In Progress", "Not Started", "Enrolled Teachers"];
         const csvContent = [
             headers.join(','),
-            ...reportData.map(d => `"${d.title.replace(/"/g, '""')}",${d.studentEnrollmentCount},${d.teacherEnrollmentCount},${d.studentEnrollmentCount + d.teacherEnrollmentCount}`)
+            ...reportData.map(d => `"${d.title.replace(/"/g, '""')}",${d.studentEnrollmentCount},${d.completedCount},${d.inProgressCount},${d.notStartedCount},${d.teacherEnrollmentCount}`)
         ].join('\n');
         
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -111,8 +112,8 @@ export default function AdminLmsReportsPage() {
                     <CardHeader>
                         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
                             <div>
-                                <CardTitle>Course Enrollment Report</CardTitle>
-                                <CardDescription>An overview of student and teacher enrollments for each course assigned to your school.</CardDescription>
+                                <CardTitle>Course Enrollment & Completion Report</CardTitle>
+                                <CardDescription>Overview of enrollments and completion status for each course.</CardDescription>
                             </div>
                             <Button onClick={handleDownloadCsv} disabled={isLoading || reportData.length === 0} variant="outline">
                                 <FileDown className="mr-2 h-4 w-4" /> Download Report
@@ -158,20 +159,34 @@ export default function AdminLmsReportsPage() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead><Library className="inline-block h-4 w-4 mr-1" /> Course Title</TableHead>
-                                        <TableHead className="text-center"><Users className="inline-block h-4 w-4 mr-1" /> Enrolled Students</TableHead>
-                                        <TableHead className="text-center"><Briefcase className="inline-block h-4 w-4 mr-1" /> Enrolled Teachers</TableHead>
-                                        <TableHead className="text-center">Total</TableHead>
+                                        <TableHead className="text-center"><Users className="inline-block h-4 w-4 mr-1" /> Students</TableHead>
+                                        <TableHead className="text-center"><CheckCircle className="inline-block h-4 w-4 mr-1"/> Completed</TableHead>
+                                        <TableHead className="text-center"><CircleDashed className="inline-block h-4 w-4 mr-1"/> In Progress</TableHead>
+                                        <TableHead className="text-center"><XCircle className="inline-block h-4 w-4 mr-1"/> Not Started</TableHead>
+                                        <TableHead className="text-center"><Briefcase className="inline-block h-4 w-4 mr-1" /> Teachers</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {reportData.map(course => (
+                                    {reportData.map(course => {
+                                        const completionPercentage = course.studentEnrollmentCount > 0 ? (course.completedCount / course.studentEnrollmentCount) * 100 : 0;
+                                        return (
                                         <TableRow key={course.id}>
-                                            <TableCell className="font-medium">{course.title}</TableCell>
-                                            <TableCell className="text-center">{course.studentEnrollmentCount}</TableCell>
+                                            <TableCell className="font-medium">
+                                                <div className="flex flex-col">
+                                                    <span>{course.title}</span>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <Progress value={completionPercentage} className="h-1.5 w-24" title={`${completionPercentage.toFixed(0)}% Complete`} />
+                                                        <span className="text-xs text-muted-foreground">{completionPercentage.toFixed(0)}%</span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-center font-semibold">{course.studentEnrollmentCount}</TableCell>
+                                            <TableCell className="text-center text-green-600">{course.completedCount}</TableCell>
+                                            <TableCell className="text-center text-blue-600">{course.inProgressCount}</TableCell>
+                                            <TableCell className="text-center text-red-600">{course.notStartedCount}</TableCell>
                                             <TableCell className="text-center">{course.teacherEnrollmentCount}</TableCell>
-                                            <TableCell className="text-center font-bold">{course.studentEnrollmentCount + course.teacherEnrollmentCount}</TableCell>
                                         </TableRow>
-                                    ))}
+                                    )})}
                                 </TableBody>
                             </Table>
                         )}

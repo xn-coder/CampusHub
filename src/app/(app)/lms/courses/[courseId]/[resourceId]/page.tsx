@@ -1,8 +1,9 @@
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from '../actions';
+import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole } from '@/types';
 import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -102,14 +103,19 @@ export default function CourseResourcePage() {
         return Math.round((completedCount / allLessonContents.length) * 100);
     };
 
-    const handleMarkAsComplete = () => {
-        if (typeof window !== 'undefined') {
-            const storedProgressString = localStorage.getItem(`progress_${courseId}`);
-            const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
-            const newProgress = { ...storedProgress, [resourceId]: true };
-            localStorage.setItem(`progress_${courseId}`, JSON.stringify(newProgress));
+    const handleMarkAsComplete = async () => {
+        const userId = localStorage.getItem('currentUserId');
+        if (!userId) return;
+
+        const result = await markResourceAsCompleteAction(userId, courseId, resourceId);
+        if (result.ok) {
             setIsCompleted(true);
-            setOverallProgress(calculateProgress(newProgress));
+            const { completedResources } = await getCompletionStatusAction(userId, courseId);
+            if (completedResources) {
+                setOverallProgress(calculateProgress(completedResources));
+            }
+        } else {
+            toast({title: "Error", description: result.message, variant: "destructive"});
         }
     };
 
@@ -121,12 +127,8 @@ export default function CourseResourcePage() {
           setCurrentUserRole(role);
           const isAdmin = role === 'admin' || role === 'superadmin';
           setIsPreviewing(isAdmin && previewParam);
-
-          const storedProgressString = localStorage.getItem(`progress_${courseId}`);
-          const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
-          setIsCompleted(!!storedProgress[resourceId]);
         }
-    }, [courseId, resourceId, searchParams]);
+    }, [searchParams]);
 
 
     useEffect(() => {
@@ -153,20 +155,26 @@ export default function CourseResourcePage() {
                         } else {
                             setCurrentSchoolName('CampusHub');
                         }
+                        
+                        const completionResult = await getCompletionStatusAction(userId, courseId);
+                        if(completionResult.ok && completionResult.completedResources){
+                           setIsCompleted(!!completionResult.completedResources[resourceId]);
+                           const totalCompleted = Object.values(completionResult.completedResources).filter(Boolean).length;
+                           const lessons = loadedCourse.resources.filter(r => r.type === 'note');
+                            const allLessonContents = lessons.flatMap(lesson => {
+                                try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } 
+                                catch { return []; }
+                            });
+                            const totalResources = allLessonContents.length;
+                            setOverallProgress(totalResources > 0 ? Math.round((totalCompleted / totalResources) * 100) : 0);
+                        }
                     }
 
-                    const storedProgressString = localStorage.getItem(`progress_${courseId}`);
-                    const storedProgress = storedProgressString ? JSON.parse(storedProgressString) : {};
-                    
                     const lessons = loadedCourse.resources.filter(r => r.type === 'note');
                     const allLessonContents = lessons.flatMap(lesson => {
                         try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } 
                         catch { return []; }
                     });
-                    if (allLessonContents.length > 0) {
-                        const completedCount = allLessonContents.filter(res => storedProgress[res.id]).length;
-                        setOverallProgress(Math.round((completedCount / allLessonContents.length) * 100));
-                    }
                     
                     const firstLesson = lessons.length > 0 ? lessons[0] : null;
                     const resourcesInFirstLessonIds = firstLesson ? (JSON.parse(firstLesson.url_or_content || '[]') as LessonContentResource[]).map(r => r.id) : [];
@@ -177,7 +185,6 @@ export default function CourseResourcePage() {
                         const currentResource = allLessonContents[currentIndex];
                         setResource(currentResource);
                         
-                        // Check if content should be locked for admin preview
                         const isAdminPreviewing = (currentUserRole === 'admin' || currentUserRole === 'superadmin') && searchParams.get('preview') === 'true';
                         
                         if (isAdminPreviewing && !resourcesInFirstLessonIds.includes(resourceId)) {

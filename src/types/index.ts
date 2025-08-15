@@ -543,6 +543,15 @@ export interface Accountant {
     updated_at?: string;
 }
 
+export interface LmsCompletion {
+  id: string;
+  student_id: string;
+  course_id: string;
+  resource_id: string;
+  school_id: string;
+  completed_at: string;
+}
+
 
 declare global {
   interface Window {

@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -130,4 +129,75 @@ export async function checkUserEnrollmentForCourseViewAction(
     console.error("Error in checkUserEnrollmentForCourseViewAction:", error);
     return { ok: false, isEnrolled: false, message: error.message || "An unexpected error occurred during enrollment check." };
   }
+}
+
+// New action to record completion
+export async function markResourceAsCompleteAction(
+  userId: string,
+  courseId: string,
+  resourceId: string
+): Promise<{ ok: boolean; message: string }> {
+  const supabase = createSupabaseServerClient();
+  const { data: student, error: studentError } = await supabase
+    .from('students')
+    .select('id, school_id')
+    .eq('user_id', userId)
+    .single();
+
+  if (studentError || !student) {
+    return { ok: false, message: "Could not find student profile to save progress." };
+  }
+  
+  const { error } = await supabase.from('lms_completion').upsert(
+    {
+      student_id: student.id,
+      course_id: courseId,
+      resource_id: resourceId,
+      school_id: student.school_id,
+      completed_at: new Date().toISOString(),
+    },
+    { onConflict: 'student_id,course_id,resource_id' }
+  );
+  
+  if (error) {
+    console.error("Error saving resource completion:", error);
+    return { ok: false, message: `Failed to save progress: ${error.message}` };
+  }
+
+  return { ok: true, message: "Progress saved." };
+}
+
+// New action to get completion status
+export async function getCompletionStatusAction(
+  userId: string,
+  courseId: string
+): Promise<{ ok: boolean; completedResources?: Record<string, boolean> }> {
+  const supabase = createSupabaseServerClient();
+  const { data: student, error: studentError } = await supabase
+    .from('students')
+    .select('id')
+    .eq('user_id', userId)
+    .single();
+
+  if (studentError || !student) {
+    return { ok: false, completedResources: {} };
+  }
+
+  const { data, error } = await supabase
+    .from('lms_completion')
+    .select('resource_id')
+    .eq('student_id', student.id)
+    .eq('course_id', courseId);
+    
+  if (error) {
+    console.error("Error fetching completion status:", error);
+    return { ok: false, completedResources: {} };
+  }
+
+  const completedMap: Record<string, boolean> = {};
+  data.forEach(item => {
+    completedMap[item.resource_id] = true;
+  });
+
+  return { ok: true, completedResources: completedMap };
 }
