@@ -2,7 +2,7 @@
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,10 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { Expense, ExpenseCategory } from '@/types';
-import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Wallet, Loader2, Search, Download, ExternalLink, FileText, MoreHorizontal } from 'lucide-react';
+import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
+import { PlusCircle, Edit2, Trash2, Save, Wallet, Loader2, Search, Download, ExternalLink, FileText, MoreHorizontal, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfDay, endOfDay, subDays } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import {
     getExpensesPageDataAction,
@@ -27,6 +27,15 @@ import { Progress } from '@/components/ui/progress';
 import Link from 'next/link';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
+import type { DateRange } from 'react-day-picker';
+
+const chartConfig = {
+  amount: { label: "Amount", color: "hsl(var(--chart-2))" },
+} satisfies ChartConfig;
 
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
   const { data: user, error } = await supabase
@@ -66,6 +75,11 @@ export default function ExpensesPage() {
     // Filtering
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
+    const [filterPreset, setFilterPreset] = useState('this_month');
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+      from: startOfDay(new Date(new Date().setDate(1))),
+      to: endOfDay(new Date()),
+    });
 
     const loadPageData = useCallback(async (schoolId: string) => {
         setIsLoading(true);
@@ -98,6 +112,18 @@ export default function ExpensesPage() {
             setIsLoading(false);
         }
     }, [toast, loadPageData]);
+    
+    const handleFilterChange = (value: string) => {
+        setFilterPreset(value);
+        const now = new Date();
+        if (value === 'this_year') {
+          setDateRange({ from: startOfDay(new Date(now.getFullYear(), 0, 1)), to: endOfDay(now) });
+        } else if (value === 'this_month') {
+          setDateRange({ from: startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)), to: endOfDay(now) });
+        } else if (value === 'last_7_days') {
+          setDateRange({ from: startOfDay(subDays(now, 6)), to: endOfDay(now) });
+        }
+    };
     
     const resetForm = () => {
         setTitle(''); setAmount(''); setCategoryId(''); setDate(format(new Date(), 'yyyy-MM-dd')); setNotes(''); setReceiptFile(null);
@@ -187,12 +213,30 @@ export default function ExpensesPage() {
 
     const getCategoryName = (id: string) => categories.find(c => c.id === id)?.name || 'N/A';
 
-    const filteredExpenses = expenses.filter(exp => {
-        const matchesSearch = exp.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (exp.notes && exp.notes.toLowerCase().includes(searchTerm.toLowerCase()));
-        const matchesCategory = categoryFilter === 'all' || exp.category_id === categoryFilter;
-        return matchesSearch && matchesCategory;
-    });
+    const filteredExpenses = useMemo(() => {
+        return expenses.filter(exp => {
+            const matchesCategory = categoryFilter === 'all' || exp.category_id === categoryFilter;
+            
+            const expDate = parseISO(exp.date);
+            const matchesDate = dateRange?.from && dateRange?.to ? expDate >= dateRange.from && expDate <= dateRange.to : true;
+
+            const matchesSearch = searchTerm === '' ||
+                exp.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (exp.notes && exp.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+
+            return matchesCategory && matchesDate && matchesSearch;
+        });
+    }, [expenses, categoryFilter, dateRange, searchTerm]);
+    
+    const chartData = useMemo(() => {
+        const dataByCategory = filteredExpenses.reduce((acc, expense) => {
+            const categoryName = getCategoryName(expense.category_id);
+            acc[categoryName] = (acc[categoryName] || 0) + expense.amount;
+            return acc;
+        }, {} as Record<string, number>);
+        return Object.entries(dataByCategory).map(([name, amount]) => ({ name, amount }));
+    }, [filteredExpenses, categories]);
+
 
     return (
         <div className="flex flex-col gap-6">
@@ -205,95 +249,114 @@ export default function ExpensesPage() {
                     </Button>
                 }
             />
-            <Card>
-                <CardHeader>
-                    <CardTitle>Expense Records</CardTitle>
-                    <CardDescription>View, filter, and manage all recorded expenses.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="mb-4 flex flex-col md:flex-row gap-4">
-                        <Input
-                            placeholder="Search by title or notes..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="max-w-sm"
-                        />
-                        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                            <SelectTrigger className="md:w-[200px]"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Categories</SelectItem>
-                                {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Title</TableHead>
-                                    <TableHead>Category</TableHead>
-                                    <TableHead>Receipt</TableHead>
-                                    <TableHead className="text-right">Amount (₹)</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredExpenses.map((expense) => (
-                                    <TableRow key={expense.id}>
-                                        <TableCell>{format(parseISO(expense.date), 'PP')}</TableCell>
-                                        <TableCell className="font-medium">{expense.title}</TableCell>
-                                        <TableCell>{getCategoryName(expense.category_id)}</TableCell>
-                                        <TableCell>
-                                            {expense.receipt_url ? (
-                                                <a href={expense.receipt_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                                                    <ExternalLink className="h-4 w-4" />
-                                                </a>
-                                            ) : 'None'}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono">₹{expense.amount.toFixed(2)}</TableCell>
-                                        <TableCell className="text-right">
-                                            <AlertDialog>
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" size="icon" disabled={isSubmitting}>
-                                                            <MoreHorizontal className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem asChild>
-                                                          <Link href={`/admin/expenses/${expense.id}/voucher`}><FileText className="mr-2 h-4 w-4" /> View Voucher</Link>
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem onSelect={() => handleOpenDialog(expense)}>
-                                                            <Edit2 className="mr-2 h-4 w-4" /> Edit
-                                                        </DropdownMenuItem>
-                                                        <AlertDialogTrigger asChild>
-                                                            <DropdownMenuItem className="text-destructive">
-                                                                <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                                            </DropdownMenuItem>
-                                                        </AlertDialogTrigger>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                                <AlertDialogContent>
-                                                    <AlertDialogHeader>
-                                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                                        <AlertDialogDescription>This action cannot be undone. This will permanently delete the expense record for "{expense.title}".</AlertDialogDescription>
-                                                    </AlertDialogHeader>
-                                                    <AlertDialogFooter>
-                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                        <AlertDialogAction onClick={() => handleDelete(expense.id)} className="bg-destructive hover:bg-destructive/90">Continue</AlertDialogAction>
-                                                    </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
-                                        </TableCell>
+            
+            <div className="grid lg:grid-cols-3 gap-6">
+                <Card className="lg:col-span-2">
+                    <CardHeader>
+                        <CardTitle>Expense Records</CardTitle>
+                        <CardDescription>View, filter, and manage all recorded expenses.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="mb-4 flex flex-col md:flex-row gap-4">
+                             <Input
+                                placeholder="Search by title or notes..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="max-w-sm"
+                            />
+                            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                                <SelectTrigger className="md:w-[200px]"><SelectValue placeholder="All Categories" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Categories</SelectItem>
+                                    {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                            <Select value={filterPreset} onValueChange={handleFilterChange}>
+                                <SelectTrigger className="md:w-[180px]"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="this_month">This Month</SelectItem>
+                                    <SelectItem value="last_7_days">Last 7 Days</SelectItem>
+                                    <SelectItem value="this_year">This Year</SelectItem>
+                                    <SelectItem value="custom">Custom Range</SelectItem>
+                                </SelectContent>
+                            </Select>
+                             {filterPreset === 'custom' && (
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button id="date" variant={"outline"} className="w-full justify-start text-left font-normal md:w-auto">
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {dateRange?.from ? (dateRange.to ? `${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}` : format(dateRange.from, "LLL dd, y")) : <span>Pick a date range</span>}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={1}/>
+                                    </PopoverContent>
+                                </Popover>
+                            )}
+                        </div>
+                        {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Date</TableHead><TableHead>Title</TableHead><TableHead>Category</TableHead>
+                                        <TableHead>Receipt</TableHead><TableHead className="text-right">Amount (₹)</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    )}
-                    {!isLoading && filteredExpenses.length === 0 && <p className="text-center text-muted-foreground py-4">No expenses found matching your criteria.</p>}
-                </CardContent>
-            </Card>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredExpenses.map((expense) => (
+                                        <TableRow key={expense.id}>
+                                            <TableCell>{format(parseISO(expense.date), 'PP')}</TableCell>
+                                            <TableCell className="font-medium">{expense.title}</TableCell>
+                                            <TableCell>{getCategoryName(expense.category_id)}</TableCell>
+                                            <TableCell>
+                                                {expense.receipt_url ? (<a href={expense.receipt_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline"><ExternalLink className="h-4 w-4" /></a>) : 'None'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono">₹{expense.amount.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">
+                                                <AlertDialog>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuItem asChild><Link href={`/admin/expenses/${expense.id}/voucher`}><FileText className="mr-2 h-4 w-4" /> View Voucher</Link></DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(expense)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                                                            <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. This will permanently delete the expense record for "{expense.title}".</AlertDialogDescription></AlertDialogHeader>
+                                                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(expense.id)} className="bg-destructive hover:bg-destructive/90">Continue</AlertDialogAction></AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                        {!isLoading && filteredExpenses.length === 0 && <p className="text-center text-muted-foreground py-4">No expenses found matching your criteria.</p>}
+                    </CardContent>
+                </Card>
+                <div className="lg:col-span-1">
+                    <Card>
+                        <CardHeader><CardTitle>Expenses by Category</CardTitle><CardDescription>For selected date range.</CardDescription></CardHeader>
+                        <CardContent>
+                            {isLoading ? <div className="flex justify-center items-center h-48"><Loader2 className="h-8 w-8 animate-spin" /></div> :
+                             chartData.length === 0 ? <p className="text-muted-foreground text-center py-10">No expense data for selected period.</p> :
+                             <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                                <BarChart accessibilityLayer data={chartData} layout="vertical" margin={{ left: 10 }}>
+                                    <CartesianGrid horizontal={false} />
+                                    <YAxis dataKey="name" type="category" tickLine={false} tickMargin={10} axisLine={false} className="text-xs" width={80} />
+                                    <XAxis dataKey="amount" type="number" hide />
+                                    <Tooltip cursor={{ fill: "hsl(var(--muted))" }} formatter={(value) => `₹${Number(value).toFixed(2)}`} content={<ChartTooltipContent indicator="line" />}/>
+                                    <Bar dataKey="amount" layout="vertical" fill="var(--color-amount)" radius={4} />
+                                </BarChart>
+                             </ChartContainer>
+                            }
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="sm:max-w-lg">
