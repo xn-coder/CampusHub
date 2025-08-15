@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import Editor from '@/components/shared/ck-editor';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2 } from 'lucide-react';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy } from 'lucide-react';
 import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
@@ -50,6 +50,9 @@ export default function ManageCourseContentPage() {
   const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
   const [resourceFile, setResourceFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  // Note (multi-page) state
+  const [notePages, setNotePages] = useState<string[]>(['']);
 
   // Quiz State
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
@@ -122,14 +125,20 @@ export default function ManageCourseContentPage() {
       if (resourceToEdit.type === 'quiz') {
         setQuizQuestions(JSON.parse(resourceToEdit.url_or_content || '[]'));
         setResourceUrlOrContent('');
+        setNotePages(['']);
+      } else if (resourceToEdit.type === 'note' && resourceToEdit.url_or_content.startsWith('[')) {
+        setNotePages(JSON.parse(resourceToEdit.url_or_content));
+        setResourceUrlOrContent('');
       } else {
         setResourceUrlOrContent(resourceToEdit.url_or_content);
         setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
+        setNotePages(['']);
       }
     } else {
       setResourceTitle('');
       setResourceType('note');
       setResourceUrlOrContent('');
+      setNotePages(['']);
       setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
     }
     setResourceFile(null);
@@ -150,17 +159,20 @@ export default function ManageCourseContentPage() {
     }
     
     const isFileRequired = resourceType === 'video' || resourceType === 'ebook' || resourceType === 'ppt';
-    const isUrlOrTextRequired = resourceType === 'note' || resourceType === 'webinar';
     if (isFileRequired && !resourceFile && !resourceUrlOrContent.trim()) {
       toast({ title: "Error", description: "A file upload or a URL is required for this resource type.", variant: "destructive" });
       return;
     }
-    if(isUrlOrTextRequired && !resourceUrlOrContent.trim()){
+    if (resourceType === 'webinar' && !resourceUrlOrContent.trim()){
       toast({ title: "Error", description: "Content is required for this resource type.", variant: "destructive" });
       return;
     }
     if (resourceType === 'quiz' && quizQuestions.some(q => !q.question.trim() || q.options.some(o => !o.trim()))) {
       toast({ title: "Error", description: "Please fill out all question and option fields for the quiz.", variant: "destructive" });
+      return;
+    }
+    if (resourceType === 'note' && notePages.some(p => !p.trim())) {
+      toast({ title: "Error", description: "Note pages cannot be empty.", variant: "destructive" });
       return;
     }
 
@@ -190,6 +202,8 @@ export default function ManageCourseContentPage() {
         toast({title:"File upload complete!"});
       } else if (resourceType === 'quiz') {
         finalUrlOrContent = JSON.stringify(quizQuestions);
+      } else if (resourceType === 'note') {
+        finalUrlOrContent = JSON.stringify(notePages);
       }
       
       let result;
@@ -243,6 +257,20 @@ export default function ManageCourseContentPage() {
      }
   };
   
+  // --- Note Page Handlers ---
+  const handleAddNotePage = () => setNotePages(prev => [...prev, '']);
+  const handleNotePageChange = (index: number, data: string) => {
+      const newPages = [...notePages];
+      newPages[index] = data;
+      setNotePages(newPages);
+  };
+  const handleRemoveNotePage = (index: number) => {
+      if (notePages.length > 1) {
+          setNotePages(prev => prev.filter((_, i) => i !== index));
+      }
+  };
+
+  // --- Quiz Handlers ---
   const handleAddQuizQuestion = () => {
     setQuizQuestions(prev => [...prev, { id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
   };
@@ -385,15 +413,24 @@ export default function ManageCourseContentPage() {
                                                       <Button type="button" variant="outline" size="sm" onClick={handleAddQuizQuestion}>Add Another Question</Button>
                                                   </div>
                                                 ) : resourceType === 'note' ? (
-                                                   <div>
-                                                      <Label htmlFor={`res-content-${lesson.id}`}>Content</Label>
-                                                      <div className="mt-1 prose prose-sm max-w-none dark:prose-invert [&_.ck-editor__main>.ck-editor__editable]:min-h-40 [&_.ck-editor__main>.ck-editor__editable]:bg-background [&_.ck-toolbar]:bg-muted [&_.ck-toolbar]:border-border [&_.ck-editor__main]:border-border [&_.ck-content]:text-foreground">
-                                                        <Editor
-                                                          value={resourceUrlOrContent}
-                                                          onChange={(data) => setResourceUrlOrContent(data)}
-                                                          disabled={isSubmitting}
-                                                        />
-                                                      </div>
+                                                   <div className="space-y-4 p-4 border bg-background rounded-md">
+                                                     <Label className="text-lg">Multi-page Note Editor</Label>
+                                                     {notePages.map((pageContent, index) => (
+                                                         <div key={index} className="p-3 border rounded-lg space-y-3 bg-muted/50">
+                                                            <div className="flex justify-between items-center">
+                                                                <Label>Page {index + 1}</Label>
+                                                                {notePages.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveNotePage(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button>}
+                                                            </div>
+                                                            <div className="mt-1 prose prose-sm max-w-none dark:prose-invert [&_.ck-editor__main>.ck-editor__editable]:min-h-40 [&_.ck-editor__main>.ck-editor__editable]:bg-background [&_.ck-toolbar]:bg-muted [&_.ck-toolbar]:border-border [&_.ck-editor__main]:border-border [&_.ck-content]:text-foreground">
+                                                              <Editor
+                                                                value={pageContent}
+                                                                onChange={(data) => handleNotePageChange(index, data)}
+                                                                disabled={isSubmitting}
+                                                              />
+                                                            </div>
+                                                         </div>
+                                                     ))}
+                                                     <Button type="button" variant="outline" size="sm" onClick={handleAddNotePage}><BookCopy className="mr-2 h-4 w-4"/>Add Page</Button>
                                                   </div>
                                                 ) : resourceType === 'webinar' ? (
                                                   <div>

@@ -27,15 +27,13 @@ pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
 // Function to get the correct embed URL for different services
 const getEmbedUrl = (url: string, type: CourseResourceType): string | null => {
     try {
-        if (type === 'video') {
-            if (url.includes("youtube.com/watch?v=")) {
-                const videoId = url.split('v=')[1]?.split('&')[0];
-                return `https://www.youtube.com/embed/${videoId}`;
-            }
-            if (url.includes("youtu.be/")) {
-                const videoId = url.split('youtu.be/')[1]?.split('?')[0];
-                return `https://www.youtube.com/embed/${videoId}`;
-            }
+        if (url.includes("youtube.com/watch?v=")) {
+            const videoId = url.split('v=')[1]?.split('&')[0];
+            return `https://www.youtube.com/embed/${videoId}`;
+        }
+        if (url.includes("youtu.be/")) {
+            const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+            return `https://www.youtube.com/embed/${videoId}`;
         }
         
         if (url.includes("drive.google.com/file/d/")) {
@@ -96,6 +94,10 @@ export default function CourseResourcePage() {
     const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
     const [quizResult, setQuizResult] = useState<{ score: number; total: number; passed: boolean; } | null>(null);
 
+    // Note (multi-page) state
+    const [notePages, setNotePages] = useState<string[]>([]);
+
+
     const courseId = params.courseId as string;
     const resourceId = params.resourceId as string;
 
@@ -149,6 +151,7 @@ export default function CourseResourcePage() {
             setCurrentQuestionIndex(0);
             setSelectedAnswers({});
             setQuizResult(null);
+            setNotePages([]);
 
             getCourseForViewingAction(courseId).then(async result => {
                 if (result.ok && result.course) {
@@ -208,7 +211,14 @@ export default function CourseResourcePage() {
                               } catch(e) {
                                 setError("Failed to load quiz questions.");
                               }
-                            }
+                           } else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) {
+                              try {
+                                  const pages = JSON.parse(currentResource.url_or_content) as string[];
+                                  setNotePages(pages);
+                              } catch(e) {
+                                  setError("Failed to load note content.");
+                              }
+                           }
                         }
 
                         const prevResource = currentIndex > 0 ? allLessonContents[currentIndex - 1] : null;
@@ -374,7 +384,7 @@ export default function CourseResourcePage() {
                         </div>
                     ) : (
                     <>
-                    {(resource.type === 'video' || resource.type === 'ebook') && embedUrl ? (
+                    {(resource.type === 'video' || (resource.type === 'ebook' && embedUrl)) && embedUrl ? (
                         <iframe
                             src={embedUrl}
                             title={resource.title}
@@ -395,7 +405,28 @@ export default function CourseResourcePage() {
                     ) : null}
 
                     {resource.type === 'note' && (
-                        <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: resource.url_or_content }} />
+                       <HTMLFlipBook 
+                           width={500} 
+                           height={700}
+                           size="stretch"
+                           minWidth={315}
+                           maxWidth={1000}
+                           minHeight={400}
+                           maxHeight={1533}
+                           maxShadowOpacity={0.5}
+                           showCover={true}
+                           mobileScrollSupport={true}
+                           className="mx-auto"
+                       >
+                           {notePages.map((pageHtml, index) => (
+                               <div key={index} className="bg-background p-6 border shadow-lg">
+                                   <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: pageHtml }} />
+                                   <div className="absolute bottom-2 right-2 text-xs text-muted-foreground">
+                                       Page {index + 1} of {notePages.length}
+                                   </div>
+                               </div>
+                           ))}
+                       </HTMLFlipBook>
                     )}
                     
                     {pdfFile && (
