@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay, useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { DNDCategorizationItem, DNDCategory } from '@/types';
@@ -47,13 +47,13 @@ interface CategoryLaneProps {
 }
 
 const CategoryLane: React.FC<CategoryLaneProps> = ({ id, category, items }) => {
-  const { setNodeRef } = useSortable({ id, disabled: true });
+  const { setNodeRef } = useDroppable({ id });
   return (
-    <Card ref={setNodeRef} className="flex-1 min-w-[200px]">
+    <Card className="flex-1 min-w-[200px]">
       <CardHeader>
         <CardTitle>{category.title}</CardTitle>
       </CardHeader>
-      <CardContent className="min-h-[100px] p-2 space-y-2 bg-muted/50 rounded-b-md">
+      <CardContent ref={setNodeRef} className="min-h-[100px] p-2 space-y-2 bg-muted/50 rounded-b-md">
         <SortableContext items={items} strategy={rectSortingStrategy}>
           {items.map(item => <SortableItem key={item.id} item={item} />)}
         </SortableContext>
@@ -95,30 +95,43 @@ export const CategorizationActivity: React.FC<CategorizationActivityProps> = ({ 
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    setActiveItem(null);
     const { active, over } = event;
+    setActiveItem(null);
 
     if (!over) return;
-    
-    const activeContainer = findContainer(active.id as string);
-    const overContainerId = findContainer(over.id as string);
-    
-    if (!activeContainer || !overContainerId) return;
 
-    if (activeContainer !== overContainerId) {
-        setItems(prev => {
-            const activeItems = prev[activeContainer];
-            const overItems = prev[overContainerId];
-            const activeIndex = activeItems.findIndex(i => i.id === active.id);
-            const [movedItem] = activeItems.splice(activeIndex, 1);
-            
-            // This logic is simplified; it just adds to the end.
-            // A more complex version might find `over.id`'s index in overItems to splice.
-            overItems.push(movedItem);
-            
-            return { ...prev };
-        });
+    const activeContainer = findContainer(active.id as string);
+    const overContainer = findContainer(over.id as string);
+
+    if (!activeContainer || !overContainer || activeContainer === overContainer) {
+      return;
     }
+
+    setItems((prev) => {
+      const activeItems = [...prev[activeContainer]];
+      const overItems = [...prev[overContainer]];
+      
+      const activeIndex = activeItems.findIndex((item) => item.id === active.id);
+      const overIndex = overItems.findIndex((item) => item.id === over.id);
+      
+      let newIndex;
+      if (over.id in prev) {
+        // We're dropping into a container, not an item
+        newIndex = overItems.length;
+      } else {
+        // We're dropping over an item
+        newIndex = overIndex >= 0 ? overIndex : overItems.length;
+      }
+      
+      const [movedItem] = activeItems.splice(activeIndex, 1);
+      overItems.splice(newIndex, 0, movedItem);
+
+      return {
+        ...prev,
+        [activeContainer]: activeItems,
+        [overContainer]: overItems,
+      };
+    });
   };
 
 
@@ -149,7 +162,7 @@ export const CategorizationActivity: React.FC<CategorizationActivityProps> = ({ 
       <div className="space-y-4">
         <Card className="w-full">
             <CardHeader><CardTitle>Items to Categorize</CardTitle></CardHeader>
-            <CardContent className="min-h-[100px] p-2 flex flex-wrap gap-2 bg-muted/50">
+             <CardContent ref={useDroppable({id: 'unassigned'}).setNodeRef} className="min-h-[100px] p-2 flex flex-wrap gap-2 bg-muted/50">
               <SortableContext items={items.unassigned} strategy={rectSortingStrategy}>
                 {items.unassigned.map(item => <SortableItem key={item.id} item={item} />)}
               </SortableContext>
