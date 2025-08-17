@@ -60,7 +60,7 @@ export default function ManageCourseContentPage() {
   const resourceFormRef = useRef<HTMLFormElement>(null);
 
   // DND State
-  const [dndTemplate, setDndTemplate] = useState<DNDTemplateType>('matching');
+  const [dndTemplate, setDndTemplate] = useState<DNDTemplateType>('categorization');
   const [dndInstructions, setDndInstructions] = useState('');
   const [dndCategorizationItems, setDndCategorizationItems] = useState<DNDCategorizationItem[]>([]);
   const [dndCategories, setDndCategories] = useState<DNDCategory[]>([]);
@@ -148,7 +148,7 @@ export default function ManageCourseContentPage() {
       setResourceUrlOrContent('');
       setNotePages(['']);
       setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
-      setDndTemplate('matching');
+      setDndTemplate('categorization');
       setDndInstructions('');
       setDndCategorizationItems([]);
       setDndCategories([]);
@@ -489,7 +489,7 @@ export default function ManageCourseContentPage() {
                                                   </div>
                                                 ) : resourceType === 'drag_and_drop' ? (
                                                     <div className="space-y-4 p-4 border bg-background rounded-md">
-                                                        <Label className="text-lg">Drag & Drop Activity Builder</Label>
+                                                        <Label className="text-lg">Drag &amp; Drop Activity Builder</Label>
                                                         <div><Label>Instructions</Label><Input value={dndInstructions} onChange={e => setDndInstructions(e.target.value)} placeholder="e.g., Match the capital to the country." /></div>
                                                         <div><Label>Template</Label>
                                                             <Select value={dndTemplate} onValueChange={(val) => setDndTemplate(val as DNDTemplateType)}>
