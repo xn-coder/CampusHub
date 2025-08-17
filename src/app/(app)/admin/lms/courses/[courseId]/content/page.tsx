@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useRef } from 'react';
@@ -10,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import Editor from '@/components/shared/ck-editor';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music, MousePointerSquareDashed } from 'lucide-react';
 import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole, DNDTemplateType, DNDCategorizationItem, DNDCategory } from '@/types';
 import { useToast } from "@/hooks/use-toast";
@@ -107,7 +109,7 @@ export default function ManageCourseContentPage() {
      if (!confirm("Are you sure you want to delete this resource? This cannot be undone.")) return;
      
      setIsSubmitting(true);
-     const currentContent: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
+     const currentContent: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[];
      const updatedContent = currentContent.filter(res => res.id !== resourceId);
 
      const result = await deleteCourseResourceAction(lesson.id, updatedContent);
