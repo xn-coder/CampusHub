@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
@@ -125,6 +124,13 @@ export default function CourseResourcePage() {
 
     const handleMarkAsComplete = async () => {
         const userId = localStorage.getItem('currentUserId');
+        const role = localStorage.getItem('currentUserRole');
+        
+        if (role !== 'student') {
+             toast({title: "Info", description: "Progress tracking is only available for students.", variant: "default"});
+             return;
+        }
+        
         if (!userId || !resource) return;
 
         const result = await markResourceAsCompleteAction(userId, courseId, resourceId);
@@ -168,7 +174,8 @@ export default function CourseResourcePage() {
                     setCourse(loadedCourse);
                     
                     const userId = localStorage.getItem('currentUserId');
-                    if(userId) {
+                    const role = localStorage.getItem('currentUserRole') as UserRole | null;
+                    if(userId && role === 'student') {
                         const { data: user } = await supabase.from('users').select('name, school_id').eq('id', userId).single();
                         setCurrentStudentName(user?.name || 'Valued Student');
                         if (user?.school_id) {
@@ -207,7 +214,7 @@ export default function CourseResourcePage() {
                         const currentResource = allLessonContents[currentIndex];
                         setResource(currentResource);
                         
-                        const isAdminPreviewing = (currentUserRole === 'admin' || currentUserRole === 'superadmin') && searchParams.get('preview') === 'true';
+                        const isAdminPreviewing = (role === 'admin' || role === 'superadmin') && searchParams.get('preview') === 'true';
                         
                         if (isAdminPreviewing && !resourcesInFirstLessonIds.includes(resourceId)) {
                             setIsContentLocked(true);
@@ -282,6 +289,7 @@ export default function CourseResourcePage() {
             case 'quiz': return <FileQuestion {...props} />;
             case 'ppt': return <Presentation {...props} />;
             case 'audio': return <Music {...props} />;
+            case 'drag_and_drop': return <MousePointerSquareDashed {...props} />;
             default: return null;
         }
     };
@@ -365,7 +373,7 @@ export default function CourseResourcePage() {
                             {getResourceIcon(resource.type)}
                             {resource.title}
                         </CardTitle>
-                        {!isPreviewing && (
+                        {!isPreviewing && currentUserRole === 'student' && (
                           <div className="flex items-center gap-2">
                               <Button 
                                   onClick={handleMarkAsComplete} 
@@ -604,7 +612,7 @@ export default function CourseResourcePage() {
                             </Link>
                         </Button>
                     ) : (
-                        isCompleted && overallProgress === 100 ? (
+                        currentUserRole === 'student' && isCompleted && overallProgress === 100 ? (
                            <Button asChild>
                                 <Link href={`/admin/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
                                     <Award className="mr-2 h-4 w-4" /> Course Complete! Get Certificate
@@ -624,5 +632,3 @@ export default function CourseResourcePage() {
         </div>
     );
 }
-
-    
