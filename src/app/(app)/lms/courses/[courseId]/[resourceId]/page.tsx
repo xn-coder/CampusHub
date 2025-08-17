@@ -4,7 +4,7 @@
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
-import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole } from '@/types';
+import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData } from '@/types';
 import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
+import { DragAndDropViewer } from '@/components/lms/dnd/DragAndDropViewer';
 
 // Configure the worker to be served from the public directory
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
@@ -101,6 +102,9 @@ export default function CourseResourcePage() {
     // Note (multi-page) state
     const [notePages, setNotePages] = useState<string[]>([]);
 
+    // DND Activity State
+    const [dndActivityData, setDndActivityData] = useState<DNDActivityData | null>(null);
+
 
     const courseId = params.courseId as string;
     const resourceId = params.resourceId as string;
@@ -121,7 +125,7 @@ export default function CourseResourcePage() {
 
     const handleMarkAsComplete = async () => {
         const userId = localStorage.getItem('currentUserId');
-        if (!userId) return;
+        if (!userId || !resource) return;
 
         const result = await markResourceAsCompleteAction(userId, courseId, resourceId);
         if (result.ok) {
@@ -156,6 +160,7 @@ export default function CourseResourcePage() {
             setSelectedAnswers({});
             setQuizResult(null);
             setNotePages([]);
+            setDndActivityData(null);
 
             getCourseForViewingAction(courseId).then(async result => {
                 if (result.ok && result.course) {
@@ -222,6 +227,13 @@ export default function CourseResourcePage() {
                               } catch(e) {
                                   setError("Failed to load note content.");
                               }
+                           } else if (currentResource.type === 'drag_and_drop') {
+                                try {
+                                    const data = JSON.parse(currentResource.url_or_content) as DNDActivityData;
+                                    setDndActivityData(data);
+                                } catch(e) {
+                                    setError("Failed to load interactive activity.");
+                                }
                            }
                         }
 
@@ -357,7 +369,7 @@ export default function CourseResourcePage() {
                           <div className="flex items-center gap-2">
                               <Button 
                                   onClick={handleMarkAsComplete} 
-                                  disabled={isCompleted} 
+                                  disabled={isCompleted || resource.type === 'quiz' || resource.type === 'drag_and_drop'} 
                                   size="sm"
                                   variant={isCompleted ? "secondary" : "default"}
                                   className="shrink-0"
@@ -503,6 +515,10 @@ export default function CourseResourcePage() {
                         </Button>
                     )}
                     
+                    {resource.type === 'drag_and_drop' && dndActivityData && (
+                        <DragAndDropViewer activityData={dndActivityData} onComplete={handleMarkAsComplete} />
+                    )}
+
                     {resource.type === 'quiz' && quizQuestions.length > 0 && (
                         <div className="p-2 sm:p-4">
                             {!quizResult ? (
