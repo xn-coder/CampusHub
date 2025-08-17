@@ -10,8 +10,8 @@ import { Label } from '@/components/ui/label';
 import Editor from '@/components/shared/ck-editor';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music } from 'lucide-react';
-import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole } from '@/types';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music, MousePointerSquareDashed } from 'lucide-react';
+import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole, DNDTemplateType, DNDCategorizationItem, DNDCategory } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
 import Link from 'next/link';
@@ -26,7 +26,7 @@ import {
 import { supabase } from '@/lib/supabaseClient';
 import { Progress } from '@/components/ui/progress';
 
-type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt' | 'audio';
+type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop';
 
 export default function ManageCourseContentPage() {
   const params = useParams();
@@ -56,6 +56,13 @@ export default function ManageCourseContentPage() {
   // Quiz State
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
   const resourceFormRef = useRef<HTMLFormElement>(null);
+
+  // DND State
+  const [dndTemplate, setDndTemplate] = useState<DNDTemplateType>('matching');
+  const [dndInstructions, setDndInstructions] = useState('');
+  const [dndCategorizationItems, setDndCategorizationItems] = useState<DNDCategorizationItem[]>([]);
+  const [dndCategories, setDndCategories] = useState<DNDCategory[]>([]);
+
 
   const fetchCourseData = async () => {
     setIsLoading(true);
@@ -139,6 +146,10 @@ export default function ManageCourseContentPage() {
       setResourceUrlOrContent('');
       setNotePages(['']);
       setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
+      setDndTemplate('matching');
+      setDndInstructions('');
+      setDndCategorizationItems([]);
+      setDndCategories([]);
     }
     setResourceFile(null);
   };
@@ -174,6 +185,10 @@ export default function ManageCourseContentPage() {
       toast({ title: "Error", description: "Note pages cannot be empty.", variant: "destructive" });
       return;
     }
+    if (resourceType === 'drag_and_drop' && (!dndInstructions.trim() || dndCategories.length === 0 || dndCategorizationItems.length === 0)) {
+        toast({ title: "Error", description: "For Drag & Drop, instructions, categories, and items are required.", variant: "destructive"});
+        return;
+    }
 
     setIsSubmitting(true);
     setUploadProgress(0);
@@ -203,6 +218,15 @@ export default function ManageCourseContentPage() {
         finalUrlOrContent = JSON.stringify(quizQuestions);
       } else if (resourceType === 'note') {
         finalUrlOrContent = JSON.stringify(notePages);
+      } else if (resourceType === 'drag_and_drop') {
+          const dndData = {
+              template: dndTemplate,
+              title: resourceTitle.trim(),
+              instructions: dndInstructions,
+              categories: dndCategories,
+              categorizationItems: dndCategorizationItems,
+          };
+          finalUrlOrContent = JSON.stringify(dndData);
       }
       
       let result;
@@ -299,6 +323,27 @@ export default function ManageCourseContentPage() {
     }
   };
 
+  // --- DND Handlers ---
+  const handleAddCategory = () => setDndCategories(prev => [...prev, { id: uuidv4(), title: '' }]);
+  const handleCategoryChange = (index: number, value: string) => {
+      const newCategories = [...dndCategories];
+      newCategories[index].title = value;
+      setDndCategories(newCategories);
+  };
+  const handleRemoveCategory = (index: number) => {
+      const categoryToRemove = dndCategories[index];
+      setDndCategories(prev => prev.filter((_, i) => i !== index));
+      setDndCategorizationItems(prev => prev.filter(item => item.category !== categoryToRemove.id));
+  };
+
+  const handleAddCategorizationItem = () => setDndCategorizationItems(prev => [...prev, { id: uuidv4(), content: '', category: '' }]);
+  const handleCategorizationItemChange = (index: number, field: 'content' | 'category', value: string) => {
+      const newItems = [...dndCategorizationItems];
+      newItems[index][field] = value;
+      setDndCategorizationItems(newItems);
+  };
+  const handleRemoveCategorizationItem = (index: number) => setDndCategorizationItems(prev => prev.filter((_, i) => i !== index));
+
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin"/> <span className="ml-2">Loading course details...</span></div>;
@@ -317,6 +362,7 @@ export default function ManageCourseContentPage() {
       case 'quiz': return <FileQuestion {...props} />;
       case 'ppt': return <Presentation {...props} />;
       case 'audio': return <Music {...props} />;
+      case 'drag_and_drop': return <MousePointerSquareDashed {...props} />;
       default: return null;
     }
   };
@@ -381,6 +427,7 @@ export default function ManageCourseContentPage() {
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="ppt" id={`type-ppt-${lesson.id}`} /><Label htmlFor={`type-ppt-${lesson.id}`}>PPT</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="webinar" id={`type-webinar-${lesson.id}`} /><Label htmlFor={`type-webinar-${lesson.id}`}>Webinar</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="quiz" id={`type-quiz-${lesson.id}`} /><Label htmlFor={`type-quiz-${lesson.id}`}>Quiz</Label></div>
+                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="drag_and_drop" id={`type-dnd-${lesson.id}`} /><Label htmlFor={`type-dnd-${lesson.id}`}>Drag & Drop</Label></div>
                                                    </RadioGroup>
                                                 </div>
                                                 <div>
@@ -438,6 +485,48 @@ export default function ManageCourseContentPage() {
                                                       <Label htmlFor={`res-content-${lesson.id}`}>Webinar URL</Label>
                                                       <Input id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='https://...' type="url" required disabled={isSubmitting} />
                                                   </div>
+                                                ) : resourceType === 'drag_and_drop' ? (
+                                                    <div className="space-y-4 p-4 border bg-background rounded-md">
+                                                        <Label className="text-lg">Drag & Drop Activity Builder</Label>
+                                                        <div><Label>Instructions</Label><Input value={dndInstructions} onChange={e => setDndInstructions(e.target.value)} placeholder="e.g., Match the capital to the country." /></div>
+                                                        <div><Label>Template</Label>
+                                                            <Select value={dndTemplate} onValueChange={(val) => setDndTemplate(val as DNDTemplateType)}>
+                                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="matching">Matching Pairs</SelectItem>
+                                                                    <SelectItem value="sequencing">Sequencing</SelectItem>
+                                                                    <SelectItem value="categorization">Categorization</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        {dndTemplate === 'categorization' && (
+                                                            <div className="space-y-4">
+                                                                <div>
+                                                                    <Label>Categories</Label>
+                                                                    <div className="space-y-2">
+                                                                        {dndCategories.map((cat, index) => (<div key={cat.id} className="flex gap-2"><Input value={cat.title} onChange={e => handleCategoryChange(index, e.target.value)} placeholder={`Category ${index+1}`} /><Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCategory(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button></div>))}
+                                                                    </div>
+                                                                    <Button type="button" variant="outline" size="sm" onClick={handleAddCategory} className="mt-2">Add Category</Button>
+                                                                </div>
+                                                                <div>
+                                                                    <Label>Items</Label>
+                                                                    <div className="space-y-2">
+                                                                        {dndCategorizationItems.map((item, index) => (
+                                                                            <div key={item.id} className="flex gap-2 items-center">
+                                                                                <Input value={item.content} onChange={e => handleCategorizationItemChange(index, 'content', e.target.value)} placeholder={`Item ${index+1}`} />
+                                                                                <Select value={item.category} onValueChange={val => handleCategorizationItemChange(index, 'category', val)}>
+                                                                                    <SelectTrigger><SelectValue placeholder="Assign Category"/></SelectTrigger>
+                                                                                    <SelectContent>{dndCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
+                                                                                </Select>
+                                                                                <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCategorizationItem(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                    <Button type="button" variant="outline" size="sm" onClick={handleAddCategorizationItem} className="mt-2">Add Item</Button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 ) : ['video', 'ebook', 'ppt', 'audio'].includes(resourceType) ? (
                                                   <div className="space-y-4">
                                                       <div>
