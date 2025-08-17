@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -9,12 +9,13 @@ import type { DNDSequencingItem } from '@/types';
 import { Button } from '@/components/ui/button';
 
 interface SortableItemProps {
-  item: DNDSequencingItem;
+  id: string;
+  content: string;
   isCorrect?: boolean;
 }
 
-const SortableItem: React.FC<SortableItemProps> = ({ item, isCorrect }) => {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
+const SortableItem: React.FC<SortableItemProps> = ({ id, content, isCorrect }) => {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -25,7 +26,7 @@ const SortableItem: React.FC<SortableItemProps> = ({ item, isCorrect }) => {
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`p-3 bg-background border rounded-md cursor-grab active:cursor-grabbing ${colorClass}`}>
-      {item.content}
+      {content}
     </div>
   );
 };
@@ -36,8 +37,13 @@ interface SequencingActivityProps {
 }
 
 export const SequencingActivity: React.FC<SequencingActivityProps> = ({ items, onComplete }) => {
-  const [shuffledItems, setShuffledItems] = useState(() => [...items].sort(() => Math.random() - 0.5));
-  const [results, setResults] = useState<(boolean | undefined)[]>(new Array(items.length).fill(undefined));
+  const [shuffledItems, setShuffledItems] = useState(() => 
+    [...items].sort(() => Math.random() - 0.5)
+  );
+  
+  const [results, setResults] = useState<(boolean | undefined)[]>(
+    new Array(items.length).fill(undefined)
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -69,13 +75,14 @@ export const SequencingActivity: React.FC<SequencingActivityProps> = ({ items, o
       <div className="max-w-md mx-auto space-y-2">
         <SortableContext items={shuffledItems} strategy={verticalListSortingStrategy}>
           {shuffledItems.map((item, index) => (
-            <SortableItem key={item.id} item={item} isCorrect={results[index]} />
+            <SortableItem key={item.id} id={item.id} content={item.content} isCorrect={results[index]} />
           ))}
         </SortableContext>
       </div>
       <div className="mt-6 flex flex-col items-center gap-4">
         <Button onClick={checkAnswers}>Check My Order</Button>
         {results.includes(false) && <p className="text-destructive font-bold">The order is incorrect. Please try again!</p>}
+        {results.every(r => r === true) && <p className="text-green-600 font-bold">Correct! Great job!</p>}
       </div>
     </DndContext>
   );

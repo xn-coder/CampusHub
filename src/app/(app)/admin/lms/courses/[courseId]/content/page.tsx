@@ -13,7 +13,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music, MousePointerSquareDashed } from 'lucide-react';
-import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole, DNDTemplateType, DNDCategorizationItem, DNDCategory } from '@/types';
+import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole, DNDTemplateType, DNDCategorizationItem, DNDCategory, DNDMatchingItem, DNDSequencingItem } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
 import Link from 'next/link';
@@ -64,6 +64,8 @@ export default function ManageCourseContentPage() {
   const [dndInstructions, setDndInstructions] = useState('');
   const [dndCategorizationItems, setDndCategorizationItems] = useState<DNDCategorizationItem[]>([]);
   const [dndCategories, setDndCategories] = useState<DNDCategory[]>([]);
+  const [dndMatchingItems, setDndMatchingItems] = useState<DNDMatchingItem[]>([{ id: uuidv4(), prompt: '', match: '' }]);
+  const [dndSequencingItems, setDndSequencingItems] = useState<DNDSequencingItem[]>([{ id: uuidv4(), content: '' }]);
 
 
   const fetchCourseData = async () => {
@@ -127,31 +129,32 @@ export default function ManageCourseContentPage() {
     setIsResourceFormOpen(lessonId);
     setEditingResource(resourceToEdit || null);
     
+    // Reset all form states first
+    setResourceTitle(''); setResourceType('note'); setResourceUrlOrContent('');
+    setNotePages(['']);
+    setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
+    setDndTemplate('categorization'); setDndInstructions(''); setDndCategorizationItems([]); setDndCategories([]);
+    setDndMatchingItems([{ id: uuidv4(), prompt: '', match: '' }]);
+    setDndSequencingItems([{ id: uuidv4(), content: '' }]);
+
     if (resourceToEdit) {
       setResourceTitle(resourceToEdit.title);
       setResourceType(resourceToEdit.type as ResourceTabKey);
       if (resourceToEdit.type === 'quiz') {
         setQuizQuestions(JSON.parse(resourceToEdit.url_or_content || '[]'));
-        setResourceUrlOrContent('');
-        setNotePages(['']);
       } else if (resourceToEdit.type === 'note' && resourceToEdit.url_or_content.startsWith('[')) {
         setNotePages(JSON.parse(resourceToEdit.url_or_content));
-        setResourceUrlOrContent('');
+      } else if (resourceToEdit.type === 'drag_and_drop') {
+          const dndData = JSON.parse(resourceToEdit.url_or_content || '{}');
+          setDndTemplate(dndData.template || 'categorization');
+          setDndInstructions(dndData.instructions || '');
+          setDndCategorizationItems(dndData.categorizationItems || []);
+          setDndCategories(dndData.categories || []);
+          setDndMatchingItems(dndData.matchingItems || [{ id: uuidv4(), prompt: '', match: '' }]);
+          setDndSequencingItems(dndData.sequencingItems || [{ id: uuidv4(), content: '' }]);
       } else {
         setResourceUrlOrContent(resourceToEdit.url_or_content);
-        setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
-        setNotePages(['']);
       }
-    } else {
-      setResourceTitle('');
-      setResourceType('note');
-      setResourceUrlOrContent('');
-      setNotePages(['']);
-      setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
-      setDndTemplate('categorization');
-      setDndInstructions('');
-      setDndCategorizationItems([]);
-      setDndCategories([]);
     }
     setResourceFile(null);
   };
@@ -170,6 +173,7 @@ export default function ManageCourseContentPage() {
       return;
     }
     
+    // --- Validation Section ---
     const isFileRequired = ['video', 'ebook', 'ppt', 'audio'].includes(resourceType);
     if (isFileRequired && !resourceFile && !resourceUrlOrContent.trim()) {
       toast({ title: "Error", description: "A file upload or a URL is required for this resource type.", variant: "destructive" });
@@ -187,10 +191,21 @@ export default function ManageCourseContentPage() {
       toast({ title: "Error", description: "Note pages cannot be empty.", variant: "destructive" });
       return;
     }
-    if (resourceType === 'drag_and_drop' && (!dndInstructions.trim() || dndCategories.length === 0 || dndCategorizationItems.length === 0)) {
-        toast({ title: "Error", description: "For Drag & Drop, instructions, categories, and items are required.", variant: "destructive"});
-        return;
+    if (resourceType === 'drag_and_drop') {
+        if (!dndInstructions.trim()) {
+            toast({ title: "Error", description: "Instructions are required for Drag & Drop activities.", variant: "destructive"}); return;
+        }
+        if (dndTemplate === 'categorization' && (dndCategories.length === 0 || dndCategorizationItems.length === 0)) {
+            toast({ title: "Error", description: "For Categorization, at least one category and one item are required.", variant: "destructive"}); return;
+        }
+        if (dndTemplate === 'matching' && dndMatchingItems.some(p => !p.prompt.trim() || !p.match.trim())) {
+            toast({ title: "Error", description: "For Matching Pairs, all prompts and matches must be filled.", variant: "destructive"}); return;
+        }
+        if (dndTemplate === 'sequencing' && dndSequencingItems.some(item => !item.content.trim())) {
+            toast({ title: "Error", description: "For Sequencing, all item content fields must be filled.", variant: "destructive"}); return;
+        }
     }
+
 
     setIsSubmitting(true);
     setUploadProgress(0);
@@ -225,8 +240,10 @@ export default function ManageCourseContentPage() {
               template: dndTemplate,
               title: resourceTitle.trim(),
               instructions: dndInstructions,
-              categories: dndCategories,
-              categorizationItems: dndCategorizationItems,
+              // Only include the data for the selected template
+              ...(dndTemplate === 'categorization' && { categories: dndCategories, categorizationItems: dndCategorizationItems }),
+              ...(dndTemplate === 'matching' && { matchingItems: dndMatchingItems }),
+              ...(dndTemplate === 'sequencing' && { sequencingItems: dndSequencingItems }),
           };
           finalUrlOrContent = JSON.stringify(dndData);
       }
@@ -345,6 +362,27 @@ export default function ManageCourseContentPage() {
       setDndCategorizationItems(newItems);
   };
   const handleRemoveCategorizationItem = (index: number) => setDndCategorizationItems(prev => prev.filter((_, i) => i !== index));
+  
+  const handleAddMatchingPair = () => setDndMatchingItems(prev => [...prev, {id: uuidv4(), prompt: '', match: ''}]);
+  const handleMatchingItemChange = (index: number, field: 'prompt'|'match', value: string) => {
+      const newItems = [...dndMatchingItems];
+      newItems[index][field] = value;
+      setDndMatchingItems(newItems);
+  };
+  const handleRemoveMatchingPair = (index: number) => {
+      if(dndMatchingItems.length > 1) setDndMatchingItems(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  const handleAddSequencingItem = () => setDndSequencingItems(prev => [...prev, {id: uuidv4(), content: ''}]);
+  const handleSequencingItemChange = (index: number, value: string) => {
+      const newItems = [...dndSequencingItems];
+      newItems[index].content = value;
+      setDndSequencingItems(newItems);
+  };
+  const handleRemoveSequencingItem = (index: number) => {
+      if(dndSequencingItems.length > 1) setDndSequencingItems(prev => prev.filter((_, i) => i !== index));
+  };
+
 
 
   if (isLoading) {
@@ -425,9 +463,9 @@ export default function ManageCourseContentPage() {
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="note" id={`type-note-${lesson.id}`} /><Label htmlFor={`type-note-${lesson.id}`}>Note</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="video" id={`type-video-${lesson.id}`} /><Label htmlFor={`type-video-${lesson.id}`}>Video</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="audio" id={`type-audio-${lesson.id}`} /><Label htmlFor={`type-audio-${lesson.id}`}>Audio</Label></div>
-                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="ebook" id={`type-ebook-${lesson.id}`} /><Label htmlFor={`type-ebook-${lesson.id}`}>E-book</Label></div>
+                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="ebook" id={`type-ebook-${lesson.id}`} /><Label htmlFor={`type-ebook-${lesson.id}`}>E-book/PDF</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="ppt" id={`type-ppt-${lesson.id}`} /><Label htmlFor={`type-ppt-${lesson.id}`}>PPT</Label></div>
-                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="webinar" id={`type-webinar-${lesson.id}`} /><Label htmlFor={`type-webinar-${lesson.id}`}>Webinar</Label></div>
+                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="webinar" id={`type-webinar-${lesson.id}`} /><Label htmlFor={`type-webinar-${lesson.id}`}>Webinar Link</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="quiz" id={`type-quiz-${lesson.id}`} /><Label htmlFor={`type-quiz-${lesson.id}`}>Quiz</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="drag_and_drop" id={`type-dnd-${lesson.id}`} /><Label htmlFor={`type-dnd-${lesson.id}`}>Drag & Drop</Label></div>
                                                    </RadioGroup>
@@ -437,7 +475,77 @@ export default function ManageCourseContentPage() {
                                                     <Input id={`res-title-${lesson.id}`} value={resourceTitle} onChange={e => setResourceTitle(e.target.value)} placeholder="e.g., Chapter 1 PDF" required disabled={isSubmitting} />
                                                 </div>
 
-                                                {resourceType === 'quiz' ? (
+                                                {/* --- DYNAMIC FORM SECTION --- */}
+                                                
+                                                {resourceType === 'drag_and_drop' ? (
+                                                    <div className="space-y-4 p-4 border bg-background rounded-md">
+                                                        <Label className="text-lg">Drag &amp; Drop Activity Builder</Label>
+                                                        <div><Label>Instructions</Label><Input value={dndInstructions} onChange={e => setDndInstructions(e.target.value)} placeholder="e.g., Match the capital to the country." /></div>
+                                                        <div><Label>Template</Label>
+                                                            <Select value={dndTemplate} onValueChange={(val) => setDndTemplate(val as DNDTemplateType)}>
+                                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="matching">Matching Pairs</SelectItem>
+                                                                    <SelectItem value="sequencing">Sequencing</SelectItem>
+                                                                    <SelectItem value="categorization">Categorization</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        {dndTemplate === 'categorization' && (
+                                                            <div className="space-y-4 p-2 border rounded-md">
+                                                                <div>
+                                                                    <Label>Categories</Label>
+                                                                    <div className="space-y-2">
+                                                                        {dndCategories.map((cat, index) => (<div key={cat.id} className="flex gap-2"><Input value={cat.title} onChange={e => handleCategoryChange(index, e.target.value)} placeholder={`Category ${index+1}`} /><Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCategory(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button></div>))}
+                                                                    </div>
+                                                                    <Button type="button" variant="outline" size="sm" onClick={handleAddCategory} className="mt-2">Add Category</Button>
+                                                                </div>
+                                                                <div>
+                                                                    <Label>Items</Label>
+                                                                    <div className="space-y-2">
+                                                                        {dndCategorizationItems.map((item, index) => (
+                                                                            <div key={item.id} className="flex gap-2 items-center">
+                                                                                <Input value={item.content} onChange={e => handleCategorizationItemChange(index, 'content', e.target.value)} placeholder={`Item ${index+1}`} />
+                                                                                <Select value={item.category} onValueChange={val => handleCategorizationItemChange(index, 'category', val)}>
+                                                                                    <SelectTrigger><SelectValue placeholder="Assign Category"/></SelectTrigger>
+                                                                                    <SelectContent>{dndCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
+                                                                                </Select>
+                                                                                <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCategorizationItem(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                    <Button type="button" variant="outline" size="sm" onClick={handleAddCategorizationItem} className="mt-2">Add Item</Button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {dndTemplate === 'matching' && (
+                                                            <div className="space-y-2 p-2 border rounded-md">
+                                                                <Label>Matching Pairs</Label>
+                                                                {dndMatchingItems.map((pair, index) => (
+                                                                    <div key={pair.id} className="flex gap-2 items-center">
+                                                                        <Input placeholder="Prompt" value={pair.prompt} onChange={e => handleMatchingItemChange(index, 'prompt', e.target.value)} />
+                                                                        <Input placeholder="Correct Match" value={pair.match} onChange={e => handleMatchingItemChange(index, 'match', e.target.value)} />
+                                                                        <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveMatchingPair(index)} disabled={dndMatchingItems.length <= 1}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                                    </div>
+                                                                ))}
+                                                                <Button type="button" variant="outline" size="sm" onClick={handleAddMatchingPair} className="mt-2">Add Pair</Button>
+                                                            </div>
+                                                        )}
+                                                        {dndTemplate === 'sequencing' && (
+                                                            <div className="space-y-2 p-2 border rounded-md">
+                                                                <Label>Sequencing Items (in correct order)</Label>
+                                                                {dndSequencingItems.map((item, index) => (
+                                                                    <div key={item.id} className="flex gap-2 items-center">
+                                                                        <span className="font-bold">{index + 1}.</span>
+                                                                        <Input placeholder="Item Content" value={item.content} onChange={e => handleSequencingItemChange(index, e.target.value)} />
+                                                                        <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveSequencingItem(index)} disabled={dndSequencingItems.length <= 1}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                                    </div>
+                                                                ))}
+                                                                <Button type="button" variant="outline" size="sm" onClick={handleAddSequencingItem} className="mt-2">Add Step</Button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : resourceType === 'quiz' ? (
                                                   <div className="space-y-4 p-4 border bg-background rounded-md">
                                                     <Label className="text-lg">Quiz Builder</Label>
                                                       {quizQuestions.map((q, qIndex) => (
@@ -487,48 +595,6 @@ export default function ManageCourseContentPage() {
                                                       <Label htmlFor={`res-content-${lesson.id}`}>Webinar URL</Label>
                                                       <Input id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='https://...' type="url" required disabled={isSubmitting} />
                                                   </div>
-                                                ) : resourceType === 'drag_and_drop' ? (
-                                                    <div className="space-y-4 p-4 border bg-background rounded-md">
-                                                        <Label className="text-lg">Drag &amp; Drop Activity Builder</Label>
-                                                        <div><Label>Instructions</Label><Input value={dndInstructions} onChange={e => setDndInstructions(e.target.value)} placeholder="e.g., Match the capital to the country." /></div>
-                                                        <div><Label>Template</Label>
-                                                            <Select value={dndTemplate} onValueChange={(val) => setDndTemplate(val as DNDTemplateType)}>
-                                                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="matching">Matching Pairs</SelectItem>
-                                                                    <SelectItem value="sequencing">Sequencing</SelectItem>
-                                                                    <SelectItem value="categorization">Categorization</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
-                                                        {dndTemplate === 'categorization' && (
-                                                            <div className="space-y-4">
-                                                                <div>
-                                                                    <Label>Categories</Label>
-                                                                    <div className="space-y-2">
-                                                                        {dndCategories.map((cat, index) => (<div key={cat.id} className="flex gap-2"><Input value={cat.title} onChange={e => handleCategoryChange(index, e.target.value)} placeholder={`Category ${index+1}`} /><Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCategory(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button></div>))}
-                                                                    </div>
-                                                                    <Button type="button" variant="outline" size="sm" onClick={handleAddCategory} className="mt-2">Add Category</Button>
-                                                                </div>
-                                                                <div>
-                                                                    <Label>Items</Label>
-                                                                    <div className="space-y-2">
-                                                                        {dndCategorizationItems.map((item, index) => (
-                                                                            <div key={item.id} className="flex gap-2 items-center">
-                                                                                <Input value={item.content} onChange={e => handleCategorizationItemChange(index, 'content', e.target.value)} placeholder={`Item ${index+1}`} />
-                                                                                <Select value={item.category} onValueChange={val => handleCategorizationItemChange(index, 'category', val)}>
-                                                                                    <SelectTrigger><SelectValue placeholder="Assign Category"/></SelectTrigger>
-                                                                                    <SelectContent>{dndCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
-                                                                                </Select>
-                                                                                <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCategorizationItem(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                    <Button type="button" variant="outline" size="sm" onClick={handleAddCategorizationItem} className="mt-2">Add Item</Button>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
                                                 ) : ['video', 'ebook', 'ppt', 'audio'].includes(resourceType) ? (
                                                   <div className="space-y-4">
                                                       <div>
