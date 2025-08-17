@@ -9,7 +9,7 @@ export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio';
+export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 export type TCRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type SubscriptionPlan = 'free' | 'monthly' | 'yearly' | 'one_time';
@@ -433,7 +433,7 @@ export interface CourseWithEnrollmentStatus extends Course {
 // used to structure content in a JSON blob within a 'lesson' type CourseResource.
 export interface LessonContentResource {
     id: string;
-    type: 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio';
+    type: CourseResourceType;
     title: string;
     // For 'note', it holds a JSON string of page content: string[]
     // For 'quiz', it holds a JSON string of QuizQuestion[]
@@ -463,6 +463,43 @@ export interface CourseResource {
   created_at?: string;
   updated_at?: string;
 }
+
+// --- Drag and Drop Activity Types ---
+export type DNDTemplateType = 'matching' | 'sequencing' | 'categorization';
+
+export interface DNDMatchingItem {
+  id: string;
+  prompt: string; // The item to be matched
+  match: string;  // The correct match
+}
+
+export interface DNDSequencingItem {
+  id: string;
+  content: string; // The text of the step/item
+}
+
+export interface DNDCategorizationItem {
+  id: string;
+  content: string;
+  category: string; // The ID of the category it belongs to
+}
+
+export interface DNDCategory {
+  id: string;
+  title: string;
+}
+
+export interface DNDActivityData {
+  template: DNDTemplateType;
+  title: string;
+  instructions: string;
+  // Based on the template, one of these will be populated
+  matchingItems?: DNDMatchingItem[];
+  sequencingItems?: DNDSequencingItem[];
+  categorizationItems?: DNDCategorizationItem[];
+  categories?: DNDCategory[];
+}
+
 
 export interface CourseActivationCode {
   id: string;
