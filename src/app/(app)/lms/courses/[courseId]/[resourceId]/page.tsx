@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music } from 'lucide-react';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
