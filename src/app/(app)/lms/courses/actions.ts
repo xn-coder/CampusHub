@@ -387,11 +387,19 @@ export async function updateResourceInLessonAction(
             return { ok: false, message: "Parent lesson not found." };
         }
 
-        let currentContent: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[];
+        let currentContent: LessonContentResource[] = [];
+        if(lesson.url_or_content && lesson.url_or_content.trim().startsWith('[')) {
+            try {
+                currentContent = JSON.parse(lesson.url_or_content);
+            } catch (e) {
+                console.warn("Failed to parse existing lesson content, will create new list.", e);
+            }
+        }
+        
         const resourceIndex = currentContent.findIndex(r => r.id === resourceId);
 
         if (resourceIndex === -1) {
-            currentContent.push(updatedResource);
+             currentContent.push(updatedResource);
         } else {
             currentContent[resourceIndex] = updatedResource;
         }

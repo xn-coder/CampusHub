@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, type FormEvent, useMemo } from 'react';
+import { useState, useEffect, type FormEvent, useMemo, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData } from '@/types';
@@ -166,6 +166,24 @@ export default function CourseResourcePage() {
     }, [searchParams]);
 
     // Timer effect
+    const handleSubmitQuiz = useCallback(() => {
+        let score = 0;
+        quizQuestions.forEach((q, index) => {
+            if (selectedAnswers[index] === q.correctAnswerIndex) {
+                score++;
+            }
+        });
+        
+        const percentage = quizQuestions.length > 0 ? (score / quizQuestions.length) * 100 : 0;
+        const passed = percentage >= 70; // Pass at 70% or more
+
+        setQuizResult({ score, total: quizQuestions.length, passed });
+        
+        if (passed) {
+             handleMarkAsComplete();
+        }
+    }, [quizQuestions, selectedAnswers]);
+
     useEffect(() => {
         if (resource?.duration_minutes && timeLeft === null) {
             setTimeLeft(resource.duration_minutes * 60);
@@ -188,7 +206,7 @@ export default function CourseResourcePage() {
             if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [resource, timeLeft]);
+    }, [resource, timeLeft, handleSubmitQuiz]);
 
 
     useEffect(() => {
@@ -350,24 +368,6 @@ export default function CourseResourcePage() {
     const handlePreviousQuestion = () => {
         if (currentQuestionIndex > 0) {
             setCurrentQuestionIndex(prev => prev - 1);
-        }
-    };
-
-    const handleSubmitQuiz = () => {
-        let score = 0;
-        quizQuestions.forEach((q, index) => {
-            if (selectedAnswers[index] === q.correctAnswerIndex) {
-                score++;
-            }
-        });
-        
-        const percentage = quizQuestions.length > 0 ? (score / quizQuestions.length) * 100 : 0;
-        const passed = percentage >= 70; // Pass at 70% or more
-
-        setQuizResult({ score, total: quizQuestions.length, passed });
-        
-        if (passed) {
-             handleMarkAsComplete();
         }
     };
 
