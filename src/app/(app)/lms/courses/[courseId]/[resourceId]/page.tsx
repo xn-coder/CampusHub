@@ -5,7 +5,7 @@ import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo } from 'lucide-react';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -108,6 +108,10 @@ export default function CourseResourcePage() {
 
     // DND Activity State
     const [dndActivityData, setDndActivityData] = useState<DNDActivityData | null>(null);
+    
+    // Timer state
+    const [timeLeft, setTimeLeft] = useState<number | null>(null);
+    const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
 
     const courseId = params.courseId as string;
@@ -161,6 +165,31 @@ export default function CourseResourcePage() {
         }
     }, [searchParams]);
 
+    // Timer effect
+    useEffect(() => {
+        if (resource?.duration_minutes && timeLeft === null) {
+            setTimeLeft(resource.duration_minutes * 60);
+        }
+
+        if (timeLeft !== null && timeLeft > 0 && !timerIntervalRef.current) {
+            timerIntervalRef.current = setInterval(() => {
+                setTimeLeft(prev => (prev !== null ? prev - 1 : 0));
+            }, 1000);
+        }
+
+        if (timeLeft === 0) {
+            if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+            toast({ title: "Time's Up!", description: "The timer for this activity has ended.", variant: "destructive" });
+            if (resource?.type === 'quiz') handleSubmitQuiz();
+        }
+
+        return () => {
+            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [resource, timeLeft]);
+
 
     useEffect(() => {
         if (courseId && resourceId) {
@@ -172,6 +201,9 @@ export default function CourseResourcePage() {
             setQuizResult(null);
             setNotePages([]);
             setDndActivityData(null);
+            setTimeLeft(null);
+            if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
 
             getCourseForViewingAction(courseId).then(async result => {
                 if (result.ok && result.course) {
@@ -343,6 +375,9 @@ export default function CourseResourcePage() {
         setCurrentQuestionIndex(0);
         setSelectedAnswers({});
         setQuizResult(null);
+        if (resource?.duration_minutes) {
+          setTimeLeft(resource.duration_minutes * 60);
+        }
     };
 
     if (isLoading) {
@@ -372,6 +407,20 @@ export default function CourseResourcePage() {
                     </Button>
                 }
             />
+            {timeLeft !== null && (
+                <Card className="sticky top-16 z-10 bg-background/95 backdrop-blur-sm">
+                    <CardContent className="p-3">
+                        <div className="flex justify-center items-center gap-2 font-mono text-lg font-semibold">
+                            <Clock className="h-5 w-5"/>
+                            <span>Time Left:</span>
+                            <span className={timeLeft < 60 ? 'text-destructive' : ''}>
+                                {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:
+                                {(timeLeft % 60).toString().padStart(2, '0')}
+                            </span>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
             <Card>
                 <CardHeader>
                     <div className="flex justify-between items-center gap-2 flex-wrap">
@@ -393,7 +442,7 @@ export default function CourseResourcePage() {
                               </Button>
                               {isCompleted && (
                                   <Button asChild size="sm">
-                                      <Link href={`/admin/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
+                                      <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
                                           <Award className="mr-2 h-4 w-4" /> Get Certificate
                                       </Link>
                                   </Button>
@@ -620,7 +669,7 @@ export default function CourseResourcePage() {
                     ) : (
                         currentUserRole === 'student' && isCompleted && overallProgress === 100 ? (
                            <Button asChild>
-                                <Link href={`/admin/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
+                                <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(course.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
                                     <Award className="mr-2 h-4 w-4" /> Course Complete! Get Certificate
                                 </Link>
                             </Button>

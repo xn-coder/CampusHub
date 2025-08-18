@@ -12,7 +12,7 @@ import Editor from '@/components/shared/ck-editor';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music, MousePointerSquareDashed } from 'lucide-react';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music, MousePointerSquareDashed, ListVideo, Clock } from 'lucide-react';
 import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole, DNDTemplateType, DNDCategorizationItem, DNDCategory, DNDMatchingItem, DNDSequencingItem } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
@@ -28,7 +28,7 @@ import {
 import { supabase } from '@/lib/supabaseClient';
 import { Progress } from '@/components/ui/progress';
 
-type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop';
+type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist';
 
 export default function ManageCourseContentPage() {
   const params = useParams();
@@ -51,6 +51,8 @@ export default function ManageCourseContentPage() {
   const [resourceUrlOrContent, setResourceUrlOrContent] = useState('');
   const [resourceFile, setResourceFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [durationMinutes, setDurationMinutes] = useState<number | ''>('');
+
 
   // Note (multi-page) state
   const [notePages, setNotePages] = useState<string[]>(['']);
@@ -131,6 +133,7 @@ export default function ManageCourseContentPage() {
     
     // Reset all form states first
     setResourceTitle(''); setResourceType('note'); setResourceUrlOrContent('');
+    setDurationMinutes('');
     setNotePages(['']);
     setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
     setDndTemplate('categorization'); setDndInstructions(''); setDndCategorizationItems([]); setDndCategories([]);
@@ -140,6 +143,8 @@ export default function ManageCourseContentPage() {
     if (resourceToEdit) {
       setResourceTitle(resourceToEdit.title);
       setResourceType(resourceToEdit.type as ResourceTabKey);
+      setDurationMinutes(resourceToEdit.duration_minutes ?? '');
+
       if (resourceToEdit.type === 'quiz') {
         setQuizQuestions(JSON.parse(resourceToEdit.url_or_content || '[]'));
       } else if (resourceToEdit.type === 'note' && resourceToEdit.url_or_content.startsWith('[')) {
@@ -179,7 +184,7 @@ export default function ManageCourseContentPage() {
       toast({ title: "Error", description: "A file upload or a URL is required for this resource type.", variant: "destructive" });
       return;
     }
-    if (resourceType === 'webinar' && !resourceUrlOrContent.trim()){
+    if ((resourceType === 'webinar' || resourceType === 'youtube_playlist') && !resourceUrlOrContent.trim()){
       toast({ title: "Error", description: "Content is required for this resource type.", variant: "destructive" });
       return;
     }
@@ -249,20 +254,26 @@ export default function ManageCourseContentPage() {
       }
       
       let result;
+      const resourceData: LessonContentResource = {
+        id: editingResource?.id || uuidv4(),
+        type: resourceType,
+        title: resourceTitle.trim(),
+        url_or_content: finalUrlOrContent,
+        duration_minutes: durationMinutes !== '' ? Number(durationMinutes) : undefined,
+      };
+
       if (editingResource) {
-        result = await updateResourceInLessonAction(lesson.id, editingResource.id, {
-          id: editingResource.id,
-          type: resourceType,
-          title: resourceTitle.trim(),
-          url_or_content: finalUrlOrContent
-        });
+        result = await updateResourceInLessonAction(lesson.id, editingResource.id, resourceData);
       } else {
         const formData = new FormData();
         formData.append('lessonId', lesson.id);
         formData.append('courseId', courseId);
-        formData.append('resourceTitle', resourceTitle);
-        formData.append('resourceType', resourceType);
-        formData.append('urlOrContent', finalUrlOrContent);
+        formData.append('resourceTitle', resourceData.title);
+        formData.append('resourceType', resourceData.type);
+        formData.append('urlOrContent', resourceData.url_or_content);
+        if (resourceData.duration_minutes) {
+            formData.append('duration_minutes', String(resourceData.duration_minutes));
+        }
         result = await addResourceToLessonAction(formData);
       }
 
@@ -403,6 +414,7 @@ export default function ManageCourseContentPage() {
       case 'ppt': return <Presentation {...props} />;
       case 'audio': return <Music {...props} />;
       case 'drag_and_drop': return <MousePointerSquareDashed {...props} />;
+      case 'youtube_playlist': return <ListVideo {...props} />;
       default: return null;
     }
   };
@@ -439,6 +451,7 @@ export default function ManageCourseContentPage() {
                                            <div className="flex items-center min-w-0">
                                                 {getResourceIcon(res.type)}
                                                 <span className="truncate" title={res.title}>{res.title}</span>
+                                                {res.duration_minutes && <Clock className="h-3 w-3 text-muted-foreground ml-2 shrink-0" />}
                                            </div>
                                            <div className="flex items-center gap-1">
                                                 <Button variant="ghost" size="icon" onClick={() => handleOpenResourceForm(lesson.id, res)} disabled={isSubmitting}>
@@ -462,6 +475,7 @@ export default function ManageCourseContentPage() {
                                                    <RadioGroup value={resourceType} onValueChange={(val) => setResourceType(val as ResourceTabKey)} className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="note" id={`type-note-${lesson.id}`} /><Label htmlFor={`type-note-${lesson.id}`}>Note</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="video" id={`type-video-${lesson.id}`} /><Label htmlFor={`type-video-${lesson.id}`}>Video</Label></div>
+                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="youtube_playlist" id={`type-yt-playlist-${lesson.id}`} /><Label htmlFor={`type-yt-playlist-${lesson.id}`}>YouTube Playlist</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="audio" id={`type-audio-${lesson.id}`} /><Label htmlFor={`type-audio-${lesson.id}`}>Audio</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="ebook" id={`type-ebook-${lesson.id}`} /><Label htmlFor={`type-ebook-${lesson.id}`}>E-book/PDF</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="ppt" id={`type-ppt-${lesson.id}`} /><Label htmlFor={`type-ppt-${lesson.id}`}>PPT</Label></div>
@@ -470,9 +484,17 @@ export default function ManageCourseContentPage() {
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="drag_and_drop" id={`type-dnd-${lesson.id}`} /><Label htmlFor={`type-dnd-${lesson.id}`}>Drag & Drop</Label></div>
                                                    </RadioGroup>
                                                 </div>
-                                                <div>
-                                                    <Label htmlFor={`res-title-${lesson.id}`}>Resource Title</Label>
-                                                    <Input id={`res-title-${lesson.id}`} value={resourceTitle} onChange={e => setResourceTitle(e.target.value)} placeholder="e.g., Chapter 1 PDF" required disabled={isSubmitting} />
+                                                <div className="grid md:grid-cols-2 gap-4">
+                                                  <div>
+                                                      <Label htmlFor={`res-title-${lesson.id}`}>Resource Title</Label>
+                                                      <Input id={`res-title-${lesson.id}`} value={resourceTitle} onChange={e => setResourceTitle(e.target.value)} placeholder="e.g., Chapter 1 PDF" required disabled={isSubmitting} />
+                                                  </div>
+                                                  {['quiz', 'drag_and_drop'].includes(resourceType) && (
+                                                    <div>
+                                                        <Label htmlFor={`res-duration-${lesson.id}`}>Timer / Duration (in minutes)</Label>
+                                                        <Input id={`res-duration-${lesson.id}`} type="number" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value === '' ? '' : parseInt(e.target.value, 10))} placeholder="Optional, e.g., 10" disabled={isSubmitting}/>
+                                                    </div>
+                                                  )}
                                                 </div>
 
                                                 {/* --- DYNAMIC FORM SECTION --- */}
@@ -590,9 +612,9 @@ export default function ManageCourseContentPage() {
                                                      ))}
                                                      <Button type="button" variant="outline" size="sm" onClick={handleAddNotePage}><BookCopy className="mr-2 h-4 w-4"/>Add Page</Button>
                                                   </div>
-                                                ) : resourceType === 'webinar' ? (
+                                                ) : (resourceType === 'webinar' || resourceType === 'youtube_playlist') ? (
                                                   <div>
-                                                      <Label htmlFor={`res-content-${lesson.id}`}>Webinar URL</Label>
+                                                      <Label htmlFor={`res-content-${lesson.id}`}>{resourceType === 'webinar' ? 'Webinar URL' : 'YouTube Playlist URL'}</Label>
                                                       <Input id={`res-content-${lesson.id}`} value={resourceUrlOrContent} onChange={e => setResourceUrlOrContent(e.target.value)} placeholder='https://...' type="url" required disabled={isSubmitting} />
                                                   </div>
                                                 ) : ['video', 'ebook', 'ppt', 'audio'].includes(resourceType) ? (

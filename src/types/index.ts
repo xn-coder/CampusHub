@@ -439,6 +439,7 @@ export interface LessonContentResource {
     // For 'quiz', it holds a JSON string of QuizQuestion[]
     // For others, it holds a URL or HTML content.
     url_or_content: string;
+    duration_minutes?: number;
 }
 
 export interface QuizQuestion {
