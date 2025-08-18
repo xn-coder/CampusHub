@@ -186,7 +186,7 @@ export default function CourseResourcePage() {
 
     useEffect(() => {
         if (resource?.duration_minutes && timeLeft === null) {
-            setTimeLeft(resource.duration_minutes * 60);
+            setTimeLeft(resource.duration_minutes); // Use seconds directly
         }
 
         if (timeLeft !== null && timeLeft > 0 && !timerIntervalRef.current) {
@@ -376,7 +376,7 @@ export default function CourseResourcePage() {
         setSelectedAnswers({});
         setQuizResult(null);
         if (resource?.duration_minutes) {
-          setTimeLeft(resource.duration_minutes * 60);
+          setTimeLeft(resource.duration_minutes);
         }
     };
 

@@ -491,8 +491,8 @@ export default function ManageCourseContentPage() {
                                                   </div>
                                                   {['quiz', 'drag_and_drop'].includes(resourceType) && (
                                                     <div>
-                                                        <Label htmlFor={`res-duration-${lesson.id}`}>Timer / Duration (in minutes)</Label>
-                                                        <Input id={`res-duration-${lesson.id}`} type="number" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value === '' ? '' : parseInt(e.target.value, 10))} placeholder="Optional, e.g., 10" disabled={isSubmitting}/>
+                                                        <Label htmlFor={`res-duration-${lesson.id}`}>Timer / Duration (in seconds)</Label>
+                                                        <Input id={`res-duration-${lesson.id}`} type="number" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value === '' ? '' : parseInt(e.target.value, 10))} placeholder="Optional, e.g., 600" disabled={isSubmitting}/>
                                                     </div>
                                                   )}
                                                 </div>
