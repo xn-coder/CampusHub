@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, type FormEvent, useMemo, useRef } from 'react';
+import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData } from '@/types';
@@ -118,7 +118,7 @@ export default function CourseResourcePage() {
     const resourceId = params.resourceId as string;
 
 
-    const calculateProgress = (completedResources: Record<string, boolean>) => {
+    const calculateProgress = useCallback((completedResources: Record<string, boolean>) => {
         if (!course) return 0;
         const lessons = course.resources.filter(r => r.type === 'note');
         if (lessons.length === 0) return 0;
@@ -129,9 +129,9 @@ export default function CourseResourcePage() {
         if (allLessonContents.length === 0) return 0;
         const completedCount = allLessonContents.filter(res => completedResources[res.id]).length;
         return Math.round((completedCount / allLessonContents.length) * 100);
-    };
+    }, [course]);
 
-    const handleMarkAsComplete = async () => {
+    const handleMarkAsComplete = useCallback(async () => {
         const userId = localStorage.getItem('currentUserId');
         const role = localStorage.getItem('currentUserRole');
         
@@ -152,7 +152,7 @@ export default function CourseResourcePage() {
         } else {
             toast({title: "Error", description: result.message, variant: "destructive"});
         }
-    };
+    }, [resource, courseId, resourceId, toast, calculateProgress]);
 
 
     useEffect(() => {
@@ -165,7 +165,7 @@ export default function CourseResourcePage() {
         }
     }, [searchParams]);
 
-    // Timer effect
+    
     const handleSubmitQuiz = useCallback(() => {
         let score = 0;
         quizQuestions.forEach((q, index) => {
@@ -184,9 +184,10 @@ export default function CourseResourcePage() {
         }
     }, [quizQuestions, selectedAnswers, handleMarkAsComplete]);
 
+    // Timer effect
     useEffect(() => {
         if (resource?.duration_minutes && timeLeft === null) {
-            setTimeLeft(resource.duration_minutes); // Use seconds directly
+            setTimeLeft(resource.duration_minutes);
         }
 
         if (timeLeft !== null && timeLeft > 0 && !timerIntervalRef.current) {
@@ -205,8 +206,7 @@ export default function CourseResourcePage() {
         return () => {
             if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [resource, timeLeft]);
+    }, [resource, timeLeft, handleSubmitQuiz, toast]);
 
 
     useEffect(() => {
@@ -317,7 +317,7 @@ export default function CourseResourcePage() {
                 setIsLoading(false);
             });
         }
-    }, [courseId, resourceId, searchParams, currentUserRole]);
+    }, [courseId, resourceId, searchParams, currentUserRole, calculateProgress]);
 
     const pdfFile = useMemo(() => (
       (resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf'))
