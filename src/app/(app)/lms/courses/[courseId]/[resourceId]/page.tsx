@@ -5,7 +5,7 @@ import { useState, useEffect, type FormEvent, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed } from 'lucide-react';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,10 @@ const getEmbedUrl = (url: string, type: CourseResourceType): string | null => {
         if (url.includes("youtu.be/")) {
             const videoId = url.split('youtu.be/')[1]?.split('?')[0];
             return `https://www.youtube.com/embed/${videoId}`;
+        }
+        if (url.includes("youtube.com/playlist?list=")) {
+            const listId = url.split('list=')[1]?.split('&')[0];
+            return `https://www.youtube.com/embed/videoseries?list=${listId}`;
         }
         if (url.includes("open.spotify.com/track/")) {
             const trackId = url.split('track/')[1]?.split('?')[0];
@@ -291,6 +295,7 @@ export default function CourseResourcePage() {
             case 'ppt': return <Presentation {...props} />;
             case 'audio': return <Music {...props} />;
             case 'drag_and_drop': return <MousePointerSquareDashed {...props} />;
+            case 'youtube_playlist': return <ListVideo {...props} />;
             default: return null;
         }
     };
@@ -374,7 +379,7 @@ export default function CourseResourcePage() {
                             {getResourceIcon(resource.type)}
                             {resource.title}
                         </CardTitle>
-                        {!isPreviewing && currentUserRole === 'student' && (
+                        {currentUserRole === 'student' && !isPreviewing && (
                           <div className="flex items-center gap-2">
                               <Button 
                                   onClick={handleMarkAsComplete} 
@@ -410,7 +415,7 @@ export default function CourseResourcePage() {
                         </div>
                     ) : (
                     <>
-                    {((resource.type === 'video' || resource.type === 'ebook') && embedUrl?.includes('drive.google.com')) || (resource.type === 'video' && embedUrl?.includes('youtube.com')) ? (
+                    {(resource.type === 'youtube_playlist' || (resource.type === 'video' || resource.type === 'ebook') && embedUrl?.includes('drive.google.com')) || (resource.type === 'video' && embedUrl?.includes('youtube.com')) ? (
                         <iframe
                             src={embedUrl}
                             title={resource.title}
