@@ -182,7 +182,7 @@ export default function CourseResourcePage() {
         if (passed) {
              handleMarkAsComplete();
         }
-    }, [quizQuestions, selectedAnswers]);
+    }, [quizQuestions, selectedAnswers, handleMarkAsComplete]);
 
     useEffect(() => {
         if (resource?.duration_minutes && timeLeft === null) {
@@ -206,7 +206,7 @@ export default function CourseResourcePage() {
             if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [resource, timeLeft, handleSubmitQuiz]);
+    }, [resource, timeLeft]);
 
 
     useEffect(() => {
