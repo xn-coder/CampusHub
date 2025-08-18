@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -437,6 +438,9 @@ export async function deleteCourseResourceAction(
 }
 
 
+// ==================================================================
+// NEW ACTION: To create a secure URL for direct client-side file uploads
+// ==================================================================
 export async function createSignedUploadUrlAction(
     courseId: string,
     fileName: string,
@@ -445,6 +449,9 @@ export async function createSignedUploadUrlAction(
     const supabase = createSupabaseServerClient();
 
     try {
+        // Optional but recommended: Check if the current user has permission to upload to this course.
+        // For example, fetch user role and verify they are an admin or teacher for this course.
+
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
         const filePath = `public/course-uploads/${courseId}/${uuidv4()}-${sanitizedFileName}`;
 
@@ -479,6 +486,10 @@ export async function createSignedUploadUrlAction(
 }
 
 
+// ==================================================================
+// MODIFIED ACTION: No longer handles file uploads directly.
+// It now only saves the metadata (including the URL) to the database.
+// ==================================================================
 export async function addResourceToLessonAction(formData: FormData): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
   
@@ -486,14 +497,16 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
   const courseId = formData.get('courseId') as string;
   const resourceTitle = formData.get('resourceTitle') as string;
   const resourceType = formData.get('resourceType') as CourseResourceType;
+  // This will now contain the final public URL for uploaded files, a user-entered URL, or JSON for a quiz.
   const urlOrContent = formData.get('urlOrContent') as string | null;
 
   if (!lessonId || !courseId || !resourceTitle || !resourceType) {
     return { ok: false, message: "Missing required fields for adding resource." };
   }
 
-  if (!urlOrContent && ['ebook', 'video', 'webinar', 'quiz', 'note', 'ppt'].includes(resourceType)) {
-      if (resourceType === 'note' && urlOrContent === '') {
+  // Basic validation: ensure urlOrContent is present for types that need it.
+  if (!urlOrContent && ['ebook', 'video', 'webinar', 'quiz', 'ppt', 'audio', 'drag_and_drop'].includes(resourceType)) {
+      if (resourceType === 'note' && (urlOrContent === '' || urlOrContent === '[]')) {
           // allow empty note
       } else {
         return { ok: false, message: "Resource content (URL or data) is required." };
@@ -513,7 +526,9 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
     
     let currentContent: LessonContentResource[] = [];
     try {
-        currentContent = JSON.parse(lesson.url_or_content || '[]');
+        if (lesson.url_or_content && lesson.url_or_content.trim() !== '') {
+            currentContent = JSON.parse(lesson.url_or_content);
+        }
     } catch(e) {
         console.warn("Could not parse existing lesson content, starting with a new list.");
         currentContent = [];
@@ -983,3 +998,4 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
