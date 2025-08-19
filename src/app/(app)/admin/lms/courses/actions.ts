@@ -387,14 +387,22 @@ export async function updateResourceInLessonAction(
             return { ok: false, message: "Parent lesson not found." };
         }
 
-        let currentContent: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]');
+        let currentContent: LessonContentResource[] = [];
+        if(lesson.url_or_content && lesson.url_or_content.trim().startsWith('[')) {
+            try {
+                currentContent = JSON.parse(lesson.url_or_content);
+            } catch (e) {
+                console.warn("Failed to parse existing lesson content, will create new list.", e);
+            }
+        }
+        
         const resourceIndex = currentContent.findIndex(r => r.id === resourceId);
 
         if (resourceIndex === -1) {
-            return { ok: false, message: "Resource to update not found within the lesson." };
+             currentContent.push(updatedResource);
+        } else {
+            currentContent[resourceIndex] = updatedResource;
         }
-
-        currentContent[resourceIndex] = updatedResource;
 
         const { error: updateError } = await supabase
             .from('lms_course_resources')
@@ -497,17 +505,18 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
   const courseId = formData.get('courseId') as string;
   const resourceTitle = formData.get('resourceTitle') as string;
   const resourceType = formData.get('resourceType') as CourseResourceType;
-  // This will now contain the final public URL for uploaded files, a user-entered URL, or JSON for a quiz.
   const urlOrContent = formData.get('urlOrContent') as string | null;
+  const durationMinutes = formData.get('duration_minutes') as string | null;
+
 
   if (!lessonId || !courseId || !resourceTitle || !resourceType) {
     return { ok: false, message: "Missing required fields for adding resource." };
   }
 
   // Basic validation: ensure urlOrContent is present for types that need it.
-  if (!urlOrContent && ['ebook', 'video', 'webinar', 'quiz', 'ppt', 'audio', 'drag_and_drop'].includes(resourceType)) {
-      if (resourceType === 'note' && (urlOrContent === '' || urlOrContent === '[]')) {
-          // allow empty note
+  if (!urlOrContent && ['ebook', 'video', 'webinar', 'quiz', 'ppt', 'audio', 'drag_and_drop', 'youtube_playlist'].includes(resourceType)) {
+      if ((resourceType === 'note' || resourceType === 'drag_and_drop') && (urlOrContent === '' || urlOrContent === '[]' || urlOrContent === '{}')) {
+          // allow empty note/dnd
       } else {
         return { ok: false, message: "Resource content (URL or data) is required." };
       }
@@ -538,7 +547,8 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
         id: uuidv4(),
         type: resourceType,
         title: resourceTitle.trim(),
-        url_or_content: (urlOrContent || '').trim()
+        url_or_content: (urlOrContent || '').trim(),
+        duration_minutes: durationMinutes ? Number(durationMinutes) : undefined,
     };
 
     const updatedContent = [...currentContent, newResource];
@@ -998,4 +1008,3 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
-
