@@ -59,18 +59,16 @@ export async function checkUserEnrollmentForCourseViewAction(
   const supabase = createSupabaseServerClient();
 
   try {
-    // Superadmin has full access to all course content, not considered a student/teacher enrollment
+    // Superadmin has full access to all course content.
     if (userRole === 'superadmin') {
       return { ok: true, isEnrolled: true }; 
     }
     
-    // For admins, they are considered "enrolled" for full access IF they own the course OR it's assigned to their school.
-    // They are NEVER considered enrolled if they are specifically previewing.
+    // Admins have full access if they are previewing OR if they own the course/it's assigned to their school.
     if (userRole === 'admin') {
       if (preview) {
-        return { ok: true, isEnrolled: false, message: "Admin is in preview mode." };
+        return { ok: true, isEnrolled: true, message: "Admin is in preview mode." };
       }
-      // Check if admin is from the school the course is assigned to.
       const { data: userSchool, error: userSchoolError } = await supabase.from('users').select('school_id').eq('id', userId).single();
       if (userSchoolError || !userSchool) return { ok: false, isEnrolled: false, message: "Could not verify admin's school." };
       
