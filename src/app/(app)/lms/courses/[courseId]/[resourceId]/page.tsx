@@ -157,17 +157,6 @@ export default function CourseResourcePage() {
     }, [resource, courseId, resourceId, toast, calculateProgress]);
 
 
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-          const previewParam = searchParams.get('preview') === 'true';
-          const role = localStorage.getItem('currentUserRole') as UserRole | null;
-          setCurrentUserRole(role);
-          const isAdmin = role === 'admin' || role === 'superadmin';
-          setIsPreviewing(isAdmin && previewParam);
-        }
-    }, [searchParams]);
-
-    
     const handleSubmitQuiz = useCallback(() => {
         let score = 0;
         quizQuestions.forEach((q, index) => {
@@ -188,15 +177,14 @@ export default function CourseResourcePage() {
 
     // Timer effect
     useEffect(() => {
-      const duration = resource?.duration_minutes;
-      if (duration && timeLeft === null) {
-          setTimeLeft(duration);
+      if (resource?.duration_minutes && timeLeft === null) {
+          setTimeLeft(resource.duration_minutes);
       }
   
       if (timeLeft !== null && timeLeft > 0 && !timerIntervalRef.current) {
           timerIntervalRef.current = setInterval(() => {
               setTimeLeft(prev => (prev !== null && prev > 0 ? prev - 1 : 0));
-          }, 1000);
+          }, 1000 * 60); // Decrement every minute
       }
   
       if (timeLeft === 0) {
@@ -333,7 +321,7 @@ export default function CourseResourcePage() {
             }
             fetchDataAndCheckAccess();
         }
-    }, [courseId, resourceId, searchParams]);
+    }, [courseId, resourceId, searchParams, calculateProgress]);
 
     const pdfFile = useMemo(() => (
       (resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf'))
@@ -392,7 +380,7 @@ export default function CourseResourcePage() {
         setSelectedAnswers({});
         setQuizResult(null);
         if (resource?.duration_minutes) {
-          setTimeLeft(resource.duration_minutes);
+          setTimeLeft(resource.duration_minutes * 60); // Reset timer in seconds
         }
     };
 
