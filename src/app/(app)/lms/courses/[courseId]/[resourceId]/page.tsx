@@ -333,7 +333,7 @@ export default function CourseResourcePage() {
             }
             fetchDataAndCheckAccess();
         }
-    }, [courseId, resourceId, searchParams, calculateProgress]);
+    }, [courseId, resourceId, searchParams]);
 
     const pdfFile = useMemo(() => (
       (resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf'))
@@ -712,4 +712,3 @@ export default function CourseResourcePage() {
         </div>
     );
 }
-
