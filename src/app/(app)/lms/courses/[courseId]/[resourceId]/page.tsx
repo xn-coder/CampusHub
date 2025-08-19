@@ -5,7 +5,7 @@ import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } fro
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock } from 'lucide-react';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
 import { DragAndDropViewer } from '@/components/lms/dnd/DragAndDropViewer';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
 
 // Configure the worker to be served from the public directory
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
@@ -711,3 +712,4 @@ export default function CourseResourcePage() {
         </div>
     );
 }
+
