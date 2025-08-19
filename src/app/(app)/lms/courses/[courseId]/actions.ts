@@ -64,7 +64,6 @@ export async function checkUserEnrollmentForCourseViewAction(
       return { ok: true, isEnrolled: true }; 
     }
     
-    // For other roles (student/teacher), they must be explicitly enrolled.
     let userProfileId: string | null = null;
     if (userRole === 'student') {
       const { data: studentProfile, error: studentError } = await supabase
@@ -88,8 +87,14 @@ export async function checkUserEnrollmentForCourseViewAction(
       userProfileId = teacherProfile.id;
     }
 
+    // Admins who are not in preview mode might be checking a course's status without being enrolled.
+    // This is not an error; they are simply not enrolled. Let the UI handle it.
+    if (userRole === 'admin' && !preview) {
+        return { ok: true, isEnrolled: false };
+    }
+
     if (!userProfileId) {
-      return { ok: false, isEnrolled: false, message: "User profile ID could not be determined for enrollment check." };
+      return { ok: false, isEnrolled: false, message: "User profile id could not be determined for enrollment check." };
     }
     
     const enrollmentTable = userRole === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';

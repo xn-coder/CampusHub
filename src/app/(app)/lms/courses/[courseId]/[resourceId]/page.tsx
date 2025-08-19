@@ -4,7 +4,7 @@
 import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
-import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData } from '@/types';
+import type { LessonContentResource, QuizQuestion, Course, CourseResourceType, CourseResource, UserRole, DNDActivityData } from '@/types';
 import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
@@ -215,109 +215,117 @@ export default function CourseResourcePage() {
             timerIntervalRef.current = null;
 
             async function fetchDataAndCheckAccess() {
-                const userId = localStorage.getItem('currentUserId');
-                const role = localStorage.getItem('currentUserRole') as UserRole | null;
-                const isPreview = searchParams.get('preview') === 'true';
+                try {
 
-                if (!userId || !role) {
-                    setError("User session not found. Please log in.");
-                    setIsLoading(false);
-                    return;
-                }
-
-                // First, check access rights.
-                const accessResult = await checkUserEnrollmentForCourseViewAction(courseId, userId, role, isPreview);
-                if (!accessResult.ok || !accessResult.isEnrolled) {
-                    setError(accessResult.message || "You are not enrolled in this course.");
-                    setIsLoading(false);
-                    return;
-                }
-                
-                // If access is granted, fetch the course content.
-                const result = await getCourseForViewingAction(courseId);
-                if (result.ok && result.course) {
-                    const loadedCourse = result.course;
-                    setCourse(loadedCourse);
-                    
-                    if(role === 'student') {
-                        const { data: user } = await supabase.from('users').select('name, school_id').eq('id', userId).single();
-                        setCurrentStudentName(user?.name || 'Valued Student');
-                        if (user?.school_id) {
-                            const { data: school } = await supabase.from('schools').select('name').eq('id', user.school_id).single();
-                            setCurrentSchoolName(school?.name || 'CampusHub');
-                        } else {
-                            setCurrentSchoolName('CampusHub');
-                        }
-                        
-                        const completionResult = await getCompletionStatusAction(userId, courseId);
-                        if(completionResult.ok && completionResult.completedResources){
-                           setIsCompleted(!!completionResult.completedResources[resourceId]);
-                           setOverallProgress(calculateProgress(completionResult.completedResources));
-                        }
+                    const userId = localStorage.getItem('currentUserId');
+                    const role = localStorage.getItem('currentUserRole') as UserRole | null;
+                    const isPreview = searchParams.get('preview') === 'true';
+    
+                    if (!userId || !role) {
+                        setError("User session not found. Please log in.");
+                        setIsLoading(false);
+                        return;
                     }
-
-                    const lessons = loadedCourse.resources.filter(r => r.type === 'note');
-                    const allLessonContents = lessons.flatMap(lesson => {
-                        try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } 
-                        catch { return []; }
-                    });
+    
+                    // First, check access rights.
+                    const accessResult = await checkUserEnrollmentForCourseViewAction(courseId, userId, role, isPreview);
+                    if (!accessResult.ok || !accessResult.isEnrolled) {
+                        setError(accessResult.message || "You are not enrolled in this course.");
+                        setIsLoading(false);
+                        return;
+                    }
                     
-                    const currentIndex = allLessonContents.findIndex(r => r.id === resourceId);
-
-                    if (currentIndex !== -1) {
-                        const currentResource = allLessonContents[currentIndex];
-                        setResource(currentResource);
+                    // If access is granted, fetch the course content.
+                    const result = await getCourseForViewingAction(courseId);
+                    if (result.ok && result.course) {
+                        const loadedCourse = result.course;
+                        setCourse(loadedCourse);
                         
-                        const isAdminPreviewing = (role === 'admin' || role === 'superadmin') && isPreview;
-                        
-                        const firstLessonContents = lessons.length > 0 ? (JSON.parse(lessons[0].url_or_content || '[]') as LessonContentResource[]) : [];
-                        const isResourceInFirstLesson = firstLessonContents.some(r => r.id === resourceId);
-
-                        // Lock content if it's a preview and not in the first lesson
-                        if (isAdminPreviewing && !isResourceInFirstLesson) {
-                            setIsContentLocked(true);
-                        } else {
-                           setIsContentLocked(false);
-                           if (currentResource.type === 'quiz') {
-                              try {
-                                const questions = JSON.parse(currentResource.url_or_content) as QuizQuestion[];
-                                setQuizQuestions(questions);
-                              } catch(e) {
-                                setError("Failed to load quiz questions.");
-                              }
-                           } else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) {
-                              try {
-                                  const pages = JSON.parse(currentResource.url_or_content) as string[];
-                                  setNotePages(pages);
-                              } catch(e) {
-                                  setError("Failed to load note content.");
-                              }
-                           } else if (currentResource.type === 'drag_and_drop') {
-                                try {
-                                    const data = JSON.parse(currentResource.url_or_content) as DNDActivityData;
-                                    setDndActivityData(data);
-                                } catch(e) {
-                                    setError("Failed to load interactive activity.");
-                                }
-                           }
+                        if(role === 'student') {
+                            const { data: user } = await supabase.from('users').select('name, school_id').eq('id', userId).single();
+                            setCurrentStudentName(user?.name || 'Valued Student');
+                            if (user?.school_id) {
+                                const { data: school } = await supabase.from('schools').select('name').eq('id', user.school_id).single();
+                                setCurrentSchoolName(school?.name || 'CampusHub');
+                            } else {
+                                setCurrentSchoolName('CampusHub');
+                            }
+                            
+                            const completionResult = await getCompletionStatusAction(userId, courseId);
+                            if(completionResult.ok && completionResult.completedResources){
+                               setIsCompleted(!!completionResult.completedResources[resourceId]);
+                               setOverallProgress(calculateProgress(completionResult.completedResources));
+                            }
                         }
-
-                        const prevResource = currentIndex > 0 ? allLessonContents[currentIndex - 1] : null;
-                        const nextResource = currentIndex < allLessonContents.length - 1 ? allLessonContents[currentIndex + 1] : null;
-
-                        setPreviousResourceId(prevResource ? prevResource.id : null);
-                        setPreviousResourceTitle(prevResource ? prevResource.title : null);
-                        setNextResourceId(nextResource ? nextResource.id : null);
-                        setNextResourceTitle(nextResource ? nextResource.title : null);
-
+    
+                        const lessons = loadedCourse.resources.filter(r => r.type === 'note');
+                        const allLessonContents = lessons.flatMap(lesson => {
+                            try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } 
+                            catch { return []; }
+                        });
+                        
+                        const currentIndex = allLessonContents.findIndex(r => r.id === resourceId);
+    
+                        if (currentIndex !== -1) {
+                            const currentResource = allLessonContents[currentIndex];
+                            setResource(currentResource);
+                            
+                            const isAdminPreviewing = (role === 'admin' || role === 'superadmin') && isPreview;
+                            
+                            const firstLessonContents = lessons.length > 0 ? (JSON.parse(lessons[0].url_or_content || '[]') as LessonContentResource[]) : [];
+                            const isResourceInFirstLesson = firstLessonContents.some(r => r.id === resourceId);
+    
+                            // Lock content if it's a preview and not in the first lesson
+                            if (isAdminPreviewing && !isResourceInFirstLesson) {
+                                setIsContentLocked(true);
+                            } else {
+                               setIsContentLocked(false);
+                               if (currentResource.type === 'quiz') {
+                                  try {
+                                    const questions = JSON.parse(currentResource.url_or_content) as QuizQuestion[];
+                                    setQuizQuestions(questions);
+                                  } catch(e) {
+                                    setError("Failed to load quiz questions.");
+                                  }
+                               } else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) {
+                                  try {
+                                      const pages = JSON.parse(currentResource.url_or_content) as string[];
+                                      setNotePages(pages);
+                                  } catch(e) {
+                                      setError("Failed to load note content.");
+                                  }
+                               } else if (currentResource.type === 'drag_and_drop') {
+                                    try {
+                                        const data = JSON.parse(currentResource.url_or_content) as DNDActivityData;
+                                        setDndActivityData(data);
+                                    } catch(e) {
+                                        setError("Failed to load interactive activity.");
+                                    }
+                               }
+                            }
+    
+                            const prevResource = currentIndex > 0 ? allLessonContents[currentIndex - 1] : null;
+                            const nextResource = currentIndex < allLessonContents.length - 1 ? allLessonContents[currentIndex + 1] : null;
+    
+                            setPreviousResourceId(prevResource ? prevResource.id : null);
+                            setPreviousResourceTitle(prevResource ? prevResource.title : null);
+                            setNextResourceId(nextResource ? nextResource.id : null);
+                            setNextResourceTitle(nextResource ? nextResource.title : null);
+    
+                        } else {
+                            setError("The requested resource could not be found in this course.");
+                            setResource(null);
+                        }
                     } else {
-                        setError("The requested resource could not be found in this course.");
-                        setResource(null);
+                        setError(result.message || "Failed to load course details.");
                     }
-                } else {
-                    setError(result.message || "Failed to load course details.");
+                    setIsLoading(false);
+                } catch (e) {
+                    console.error("Failed to fetch course resource:", e);
+                    setError("An unexpected error occurred while loading the resource.");
+                } finally {
+                    setIsLoading(false); // This will now run every time
                 }
-                setIsLoading(false);
             }
             fetchDataAndCheckAccess();
         }
