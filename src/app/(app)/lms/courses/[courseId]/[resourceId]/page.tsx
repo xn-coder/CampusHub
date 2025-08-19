@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
 import { DragAndDropViewer } from '@/components/lms/dnd/DragAndDropViewer';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 // Configure the worker to be served from the public directory
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
@@ -186,26 +187,27 @@ export default function CourseResourcePage() {
 
     // Timer effect
     useEffect(() => {
-        if (resource?.duration_minutes && timeLeft === null) {
-            setTimeLeft(resource.duration_minutes);
-        }
-
-        if (timeLeft !== null && timeLeft > 0 && !timerIntervalRef.current) {
-            timerIntervalRef.current = setInterval(() => {
-                setTimeLeft(prev => (prev !== null ? prev - 1 : 0));
-            }, 1000);
-        }
-
-        if (timeLeft === 0) {
-            if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-            timerIntervalRef.current = null;
-            toast({ title: "Time's Up!", description: "The timer for this activity has ended.", variant: "destructive" });
-            if (resource?.type === 'quiz') handleSubmitQuiz();
-        }
-
-        return () => {
-            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-        };
+      const duration = resource?.duration_minutes;
+      if (duration && timeLeft === null) {
+          setTimeLeft(duration);
+      }
+  
+      if (timeLeft !== null && timeLeft > 0 && !timerIntervalRef.current) {
+          timerIntervalRef.current = setInterval(() => {
+              setTimeLeft(prev => (prev !== null && prev > 0 ? prev - 1 : 0));
+          }, 1000);
+      }
+  
+      if (timeLeft === 0) {
+          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+          toast({ title: "Time's Up!", description: "The timer for this activity has ended.", variant: "destructive" });
+          if (resource?.type === 'quiz') handleSubmitQuiz();
+      }
+  
+      return () => {
+          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      };
     }, [resource, timeLeft, handleSubmitQuiz, toast]);
 
 
@@ -223,14 +225,32 @@ export default function CourseResourcePage() {
             if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
             timerIntervalRef.current = null;
 
-            getCourseForViewingAction(courseId).then(async result => {
+            async function fetchDataAndCheckAccess() {
+                const userId = localStorage.getItem('currentUserId');
+                const role = localStorage.getItem('currentUserRole') as UserRole | null;
+                const isPreview = searchParams.get('preview') === 'true';
+
+                if (!userId || !role) {
+                    setError("User session not found. Please log in.");
+                    setIsLoading(false);
+                    return;
+                }
+
+                // First, check access rights.
+                const accessResult = await checkUserEnrollmentForCourseViewAction(courseId, userId, role, isPreview);
+                if (!accessResult.ok || !accessResult.isEnrolled) {
+                    setError(accessResult.message || "You are not enrolled in this course.");
+                    setIsLoading(false);
+                    return;
+                }
+                
+                // If access is granted, fetch the course content.
+                const result = await getCourseForViewingAction(courseId);
                 if (result.ok && result.course) {
                     const loadedCourse = result.course;
                     setCourse(loadedCourse);
                     
-                    const userId = localStorage.getItem('currentUserId');
-                    const role = localStorage.getItem('currentUserRole') as UserRole | null;
-                    if(userId && role === 'student') {
+                    if(role === 'student') {
                         const { data: user } = await supabase.from('users').select('name, school_id').eq('id', userId).single();
                         setCurrentStudentName(user?.name || 'Valued Student');
                         if (user?.school_id) {
@@ -243,14 +263,7 @@ export default function CourseResourcePage() {
                         const completionResult = await getCompletionStatusAction(userId, courseId);
                         if(completionResult.ok && completionResult.completedResources){
                            setIsCompleted(!!completionResult.completedResources[resourceId]);
-                           const totalCompleted = Object.values(completionResult.completedResources).filter(Boolean).length;
-                           const lessons = loadedCourse.resources.filter(r => r.type === 'note');
-                            const allLessonContents = lessons.flatMap(lesson => {
-                                try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } 
-                                catch { return []; }
-                            });
-                            const totalResources = allLessonContents.length;
-                            setOverallProgress(totalResources > 0 ? Math.round((totalCompleted / totalResources) * 100) : 0);
+                           setOverallProgress(calculateProgress(completionResult.completedResources));
                         }
                     }
 
@@ -260,18 +273,19 @@ export default function CourseResourcePage() {
                         catch { return []; }
                     });
                     
-                    const firstLesson = lessons.length > 0 ? lessons[0] : null;
-                    const resourcesInFirstLessonIds = firstLesson ? (JSON.parse(firstLesson.url_or_content || '[]') as LessonContentResource[]).map(r => r.id) : [];
-
                     const currentIndex = allLessonContents.findIndex(r => r.id === resourceId);
 
                     if (currentIndex !== -1) {
                         const currentResource = allLessonContents[currentIndex];
                         setResource(currentResource);
                         
-                        const isAdminPreviewing = (role === 'admin' || role === 'superadmin') && searchParams.get('preview') === 'true';
+                        const isAdminPreviewing = (role === 'admin' || role === 'superadmin') && isPreview;
                         
-                        if (isAdminPreviewing && !resourcesInFirstLessonIds.includes(resourceId)) {
+                        const firstLessonContents = lessons.length > 0 ? (JSON.parse(lessons[0].url_or_content || '[]') as LessonContentResource[]) : [];
+                        const isResourceInFirstLesson = firstLessonContents.some(r => r.id === resourceId);
+
+                        // Lock content if it's a preview and not in the first lesson
+                        if (isAdminPreviewing && !isResourceInFirstLesson) {
                             setIsContentLocked(true);
                         } else {
                            setIsContentLocked(false);
@@ -315,9 +329,10 @@ export default function CourseResourcePage() {
                     setError(result.message || "Failed to load course details.");
                 }
                 setIsLoading(false);
-            });
+            }
+            fetchDataAndCheckAccess();
         }
-    }, [courseId, resourceId, searchParams, currentUserRole, calculateProgress]);
+    }, [courseId, resourceId, searchParams, calculateProgress]);
 
     const pdfFile = useMemo(() => (
       (resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf'))
@@ -385,7 +400,16 @@ export default function CourseResourcePage() {
     }
 
     if (error) {
-        return <div className="text-center py-10 text-destructive">{error}</div>;
+        return <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
+            <Alert variant="destructive" className="max-w-md">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Access Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+            </Alert>
+            <Button asChild variant="outline" className="mt-4">
+                 <Link href="/lms/available-courses">Back to Courses</Link>
+            </Button>
+        </div>;
     }
     
     if (!resource || !course) {
