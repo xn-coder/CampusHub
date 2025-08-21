@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -8,16 +7,18 @@ import { Button } from '@/components/ui/button';
 import type { Course, UserRole, CourseWithEnrollmentStatus } from '@/types';
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { Library, Lock, Unlock, Eye, BookCheck, Loader2, BookOpen, Settings } from 'lucide-react';
+import { Library, Lock, Unlock, Eye, BookCheck, Loader2, BookOpen, Settings, Star } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getAvailableCoursesWithEnrollmentStatusAction, enrollUserInCourseAction, getLmsPageContextAction } from '@/app/(app)/lms/actions';
+import { toggleFavoriteCourseAction, getFavoriteCoursesAction } from '@/app/(app)/lms/favoritesActions';
 import { Badge } from '@/components/ui/badge';
 
 
 export default function AvailableLmsCoursesPage() {
   const { toast } = useToast();
   const [courses, setCourses] = useState<CourseWithEnrollmentStatus[]>([]);
+  const [favoriteCourseIds, setFavoriteCourseIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserProfileId, setCurrentUserProfileId] = useState<string | null>(null);
@@ -45,6 +46,13 @@ export default function AvailableLmsCoursesPage() {
                 userProfileIdToFetch = contextResult.userProfileId;
                 setCurrentSchoolId(userSchoolIdToFetch);
                 setCurrentUserProfileId(userProfileIdToFetch);
+
+                // Fetch favorites
+                const favResult = await getFavoriteCoursesAction(uIdToFetch);
+                if (favResult.ok && favResult.courseIds) {
+                    setFavoriteCourseIds(new Set(favResult.courseIds));
+                }
+
             } else {
                  toast({ title: "Error", description: contextResult.message || "Could not load user context.", variant: "destructive" });
                  setIsLoading(false);
@@ -95,6 +103,38 @@ export default function AvailableLmsCoursesPage() {
       toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
     }
   };
+  
+  const handleToggleFavorite = async (courseId: string) => {
+      if (!currentUserId) return;
+      const isCurrentlyFavorite = favoriteCourseIds.has(courseId);
+      
+      // Optimistically update UI
+      setFavoriteCourseIds(prev => {
+          const newSet = new Set(prev);
+          if (isCurrentlyFavorite) {
+              newSet.delete(courseId);
+          } else {
+              newSet.add(courseId);
+          }
+          return newSet;
+      });
+
+      const result = await toggleFavoriteCourseAction(currentUserId, courseId);
+      if (!result.ok) {
+          toast({ title: "Error", description: result.message, variant: "destructive" });
+          // Revert optimistic update
+          setFavoriteCourseIds(prev => {
+              const newSet = new Set(prev);
+              if (isCurrentlyFavorite) {
+                  newSet.add(courseId);
+              } else {
+                  newSet.delete(courseId);
+              }
+              return newSet;
+          });
+      }
+  };
+
 
   const canEnroll = currentUserRole === 'student' || currentUserRole === 'teacher';
 
@@ -123,6 +163,15 @@ export default function AvailableLmsCoursesPage() {
                   />
                   <div className="absolute top-2 right-2 flex gap-1">
                     {course.school_id ? null : <Badge variant="outline">Global</Badge>}
+                     <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-full bg-black/30 hover:bg-black/50 backdrop-blur-sm"
+                        onClick={() => handleToggleFavorite(course.id)}
+                        disabled={!currentUserId}
+                      >
+                        <Star className={`h-5 w-5 transition-colors ${favoriteCourseIds.has(course.id) ? 'text-yellow-400 fill-yellow-400' : 'text-white/80'}`}/>
+                      </Button>
                   </div>
               </div>
               <div className="flex flex-col flex-grow p-6">

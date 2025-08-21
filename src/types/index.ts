@@ -593,6 +593,14 @@ export interface LmsCompletion {
   completed_at: string;
 }
 
+// Represents a user's favorited course
+export interface UserFavoriteCourse {
+  id: string;
+  user_id: string;
+  course_id: string;
+  created_at: string;
+}
+
 
 declare global {
   interface Window {
