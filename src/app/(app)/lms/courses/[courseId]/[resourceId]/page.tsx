@@ -288,9 +288,15 @@ export default function CourseResourcePage() {
                             });
                             setQuizQuestions(migratedQuestions);
                         }
-                        else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) setNotePages(JSON.parse(currentResource.url_or_content));
-                        else if (currentResource.type === 'web_page') setWebPageSections(JSON.parse(currentResource.url_or_content || '[]'));
-                        else if (currentResource.type === 'drag_and_drop') setDndActivityData(JSON.parse(currentResource.url_or_content));
+                        else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) {
+                            setNotePages(JSON.parse(currentResource.url_or_content));
+                        }
+                        else if (currentResource.type === 'web_page') {
+                            setWebPageSections(JSON.parse(currentResource.url_or_content || '[]'));
+                        }
+                        else if (currentResource.type === 'drag_and_drop') {
+                            setDndActivityData(JSON.parse(currentResource.url_or_content));
+                        }
                     } catch(e) { throw new Error(`Failed to load content for this resource. It might be corrupted.`); }
                 }
 
