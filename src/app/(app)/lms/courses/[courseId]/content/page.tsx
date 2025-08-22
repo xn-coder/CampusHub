@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useRef } from 'react';
@@ -27,6 +28,7 @@ import {
 } from '../../actions';
 import { supabase } from '@/lib/supabaseClient';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist';
 
@@ -58,7 +60,7 @@ export default function ManageCourseContentPage() {
   const [notePages, setNotePages] = useState<string[]>(['']);
 
   // Quiz State
-  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([{ id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
   const resourceFormRef = useRef<HTMLFormElement>(null);
 
   // DND State
@@ -135,7 +137,7 @@ export default function ManageCourseContentPage() {
     setResourceTitle(''); setResourceType('note'); setResourceUrlOrContent('');
     setDurationMinutes('');
     setNotePages(['']);
-    setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
+    setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
     setDndTemplate('categorization'); setDndInstructions(''); setDndCategorizationItems([]); setDndCategories([]);
     setDndMatchingItems([{ id: uuidv4(), prompt: '', match: '' }]);
     setDndSequencingItems([{ id: uuidv4(), content: '' }]);
@@ -146,7 +148,15 @@ export default function ManageCourseContentPage() {
       setDurationMinutes(resourceToEdit.duration_minutes ?? '');
 
       if (resourceToEdit.type === 'quiz') {
-        setQuizQuestions(JSON.parse(resourceToEdit.url_or_content || '[]'));
+        const loadedQuestions: QuizQuestion[] = JSON.parse(resourceToEdit.url_or_content || '[]');
+        // Backward compatibility: handle old quizzes with `correctAnswerIndex`
+        const migratedQuestions = loadedQuestions.map(q => {
+            if (q.correctAnswerIndex !== undefined && q.correctAnswers === undefined) {
+                return { ...q, questionType: 'single', correctAnswers: [q.correctAnswerIndex] };
+            }
+            return { ...q, questionType: q.questionType || 'single', correctAnswers: q.correctAnswers || [] };
+        });
+        setQuizQuestions(migratedQuestions);
       } else if (resourceToEdit.type === 'note' && resourceToEdit.url_or_content.startsWith('[')) {
         setNotePages(JSON.parse(resourceToEdit.url_or_content));
       } else if (resourceToEdit.type === 'drag_and_drop') {
@@ -188,8 +198,8 @@ export default function ManageCourseContentPage() {
       toast({ title: "Error", description: "Content is required for this resource type.", variant: "destructive" });
       return;
     }
-    if (resourceType === 'quiz' && quizQuestions.some(q => !q.question.trim() || q.options.some(o => !o.trim()))) {
-      toast({ title: "Error", description: "Please fill out all question and option fields for the quiz.", variant: "destructive" });
+    if (resourceType === 'quiz' && (quizQuestions.some(q => !q.question.trim() || q.options.some(o => !o.trim())) || quizQuestions.some(q => q.correctAnswers.length === 0)) ) {
+      toast({ title: "Error", description: "Please fill out all question/option fields and select at least one correct answer for each question.", variant: "destructive" });
       return;
     }
     if (resourceType === 'note' && notePages.some(p => !p.trim())) {
@@ -324,34 +334,55 @@ export default function ManageCourseContentPage() {
   };
 
   // --- Quiz Handlers ---
-  const handleAddQuizQuestion = () => {
-    setQuizQuestions(prev => [...prev, { id: uuidv4(), question: '', options: ['', '', '', ''], correctAnswerIndex: 0 }]);
-  };
+    const handleAddQuizQuestion = () => {
+        setQuizQuestions(prev => [...prev, { id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
+    };
 
-  const handleQuizQuestionChange = (index: number, value: string) => {
-    const newQuestions = [...quizQuestions];
-    newQuestions[index].question = value;
-    setQuizQuestions(newQuestions);
-  };
-  
-  const handleQuizOptionChange = (qIndex: number, oIndex: number, value: string) => {
-    const newQuestions = [...quizQuestions];
-    newQuestions[qIndex].options[oIndex] = value;
-    setQuizQuestions(newQuestions);
-  };
-  
-  const handleCorrectAnswerChange = (qIndex: number, oIndex: number) => {
-    const newQuestions = [...quizQuestions];
-    newQuestions[qIndex].correctAnswerIndex = oIndex;
-    setQuizQuestions(newQuestions);
-  };
+    const handleQuizQuestionChange = (index: number, field: 'question' | 'questionType', value: string) => {
+        const newQuestions = [...quizQuestions];
+        const questionToUpdate = { ...newQuestions[index] };
 
-  const handleRemoveQuizQuestion = (index: number) => {
-    if (quizQuestions.length > 1) {
-      const newQuestions = quizQuestions.filter((_, i) => i !== index);
-      setQuizQuestions(newQuestions);
-    }
-  };
+        if (field === 'questionType') {
+            questionToUpdate.questionType = value as 'single' | 'multiple';
+            questionToUpdate.correctAnswers = []; // Reset correct answers when type changes
+        } else {
+            questionToUpdate.question = value;
+        }
+
+        newQuestions[index] = questionToUpdate;
+        setQuizQuestions(newQuestions);
+    };
+
+    const handleQuizOptionChange = (qIndex: number, oIndex: number, value: string) => {
+        const newQuestions = [...quizQuestions];
+        newQuestions[qIndex].options[oIndex] = value;
+        setQuizQuestions(newQuestions);
+    };
+
+    const handleCorrectAnswerChange = (qIndex: number, oIndex: number, isChecked: boolean) => {
+        const newQuestions = [...quizQuestions];
+        const question = newQuestions[qIndex];
+        const currentAnswers = new Set(question.correctAnswers);
+
+        if (question.questionType === 'single') {
+            question.correctAnswers = [oIndex];
+        } else { // multiple
+            if (isChecked) {
+                currentAnswers.add(oIndex);
+            } else {
+                currentAnswers.delete(oIndex);
+            }
+            question.correctAnswers = Array.from(currentAnswers);
+        }
+        setQuizQuestions(newQuestions);
+    };
+
+    const handleRemoveQuizQuestion = (index: number) => {
+        if (quizQuestions.length > 1) {
+            setQuizQuestions(prev => prev.filter((_, i) => i !== index));
+        }
+    };
+
 
   // --- DND Handlers ---
   const handleAddCategory = () => setDndCategories(prev => [...prev, { id: uuidv4(), title: '' }]);
@@ -576,17 +607,36 @@ export default function ManageCourseContentPage() {
                                                                   <Label htmlFor={`q-text-${q.id}`}>Question {qIndex + 1}</Label>
                                                                   {quizQuestions.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveQuizQuestion(qIndex)}><Trash2 className="h-4 w-4 text-destructive"/></Button>}
                                                               </div>
-                                                              <Input id={`q-text-${q.id}`} value={q.question} onChange={e => handleQuizQuestionChange(qIndex, e.target.value)} placeholder="Enter the question text" disabled={isSubmitting}/>
+                                                              <Input id={`q-text-${q.id}`} value={q.question} onChange={e => handleQuizQuestionChange(qIndex, 'question', e.target.value)} placeholder="Enter the question text" disabled={isSubmitting}/>
+                                                              
+                                                              <div>
+                                                                  <Label className="text-xs">Answer Type</Label>
+                                                                  <RadioGroup value={q.questionType} onValueChange={(val) => handleQuizQuestionChange(qIndex, 'questionType', val)} className="flex gap-4 pt-1">
+                                                                      <div className="flex items-center space-x-2"><RadioGroupItem value="single" id={`q${qIndex}-type-single`}/><Label htmlFor={`q${qIndex}-type-single`} className="font-normal">Single Answer</Label></div>
+                                                                      <div className="flex items-center space-x-2"><RadioGroupItem value="multiple" id={`q${qIndex}-type-multi`}/><Label htmlFor={`q${qIndex}-type-multi`} className="font-normal">Multiple Answers</Label></div>
+                                                                  </RadioGroup>
+                                                              </div>
+
                                                               <div className="space-y-2">
-                                                                <Label>Options (select the correct answer)</Label>
-                                                                <RadioGroup value={String(q.correctAnswerIndex)} onValueChange={val => handleCorrectAnswerChange(qIndex, Number(val))}>
+                                                                <Label>Options (select correct answer/s)</Label>
                                                                     {q.options.map((opt, oIndex) => (
                                                                         <div key={oIndex} className="flex items-center space-x-2">
-                                                                            <RadioGroupItem value={String(oIndex)} id={`q${qIndex}-o${oIndex}`} />
-                                                                            <Input value={opt} onChange={e => handleQuizOptionChange(qIndex, oIndex, e.target.value)} placeholder={`Option ${oIndex + 1}`} disabled={isSubmitting}/>
+                                                                             {q.questionType === 'multiple' ? (
+                                                                                <Checkbox 
+                                                                                    id={`q${qIndex}-o${oIndex}`}
+                                                                                    checked={q.correctAnswers.includes(oIndex)}
+                                                                                    onCheckedChange={(checked) => handleCorrectAnswerChange(qIndex, oIndex, !!checked)}
+                                                                                />
+                                                                            ) : (
+                                                                                <RadioGroup value={String(q.correctAnswers[0])} onValueChange={(val) => handleCorrectAnswerChange(qIndex, Number(val), true)} className="flex items-center">
+                                                                                    <RadioGroupItem value={String(oIndex)} id={`q${qIndex}-o${oIndex}`} />
+                                                                                </RadioGroup>
+                                                                            )}
+                                                                            <Label htmlFor={`q${qIndex}-o${oIndex}`} className="flex-1 cursor-pointer font-normal">
+                                                                                <Input value={opt} onChange={e => handleQuizOptionChange(qIndex, oIndex, e.target.value)} placeholder={`Option ${oIndex + 1}`} disabled={isSubmitting}/>
+                                                                            </Label>
                                                                         </div>
                                                                     ))}
-                                                                </RadioGroup>
                                                               </div>
                                                           </div>
                                                       ))}

@@ -446,7 +446,10 @@ export interface QuizQuestion {
   id: string;
   question: string;
   options: string[];
-  correctAnswerIndex: number;
+  questionType: 'single' | 'multiple';
+  correctAnswers: number[]; // Array of correct option indices
+  // Deprecated, but kept for potential backward compatibility during migration
+  correctAnswerIndex?: number;
 }
 
 

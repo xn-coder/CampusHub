@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
@@ -21,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
 import { DragAndDropViewer } from '@/components/lms/dnd/DragAndDropViewer';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // Configure the worker to be served from the public directory
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
@@ -90,7 +92,7 @@ export default function CourseResourcePage() {
     const [numPages, setNumPages] = useState<number | null>(null);
     const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-    const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+    const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number[]>>({});
     const [quizResult, setQuizResult] = useState<{ score: number; total: number; passed: boolean; } | null>(null);
     const [notePages, setNotePages] = useState<string[]>([]);
     const [dndActivityData, setDndActivityData] = useState<DNDActivityData | null>(null);
@@ -139,8 +141,17 @@ export default function CourseResourcePage() {
     const handleSubmitQuiz = useCallback(() => {
         let score = 0;
         quizQuestions.forEach((q, index) => {
-            if (selectedAnswers[index] === q.correctAnswerIndex) {
-                score++;
+            const userAnswers = new Set(selectedAnswers[index] || []);
+            const correctAnswers = new Set(q.correctAnswers);
+            
+            if(q.questionType === 'multiple') {
+                if(userAnswers.size === correctAnswers.size && [...userAnswers].every(answer => correctAnswers.has(answer))) {
+                    score++;
+                }
+            } else { // single
+                if(userAnswers.size === 1 && correctAnswers.has([...userAnswers][0])) {
+                    score++;
+                }
             }
         });
         
@@ -168,7 +179,7 @@ export default function CourseResourcePage() {
     // Timer effect
     useEffect(() => {
         if (resource?.duration_minutes && timeLeft === null) {
-            setTimeLeft(resource.duration_minutes);
+            setTimeLeft(resource.duration_minutes * 60); // Convert minutes to seconds
         }
 
         if (timeLeft !== null && timeLeft > 0 && !timerIntervalRef.current) {
@@ -265,7 +276,16 @@ export default function CourseResourcePage() {
                     setIsContentLocked(false);
                     // Parse content for specific resource types
                     try {
-                        if (currentResource.type === 'quiz') setQuizQuestions(JSON.parse(currentResource.url_or_content));
+                        if (currentResource.type === 'quiz') {
+                             const loadedQuestions: QuizQuestion[] = JSON.parse(currentResource.url_or_content || '[]');
+                             const migratedQuestions = loadedQuestions.map(q => {
+                                if (q.correctAnswerIndex !== undefined && q.correctAnswers === undefined) {
+                                    return { ...q, questionType: 'single', correctAnswers: [q.correctAnswerIndex] };
+                                }
+                                return { ...q, questionType: q.questionType || 'single', correctAnswers: q.correctAnswers || [] };
+                            });
+                            setQuizQuestions(migratedQuestions);
+                        }
                         else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) setNotePages(JSON.parse(currentResource.url_or_content));
                         else if (currentResource.type === 'drag_and_drop') setDndActivityData(JSON.parse(currentResource.url_or_content));
                     } catch(e) { throw new Error(`Failed to load content for this resource. It might be corrupted.`); }
@@ -286,7 +306,7 @@ export default function CourseResourcePage() {
             }
         }
         fetchDataAndCheckAccess();
-    }, [courseId, resourceId, currentUserRole, isPreviewing]); 
+    }, [courseId, resourceId, currentUserRole, isPreviewing, toast]); 
 
     const pdfFile = useMemo(() => ((resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf')) ? { url: resource.url_or_content } : null), [resource]);
     const embedUrl = useMemo(() => (resource?.type && resource.url_or_content) ? getEmbedUrl(resource.url_or_content, resource.type) : null, [resource]);
@@ -308,7 +328,27 @@ export default function CourseResourcePage() {
     };
 
     function onDocumentLoadSuccess({ numPages }: { numPages: number }): void { setNumPages(numPages); }
-    const handleAnswerChange = (questionIndex: number, answerIndex: number) => { setSelectedAnswers(prev => ({ ...prev, [questionIndex]: answerIndex })); };
+
+    const handleAnswerChange = (questionIndex: number, answerIndex: number, isChecked: boolean) => {
+      setSelectedAnswers(prev => {
+        const newAnswers = { ...prev };
+        const question = quizQuestions[questionIndex];
+        const currentAnswers = new Set(newAnswers[questionIndex] || []);
+
+        if (question.questionType === 'multiple') {
+            if (isChecked) {
+                currentAnswers.add(answerIndex);
+            } else {
+                currentAnswers.delete(answerIndex);
+            }
+            newAnswers[questionIndex] = Array.from(currentAnswers);
+        } else { // single
+            newAnswers[questionIndex] = [answerIndex];
+        }
+        return newAnswers;
+      });
+    };
+
     const handleNextQuestion = () => { if (currentQuestionIndex < quizQuestions.length - 1) { setCurrentQuestionIndex(prev => prev + 1); } };
     const handlePreviousQuestion = () => { if (currentQuestionIndex > 0) { setCurrentQuestionIndex(prev => prev - 1); } };
     const handleRetakeQuiz = () => {
@@ -316,7 +356,7 @@ export default function CourseResourcePage() {
         setSelectedAnswers({});
         setCurrentQuestionIndex(0);
         if(resource?.duration_minutes) {
-             setTimeLeft(resource.duration_minutes);
+             setTimeLeft(resource.duration_minutes * 60);
         }
     };
 
@@ -486,20 +526,34 @@ export default function CourseResourcePage() {
                           <div className="max-w-2xl mx-auto space-y-6">
                             <p className="text-sm text-muted-foreground">Question {currentQuestionIndex + 1} of {quizQuestions.length}</p>
                             <h3 className="text-lg font-semibold">{quizQuestions[currentQuestionIndex].question}</h3>
-                            <RadioGroup value={String(selectedAnswers[currentQuestionIndex])} onValueChange={(val) => handleAnswerChange(currentQuestionIndex, Number(val))}>
+                            <div className="space-y-2">
                                 {quizQuestions[currentQuestionIndex].options.map((option, index) => (
-                                    <div key={index} className="flex items-center space-x-2 p-3 border rounded-md hover:bg-muted/50">
-                                        <RadioGroupItem value={String(index)} id={`q${currentQuestionIndex}-o${index}`}/>
+                                    <div key={index} className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50">
+                                        {quizQuestions[currentQuestionIndex].questionType === 'multiple' ? (
+                                            <Checkbox
+                                                id={`q${currentQuestionIndex}-o${index}`}
+                                                checked={(selectedAnswers[currentQuestionIndex] || []).includes(index)}
+                                                onCheckedChange={(checked) => handleAnswerChange(currentQuestionIndex, index, !!checked)}
+                                            />
+                                        ) : (
+                                            <RadioGroup
+                                                value={String((selectedAnswers[currentQuestionIndex] || [])[0])}
+                                                onValueChange={() => handleAnswerChange(currentQuestionIndex, index, true)}
+                                                className="flex items-center"
+                                            >
+                                                <RadioGroupItem value={String(index)} id={`q${currentQuestionIndex}-o${index}`} />
+                                            </RadioGroup>
+                                        )}
                                         <Label htmlFor={`q${currentQuestionIndex}-o${index}`} className="flex-1 cursor-pointer">{option}</Label>
                                     </div>
                                 ))}
-                            </RadioGroup>
+                            </div>
                              <div className="flex justify-between mt-4">
                                 <Button onClick={handlePreviousQuestion} variant="outline" disabled={currentQuestionIndex === 0}>Previous</Button>
                                 {currentQuestionIndex < quizQuestions.length - 1 ? (
                                     <Button onClick={handleNextQuestion}>Next</Button>
                                 ) : (
-                                    <Button onClick={handleSubmitQuiz} disabled={Object.keys(selectedAnswers).length !== quizQuestions.length}>Submit Quiz</Button>
+                                    <Button onClick={handleSubmitQuiz} disabled={!selectedAnswers[currentQuestionIndex]}>Submit Quiz</Button>
                                 )}
                             </div>
                           </div>
@@ -524,4 +578,3 @@ export default function CourseResourcePage() {
         </div>
     );
 }
-
