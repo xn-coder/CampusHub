@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useRef } from 'react';
@@ -522,8 +521,8 @@ export default function ManageCourseContentPage() {
                                                   </div>
                                                   {['quiz', 'drag_and_drop'].includes(resourceType) && (
                                                     <div>
-                                                        <Label htmlFor={`res-duration-${lesson.id}`}>Timer / Duration (in seconds)</Label>
-                                                        <Input id={`res-duration-${lesson.id}`} type="number" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value === '' ? '' : parseInt(e.target.value, 10))} placeholder="Optional, e.g., 600" disabled={isSubmitting}/>
+                                                        <Label htmlFor={`res-duration-${lesson.id}`}>Timer / Duration (in minutes)</Label>
+                                                        <Input id={`res-duration-${lesson.id}`} type="number" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value === '' ? '' : parseInt(e.target.value, 10))} placeholder="Optional, e.g., 10" disabled={isSubmitting}/>
                                                     </div>
                                                   )}
                                                 </div>
@@ -628,7 +627,7 @@ export default function ManageCourseContentPage() {
                                                                                     onCheckedChange={(checked) => handleCorrectAnswerChange(qIndex, oIndex, !!checked)}
                                                                                 />
                                                                             ) : (
-                                                                                <RadioGroup value={String(q.correctAnswers[0])} onValueChange={(val) => handleCorrectAnswerChange(qIndex, Number(val), true)} className="flex items-center">
+                                                                                <RadioGroup value={String((q.correctAnswers || [])[0])} onValueChange={() => handleCorrectAnswerChange(qIndex, oIndex, true)} className="flex items-center">
                                                                                     <RadioGroupItem value={String(oIndex)} id={`q${qIndex}-o${oIndex}`} />
                                                                                 </RadioGroup>
                                                                             )}
