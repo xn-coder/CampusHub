@@ -9,7 +9,7 @@ export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist';
+export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist' | 'web_page';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 export type TCRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type SubscriptionPlan = 'free' | 'monthly' | 'yearly' | 'one_time';
@@ -441,6 +441,15 @@ export interface LessonContentResource {
     url_or_content: string;
     duration_minutes?: number;
 }
+
+// --- Web Page Section Types ---
+export type WebPageSectionType = 'heading' | 'text' | 'image';
+export interface WebPageSection {
+  id: string;
+  type: WebPageSectionType;
+  content: string; // For text/heading, this is the text. For image, this is the URL.
+}
+
 
 export interface QuizQuestion {
   id: string;

@@ -4,8 +4,8 @@
 import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
-import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData, CourseResourceType } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock, AlertTriangle } from 'lucide-react';
+import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData, CourseResourceType, WebPageSection } from '@/types';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock, AlertTriangle, Image as ImageIcon, Heading2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { DragAndDropViewer } from '@/components/lms/dnd/DragAndDropViewer';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
+import Image from 'next/image';
 
 // Configure the worker to be served from the public directory
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
@@ -94,6 +95,7 @@ export default function CourseResourcePage() {
     const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number[]>>({});
     const [quizResult, setQuizResult] = useState<{ score: number; total: number; passed: boolean; } | null>(null);
     const [notePages, setNotePages] = useState<string[]>([]);
+    const [webPageSections, setWebPageSections] = useState<WebPageSection[]>([]);
     const [dndActivityData, setDndActivityData] = useState<DNDActivityData | null>(null);
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
     const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -210,7 +212,8 @@ export default function CourseResourcePage() {
             // Reset resource-specific states
             setNumPages(null); setQuizQuestions([]); setCurrentQuestionIndex(0);
             setSelectedAnswers({}); setQuizResult(null); setNotePages([]);
-            setDndActivityData(null); setTimeLeft(null);
+            setDndActivityData(null); setWebPageSections([]);
+            setTimeLeft(null);
             if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
             timerIntervalRef.current = null;
 
@@ -286,6 +289,7 @@ export default function CourseResourcePage() {
                             setQuizQuestions(migratedQuestions);
                         }
                         else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) setNotePages(JSON.parse(currentResource.url_or_content));
+                        else if (currentResource.type === 'web_page') setWebPageSections(JSON.parse(currentResource.url_or_content || '[]'));
                         else if (currentResource.type === 'drag_and_drop') setDndActivityData(JSON.parse(currentResource.url_or_content));
                     } catch(e) { throw new Error(`Failed to load content for this resource. It might be corrupted.`); }
                 }
@@ -322,6 +326,7 @@ export default function CourseResourcePage() {
             case 'audio': return <Music {...props} />;
             case 'drag_and_drop': return <MousePointerSquareDashed {...props} />;
             case 'youtube_playlist': return <ListVideo {...props} />;
+            case 'web_page': return <ImageIcon {...props} />;
             default: return null;
         }
     };
@@ -452,6 +457,16 @@ export default function CourseResourcePage() {
                         </div>
                     ) : (
                     <>
+                     {resource.type === 'web_page' && (
+                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                            {webPageSections.map(section => {
+                                if (section.type === 'heading') return <h2 key={section.id}>{section.content}</h2>;
+                                if (section.type === 'text') return <div key={section.id} dangerouslySetInnerHTML={{ __html: section.content }} />;
+                                if (section.type === 'image') return <Image key={section.id} src={section.content} alt="Course Content Image" width={800} height={450} className="rounded-md my-4" data-ai-hint="course content" />;
+                                return null;
+                            })}
+                        </div>
+                     )}
                      {resource.type === 'video' && (
                         <div className="aspect-video w-full bg-black rounded-lg overflow-hidden">
                            {embedUrl ? (
