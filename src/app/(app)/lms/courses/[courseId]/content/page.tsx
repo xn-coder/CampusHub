@@ -338,42 +338,47 @@ export default function ManageCourseContentPage() {
     };
 
     const handleQuizQuestionChange = (index: number, field: 'question' | 'questionType', value: string) => {
-        const newQuestions = [...quizQuestions];
-        const questionToUpdate = { ...newQuestions[index] };
+        setQuizQuestions(prev => {
+            const newQuestions = [...prev];
+            const questionToUpdate = { ...newQuestions[index] };
 
-        if (field === 'questionType') {
-            questionToUpdate.questionType = value as 'single' | 'multiple';
-            questionToUpdate.correctAnswers = []; // Reset correct answers when type changes
-        } else {
-            questionToUpdate.question = value;
-        }
-
-        newQuestions[index] = questionToUpdate;
-        setQuizQuestions(newQuestions);
+            if (field === 'questionType') {
+                questionToUpdate.questionType = value as 'single' | 'multiple';
+                questionToUpdate.correctAnswers = []; // Reset correct answers when type changes
+            } else {
+                questionToUpdate.question = value;
+            }
+            newQuestions[index] = questionToUpdate;
+            return newQuestions;
+        });
     };
 
     const handleQuizOptionChange = (qIndex: number, oIndex: number, value: string) => {
-        const newQuestions = [...quizQuestions];
-        newQuestions[qIndex].options[oIndex] = value;
-        setQuizQuestions(newQuestions);
+        setQuizQuestions(prev => {
+            const newQuestions = [...prev];
+            newQuestions[qIndex].options[oIndex] = value;
+            return newQuestions;
+        });
     };
 
-    const handleCorrectAnswerChange = (qIndex: number, oIndex: number, isChecked: boolean) => {
-        const newQuestions = [...quizQuestions];
-        const question = newQuestions[qIndex];
-        const currentAnswers = new Set(question.correctAnswers);
+    const handleCorrectAnswerChange = (qIndex: number, oIndex: number, isChecked: boolean | 'indeterminate') => {
+        setQuizQuestions(prev => {
+            const newQuestions = [...prev];
+            const question = newQuestions[qIndex];
+            const currentAnswers = new Set(question.correctAnswers);
 
-        if (question.questionType === 'single') {
-            question.correctAnswers = [oIndex];
-        } else { // multiple
-            if (isChecked) {
-                currentAnswers.add(oIndex);
-            } else {
-                currentAnswers.delete(oIndex);
+            if (question.questionType === 'single') {
+                question.correctAnswers = [oIndex];
+            } else { // multiple
+                if (isChecked) {
+                    currentAnswers.add(oIndex);
+                } else {
+                    currentAnswers.delete(oIndex);
+                }
+                question.correctAnswers = Array.from(currentAnswers);
             }
-            question.correctAnswers = Array.from(currentAnswers);
-        }
-        setQuizQuestions(newQuestions);
+            return newQuestions;
+        });
     };
 
     const handleRemoveQuizQuestion = (index: number) => {
@@ -521,8 +526,8 @@ export default function ManageCourseContentPage() {
                                                   </div>
                                                   {['quiz', 'drag_and_drop'].includes(resourceType) && (
                                                     <div>
-                                                        <Label htmlFor={`res-duration-${lesson.id}`}>Timer / Duration (in minutes)</Label>
-                                                        <Input id={`res-duration-${lesson.id}`} type="number" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value === '' ? '' : parseInt(e.target.value, 10))} placeholder="Optional, e.g., 10" disabled={isSubmitting}/>
+                                                        <Label htmlFor={`res-duration-${lesson.id}`}>Timer / Duration (in seconds)</Label>
+                                                        <Input id={`res-duration-${lesson.id}`} type="number" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value === '' ? '' : parseInt(e.target.value, 10))} placeholder="Optional, e.g., 600 for 10 mins" disabled={isSubmitting}/>
                                                     </div>
                                                   )}
                                                 </div>
