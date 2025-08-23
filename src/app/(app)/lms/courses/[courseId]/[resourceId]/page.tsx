@@ -330,7 +330,7 @@ export default function CourseResourcePage() {
             }
         }
         fetchDataAndCheckAccess();
-    }, [courseId, resourceId, currentUserRole, isPreviewing, calculateProgress, toast]); 
+    }, [courseId, resourceId, currentUserRole, isPreviewing]); 
 
     const pdfFile = useMemo(() => ((resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf')) ? { url: resource.url_or_content } : null), [resource]);
     const embedUrl = useMemo(() => (resource?.type && resource.url_or_content) ? getEmbedUrl(resource.url_or_content, resource.type) : null, [resource]);
@@ -615,3 +615,4 @@ export default function CourseResourcePage() {
         </div>
     );
 }
+
