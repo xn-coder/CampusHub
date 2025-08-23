@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
@@ -295,7 +294,7 @@ export default function CourseResourcePage() {
                     // Parse content for specific resource types
                     try {
                         if (currentResource.type === 'quiz') {
-                             const loadedQuestions: QuizQuestion[] = JSON.parse(currentResource.url_or_content || '[]');
+                             const loadedQuestions: QuizQuestion[] = JSON.parse(currentResource.url_or_content || '[]') || [];
                              const migratedQuestions = loadedQuestions.map(q => {
                                 if (q.correctAnswerIndex !== undefined && q.correctAnswers === undefined) {
                                     return { ...q, questionType: 'single', correctAnswers: [q.correctAnswerIndex] };
@@ -331,7 +330,7 @@ export default function CourseResourcePage() {
             }
         }
         fetchDataAndCheckAccess();
-    }, [courseId, resourceId, currentUserRole, isPreviewing]); 
+    }, [courseId, resourceId, currentUserRole, isPreviewing, calculateProgress, toast]); 
 
     const pdfFile = useMemo(() => ((resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf')) ? { url: resource.url_or_content } : null), [resource]);
     const embedUrl = useMemo(() => (resource?.type && resource.url_or_content) ? getEmbedUrl(resource.url_or_content, resource.type) : null, [resource]);
@@ -457,7 +456,7 @@ export default function CourseResourcePage() {
                               </Button>
                               {isCompleted && (
                                   <Button asChild size="sm">
-                                      <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
+                                      <Link href={`/admin/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
                                           <Award className="mr-2 h-4 w-4" /> Get Certificate
                                       </Link>
                                   </Button>
@@ -616,6 +615,3 @@ export default function CourseResourcePage() {
         </div>
     );
 }
-
-
-    

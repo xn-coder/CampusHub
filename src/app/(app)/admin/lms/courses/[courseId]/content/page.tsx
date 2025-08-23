@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useRef } from 'react';
@@ -12,8 +11,8 @@ import Editor from '@/components/shared/ck-editor';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music, MousePointerSquareDashed, ListVideo, Clock } from 'lucide-react';
-import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole, DNDTemplateType, DNDCategorizationItem, DNDCategory, DNDMatchingItem, DNDSequencingItem } from '@/types';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music, MousePointerSquareDashed, ListVideo, Clock, ImageIcon, Heading2 } from 'lucide-react';
+import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole, DNDTemplateType, DNDCategorizationItem, DNDCategory, DNDMatchingItem, DNDSequencingItem, WebPageSection, WebPageSectionType } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
 import Link from 'next/link';
@@ -29,7 +28,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 
-type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist';
+type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist' | 'web_page';
 
 export default function ManageCourseContentPage() {
   const params = useParams();
@@ -57,6 +56,10 @@ export default function ManageCourseContentPage() {
 
   // Note (multi-page) state
   const [notePages, setNotePages] = useState<string[]>(['']);
+  
+  // Web Page Builder State
+  const [webPageSections, setWebPageSections] = useState<WebPageSection[]>([]);
+  const [sectionImageFiles, setSectionImageFiles] = useState<Record<string, File | null>>({});
 
   // Quiz State
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([{ id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
@@ -136,6 +139,8 @@ export default function ManageCourseContentPage() {
     setResourceTitle(''); setResourceType('note'); setResourceUrlOrContent('');
     setDurationMinutes('');
     setNotePages(['']);
+    setWebPageSections([]);
+    setSectionImageFiles({});
     setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
     setDndTemplate('categorization'); setDndInstructions(''); setDndCategorizationItems([]); setDndCategories([]);
     setDndMatchingItems([{ id: uuidv4(), prompt: '', match: '' }]);
@@ -158,6 +163,8 @@ export default function ManageCourseContentPage() {
         setQuizQuestions(migratedQuestions.length > 0 ? migratedQuestions : [{ id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
       } else if (resourceToEdit.type === 'note' && resourceToEdit.url_or_content.startsWith('[')) {
         setNotePages(JSON.parse(resourceToEdit.url_or_content));
+      } else if (resourceToEdit.type === 'web_page') {
+        setWebPageSections(JSON.parse(resourceToEdit.url_or_content || '[]'));
       } else if (resourceToEdit.type === 'drag_and_drop') {
           const dndData = JSON.parse(resourceToEdit.url_or_content || '{}');
           setDndTemplate(dndData.template || 'categorization');
@@ -249,6 +256,28 @@ export default function ManageCourseContentPage() {
         finalUrlOrContent = JSON.stringify(quizQuestions);
       } else if (resourceType === 'note') {
         finalUrlOrContent = JSON.stringify(notePages);
+      } else if (resourceType === 'web_page') {
+         // Handle image uploads for web page sections
+         const uploadedSections = [...webPageSections];
+         for (let i = 0; i < webPageSections.length; i++) {
+             const section = webPageSections[i];
+             const fileToUpload = sectionImageFiles[section.id];
+             if (section.type === 'image' && fileToUpload) {
+                 const signedUrlResult = await createSignedUploadUrlAction(courseId, fileToUpload.name, fileToUpload.type);
+                 if (!signedUrlResult.ok || !signedUrlResult.signedUrl) throw new Error(`Image upload failed for section ${i + 1}.`);
+                 
+                 await new Promise<void>((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('PUT', signedUrlResult.signedUrl!, true);
+                    xhr.setRequestHeader('Content-Type', fileToUpload.type);
+                    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error('Image upload failed'));
+                    xhr.send(fileToUpload);
+                });
+                 
+                 uploadedSections[i].content = signedUrlResult.publicUrl!;
+             }
+         }
+         finalUrlOrContent = JSON.stringify(uploadedSections);
       } else if (resourceType === 'drag_and_drop') {
           const dndData = {
               template: dndTemplate,
@@ -332,6 +361,30 @@ export default function ManageCourseContentPage() {
       }
   };
 
+  // --- Web Page Section Handlers ---
+    const handleAddWebPageSection = (type: WebPageSectionType) => {
+        setWebPageSections(prev => [...prev, { id: uuidv4(), type, content: '' }]);
+    };
+    const handleWebPageSectionContentChange = (index: number, content: string) => {
+        const newSections = [...webPageSections];
+        newSections[index].content = content;
+        setWebPageSections(newSections);
+    };
+    const handleWebPageSectionImageChange = (index: number, file: File | null) => {
+        const sectionId = webPageSections[index].id;
+        setSectionImageFiles(prev => ({ ...prev, [sectionId]: file }));
+    };
+    const handleRemoveWebPageSection = (index: number) => {
+        const sectionId = webPageSections[index].id;
+        setWebPageSections(prev => prev.filter((_, i) => i !== index));
+        setSectionImageFiles(prev => {
+            const newFiles = { ...prev };
+            delete newFiles[sectionId];
+            return newFiles;
+        });
+    };
+
+
   // --- Quiz Handlers ---
     const handleAddQuizQuestion = () => {
         setQuizQuestions(prev => [...prev, { id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
@@ -368,14 +421,14 @@ export default function ManageCourseContentPage() {
             const currentAnswers = new Set(question.correctAnswers);
 
             if (question.questionType === 'single') {
-                question.correctAnswers = [oIndex];
+                newQuestions[qIndex].correctAnswers = [oIndex];
             } else { // multiple
                 if (isChecked) {
                     currentAnswers.add(oIndex);
                 } else {
                     currentAnswers.delete(oIndex);
                 }
-                question.correctAnswers = Array.from(currentAnswers);
+                newQuestions[qIndex].correctAnswers = Array.from(currentAnswers);
             }
             return newQuestions;
         });
@@ -450,6 +503,7 @@ export default function ManageCourseContentPage() {
       case 'audio': return <Music {...props} />;
       case 'drag_and_drop': return <MousePointerSquareDashed {...props} />;
       case 'youtube_playlist': return <ListVideo {...props} />;
+      case 'web_page': return <ImageIcon {...props} />;
       default: return null;
     }
   };
@@ -509,6 +563,7 @@ export default function ManageCourseContentPage() {
                                                    <Label>Resource Type</Label>
                                                    <RadioGroup value={resourceType} onValueChange={(val) => setResourceType(val as ResourceTabKey)} className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="note" id={`type-note-${lesson.id}`} /><Label htmlFor={`type-note-${lesson.id}`}>Note</Label></div>
+                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="web_page" id={`type-webpage-${lesson.id}`} /><Label htmlFor={`type-webpage-${lesson.id}`}>Web Page</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="video" id={`type-video-${lesson.id}`} /><Label htmlFor={`type-video-${lesson.id}`}>Video</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="youtube_playlist" id={`type-yt-playlist-${lesson.id}`} /><Label htmlFor={`type-yt-playlist-${lesson.id}`}>YouTube Playlist</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="audio" id={`type-audio-${lesson.id}`} /><Label htmlFor={`type-audio-${lesson.id}`}>Audio</Label></div>
@@ -534,7 +589,34 @@ export default function ManageCourseContentPage() {
 
                                                 {/* --- DYNAMIC FORM SECTION --- */}
                                                 
-                                                {resourceType === 'drag_and_drop' ? (
+                                                {resourceType === 'web_page' ? (
+                                                     <div className="space-y-4 p-4 border bg-background rounded-md">
+                                                        <Label className="text-lg">Web Page Builder</Label>
+                                                        <div className="space-y-3">
+                                                            {webPageSections.map((section, index) => (
+                                                                <div key={section.id} className="p-3 border rounded-lg space-y-3 bg-muted/50 relative">
+                                                                    <Button type="button" variant="ghost" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => handleRemoveWebPageSection(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                                    {section.type === 'heading' && (
+                                                                        <div><Label>Heading</Label><Input value={section.content} onChange={e => handleWebPageSectionContentChange(index, e.target.value)} placeholder="Enter heading text..." /></div>
+                                                                    )}
+                                                                    {section.type === 'text' && (
+                                                                        <div><Label>Text Block</Label><div className="mt-1 prose prose-sm max-w-none dark:prose-invert [&_.ck-editor__main>.ck-editor__editable]:min-h-24 [&_.ck-editor__main>.ck-editor__editable]:bg-background [&_.ck-toolbar]:bg-muted [&_.ck-toolbar]:border-border [&_.ck-editor__main]:border-border [&_.ck-content]:text-foreground"><Editor value={section.content} onChange={data => handleWebPageSectionContentChange(index, data)} disabled={isSubmitting} /></div></div>
+                                                                    )}
+                                                                    {section.type === 'image' && (
+                                                                        <div><Label>Image</Label><Input type="file" accept="image/*" onChange={e => handleWebPageSectionImageChange(index, e.target.files?.[0] || null)} />
+                                                                        {section.content && !sectionImageFiles[section.id] && <img src={section.content} alt="Preview" className="mt-2 max-h-40 rounded" />}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <Button type="button" variant="outline" size="sm" onClick={() => handleAddWebPageSection('heading')}><Heading2 className="mr-2 h-4 w-4"/>Add Heading</Button>
+                                                            <Button type="button" variant="outline" size="sm" onClick={() => handleAddWebPageSection('text')}><FileText className="mr-2 h-4 w-4"/>Add Text</Button>
+                                                            <Button type="button" variant="outline" size="sm" onClick={() => handleAddWebPageSection('image')}><ImageIcon className="mr-2 h-4 w-4"/>Add Image</Button>
+                                                        </div>
+                                                     </div>
+                                                ) : resourceType === 'drag_and_drop' ? (
                                                     <div className="space-y-4 p-4 border bg-background rounded-md">
                                                         <Label className="text-lg">Drag &amp; Drop Activity Builder</Label>
                                                         <div><Label>Instructions</Label><Input value={dndInstructions} onChange={e => setDndInstructions(e.target.value)} placeholder="e.g., Match the capital to the country." /></div>
