@@ -13,7 +13,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music, MousePointerSquareDashed, ListVideo, Clock, Image as ImageIcon, Heading2 } from 'lucide-react';
-import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole, DNDTemplateType, DNDCategorizationItem, DNDCategory, DNDMatchingItem, DNDSequencingItem, WebPageSection, WebPageSectionType } from '@/types';
+import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, UserRole, DNDTemplateType, DNDCategorizationItem, DNDCategory, DNDMatchingItem, DNDSequencingItem, WebPageSection, WebPageSectionType, WebPageTemplate } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
 import Link from 'next/link';
@@ -57,8 +57,9 @@ export default function ManageCourseContentPage() {
 
   // Note (multi-page) state
   const [notePages, setNotePages] = useState<string[]>(['']);
-
+  
   // Web Page Builder State
+  const [webPageTemplate, setWebPageTemplate] = useState<WebPageTemplate>('default');
   const [webPageSections, setWebPageSections] = useState<WebPageSection[]>([]);
   const [sectionImageFiles, setSectionImageFiles] = useState<Record<string, File | null>>({});
 
@@ -140,7 +141,7 @@ export default function ManageCourseContentPage() {
     setResourceTitle(''); setResourceType('note'); setResourceUrlOrContent('');
     setDurationMinutes('');
     setNotePages(['']);
-    setWebPageSections([]);
+    setWebPageTemplate('default'); setWebPageSections([]);
     setSectionImageFiles({});
     setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
     setDndTemplate('categorization'); setDndInstructions(''); setDndCategorizationItems([]); setDndCategories([]);
@@ -165,7 +166,9 @@ export default function ManageCourseContentPage() {
       } else if (resourceToEdit.type === 'note' && resourceToEdit.url_or_content.startsWith('[')) {
         setNotePages(JSON.parse(resourceToEdit.url_or_content));
       } else if (resourceToEdit.type === 'web_page') {
-        setWebPageSections(JSON.parse(resourceToEdit.url_or_content || '[]'));
+        const pageContent = JSON.parse(resourceToEdit.url_or_content || '{}');
+        setWebPageTemplate(pageContent.template || 'default');
+        setWebPageSections(pageContent.sections || []);
       } else if (resourceToEdit.type === 'drag_and_drop') {
           const dndData = JSON.parse(resourceToEdit.url_or_content || '{}');
           setDndTemplate(dndData.template || 'categorization');
@@ -278,7 +281,7 @@ export default function ManageCourseContentPage() {
                  uploadedSections[i].content = signedUrlResult.publicUrl!;
              }
          }
-         finalUrlOrContent = JSON.stringify(uploadedSections);
+         finalUrlOrContent = JSON.stringify({ template: webPageTemplate, sections: uploadedSections });
       } else if (resourceType === 'drag_and_drop') {
           const dndData = {
               template: dndTemplate,
@@ -593,6 +596,16 @@ export default function ManageCourseContentPage() {
                                                 {resourceType === 'web_page' ? (
                                                      <div className="space-y-4 p-4 border bg-background rounded-md">
                                                         <Label className="text-lg">Web Page Builder</Label>
+                                                        <div>
+                                                            <Label>Template</Label>
+                                                            <Select value={webPageTemplate} onValueChange={val => setWebPageTemplate(val as WebPageTemplate)}>
+                                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="default">Default</SelectItem>
+                                                                    <SelectItem value="article">Article Style</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
                                                         <div className="space-y-3">
                                                             {webPageSections.map((section, index) => (
                                                                 <div key={section.id} className="p-3 border rounded-lg space-y-3 bg-muted/50 relative">
@@ -601,7 +614,7 @@ export default function ManageCourseContentPage() {
                                                                         <div><Label>Heading</Label><Input value={section.content} onChange={e => handleWebPageSectionContentChange(index, e.target.value)} placeholder="Enter heading text..." /></div>
                                                                     )}
                                                                     {section.type === 'text' && (
-                                                                        <div><Label>Text Block</Label><Editor value={section.content} onChange={data => handleWebPageSectionContentChange(index, data)} disabled={isSubmitting} /></div>
+                                                                        <div><Label>Text Block</Label><div className="mt-1 prose prose-sm max-w-none dark:prose-invert [&_.ck-editor__main>.ck-editor__editable]:min-h-24 [&_.ck-editor__main>.ck-editor__editable]:bg-background [&_.ck-toolbar]:bg-muted [&_.ck-toolbar]:border-border [&_.ck-editor__main]:border-border [&_.ck-content]:text-foreground"><Editor value={section.content} onChange={data => handleWebPageSectionContentChange(index, data)} disabled={isSubmitting} /></div></div>
                                                                     )}
                                                                     {section.type === 'image' && (
                                                                         <div><Label>Image</Label><Input type="file" accept="image/*" onChange={e => handleWebPageSectionImageChange(index, e.target.files?.[0] || null)} />

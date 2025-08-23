@@ -437,6 +437,7 @@ export interface LessonContentResource {
     title: string;
     // For 'note', it holds a JSON string of page content: string[]
     // For 'quiz', it holds a JSON string of QuizQuestion[]
+    // For 'web_page', it holds the JSON string of a WebPageContent object
     // For others, it holds a URL or HTML content.
     url_or_content: string;
     duration_minutes?: number;
@@ -444,10 +445,17 @@ export interface LessonContentResource {
 
 // --- Web Page Section Types ---
 export type WebPageSectionType = 'heading' | 'text' | 'image';
+export type WebPageTemplate = 'default' | 'article';
+
 export interface WebPageSection {
   id: string;
   type: WebPageSectionType;
   content: string; // For text/heading, this is the text. For image, this is the URL.
+}
+
+export interface WebPageContent {
+    template: WebPageTemplate;
+    sections: WebPageSection[];
 }
 
 

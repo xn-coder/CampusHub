@@ -1,9 +1,10 @@
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
-import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData, CourseResourceType, WebPageSection } from '@/types';
+import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData, CourseResourceType, WebPageSection, WebPageContent, WebPageTemplate } from '@/types';
 import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock, AlertTriangle, Image as ImageIcon, Heading2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
@@ -94,7 +95,7 @@ export default function CourseResourcePage() {
     const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number[]>>({});
     const [quizResult, setQuizResult] = useState<{ score: number; total: number; passed: boolean; } | null>(null);
     const [notePages, setNotePages] = useState<string[]>([]);
-    const [webPageSections, setWebPageSections] = useState<WebPageSection[]>([]);
+    const [webPageContent, setWebPageContent] = useState<WebPageContent | null>(null);
     const [dndActivityData, setDndActivityData] = useState<DNDActivityData | null>(null);
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
     const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -225,7 +226,8 @@ export default function CourseResourcePage() {
             // Reset resource-specific states
             setNumPages(null); setQuizQuestions([]); setCurrentQuestionIndex(0);
             setSelectedAnswers({}); setQuizResult(null); setNotePages([]);
-            setDndActivityData(null); setWebPageSections([]);
+            setWebPageContent(null);
+            setDndActivityData(null);
             setTimeLeft(null);
             if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
             timerIntervalRef.current = null;
@@ -307,7 +309,7 @@ export default function CourseResourcePage() {
                             setNotePages(JSON.parse(currentResource.url_or_content));
                         }
                         else if (currentResource.type === 'web_page') {
-                            setWebPageSections(JSON.parse(currentResource.url_or_content || '[]'));
+                            setWebPageContent(JSON.parse(currentResource.url_or_content || '{}'));
                         }
                         else if (currentResource.type === 'drag_and_drop') {
                             setDndActivityData(JSON.parse(currentResource.url_or_content));
@@ -408,6 +410,34 @@ export default function CourseResourcePage() {
     
     const isAdmin = currentUserRole === 'admin' || currentUserRole === 'superadmin';
     const isNextDisabled = !isAdmin && (isPreviewing || !isCompleted);
+    
+    const renderWebPageContent = (content: WebPageContent) => {
+        if (content.template === 'article') {
+            return (
+                <article className="max-w-3xl mx-auto prose prose-lg dark:prose-invert">
+                    <h1>{resource.title}</h1>
+                    {content.sections.map(section => {
+                        if (section.type === 'heading') return <h2 key={section.id}>{section.content}</h2>;
+                        if (section.type === 'text') return <div key={section.id} dangerouslySetInnerHTML={{ __html: section.content }} />;
+                        if (section.type === 'image') return <Image key={section.id} src={section.content} alt="Course Content Image" width={800} height={450} className="rounded-md my-4" data-ai-hint="course content" />;
+                        return null;
+                    })}
+                </article>
+            );
+        }
+
+        // Default template
+        return (
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+                {content.sections.map(section => {
+                    if (section.type === 'heading') return <h2 key={section.id}>{section.content}</h2>;
+                    if (section.type === 'text') return <div key={section.id} dangerouslySetInnerHTML={{ __html: section.content }} />;
+                    if (section.type === 'image') return <Image key={section.id} src={section.content} alt="Course Content Image" width={800} height={450} className="rounded-md my-4" data-ai-hint="course content" />;
+                    return null;
+                })}
+            </div>
+        );
+    };
 
     return (
         <div className="flex flex-col gap-6">
@@ -478,16 +508,7 @@ export default function CourseResourcePage() {
                         </div>
                     ) : (
                     <>
-                     {resource.type === 'web_page' && (
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                            {webPageSections.map(section => {
-                                if (section.type === 'heading') return <h2 key={section.id}>{section.content}</h2>;
-                                if (section.type === 'text') return <div key={section.id} dangerouslySetInnerHTML={{ __html: section.content }} />;
-                                if (section.type === 'image') return <Image key={section.id} src={section.content} alt="Course Content Image" width={800} height={450} className="rounded-md my-4" data-ai-hint="course content" />;
-                                return null;
-                            })}
-                        </div>
-                     )}
+                     {resource.type === 'web_page' && webPageContent && renderWebPageContent(webPageContent)}
                      {resource.type === 'video' && (
                         <div className="aspect-video w-full bg-black rounded-lg overflow-hidden">
                            {embedUrl ? (
@@ -615,4 +636,3 @@ export default function CourseResourcePage() {
         </div>
     );
 }
-
