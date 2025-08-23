@@ -412,6 +412,9 @@ export default function CourseResourcePage() {
     const isNextDisabled = !isAdmin && (isPreviewing || !isCompleted);
     
     const renderWebPageContent = (content: WebPageContent) => {
+        if (!content || !Array.isArray(content.sections)) {
+            return <p className="text-muted-foreground">This web page has no content yet.</p>;
+        }
         if (content.template === 'article') {
             return (
                 <article className="max-w-3xl mx-auto prose prose-lg dark:prose-invert">
@@ -636,3 +639,4 @@ export default function CourseResourcePage() {
         </div>
     );
 }
+
