@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useRef } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface CKEditorProps {
     value: string;
@@ -21,7 +22,12 @@ const Editor: React.FC<CKEditorProps> = ({ value, onChange, disabled }) => {
     }, []);
 
     if (!CKEditor) {
-        return <div>Loading Editor...</div>;
+        return (
+             <div className="space-y-2 rounded-md border p-4">
+                <Skeleton className="h-7 w-full" />
+                <Skeleton className="h-20 w-full" />
+            </div>
+        );
     }
 
     return (
