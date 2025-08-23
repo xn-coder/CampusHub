@@ -140,6 +140,7 @@ export default function CourseResourcePage() {
     }, [resource, courseId, resourceId, toast, calculateProgress]);
     
     const handleSubmitQuiz = useCallback(() => {
+        if (quizResult) return; // Prevent re-submission
         let score = 0;
         quizQuestions.forEach((q, index) => {
             const userAnswers = new Set(selectedAnswers[index] || []);
@@ -164,7 +165,7 @@ export default function CourseResourcePage() {
         if (passed) {
              handleMarkAsComplete();
         }
-    }, [quizQuestions, selectedAnswers, handleMarkAsComplete]);
+    }, [quizQuestions, selectedAnswers, handleMarkAsComplete, quizResult]);
 
     // Role and preview status check
     useEffect(() => {
@@ -180,26 +181,39 @@ export default function CourseResourcePage() {
     // Timer effect
     useEffect(() => {
         if (resource?.duration_minutes && timeLeft === null) {
-            setTimeLeft(resource.duration_minutes); // Keep in seconds
+            setTimeLeft(resource.duration_minutes);
         }
 
-        if (timeLeft !== null && timeLeft > 0 && !timerIntervalRef.current) {
-            timerIntervalRef.current = setInterval(() => {
-                setTimeLeft(prev => (prev !== null ? prev - 1 : 0));
-            }, 1000);
-        }
-
-        if (timeLeft === 0) {
-            if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
             timerIntervalRef.current = null;
-            toast({ title: "Time's Up!", description: "The timer for this activity has ended.", variant: "destructive" });
-            if (resource?.type === 'quiz') handleSubmitQuiz();
+        }
+
+        if (timeLeft !== null && timeLeft > 0) {
+            timerIntervalRef.current = setInterval(() => {
+                setTimeLeft(prev => {
+                    if (prev === null || prev <= 1) {
+                        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        } else if (timeLeft === 0) {
+            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+            if (resource?.type === 'quiz' && !quizResult) {
+                toast({ title: "Time's Up!", description: "The timer for this activity has ended.", variant: "destructive" });
+                handleSubmitQuiz();
+            }
         }
 
         return () => {
-            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+            if (timerIntervalRef.current) {
+                clearInterval(timerIntervalRef.current);
+            }
         };
-    }, [resource, timeLeft, handleSubmitQuiz, toast]);
+    }, [resource, timeLeft, handleSubmitQuiz, quizResult, toast]);
+
 
     // MAIN DATA FETCHING EFFECT
     useEffect(() => {
@@ -230,11 +244,11 @@ export default function CourseResourcePage() {
                 }
                 
                 // If access is granted, fetch the course content
-                const result = await getCourseForViewingAction(courseId);
-                if (!result.ok || !result.course) {
-                    throw new Error(result.message || "Failed to load course details.");
+                const courseResult = await getCourseForViewingAction(courseId);
+                if (!courseResult.ok || !courseResult.course) {
+                    throw new Error(courseResult.message || "Failed to load course details.");
                 }
-                const loadedCourse = result.course;
+                const loadedCourse = courseResult.course;
                 setCourse(loadedCourse);
 
                 // Fetch student-specific details if the user is a student
@@ -244,6 +258,8 @@ export default function CourseResourcePage() {
                     if (user?.school_id) {
                         const { data: school } = await supabase.from('schools').select('name').eq('id', user.school_id).single();
                         setCurrentSchoolName(school?.name || 'CampusHub');
+                    } else {
+                        setCurrentSchoolName('CampusHub');
                     }
                     const completionResult = await getCompletionStatusAction(userId, courseId);
                     if (completionResult.ok && completionResult.completedResources) {
@@ -554,12 +570,14 @@ export default function CourseResourcePage() {
                                                 id={`q${currentQuestionIndex}-o${index}`}
                                                 checked={(selectedAnswers[currentQuestionIndex] || []).includes(index)}
                                                 onCheckedChange={(checked) => handleAnswerChange(currentQuestionIndex, index, !!checked)}
+                                                disabled={timeLeft === 0}
                                             />
                                         ) : (
                                             <RadioGroup
                                                 value={String((selectedAnswers[currentQuestionIndex] || [])[0])}
                                                 onValueChange={() => handleAnswerChange(currentQuestionIndex, index, true)}
                                                 className="flex items-center"
+                                                disabled={timeLeft === 0}
                                             >
                                                 <RadioGroupItem value={String(index)} id={`q${currentQuestionIndex}-o${index}`} />
                                             </RadioGroup>
@@ -569,11 +587,11 @@ export default function CourseResourcePage() {
                                 ))}
                             </div>
                              <div className="flex justify-between mt-4">
-                                <Button onClick={handlePreviousQuestion} variant="outline" disabled={currentQuestionIndex === 0}>Previous</Button>
+                                <Button onClick={handlePreviousQuestion} variant="outline" disabled={currentQuestionIndex === 0 || timeLeft === 0}>Previous</Button>
                                 {currentQuestionIndex < quizQuestions.length - 1 ? (
-                                    <Button onClick={handleNextQuestion}>Next</Button>
+                                    <Button onClick={handleNextQuestion} disabled={timeLeft === 0}>Next</Button>
                                 ) : (
-                                    <Button onClick={handleSubmitQuiz} disabled={!selectedAnswers[currentQuestionIndex]}>Submit Quiz</Button>
+                                    <Button onClick={handleSubmitQuiz} disabled={!selectedAnswers[currentQuestionIndex] || timeLeft === 0}>Submit Quiz</Button>
                                 )}
                             </div>
                           </div>
@@ -598,3 +616,6 @@ export default function CourseResourcePage() {
         </div>
     );
 }
+
+
+    
