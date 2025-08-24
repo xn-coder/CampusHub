@@ -65,6 +65,20 @@ const getEmbedUrl = (url: string, type: CourseResourceType): string | null => {
     return null;
 };
 
+// Moved outside the component to prevent re-creation on every render.
+const calculateProgress = (course: (Course & { resources: CourseResource[] }) | null, completedResources: Record<string, boolean>): number => {
+    if (!course) return 0;
+    const lessons = course.resources.filter(r => r.type === 'note');
+    if (lessons.length === 0) return 0;
+    const allLessonContents = lessons.flatMap(lesson => {
+        try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } 
+        catch { return []; }
+    });
+    if (allLessonContents.length === 0) return 0;
+    const completedCount = allLessonContents.filter(res => completedResources[res.id]).length;
+    return Math.round((completedCount / allLessonContents.length) * 100);
+};
+
 
 export default function CourseResourcePage() {
     const params = useParams();
@@ -102,19 +116,6 @@ export default function CourseResourcePage() {
     const courseId = params.courseId as string;
     const resourceId = params.resourceId as string;
     
-    const calculateProgress = useCallback((completedResources: Record<string, boolean>) => {
-        if (!course) return 0;
-        const lessons = course.resources.filter(r => r.type === 'note');
-        if (lessons.length === 0) return 0;
-        const allLessonContents = lessons.flatMap(lesson => {
-            try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } 
-            catch { return []; }
-        });
-        if (allLessonContents.length === 0) return 0;
-        const completedCount = allLessonContents.filter(res => completedResources[res.id]).length;
-        return Math.round((completedCount / allLessonContents.length) * 100);
-    }, [course]);
-
     const handleMarkAsComplete = useCallback(async () => {
         const userId = localStorage.getItem('currentUserId');
         const role = localStorage.getItem('currentUserRole');
@@ -130,13 +131,13 @@ export default function CourseResourcePage() {
         if (result.ok) {
             setIsCompleted(true);
             const { completedResources } = await getCompletionStatusAction(userId, courseId);
-            if (completedResources) {
-                setOverallProgress(calculateProgress(completedResources));
+            if (completedResources && course) {
+                setOverallProgress(calculateProgress(course, completedResources));
             }
         } else {
             toast({title: "Error", description: result.message, variant: "destructive"});
         }
-    }, [resource, courseId, resourceId, toast, calculateProgress]);
+    }, [resource, courseId, resourceId, toast, course]);
     
     const handleSubmitQuiz = useCallback(() => {
         if (quizResult) return; // Prevent re-submission
@@ -261,7 +262,7 @@ export default function CourseResourcePage() {
                 const completionResult = await getCompletionStatusAction(userId, courseId);
                 if (completionResult.ok && completionResult.completedResources) {
                     setIsCompleted(!!completionResult.completedResources[resourceId]);
-                    setOverallProgress(calculateProgress(completionResult.completedResources));
+                    setOverallProgress(calculateProgress(loadedCourse, completionResult.completedResources));
                 }
             }
 
@@ -322,7 +323,7 @@ export default function CourseResourcePage() {
         } finally {
             setIsLoading(false);
         }
-    }, [courseId, resourceId, currentUserRole, isPreviewing, calculateProgress]);
+    }, [courseId, resourceId, currentUserRole, isPreviewing]);
 
     useEffect(() => {
         if(currentUserRole !== null) {
