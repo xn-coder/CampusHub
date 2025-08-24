@@ -1,11 +1,12 @@
 
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
 import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData, CourseResourceType, WebPageSection, WebPageContent, WebPageTemplate } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock, AlertTriangle, Image as ImageIcon, Heading2 } from 'lucide-react';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock, AlertTriangle, Image as ImageIcon, Heading2, User as ProfileIcon, Instagram, Facebook, Twitter, Linkedin, Phone, Mail, Link2, MapPin } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -216,123 +217,122 @@ export default function CourseResourcePage() {
 
 
     // MAIN DATA FETCHING EFFECT
-    useEffect(() => {
-        if (!courseId || !resourceId || currentUserRole === null) return;
+    const fetchDataAndCheckAccess = useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
+        
+        // Reset resource-specific states
+        setNumPages(null); setQuizQuestions([]); setCurrentQuestionIndex(0);
+        setSelectedAnswers({}); setQuizResult(null); setNotePages([]);
+        setWebPageContent(null);
+        setDndActivityData(null);
+        setTimeLeft(null);
+        if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
 
-        async function fetchDataAndCheckAccess() {
-            setIsLoading(true);
-            setError(null);
-            
-            // Reset resource-specific states
-            setNumPages(null); setQuizQuestions([]); setCurrentQuestionIndex(0);
-            setSelectedAnswers({}); setQuizResult(null); setNotePages([]);
-            setWebPageContent(null);
-            setDndActivityData(null);
-            setTimeLeft(null);
-            if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-            timerIntervalRef.current = null;
-
-            try {
-                const userId = localStorage.getItem('currentUserId');
-                if (!userId || !currentUserRole) {
-                    throw new Error("User session not found. Please log in.");
-                }
-
-                // First, check if user has access rights
-                const accessResult = await checkUserEnrollmentForCourseViewAction(courseId, userId, currentUserRole, isPreviewing);
-                if (!accessResult.ok || !accessResult.isEnrolled) {
-                    throw new Error(accessResult.message || "You do not have access to this course.");
-                }
-                
-                // If access is granted, fetch the course content
-                const courseResult = await getCourseForViewingAction(courseId);
-                if (!courseResult.ok || !courseResult.course) {
-                    throw new Error(courseResult.message || "Failed to load course details.");
-                }
-                const loadedCourse = courseResult.course;
-                setCourse(loadedCourse);
-
-                // Fetch student-specific details if the user is a student
-                if (currentUserRole === 'student') {
-                    const { data: user } = await supabase.from('users').select('name, school_id').eq('id', userId).single();
-                    setCurrentStudentName(user?.name || 'Valued Student');
-                    if (user?.school_id) {
-                        const { data: school } = await supabase.from('schools').select('name').eq('id', user.school_id).single();
-                        setCurrentSchoolName(school?.name || 'CampusHub');
-                    } else {
-                        setCurrentSchoolName('CampusHub');
-                    }
-                    const completionResult = await getCompletionStatusAction(userId, courseId);
-                    if (completionResult.ok && completionResult.completedResources) {
-                        setIsCompleted(!!completionResult.completedResources[resourceId]);
-                        const lessons = loadedCourse.resources.filter(r => r.type === 'note');
-                        const allLessonContents = lessons.flatMap(l => JSON.parse(l.url_or_content || '[]'));
-                        const completedCount = allLessonContents.filter(res => completionResult.completedResources![res.id]).length;
-                        setOverallProgress(allLessonContents.length > 0 ? Math.round((completedCount / allLessonContents.length) * 100) : 0);
-                    }
-                }
-
-                // Process the fetched resources to find the current one and its neighbors
-                const lessons = loadedCourse.resources.filter(r => r.type === 'note');
-                const allLessonContents = lessons.flatMap(lesson => {
-                    try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } catch { return []; }
-                });
-                
-                const currentIndex = allLessonContents.findIndex(r => r.id === resourceId);
-
-                if (currentIndex === -1) {
-                    throw new Error("The requested resource could not be found in this course.");
-                }
-                
-                const currentResource = allLessonContents[currentIndex];
-                setResource(currentResource);
-
-                // Lock content if admin is previewing beyond the first lesson
-                const isFirstLessonResource = lessons.length > 0 && (JSON.parse(lessons[0].url_or_content || '[]') as LessonContentResource[]).some(r => r.id === resourceId);
-                if (isPreviewing && !isFirstLessonResource) {
-                    setIsContentLocked(true);
-                } else {
-                    setIsContentLocked(false);
-                    // Parse content for specific resource types
-                    try {
-                        if (currentResource.type === 'quiz') {
-                             const loadedQuestions: QuizQuestion[] = JSON.parse(currentResource.url_or_content || '[]') || [];
-                             const migratedQuestions = loadedQuestions.map(q => {
-                                if (q.correctAnswerIndex !== undefined && q.correctAnswers === undefined) {
-                                    return { ...q, questionType: 'single', correctAnswers: [q.correctAnswerIndex] };
-                                }
-                                return { ...q, questionType: q.questionType || 'single', correctAnswers: q.correctAnswers || [] };
-                            });
-                            setQuizQuestions(migratedQuestions);
-                        }
-                        else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) {
-                            setNotePages(JSON.parse(currentResource.url_or_content));
-                        }
-                        else if (currentResource.type === 'web_page') {
-                            setWebPageContent(JSON.parse(currentResource.url_or_content || '{}'));
-                        }
-                        else if (currentResource.type === 'drag_and_drop') {
-                            setDndActivityData(JSON.parse(currentResource.url_or_content));
-                        }
-                    } catch(e) { throw new Error(`Failed to load content for this resource. It might be corrupted.`); }
-                }
-
-                // Set up navigation
-                const prevResource = currentIndex > 0 ? allLessonContents[currentIndex - 1] : null;
-                const nextResource = currentIndex < allLessonContents.length - 1 ? allLessonContents[currentIndex + 1] : null;
-                setPreviousResourceId(prevResource?.id || null);
-                setPreviousResourceTitle(prevResource?.title || null);
-                setNextResourceId(nextResource?.id || null);
-                setNextResourceTitle(nextResource?.title || null);
-
-            } catch (e: any) {
-                setError(e.message);
-            } finally {
-                setIsLoading(false);
+        try {
+            const userId = localStorage.getItem('currentUserId');
+            if (!userId || !currentUserRole) {
+                throw new Error("User session not found. Please log in.");
             }
+
+            // First, check if user has access rights
+            const accessResult = await checkUserEnrollmentForCourseViewAction(courseId, userId, currentUserRole, isPreviewing);
+            if (!accessResult.ok || !accessResult.isEnrolled) {
+                throw new Error(accessResult.message || "You do not have access to this course.");
+            }
+            
+            // If access is granted, fetch the course content
+            const courseResult = await getCourseForViewingAction(courseId);
+            if (!courseResult.ok || !courseResult.course) {
+                throw new Error(courseResult.message || "Failed to load course details.");
+            }
+            const loadedCourse = courseResult.course;
+            setCourse(loadedCourse);
+
+            // Fetch student-specific details if the user is a student
+            if (currentUserRole === 'student') {
+                const { data: user } = await supabase.from('users').select('name, school_id').eq('id', userId).single();
+                setCurrentStudentName(user?.name || 'Valued Student');
+                if (user?.school_id) {
+                    const { data: school } = await supabase.from('schools').select('name').eq('id', user.school_id).single();
+                    setCurrentSchoolName(school?.name || 'CampusHub');
+                } else {
+                    setCurrentSchoolName('CampusHub');
+                }
+                const completionResult = await getCompletionStatusAction(userId, courseId);
+                if (completionResult.ok && completionResult.completedResources) {
+                    setIsCompleted(!!completionResult.completedResources[resourceId]);
+                    setOverallProgress(calculateProgress(completionResult.completedResources));
+                }
+            }
+
+            // Process the fetched resources to find the current one and its neighbors
+            const lessons = loadedCourse.resources.filter(r => r.type === 'note');
+            const allLessonContents = lessons.flatMap(lesson => {
+                try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } catch { return []; }
+            });
+            
+            const currentIndex = allLessonContents.findIndex(r => r.id === resourceId);
+
+            if (currentIndex === -1) {
+                throw new Error("The requested resource could not be found in this course.");
+            }
+            
+            const currentResource = allLessonContents[currentIndex];
+            setResource(currentResource);
+
+            // Lock content if admin is previewing beyond the first lesson
+            const isFirstLessonResource = lessons.length > 0 && (JSON.parse(lessons[0].url_or_content || '[]') as LessonContentResource[]).some(r => r.id === resourceId);
+            if (isPreviewing && !isFirstLessonResource) {
+                setIsContentLocked(true);
+            } else {
+                setIsContentLocked(false);
+                // Parse content for specific resource types
+                try {
+                    if (currentResource.type === 'quiz') {
+                         const loadedQuestions: QuizQuestion[] = JSON.parse(currentResource.url_or_content || '[]') || [];
+                         const migratedQuestions = loadedQuestions.map(q => {
+                            if (q.correctAnswerIndex !== undefined && q.correctAnswers === undefined) {
+                                return { ...q, questionType: 'single', correctAnswers: [q.correctAnswerIndex] };
+                            }
+                            return { ...q, questionType: q.questionType || 'single', correctAnswers: q.correctAnswers || [] };
+                        });
+                        setQuizQuestions(migratedQuestions);
+                    }
+                    else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) {
+                        setNotePages(JSON.parse(currentResource.url_or_content));
+                    }
+                    else if (currentResource.type === 'web_page') {
+                        setWebPageContent(JSON.parse(currentResource.url_or_content || '{}'));
+                    }
+                    else if (currentResource.type === 'drag_and_drop') {
+                        setDndActivityData(JSON.parse(currentResource.url_or_content));
+                    }
+                } catch(e) { throw new Error(`Failed to load content for this resource. It might be corrupted.`); }
+            }
+
+            // Set up navigation
+            const prevResource = currentIndex > 0 ? allLessonContents[currentIndex - 1] : null;
+            const nextResource = currentIndex < allLessonContents.length - 1 ? allLessonContents[currentIndex + 1] : null;
+            setPreviousResourceId(prevResource?.id || null);
+            setPreviousResourceTitle(prevResource?.title || null);
+            setNextResourceId(nextResource?.id || null);
+            setNextResourceTitle(nextResource?.title || null);
+
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setIsLoading(false);
         }
-        fetchDataAndCheckAccess();
-    }, [courseId, resourceId, currentUserRole, isPreviewing]); 
+    }, [courseId, resourceId, currentUserRole, isPreviewing, calculateProgress]);
+
+    useEffect(() => {
+        if(currentUserRole !== null) {
+            fetchDataAndCheckAccess();
+        }
+    }, [fetchDataAndCheckAccess, currentUserRole]); // Re-run when role is determined
+
 
     const pdfFile = useMemo(() => ((resource?.type === 'ebook' && resource.url_or_content.endsWith('.pdf')) ? { url: resource.url_or_content } : null), [resource]);
     const embedUrl = useMemo(() => (resource?.type && resource.url_or_content) ? getEmbedUrl(resource.url_or_content, resource.type) : null, [resource]);
@@ -412,14 +412,54 @@ export default function CourseResourcePage() {
     const isNextDisabled = !isAdmin && (isPreviewing || !isCompleted);
     
     const renderWebPageContent = (content: WebPageContent) => {
-        if (!content || !Array.isArray(content.sections)) {
+        if (!content || (!Array.isArray(content.sections) && !content.profileCardData)) {
             return <p className="text-muted-foreground">This web page has no content yet.</p>;
         }
+
+        if (content.template === 'profile_card' && content.profileCardData) {
+            const data = content.profileCardData;
+            return (
+              <div className="flex justify-center p-4" style={{ background: 'linear-gradient(to bottom, hsl(var(--primary)) 20%, hsl(var(--background)) 20%)' }}>
+                <Card className="w-full max-w-sm overflow-hidden shadow-lg border-2 border-primary/20">
+                  <CardContent className="p-0">
+                    <div className="relative h-28 bg-primary/20">
+                      {data.bannerImageUrl && <Image src={data.bannerImageUrl} alt="Banner" layout="fill" objectFit="cover" data-ai-hint="banner abstract" />}
+                    </div>
+                    <div className="flex justify-center -mt-16">
+                      <Avatar className="w-28 h-28 border-4 border-background bg-muted">
+                        <AvatarImage src={data.profileImageUrl} alt={data.name} data-ai-hint="person portrait" />
+                        <AvatarFallback><ProfileIcon className="w-12 h-12" /></AvatarFallback>
+                      </Avatar>
+                    </div>
+                    <div className="text-center px-6 py-4">
+                      <h3 className="text-2xl font-bold">{data.name}</h3>
+                      <p className="text-primary">{data.jobTitle}</p>
+                      <p className="text-muted-foreground text-sm mt-2">{data.description}</p>
+                    </div>
+                    <div className="bg-primary/90 flex justify-center items-center gap-4 p-2 text-primary-foreground">
+                        {data.instagram && <a href={`https://instagram.com/${data.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer"><Instagram className="h-6 w-6"/></a>}
+                        {data.facebook && <a href={data.facebook} target="_blank" rel="noopener noreferrer"><Facebook className="h-6 w-6"/></a>}
+                        {data.twitter && <a href={`https://twitter.com/${data.twitter.replace('@', '')}`} target="_blank" rel="noopener noreferrer"><Twitter className="h-6 w-6"/></a>}
+                        {data.linkedin && <a href={data.linkedin} target="_blank" rel="noopener noreferrer"><Linkedin className="h-6 w-6"/></a>}
+                    </div>
+                    <div className="p-6 space-y-4 text-sm">
+                      {data.phone && <div className="flex items-center gap-3"><Phone className="w-5 h-5 text-muted-foreground"/><a href={`tel:${data.phone}`}>{data.phone}</a></div>}
+                      {data.whatsapp && <div className="flex items-center gap-3"><svg className="w-5 h-5 text-muted-foreground" viewBox="0 0 24 24"><path fill="currentColor" d="M16.75 13.96c.25.25.25.66 0 .91l-1.55 1.54c-.25.25-.66.25-.91 0s-.25-.66 0-.91l1.55-1.54c.25-.25.66-.25.91 0zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c.34 0 .68-.02 1.01-.06c.07-.01.11-.09.09-.16l-.28-1.07c-.02-.08-.12-.11-.19-.07c-2.12.98-4.5.9-6.53-.25c-2.23-1.27-3.7-3.66-3.7-6.39c0-4.03 3.27-7.3 7.3-7.3s7.3 3.27 7.3 7.3c0 1.23-.3 2.39-.84 3.42c-.05.1-.02.21.07.26l1.24.59c.09.04.2.01.24-.08c.59-1.37.93-2.88.93-4.49C22 6.48 17.52 2 12 2zm8.57 11.23c.09-.23-.04-.49-.26-.58l-1.12-.45c-.22-.09-.48.04-.58.26l-.43.95c-.32-.17-.63-.36-.93-.57c-1.29-.9-2.28-2.22-2.8-3.7c.36-1.01.62-2.1.62-3.23c0-1.48-.48-2.85-1.29-4.01C13.56 3.12 12.8 3 12 3s-1.56.12-2.28.34C8.94 3.67 8.22 4.29 7.74 5.12c-.9 1.54-1.24 3.33-1.24 5.12c0 2.21.75 4.23 2.06 5.79c1.55 1.83 3.73 3.09 6.16 3.09c1.33 0 2.6-.45 3.6-1.24c.21-.16.35-.39.39-.64l.13-.8c.03-.23-.05-.48-.24-.65l-1.19-.95z"/></svg><a href={`https://wa.me/${data.whatsapp.replace(/\D/g, '')}`}>{data.whatsapp}</a></div>}
+                      {data.email && <div className="flex items-center gap-3"><Mail className="w-5 h-5 text-muted-foreground"/><a href={`mailto:${data.email}`}>{data.email}</a></div>}
+                      {data.website && <div className="flex items-center gap-3"><Link2 className="w-5 h-5 text-muted-foreground"/><a href={data.website} target="_blank" rel="noopener noreferrer">{data.website}</a></div>}
+                      {data.address && <div className="flex items-start gap-3"><MapPin className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5"/><span>{data.address}</span></div>}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            );
+        }
+
         if (content.template === 'article') {
             return (
                 <article className="max-w-3xl mx-auto prose prose-lg dark:prose-invert">
                     <h1>{resource.title}</h1>
-                    {content.sections.map(section => {
+                    {content.sections && content.sections.map(section => {
                         if (section.type === 'heading') return <h2 key={section.id}>{section.content}</h2>;
                         if (section.type === 'text') return <div key={section.id} dangerouslySetInnerHTML={{ __html: section.content }} />;
                         if (section.type === 'image') return <Image key={section.id} src={section.content} alt="Course Content Image" width={800} height={450} className="rounded-md my-4" data-ai-hint="course content" />;
@@ -432,7 +472,7 @@ export default function CourseResourcePage() {
         // Default template
         return (
             <div className="prose prose-sm dark:prose-invert max-w-none">
-                {content.sections.map(section => {
+                {content.sections && content.sections.map(section => {
                     if (section.type === 'heading') return <h2 key={section.id}>{section.content}</h2>;
                     if (section.type === 'text') return <div key={section.id} dangerouslySetInnerHTML={{ __html: section.content }} />;
                     if (section.type === 'image') return <Image key={section.id} src={section.content} alt="Course Content Image" width={800} height={450} className="rounded-md my-4" data-ai-hint="course content" />;
@@ -639,4 +679,3 @@ export default function CourseResourcePage() {
         </div>
     );
 }
-

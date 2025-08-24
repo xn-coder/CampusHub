@@ -445,7 +445,7 @@ export interface LessonContentResource {
 
 // --- Web Page Section Types ---
 export type WebPageSectionType = 'heading' | 'text' | 'image';
-export type WebPageTemplate = 'default' | 'article';
+export type WebPageTemplate = 'default' | 'article' | 'profile_card';
 
 export interface WebPageSection {
   id: string;
@@ -455,7 +455,24 @@ export interface WebPageSection {
 
 export interface WebPageContent {
     template: WebPageTemplate;
-    sections: WebPageSection[];
+    sections?: WebPageSection[]; // General purpose sections
+    // Profile card specific fields
+    profileCardData?: {
+        name?: string;
+        jobTitle?: string;
+        description?: string;
+        phone?: string;
+        whatsapp?: string;
+        website?: string;
+        address?: string;
+        email?: string;
+        instagram?: string;
+        facebook?: string;
+        twitter?: string;
+        linkedin?: string;
+        profileImageUrl?: string;
+        bannerImageUrl?: string;
+    };
 }
 
 
