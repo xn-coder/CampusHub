@@ -12,7 +12,8 @@ import {
     FileBadge, 
     IndianRupee, 
     LayoutGrid,
-    ChevronRight
+    ChevronRight,
+    Wallet
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -30,6 +31,13 @@ const feeOptions: FeeManagementOption[] = [
     description: "Define fee types like tuition, labs, etc.",
     icon: Tags,
     href: "/admin/fee-categories",
+    isImplemented: true,
+  },
+  {
+    title: "Manage Expenses",
+    description: "Track and manage all school expenditures.",
+    icon: Wallet,
+    href: "/admin/expenses",
     isImplemented: true,
   },
   {
