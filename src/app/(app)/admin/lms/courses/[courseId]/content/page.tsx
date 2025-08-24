@@ -230,7 +230,7 @@ export default function ManageCourseContentPage() {
     }
     if (resourceType === 'drag_and_drop') {
         if (!dndInstructions.trim()) {
-            toast({ title: "Error", description: "Instructions are required for Drag & Drop activities.", variant: "destructive"}); return;
+            toast({ title: "Error", description: "Instructions are required for Drag &amp; Drop activities.", variant: "destructive"}); return;
         }
         if (dndTemplate === 'categorization' && (dndCategories.length === 0 || dndCategorizationItems.length === 0)) {
             toast({ title: "Error", description: "For Categorization, at least one category and one item are required.", variant: "destructive"}); return;
@@ -603,7 +603,7 @@ export default function ManageCourseContentPage() {
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="ppt" id={`type-ppt-${lesson.id}`} /><Label htmlFor={`type-ppt-${lesson.id}`}>PPT</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="webinar" id={`type-webinar-${lesson.id}`} /><Label htmlFor={`type-webinar-${lesson.id}`}>Webinar Link</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="quiz" id={`type-quiz-${lesson.id}`} /><Label htmlFor={`type-quiz-${lesson.id}`}>Quiz</Label></div>
-                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="drag_and_drop" id={`type-dnd-${lesson.id}`} /><Label htmlFor={`type-dnd-${lesson.id}`}>Drag & Drop</Label></div>
+                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="drag_and_drop" id={`type-dnd-${lesson.id}`} /><Label htmlFor={`type-dnd-${lesson.id}`}>Drag &amp; Drop</Label></div>
                                                    </RadioGroup>
                                                 </div>
                                                 <div className="grid md:grid-cols-2 gap-4">
@@ -650,17 +650,17 @@ export default function ManageCourseContentPage() {
                                                         
                                                         {webPageTemplate === 'profile_card' ? (
                                                             <div className="space-y-4">
-                                                                <h4 className="font-semibold text-md border-b">Card Content</h4>
+                                                                <h4 className="font-semibold text-md border-b">Profile Card Content</h4>
                                                                 <div className="grid md:grid-cols-2 gap-4">
-                                                                    <div><Label>Main Title / Name</Label><Input value={profileCardData?.name || ''} onChange={e => handleProfileCardDataChange('name', e.target.value)} /></div>
+                                                                    <div><Label>Name</Label><Input value={profileCardData?.name || ''} onChange={e => handleProfileCardDataChange('name', e.target.value)} /></div>
                                                                     <div><Label>Subtitle / Role</Label><Input value={profileCardData?.jobTitle || ''} onChange={e => handleProfileCardDataChange('jobTitle', e.target.value)} /></div>
-                                                                    <div><Label>Profile Image (Avatar)</Label><Input type="file" accept="image/*" onChange={(e) => setProfileImageFile(e.target.files?.[0] || null)} /></div>
-                                                                    <div><Label>Header Image (Banner)</Label><Input type="file" accept="image/*" onChange={(e) => setBannerImageFile(e.target.files?.[0] || null)} /></div>
-                                                                    <div className="md:col-span-2"><Label>Main Description</Label><Input value={profileCardData?.description || ''} onChange={e => handleProfileCardDataChange('description', e.target.value)} /></div>
-                                                                    <div><Label>Contact Info (Phone/Email)</Label><Input value={profileCardData?.phone || ''} onChange={e => handleProfileCardDataChange('phone', e.target.value)} /></div>
-                                                                    <div><Label>Location / Address</Label><Input value={profileCardData?.address || ''} onChange={e => handleProfileCardDataChange('address', e.target.value)} /></div>
+                                                                    <div><Label>Profile Image</Label><Input type="file" accept="image/*" onChange={(e) => setProfileImageFile(e.target.files?.[0] || null)} /></div>
+                                                                    <div><Label>Banner Image</Label><Input type="file" accept="image/*" onChange={(e) => setBannerImageFile(e.target.files?.[0] || null)} /></div>
+                                                                    <div className="md:col-span-2"><Label>Description</Label><Input value={profileCardData?.description || ''} onChange={e => handleProfileCardDataChange('description', e.target.value)} /></div>
+                                                                    <div><Label>Phone</Label><Input value={profileCardData?.phone || ''} onChange={e => handleProfileCardDataChange('phone', e.target.value)} /></div>
+                                                                    <div><Label>Email</Label><Input type="email" value={profileCardData?.email || ''} onChange={e => handleProfileCardDataChange('email', e.target.value)} /></div>
                                                                     <div className="md:col-span-2"><Label>Link 1 (e.g., Website, Reference)</Label><Input type="url" value={profileCardData?.website || ''} onChange={e => handleProfileCardDataChange('website', e.target.value)} placeholder="https://..." /></div>
-                                                                    <div className="md:col-span-2"><Label>Link 2 (e.g., Further Reading)</Label><Input type="url" value={profileCardData?.linkedin || ''} onChange={e => handleProfileCardDataChange('linkedin', e.target.value)} placeholder="https://..." /></div>
+                                                                    <div className="md:col-span-2"><Label>Link 2 (e.g., LinkedIn)</Label><Input type="url" value={profileCardData?.linkedin || ''} onChange={e => handleProfileCardDataChange('linkedin', e.target.value)} placeholder="https://..." /></div>
                                                                 </div>
                                                             </div>
                                                         ) : (
