@@ -28,6 +28,7 @@ import {
 import { supabase } from '@/lib/supabaseClient';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist' | 'web_page';
 
@@ -615,7 +616,7 @@ export default function ManageCourseContentPage() {
                                                               </div>
                                                             )}
                                                             {webPageTemplate === 'article' && (
-                                                              <div className="border rounded-md p-2 mt-2 bg-muted/50">
+                                                              <div className="border rounded-md p-2 space-y-1 mt-2 bg-muted/50">
                                                                 <p className="text-xs text-muted-foreground text-center mb-1">Article Preview</p>
                                                                 <div className="h-6 bg-muted-foreground/20 rounded-sm w-1/2 mx-auto mb-2"></div>
                                                                 <div className="space-y-1">
