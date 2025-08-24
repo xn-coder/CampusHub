@@ -79,14 +79,9 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/lms/courses', label: 'LMS Courses', icon: Library }, 
   { href: '/admin/lms/reports', label: 'LMS Reports', icon: BarChart3 },
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
-  { 
-    label: 'Fees Management', icon: CreditCard,
-    children: [
-      { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
-      { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
-      { href: '/admin/receipts', label: 'Receipt Vouchers', icon: ReceiptText },
-    ]
-  },
+  { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
+  { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
+  { href: '/admin/receipts', label: 'Receipt Vouchers', icon: ReceiptText },
   { href: '/admin/expense-categories', label: 'Expense Categories', icon: Tags },
   { href: '/admin/expenses', label: 'Expense Management', icon: Wallet },
   { href: '/admin/academic-years', label: 'Academic Years', icon: CalendarRange },
