@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useRef } from 'react';
@@ -604,6 +605,26 @@ export default function ManageCourseContentPage() {
                                                                     <SelectItem value="article">Article Style</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
+                                                            {webPageTemplate === 'default' && (
+                                                              <div className="border rounded-md p-2 space-y-1 mt-2 bg-muted/50">
+                                                                <p className="text-xs text-muted-foreground text-center mb-1">Default Preview</p>
+                                                                <div className="h-4 bg-muted-foreground/20 rounded-sm w-3/4"></div>
+                                                                <div className="h-8 bg-muted-foreground/10 rounded-sm"></div>
+                                                                <div className="h-10 bg-muted-foreground/20 rounded-sm w-1/2 mx-auto"></div>
+                                                                <div className="h-8 bg-muted-foreground/10 rounded-sm"></div>
+                                                              </div>
+                                                            )}
+                                                            {webPageTemplate === 'article' && (
+                                                              <div className="border rounded-md p-2 mt-2 bg-muted/50">
+                                                                <p className="text-xs text-muted-foreground text-center mb-1">Article Preview</p>
+                                                                <div className="h-6 bg-muted-foreground/20 rounded-sm w-1/2 mx-auto mb-2"></div>
+                                                                <div className="space-y-1">
+                                                                    <div className="h-2 bg-muted-foreground/10 rounded-sm w-full"></div>
+                                                                    <div className="h-2 bg-muted-foreground/10 rounded-sm w-full"></div>
+                                                                    <div className="h-2 bg-muted-foreground/10 rounded-sm w-3/4"></div>
+                                                                </div>
+                                                              </div>
+                                                            )}
                                                         </div>
                                                         <div className="space-y-3">
                                                             {webPageSections.map((section, index) => (
@@ -613,12 +634,7 @@ export default function ManageCourseContentPage() {
                                                                         <div><Label>Heading</Label><Input value={section.content} onChange={e => handleWebPageSectionContentChange(index, e.target.value)} placeholder="Enter heading text..." /></div>
                                                                     )}
                                                                     {section.type === 'text' && (
-                                                                        <div>
-                                                                          <Label>Text Block</Label>
-                                                                          <div className="mt-1 prose prose-sm max-w-none dark:prose-invert [&_.ck-editor__main>.ck-editor__editable]:min-h-24 [&_.ck-editor__main>.ck-editor__editable]:bg-background [&_.ck-toolbar]:bg-muted [&_.ck-toolbar]:border-border [&_.ck-editor__main]:border-border [&_.ck-content]:text-foreground">
-                                                                            <Editor value={section.content} onChange={data => handleWebPageSectionContentChange(index, data)} disabled={isSubmitting} />
-                                                                          </div>
-                                                                        </div>
+                                                                        <div><Label>Text Block</Label><div className="mt-1 prose prose-sm max-w-none dark:prose-invert [&_.ck-editor__main>.ck-editor__editable]:min-h-24 [&_.ck-editor__main>.ck-editor__editable]:bg-background [&_.ck-toolbar]:bg-muted [&_.ck-toolbar]:border-border [&_.ck-editor__main]:border-border [&_.ck-content]:text-foreground"><Editor value={section.content} onChange={data => handleWebPageSectionContentChange(index, data)} disabled={isSubmitting} /></div></div>
                                                                     )}
                                                                     {section.type === 'image' && (
                                                                         <div><Label>Image</Label><Input type="file" accept="image/*" onChange={e => handleWebPageSectionImageChange(index, e.target.files?.[0] || null)} />
