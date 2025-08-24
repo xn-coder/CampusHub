@@ -9,7 +9,7 @@ export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist' | 'web_page';
+export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 export type TCRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type SubscriptionPlan = 'free' | 'monthly' | 'yearly' | 'one_time';
@@ -437,44 +437,10 @@ export interface LessonContentResource {
     title: string;
     // For 'note', it holds a JSON string of page content: string[]
     // For 'quiz', it holds a JSON string of QuizQuestion[]
-    // For 'web_page', it holds the JSON string of a WebPageContent object
     // For others, it holds a URL or HTML content.
     url_or_content: string;
     duration_minutes?: number;
 }
-
-// --- Web Page Section Types ---
-export type WebPageSectionType = 'heading' | 'text' | 'image';
-export type WebPageTemplate = 'default' | 'article' | 'profile_card';
-
-export interface WebPageSection {
-  id: string;
-  type: WebPageSectionType;
-  content: string; // For text/heading, this is the text. For image, this is the URL.
-}
-
-export interface WebPageContent {
-    template: WebPageTemplate;
-    sections?: WebPageSection[]; // General purpose sections
-    // Profile card specific fields
-    profileCardData?: {
-        name?: string;
-        jobTitle?: string;
-        description?: string;
-        phone?: string;
-        whatsapp?: string;
-        website?: string;
-        address?: string;
-        email?: string;
-        instagram?: string;
-        facebook?: string;
-        twitter?: string;
-        linkedin?: string;
-        profileImageUrl?: string;
-        bannerImageUrl?: string;
-    };
-}
-
 
 export interface QuizQuestion {
   id: string;

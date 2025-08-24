@@ -515,8 +515,8 @@ export async function addResourceToLessonAction(formData: FormData): Promise<{ o
 
   // Basic validation: ensure urlOrContent is present for types that need it.
   if (!urlOrContent && ['ebook', 'video', 'webinar', 'quiz', 'ppt', 'audio', 'drag_and_drop', 'youtube_playlist'].includes(resourceType)) {
-      if ((resourceType === 'note' || resourceType === 'drag_and_drop' || resourceType === 'web_page') && (urlOrContent === '' || urlOrContent === '[]' || urlOrContent === '{}')) {
-          // allow empty note/dnd/web_page
+      if ((resourceType === 'note' || resourceType === 'drag_and_drop') && (urlOrContent === '' || urlOrContent === '[]' || urlOrContent === '{}')) {
+          // allow empty note/dnd
       } else {
         return { ok: false, message: "Resource content (URL or data) is required." };
       }
