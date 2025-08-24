@@ -1,5 +1,4 @@
 
-
 import type { LucideIcon } from 'lucide-react';
 
 // ENUMS from DB - Ensure these match your SQL ENUM definitions
@@ -9,7 +8,7 @@ export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Excused';
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type PaymentStatus = 'Pending' | 'Paid' | 'Partially Paid' | 'Overdue' | 'Failed';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist';
+export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist' | 'web_page';
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 export type TCRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type SubscriptionPlan = 'free' | 'monthly' | 'yearly' | 'one_time';
@@ -437,6 +436,7 @@ export interface LessonContentResource {
     title: string;
     // For 'note', it holds a JSON string of page content: string[]
     // For 'quiz', it holds a JSON string of QuizQuestion[]
+    // For 'web_page', it holds a JSON string of WebPageContent
     // For others, it holds a URL or HTML content.
     url_or_content: string;
     duration_minutes?: number;
@@ -450,6 +450,11 @@ export interface QuizQuestion {
   correctAnswers: number[]; // Array of correct option indices
   // Deprecated, but kept for potential backward compatibility during migration
   correctAnswerIndex?: number;
+}
+
+export interface WebPageContent {
+  html: string;
+  css?: string;
 }
 
 

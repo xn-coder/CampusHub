@@ -1,12 +1,11 @@
 
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, markResourceAsCompleteAction, getCompletionStatusAction } from '../actions';
-import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData, CourseResourceType } from '@/types';
-import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock, AlertTriangle } from 'lucide-react';
+import type { LessonContentResource, QuizQuestion, Course, CourseResource, UserRole, DNDActivityData, CourseResourceType, WebPageContent } from '@/types';
+import { Loader2, ArrowLeft, BookOpen, Video, FileText, Users, FileQuestion, ArrowRight, CheckCircle, Award, Presentation, Lock, Music, MousePointerSquareDashed, ListVideo, Clock, AlertTriangle, Code } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import PageHeader from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -98,6 +97,7 @@ export default function CourseResourcePage() {
     const [dndActivityData, setDndActivityData] = useState<DNDActivityData | null>(null);
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
     const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const [webPageContent, setWebPageContent] = useState<WebPageContent | null>(null);
 
     const courseId = params.courseId as string;
     const resourceId = params.resourceId as string;
@@ -223,6 +223,7 @@ export default function CourseResourcePage() {
         setNumPages(null); setQuizQuestions([]); setCurrentQuestionIndex(0);
         setSelectedAnswers({}); setQuizResult(null); setNotePages([]);
         setDndActivityData(null);
+        setWebPageContent(null);
         setTimeLeft(null);
         if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
@@ -302,6 +303,8 @@ export default function CourseResourcePage() {
                     }
                     else if (currentResource.type === 'drag_and_drop') {
                         setDndActivityData(JSON.parse(currentResource.url_or_content));
+                    } else if (currentResource.type === 'web_page') {
+                        setWebPageContent(JSON.parse(currentResource.url_or_content || '{}'));
                     }
                 } catch(e) { throw new Error(`Failed to load content for this resource. It might be corrupted.`); }
             }
@@ -343,6 +346,7 @@ export default function CourseResourcePage() {
             case 'audio': return <Music {...props} />;
             case 'drag_and_drop': return <MousePointerSquareDashed {...props} />;
             case 'youtube_playlist': return <ListVideo {...props} />;
+            case 'web_page': return <Code {...props} />;
             default: return null;
         }
     };
@@ -379,6 +383,19 @@ export default function CourseResourcePage() {
              setTimeLeft(resource.duration_minutes);
         }
     };
+    
+    const renderWebPageContent = (content: WebPageContent) => {
+        if (!content || !content.html) {
+            return <p>This web page content is empty.</p>;
+        }
+        return (
+            <>
+                <style>{content.css || ''}</style>
+                <div dangerouslySetInnerHTML={{ __html: content.html }} />
+            </>
+        );
+    };
+
 
     if (isLoading) {
         return <div className="text-center py-10 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading resource...</div>;
@@ -506,6 +523,7 @@ export default function CourseResourcePage() {
                             ))}
                         </HTMLFlipBook>
                      )}
+                     {resource.type === 'web_page' && webPageContent && renderWebPageContent(webPageContent)}
                      {(resource.type === 'ebook' || resource.type === 'ppt') && (
                         embedUrl ? (
                              <iframe src={embedUrl} title={resource.title} className="w-full h-[80vh]"></iframe>

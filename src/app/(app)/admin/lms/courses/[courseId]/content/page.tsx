@@ -11,8 +11,8 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music, MousePointerSquareDashed, ListVideo, Clock } from 'lucide-react';
-import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, DNDTemplateType, DNDCategorizationItem, DNDCategory, DNDMatchingItem, DNDSequencingItem } from '@/types';
+import { PlusCircle, Trash2, BookOpen, Video, FileText, Users as WebinarIcon, Loader2, GripVertical, FileQuestion, ArrowLeft, Presentation, Edit2, BookCopy, Music, MousePointerSquareDashed, ListVideo, Clock, Code } from 'lucide-react';
+import type { Course, CourseResource, LessonContentResource, CourseResourceType, QuizQuestion, DNDTemplateType, DNDCategorizationItem, DNDCategory, DNDMatchingItem, DNDSequencingItem, WebPageContent } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
 import Link from 'next/link';
@@ -29,13 +29,14 @@ import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import dynamic from 'next/dynamic';
+import { Textarea } from '@/components/ui/textarea';
 
 const Editor = dynamic(() => import('@/components/shared/ck-editor'), { 
     ssr: false,
     loading: () => <div className="space-y-2 rounded-md border p-4"><Skeleton className="h-7 w-full" /><Skeleton className="h-20 w-full" /></div>
 });
 
-type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist';
+type ResourceTabKey = 'note' | 'video' | 'ebook' | 'webinar' | 'quiz' | 'ppt' | 'audio' | 'drag_and_drop' | 'youtube_playlist' | 'web_page';
 
 export default function ManageCourseContentPage() {
   const params = useParams();
@@ -63,6 +64,10 @@ export default function ManageCourseContentPage() {
 
   // Note (multi-page) state
   const [notePages, setNotePages] = useState<string[]>(['']);
+  
+  // Web Page state
+  const [webPageHtml, setWebPageHtml] = useState('');
+  const [webPageCss, setWebPageCss] = useState('');
   
   // Quiz State
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([{ id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
@@ -142,6 +147,7 @@ export default function ManageCourseContentPage() {
     setResourceTitle(''); setResourceType('note'); setResourceUrlOrContent('');
     setDurationMinutes('');
     setNotePages(['']);
+    setWebPageHtml(''); setWebPageCss('');
     setQuizQuestions([{ id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
     setDndTemplate('categorization'); setDndInstructions(''); setDndCategorizationItems([]); setDndCategories([]);
     setDndMatchingItems([{ id: uuidv4(), prompt: '', match: '' }]);
@@ -163,6 +169,10 @@ export default function ManageCourseContentPage() {
         setQuizQuestions(migratedQuestions.length > 0 ? migratedQuestions : [{ id: uuidv4(), question: '', options: ['', '', '', ''], questionType: 'single', correctAnswers: [] }]);
       } else if (resourceToEdit.type === 'note' && resourceToEdit.url_or_content.startsWith('[')) {
         setNotePages(JSON.parse(resourceToEdit.url_or_content));
+      } else if (resourceToEdit.type === 'web_page') {
+        const content: WebPageContent = JSON.parse(resourceToEdit.url_or_content || '{}');
+        setWebPageHtml(content.html || '');
+        setWebPageCss(content.css || '');
       } else if (resourceToEdit.type === 'drag_and_drop') {
           const dndData = JSON.parse(resourceToEdit.url_or_content || '{}');
           setDndTemplate(dndData.template || 'categorization');
@@ -210,6 +220,10 @@ export default function ManageCourseContentPage() {
       toast({ title: "Error", description: "Note pages cannot be empty.", variant: "destructive" });
       return;
     }
+     if (resourceType === 'web_page' && !webPageHtml.trim()) {
+      toast({ title: "Error", description: "HTML content for the web page cannot be empty.", variant: "destructive" });
+      return;
+    }
     if (resourceType === 'drag_and_drop') {
         if (!dndInstructions.trim()) {
             toast({ title: "Error", description: "Instructions are required for Drag & Drop activities.", variant: "destructive"}); return;
@@ -254,6 +268,8 @@ export default function ManageCourseContentPage() {
         finalUrlOrContent = JSON.stringify(quizQuestions);
       } else if (resourceType === 'note') {
         finalUrlOrContent = JSON.stringify(notePages);
+      } else if (resourceType === 'web_page') {
+        finalUrlOrContent = JSON.stringify({ html: webPageHtml, css: webPageCss });
       } else if (resourceType === 'drag_and_drop') {
           const dndData = {
               template: dndTemplate,
@@ -455,6 +471,7 @@ export default function ManageCourseContentPage() {
       case 'audio': return <Music {...props} />;
       case 'drag_and_drop': return <MousePointerSquareDashed {...props} />;
       case 'youtube_playlist': return <ListVideo {...props} />;
+      case 'web_page': return <Code {...props} />;
       default: return null;
     }
   };
@@ -514,6 +531,7 @@ export default function ManageCourseContentPage() {
                                                    <Label>Resource Type</Label>
                                                    <RadioGroup value={resourceType} onValueChange={(val) => setResourceType(val as ResourceTabKey)} className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="note" id={`type-note-${lesson.id}`} /><Label htmlFor={`type-note-${lesson.id}`}>Note</Label></div>
+                                                       <div className="flex items-center space-x-2"><RadioGroupItem value="web_page" id={`type-webpage-${lesson.id}`} /><Label htmlFor={`type-webpage-${lesson.id}`}>Web Page</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="video" id={`type-video-${lesson.id}`} /><Label htmlFor={`type-video-${lesson.id}`}>Video</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="youtube_playlist" id={`type-yt-playlist-${lesson.id}`} /><Label htmlFor={`type-yt-playlist-${lesson.id}`}>YouTube Playlist</Label></div>
                                                        <div className="flex items-center space-x-2"><RadioGroupItem value="audio" id={`type-audio-${lesson.id}`} /><Label htmlFor={`type-audio-${lesson.id}`}>Audio</Label></div>
@@ -539,7 +557,13 @@ export default function ManageCourseContentPage() {
 
                                                 {/* --- DYNAMIC FORM SECTION --- */}
                                                 
-                                                {resourceType === 'drag_and_drop' ? (
+                                                 {resourceType === 'web_page' ? (
+                                                    <div className="space-y-4 p-4 border bg-background rounded-md">
+                                                        <Label className="text-lg">Web Page Code Editor</Label>
+                                                        <div><Label htmlFor={`web-html-${lesson.id}`}>HTML Content</Label><Textarea id={`web-html-${lesson.id}`} value={webPageHtml} onChange={e => setWebPageHtml(e.target.value)} placeholder="<div>Your HTML here</div>" rows={10} className="font-mono text-xs"/></div>
+                                                        <div><Label htmlFor={`web-css-${lesson.id}`}>CSS Styles (Optional)</Label><Textarea id={`web-css-${lesson.id}`} value={webPageCss} onChange={e => setWebPageCss(e.target.value)} placeholder="/* Your CSS here */" rows={5} className="font-mono text-xs"/></div>
+                                                    </div>
+                                                ) : resourceType === 'drag_and_drop' ? (
                                                     <div className="space-y-4 p-4 border bg-background rounded-md">
                                                         <Label className="text-lg">Drag &amp; Drop Activity Builder</Label>
                                                         <div><Label>Instructions</Label><Input value={dndInstructions} onChange={e => setDndInstructions(e.target.value)} placeholder="e.g., Match the capital to the country." /></div>
