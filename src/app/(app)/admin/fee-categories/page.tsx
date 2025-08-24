@@ -11,12 +11,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import type { FeeCategory } from '@/types';
 import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Tags, Loader2, Eye, MoreHorizontal } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Tags, Loader2, Eye, MoreHorizontal, ArrowLeft } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { createFeeCategoryAction, updateFeeCategoryAction, deleteFeeCategoryAction, getFeeCategoriesAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import Link from 'next/link';
 
 
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
@@ -169,9 +170,16 @@ export default function FeeCategoriesPage() {
         title="Fee Category Management"
         description="Organize and manage different fee structures and categories for the institution."
         actions={
-          <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isSubmitting}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Add Fee Category
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" asChild>
+              <Link href="/admin/fees-management">
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees Management
+              </Link>
+            </Button>
+            <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isSubmitting}>
+              <PlusCircle className="mr-2 h-4 w-4" /> Add Fee Category
+            </Button>
+          </div>
         }
       />
       <Card>
