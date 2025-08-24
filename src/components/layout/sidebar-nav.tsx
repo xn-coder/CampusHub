@@ -8,6 +8,9 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarMenuBadge,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
 } from '@/components/ui/sidebar';
 
 // Consolidated icon imports
@@ -76,9 +79,14 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/lms/courses', label: 'LMS Courses', icon: Library }, 
   { href: '/admin/lms/reports', label: 'LMS Reports', icon: BarChart3 },
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 }, 
-  { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
-  { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
-  { href: '/admin/receipts', label: 'Receipt Vouchers', icon: ReceiptText },
+  { 
+    label: 'Fees Management', icon: CreditCard,
+    children: [
+      { href: '/admin/fee-categories', label: 'Fee Categories', icon: Tags },
+      { href: '/admin/student-fees', label: 'Student Fees', icon: Receipt },
+      { href: '/admin/receipts', label: 'Receipt Vouchers', icon: ReceiptText },
+    ]
+  },
   { href: '/admin/expense-categories', label: 'Expense Categories', icon: Tags },
   { href: '/admin/expenses', label: 'Expense Management', icon: Wallet },
   { href: '/admin/academic-years', label: 'Academic Years', icon: CalendarRange },
@@ -263,21 +271,44 @@ export default function SidebarNav() {
     <SidebarMenu>
       {navItems.map((item) => (
         <SidebarMenuItem key={item.label + item.href}>
-          <Link href={item.disabled ? '#' : item.href} passHref legacyBehavior>
+          {item.children ? (
+            <>
             <SidebarMenuButton
-              asChild
-              isActive={!item.disabled && (pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href) && item.href.length > 1 && pathname.split('/')[1] === item.href.split('/')[1] && pathname.split('/')[2] === item.href.split('/')[2] ) )} 
-              tooltip={{ children: item.disabled ? lockoutMessage : item.label, side: 'right', align: 'center' }}
-              disabled={item.disabled}
-              aria-disabled={item.disabled}
-              className={item.disabled ? 'cursor-not-allowed text-muted-foreground' : ''}
+              tooltip={{ children: item.label, side: 'right', align: 'center' }}
+              isActive={item.children.some(child => pathname.startsWith(child.href!))}
             >
-              <a>
-                <item.icon />
-                <span>{item.label}</span>
-              </a>
+              <item.icon />
+              <span>{item.label}</span>
             </SidebarMenuButton>
-          </Link>
+            <SidebarMenuSub>
+              {item.children.map(child => (
+                <SidebarMenuSubItem key={child.label + child.href}>
+                  <Link href={child.href!} passHref legacyBehavior>
+                    <SidebarMenuSubButton isActive={pathname.startsWith(child.href!)}>
+                      {child.label}
+                    </SidebarMenuSubButton>
+                  </Link>
+                </SidebarMenuSubItem>
+              ))}
+            </SidebarMenuSub>
+            </>
+          ) : (
+            <Link href={item.disabled ? '#' : item.href!} passHref legacyBehavior>
+              <SidebarMenuButton
+                asChild
+                isActive={!item.disabled && (pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href) && item.href.length > 1 && pathname.split('/')[1] === item.href.split('/')[1] && pathname.split('/')[2] === item.href.split('/')[2] ) )} 
+                tooltip={{ children: item.disabled ? lockoutMessage : item.label, side: 'right', align: 'center' }}
+                disabled={item.disabled}
+                aria-disabled={item.disabled}
+                className={item.disabled ? 'cursor-not-allowed text-muted-foreground' : ''}
+              >
+                <a>
+                  <item.icon />
+                  <span>{item.label}</span>
+                </a>
+              </SidebarMenuButton>
+            </Link>
+          )}
           {item.badgeId && sidebarCounts[item.badgeId] > 0 && <SidebarMenuBadge>{sidebarCounts[item.badgeId]}</SidebarMenuBadge>}
         </SidebarMenuItem>
       ))}
