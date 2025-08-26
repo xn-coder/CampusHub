@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -50,8 +51,8 @@ const feeOptions: FeeManagementOption[] = [
     title: "Manage Fee Types",
     description: "Create specific fee variations.",
     icon: FileBadge,
-    href: "#",
-    isImplemented: false,
+    href: "/admin/manage-fee-types",
+    isImplemented: true,
   },
   {
     title: "Manage Fee Type Groups",
@@ -64,8 +65,8 @@ const feeOptions: FeeManagementOption[] = [
     title: "Manage Special Fee Types",
     description: "Handle one-off or unique fees.",
     icon: IndianRupee,
-    href: "#",
-    isImplemented: false,
+    href: "/admin/manage-special-fee-types",
+    isImplemented: true,
   },
   {
     title: "Manage Concessions",
