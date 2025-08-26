@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Installment, StudentFeePayment } from '@/types';
+import type { Installment, StudentFeePayment, PaymentStatus } from '@/types';
 
 interface InstallmentInput {
   title: string;
@@ -145,7 +145,6 @@ export async function deleteInstallmentAction(id: string, schoolId: string): Pro
   }
 }
 
-
 export async function getAssignedFeesAction(schoolId: string): Promise<{
     ok: boolean;
     fees?: (StudentFeePayment & { student: {name: string, email: string}, fee_category: {name: string}, installment: {title: string}})[];
@@ -174,5 +173,81 @@ export async function getAssignedFeesAction(schoolId: string): Promise<{
     } catch (e: any) {
         console.error("Error fetching assigned fees:", e);
         return { ok: false, message: `Failed to fetch assigned fees: ${e.message}` };
+    }
+}
+
+
+interface AssignFeesInput {
+  student_ids: string[];
+  fee_category_ids: string[];
+  installment_id: string;
+  due_date?: string;
+  school_id: string;
+}
+
+export async function assignFeesToStudentsAction(
+  input: AssignFeesInput
+): Promise<{ ok: boolean; message: string; assignmentsCreated: number }> {
+    const supabase = createSupabaseServerClient();
+    const { student_ids, fee_category_ids, installment_id, due_date, school_id } = input;
+
+    if (student_ids.length === 0 || fee_category_ids.length === 0) {
+        return { ok: false, message: "Students and Fee Categories must be selected.", assignmentsCreated: 0 };
+    }
+
+    try {
+        const { data: categoriesData, error: categoriesError } = await supabase
+            .from('fee_categories')
+            .select('id, amount')
+            .in('id', fee_category_ids)
+            .eq('school_id', school_id);
+    
+        if (categoriesError) throw new Error(`Failed to fetch fee category details: ${categoriesError.message}`);
+        
+        const existingAssignments = await supabase
+            .from('student_fee_payments')
+            .select('student_id, fee_category_id')
+            .in('student_id', student_ids)
+            .in('fee_category_id', fee_category_ids)
+            .eq('installment_id', installment_id);
+            
+        const existingSet = new Set((existingAssignments.data || []).map(a => `${a.student_id}-${a.fee_category_id}`));
+        
+        const feeRecordsToInsert = [];
+        for (const studentId of student_ids) {
+            for (const category of categoriesData || []) {
+                const key = `${studentId}-${category.id}`;
+                if (!existingSet.has(key)) {
+                    feeRecordsToInsert.push({
+                        id: uuidv4(),
+                        student_id: studentId,
+                        fee_category_id: category.id,
+                        installment_id,
+                        assigned_amount: category.amount || 0,
+                        due_date,
+                        school_id,
+                        paid_amount: 0,
+                        status: 'Pending' as PaymentStatus,
+                    });
+                }
+            }
+        }
+
+        if (feeRecordsToInsert.length === 0) {
+            return { ok: true, message: "No new fees to assign. All selected fees might already be assigned.", assignmentsCreated: 0 };
+        }
+
+        const { error: insertError, count } = await supabase
+            .from('student_fee_payments')
+            .insert(feeRecordsToInsert);
+
+        if (insertError) throw insertError;
+        
+        revalidatePath('/admin/manage-installments');
+        revalidatePath('/admin/student-fees');
+        return { ok: true, message: `Successfully assigned ${feeRecordsToInsert.length} new fee records.`, assignmentsCreated: count || 0 };
+    } catch (e: any) {
+        console.error("Error in assignFeesToStudentsAction:", e);
+        return { ok: false, message: e.message, assignmentsCreated: 0 };
     }
 }
