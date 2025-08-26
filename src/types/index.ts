@@ -13,6 +13,7 @@ export type CourseResourceType = 'ebook' | 'video' | 'note' | 'webinar' | 'quiz'
 export type AdmissionStatus = 'Pending Review' | 'Admitted' | 'Enrolled' | 'Rejected';
 export type TCRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 export type SubscriptionPlan = 'free' | 'monthly' | 'yearly' | 'one_time';
+export type FeeTypeInstallmentType = 'installments' | 'extra_charge';
 
 
 export interface User {
@@ -363,8 +364,12 @@ export interface FeeCategory {
 
 export interface FeeType {
   id: string;
-  name: string;
+  name: string; // This is the Fee Type field
+  display_name: string; // New field
   description?: string | null;
+  installment_type: FeeTypeInstallmentType;
+  fee_category_id: string;
+  is_refundable: boolean;
   school_id: string;
   created_at?: string;
   updated_at?: string;

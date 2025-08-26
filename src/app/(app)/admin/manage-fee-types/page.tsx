@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { FeeType, StudentFeePayment, FeeCategory, Student } from '@/types';
+import type { FeeType, StudentFeePayment, FeeCategory, Student, FeeTypeInstallmentType } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, FileBadge, Loader2, MoreHorizontal, ArrowLeft, Filter, Receipt } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { getStudentsForSchoolAction } from '../manage-students/actions';
 import { getFeeCategoriesAction } from '../fee-categories/actions';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
   const { data: user, error } = await supabase.from('users').select('school_id').eq('id', userId).single();
@@ -49,6 +50,10 @@ export default function ManageFeeTypesPage() {
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingFeeType, setEditingFeeType] = useState<FeeType | null>(null);
   const [name, setName] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [installmentType, setInstallmentType] = useState<FeeTypeInstallmentType>('installments');
+  const [selectedFeeCategoryId, setSelectedFeeCategoryId] = useState('');
+  const [isRefundable, setIsRefundable] = useState(false);
   const [description, setDescription] = useState('');
 
   // Filtering state for assigned fees
@@ -59,7 +64,6 @@ export default function ManageFeeTypesPage() {
   const [assignTargetType, setAssignTargetType] = useState<'class' | 'individual'>('class');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const [selectedFeeCategoryIds, setSelectedFeeCategoryIds] = useState<string[]>([]);
   const [assignFeeTypeId, setAssignFeeTypeId] = useState<string>('');
   const [assignDueDate, setAssignDueDate] = useState<string>('');
   const [assignAmount, setAssignAmount] = useState<number | ''>('');
@@ -108,13 +112,19 @@ export default function ManageFeeTypesPage() {
   }, [toast, fetchPageData]);
 
   const resetForm = () => {
-    setName(''); setDescription(''); setEditingFeeType(null);
+    setName(''); setDisplayName(''); setInstallmentType('installments');
+    setSelectedFeeCategoryId(''); setIsRefundable(false); setDescription('');
+    setEditingFeeType(null);
   };
 
   const handleOpenDialog = (feeType?: FeeType) => {
     if (feeType) {
       setEditingFeeType(feeType);
       setName(feeType.name);
+      setDisplayName(feeType.display_name);
+      setInstallmentType(feeType.installment_type);
+      setSelectedFeeCategoryId(feeType.fee_category_id);
+      setIsRefundable(feeType.is_refundable);
       setDescription(feeType.description || '');
     } else {
       resetForm();
@@ -124,12 +134,22 @@ export default function ManageFeeTypesPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !currentSchoolId) {
-      toast({ title: "Error", description: "Name and school context are required.", variant: "destructive" });
+    if (!name.trim() || !displayName.trim() || !selectedFeeCategoryId || !currentSchoolId) {
+      toast({ title: "Error", description: "Fee Type, Display Name, and Fee Category are required.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
-    const feeTypeData = { name: name.trim(), description: description.trim() || undefined, school_id: currentSchoolId };
+    
+    const feeTypeData = { 
+      name: name.trim(),
+      display_name: displayName.trim(),
+      installment_type: installmentType,
+      fee_category_id: selectedFeeCategoryId,
+      is_refundable: isRefundable,
+      description: description.trim() || undefined, 
+      school_id: currentSchoolId 
+    };
+
     let result = editingFeeType ? await updateFeeTypeAction(editingFeeType.id, feeTypeData) : await createFeeTypeAction(feeTypeData);
     if (result.ok) {
       toast({ title: editingFeeType ? "Fee Type Updated" : "Fee Type Created", description: result.message });
@@ -223,7 +243,7 @@ export default function ManageFeeTypesPage() {
                 <CardContent>
                   {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
                   : feeTypes.length === 0 ? <p className="text-muted-foreground text-center py-4">No fee types have been created yet.</p>
-                  : <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Description</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{feeTypes.map((ft) => (<TableRow key={ft.id}><TableCell className="font-medium">{ft.name}</TableCell><TableCell>{ft.description}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(ft)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will permanently delete the fee type "{ft.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteFeeType(ft.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
+                  : <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Display Name</TableHead><TableHead>Category</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{feeTypes.map((ft) => (<TableRow key={ft.id}><TableCell className="font-medium">{ft.name}</TableCell><TableCell>{ft.display_name}</TableCell><TableCell>{(ft as any).fee_category?.name || 'N/A'}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(ft)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will permanently delete the fee type "{ft.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteFeeType(ft.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
                   }
                 </CardContent>
               </Card>
@@ -246,7 +266,7 @@ export default function ManageFeeTypesPage() {
                                 </Select>
                             </div>
                             {assignTargetType === 'class' ? (
-                                <div><Label>Select Class</Label><Select value={selectedClassId} onValueChange={setSelectedClassId}><SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger><SelectContent>{allStudents.map(s => s.class_id).filter((v,i,a)=>a.indexOf(v)===i && v).map(cid => <SelectItem key={cid} value={cid!}>{allStudents.find(s=>s.class_id===cid)?.class_id}</SelectItem>)}</SelectContent></Select></div>
+                                <div><Label>Select Class</Label><Select value={selectedClassId} onValueChange={setSelectedClassId}><SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger><SelectContent>{allStudents.map(s => s.class_id).filter((v,i,a)=>a.indexOf(v)===i && v).map(cid => <SelectItem key={cid} value={cid!}>{(allStudents.find(s=>s.class_id===cid) as any)?.class?.name || cid}</SelectItem>)}</SelectContent></Select></div>
                             ) : (
                                 <div><Label>Select Students</Label><p className="text-xs text-muted-foreground">Multi-select student feature coming soon. Please use 'Class' for now.</p></div>
                             )}
@@ -285,7 +305,53 @@ export default function ManageFeeTypesPage() {
       </Tabs>
 
       <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
-        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{editingFeeType ? 'Edit' : 'Create New'} Fee Type</DialogTitle></DialogHeader><form onSubmit={handleSubmit}><div className="grid gap-4 py-4"><div><Label htmlFor="name">Name</Label><Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Late Fee, Exam Fee" required disabled={isSubmitting} /></div><div><Label htmlFor="description">Description (Optional)</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this fee type" disabled={isSubmitting} /></div></div><DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingFeeType ? 'Save Changes' : 'Create Fee Type'}</Button></DialogFooter></form></DialogContent>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingFeeType ? 'Edit' : 'Create New'} Fee Type</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-4">
+              <div>
+                <Label htmlFor="name">Fee Type (Internal Name)</Label>
+                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., LATE_FEE, REVAL_FEE" required disabled={isSubmitting} />
+              </div>
+              <div>
+                <Label htmlFor="displayName">Display Name</Label>
+                <Input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g., Late Fee, Re-evaluation Fee" required disabled={isSubmitting} />
+              </div>
+               <div>
+                  <Label>Installment Type</Label>
+                   <RadioGroup value={installmentType} onValueChange={(val) => setInstallmentType(val as FeeTypeInstallmentType)} className="flex gap-4 pt-2">
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="installments" id="type-installments"/><Label htmlFor="type-installments" className="font-normal">Installments</Label></div>
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="extra_charge" id="type-extra"/><Label htmlFor="type-extra" className="font-normal">Extra Charge</Label></div>
+                    </RadioGroup>
+              </div>
+              <div>
+                <Label htmlFor="feeCategoryId">Fee Category</Label>
+                <Select value={selectedFeeCategoryId} onValueChange={setSelectedFeeCategoryId} required disabled={isSubmitting}>
+                    <SelectTrigger><SelectValue placeholder="Select a fee category" /></SelectTrigger>
+                    <SelectContent>
+                        {allFeeCategories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+              </div>
+               <div className="flex items-center space-x-2">
+                <Checkbox id="isRefundable" checked={isRefundable} onCheckedChange={(checked) => setIsRefundable(!!checked)} disabled={isSubmitting}/>
+                <Label htmlFor="isRefundable" className="font-normal">Is this fee refundable?</Label>
+              </div>
+              <div>
+                <Label htmlFor="description">Description</Label>
+                <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this fee type" disabled={isSubmitting} />
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingFeeType ? 'Save Changes' : 'Create Fee Type'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
       </Dialog>
     </div>
   );

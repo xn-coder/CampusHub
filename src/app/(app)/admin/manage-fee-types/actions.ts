@@ -4,11 +4,15 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { FeeType, StudentFeePayment, PaymentStatus } from '@/types';
+import type { FeeType, StudentFeePayment, PaymentStatus, FeeTypeInstallmentType } from '@/types';
 
 interface FeeTypeInput {
   name: string;
+  display_name: string;
   description?: string;
+  installment_type: FeeTypeInstallmentType;
+  fee_category_id: string;
+  is_refundable: boolean;
   school_id: string;
 }
 
@@ -20,7 +24,7 @@ export async function getFeeTypesAction(schoolId: string): Promise<{ ok: boolean
   try {
     const { data, error } = await supabase
       .from('fee_types')
-      .select('*')
+      .select('*, fee_category:fee_category_id(name)')
       .eq('school_id', schoolId)
       .order('name');
 
@@ -31,7 +35,7 @@ export async function getFeeTypesAction(schoolId: string): Promise<{ ok: boolean
       }
       throw error;
     }
-    return { ok: true, feeTypes: data || [] };
+    return { ok: true, feeTypes: data as any[] || [] };
   } catch (e: any) {
     console.error("Error fetching fee types:", e);
     return { ok: false, message: `Failed to fetch fee types: ${e.message}` };
