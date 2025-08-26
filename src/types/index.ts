@@ -609,6 +609,18 @@ export interface UserFavoriteCourse {
   created_at: string;
 }
 
+export interface Installment {
+  id: string;
+  school_id: string;
+  title: string;
+  start_date: string; // YYYY-MM-DD
+  end_date: string; // YYYY-MM-DD
+  last_date: string; // YYYY-MM-DD
+  description?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 
 declare global {
   interface Window {

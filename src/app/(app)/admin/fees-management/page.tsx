@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -44,8 +43,8 @@ const feeOptions: FeeManagementOption[] = [
     title: "Manage Installments",
     description: "Set up payment installment plans.",
     icon: Layers,
-    href: "#",
-    isImplemented: false,
+    href: "/admin/manage-installments",
+    isImplemented: true,
   },
   {
     title: "Manage Fee Types",
