@@ -4,7 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Installment } from '@/types';
+import type { Installment, StudentFeePayment } from '@/types';
 
 interface InstallmentInput {
   title: string;
@@ -123,26 +123,19 @@ export async function updateInstallmentAction(
 
 export async function deleteInstallmentAction(id: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
   const supabase = createSupabaseServerClient();
-
   try {
-    // Optional: Check for dependencies before deleting
-    // const { count, error: depError } = await supabase
-    //   .from('student_fee_payments')
-    //   .select('id', { count: 'exact', head: true })
-    //   .eq('installment_id', id)
-    //   .eq('school_id', schoolId);
-    // if (depError) throw depError;
-    // if (count && count > 0) {
-    //   return { ok: false, message: `Cannot delete: This installment is used in ${count} fee record(s).` };
-    // }
-
     const { error } = await supabase
       .from('installments')
       .delete()
       .eq('id', id)
       .eq('school_id', schoolId);
 
-    if (error) throw error;
+    if (error) {
+        if(error.code === '23503') { // foreign_key_violation
+            return { ok: false, message: "Cannot delete this installment because it is currently assigned to one or more student fee records."};
+        }
+        throw error;
+    }
     
     revalidatePath('/admin/manage-installments');
     return { ok: true, message: 'Installment deleted successfully.' };
@@ -150,4 +143,36 @@ export async function deleteInstallmentAction(id: string, schoolId: string): Pro
     console.error("Error deleting installment:", e);
     return { ok: false, message: `Failed to delete installment: ${e.message}` };
   }
+}
+
+
+export async function getAssignedFeesAction(schoolId: string): Promise<{
+    ok: boolean;
+    fees?: (StudentFeePayment & { student: {name: string, email: string}, fee_category: {name: string}, installment: {title: string}})[];
+    message?: string;
+}> {
+    if(!schoolId) {
+        return { ok: false, message: "School ID is required." };
+    }
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data, error } = await supabase
+            .from('student_fee_payments')
+            .select(`
+                *,
+                student:student_id(name, email),
+                fee_category:fee_category_id(name),
+                installment:installment_id(title)
+            `)
+            .eq('school_id', schoolId)
+            .not('installment_id', 'is', null) // Only fetch fees that are assigned to an installment
+            .order('due_date', { ascending: false });
+        
+        if (error) throw error;
+
+        return { ok: true, fees: data as any[] };
+    } catch (e: any) {
+        console.error("Error fetching assigned fees:", e);
+        return { ok: false, message: `Failed to fetch assigned fees: ${e.message}` };
+    }
 }

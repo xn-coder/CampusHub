@@ -365,6 +365,7 @@ export interface StudentFeePayment {
   student_id: string;
   fee_category_id: string;
   academic_year_id?: string | null;
+  installment_id?: string | null; // New field
   assigned_amount: number;
   paid_amount: number;
   due_date?: string | null;
@@ -442,6 +443,35 @@ export interface LessonContentResource {
     duration_minutes?: number;
 }
 
+export interface WebPageSection {
+    id: string;
+    type: WebPageSectionType;
+    content: string;
+}
+export type WebPageSectionType = 'heading' | 'text' | 'image';
+export type WebPageTemplate = 'default' | 'article' | 'profile_card';
+export interface WebPageContent {
+    template: WebPageTemplate;
+    sections: WebPageSection[];
+    profileCardData?: {
+        name?: string;
+        jobTitle?: string;
+        profileImageUrl?: string;
+        bannerImageUrl?: string;
+        description?: string;
+        phone?: string;
+        whatsapp?: string;
+        email?: string;
+        website?: string;
+        address?: string;
+        instagram?: string;
+        facebook?: string;
+        twitter?: string;
+        linkedin?: string;
+    }
+}
+
+
 export interface QuizQuestion {
   id: string;
   question: string;
@@ -451,12 +481,6 @@ export interface QuizQuestion {
   // Deprecated, but kept for potential backward compatibility during migration
   correctAnswerIndex?: number;
 }
-
-export interface WebPageContent {
-  html: string;
-  css?: string;
-}
-
 
 // A resource stored in the DB.
 // It can be a "lesson" which acts as a container, or a regular resource if not using lessons.

@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -115,6 +114,7 @@ interface AssignMultipleFeesToClassInput {
   due_date?: string;
   notes?: string;
   academic_year_id?: string | null;
+  installment_id?: string | null;
   school_id: string;
 }
 
@@ -153,23 +153,30 @@ export async function assignMultipleFeesToClassAction(
         return { ok: false, message: `Failed to fetch fee category details: ${categoriesError.message}`, assignmentsCreated: 0 };
     }
 
-    const { data: existingAssignments, error: existingCheckError } = await supabaseAdmin
+    // Determine the key for checking existing assignments. If an installment is selected, it's part of the uniqueness criteria.
+    let existingCheckQuery = supabaseAdmin
         .from('student_fee_payments')
-        .select('student_id, fee_category_id')
+        .select('student_id, fee_category_id, installment_id')
         .in('student_id', studentIds)
         .in('fee_category_id', fee_category_ids)
         .eq('school_id', school_id);
+    
+    if (restOfInput.installment_id) {
+        existingCheckQuery = existingCheckQuery.eq('installment_id', restOfInput.installment_id);
+    }
+
+    const { data: existingAssignments, error: existingCheckError } = await existingCheckQuery;
 
     if (existingCheckError) {
         return { ok: false, message: `DB error checking existing assignments: ${existingCheckError.message}`, assignmentsCreated: 0 };
     }
 
-    const existingSet = new Set((existingAssignments || []).map(a => `${a.student_id}-${a.fee_category_id}`));
+    const existingSet = new Set((existingAssignments || []).map(a => `${a.student_id}-${a.fee_category_id}-${a.installment_id || 'null'}`));
     
     const feeAssignments = [];
     for (const student of students) {
         for (const category of categoriesData || []) {
-            const assignmentKey = `${student.id}-${category.id}`;
+            const assignmentKey = `${student.id}-${category.id}-${restOfInput.installment_id || 'null'}`;
             if (!existingSet.has(assignmentKey)) {
                 feeAssignments.push({
                     id: uuidv4(),
@@ -179,6 +186,7 @@ export async function assignMultipleFeesToClassAction(
                     due_date: restOfInput.due_date,
                     notes: restOfInput.notes,
                     academic_year_id: restOfInput.academic_year_id,
+                    installment_id: restOfInput.installment_id,
                     school_id: school_id,
                     paid_amount: 0,
                     status: 'Pending' as PaymentStatus,
@@ -188,7 +196,7 @@ export async function assignMultipleFeesToClassAction(
     }
     
     if (feeAssignments.length === 0) {
-        return { ok: true, message: "No new fees to assign. All selected fees may already be assigned to these students.", assignmentsCreated: 0 };
+        return { ok: true, message: "No new fees to assign. All selected fees may already be assigned to these students for this installment.", assignmentsCreated: 0 };
     }
 
     const { error: insertError, count } = await supabaseAdmin
@@ -434,6 +442,7 @@ interface UpdateStudentFeeInput {
   assigned_amount?: number;
   due_date?: string;
   notes?: string;
+  installment_id?: string | null;
 }
 
 export async function updateStudentFeeAction(

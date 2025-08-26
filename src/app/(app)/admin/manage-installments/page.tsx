@@ -9,24 +9,23 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { Installment } from '@/types';
-import { useState, useEffect, type FormEvent, useCallback } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Layers, Loader2, MoreHorizontal } from 'lucide-react';
+import type { Installment, StudentFeePayment, FeeCategory, Student } from '@/types';
+import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
+import { PlusCircle, Edit2, Trash2, Save, Layers, Loader2, MoreHorizontal, ArrowLeft, Filter } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { createInstallmentAction, updateInstallmentAction, deleteInstallmentAction, getInstallmentsAction } from './actions';
+import { createInstallmentAction, updateInstallmentAction, deleteInstallmentAction, getInstallmentsAction, getAssignedFeesAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format, parseISO, isValid } from 'date-fns';
-import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('school_id')
-    .eq('id', userId)
-    .single();
+  const { data: user, error } = await supabase.from('users').select('school_id').eq('id', userId).single();
   if (error || !user?.school_id) {
     console.error("Error fetching user's school:", error?.message);
     return null;
@@ -37,30 +36,44 @@ async function fetchUserSchoolId(userId: string): Promise<string | null> {
 export default function ManageInstallmentsPage() {
   const { toast } = useToast();
   const [installments, setInstallments] = useState<Installment[]>([]);
+  const [assignedFees, setAssignedFees] = useState<(StudentFeePayment & { student: {name: string, email: string}, fee_category: {name: string}, installment: {title: string}})[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
 
+  // Form states
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingInstallment, setEditingInstallment] = useState<Installment | null>(null);
-
-  // Form state
   const [title, setTitle] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [lastDate, setLastDate] = useState('');
   const [description, setDescription] = useState('');
 
-  const fetchInstallments = useCallback(async (schoolId: string) => {
+  // Filtering state for assigned fees
+  const [installmentFilter, setInstallmentFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const fetchPageData = useCallback(async (schoolId: string) => {
     setIsLoading(true);
-    const result = await getInstallmentsAction(schoolId);
+    const [installmentsResult, assignedFeesResult] = await Promise.all([
+      getInstallmentsAction(schoolId),
+      getAssignedFeesAction(schoolId)
+    ]);
       
-    if (result.ok && result.installments) {
-      setInstallments(result.installments);
+    if (installmentsResult.ok && installmentsResult.installments) {
+      setInstallments(installmentsResult.installments);
     } else {
-      toast({ title: "Error fetching installments", description: result.message || "An unknown error occurred", variant: "destructive" });
+      toast({ title: "Error fetching installments", description: installmentsResult.message || "An unknown error occurred", variant: "destructive" });
       setInstallments([]);
     }
+
+    if (assignedFeesResult.ok && assignedFeesResult.fees) {
+      setAssignedFees(assignedFeesResult.fees);
+    } else {
+      toast({ title: "Error fetching assigned fees", description: assignedFeesResult.message || "An unknown error occurred", variant: "destructive" });
+    }
+
     setIsLoading(false);
   }, [toast]);
   
@@ -70,7 +83,7 @@ export default function ManageInstallmentsPage() {
       fetchUserSchoolId(userId).then(schoolId => {
         setCurrentSchoolId(schoolId);
         if (schoolId) {
-          fetchInstallments(schoolId);
+          fetchPageData(schoolId);
         } else {
           toast({ title: "Error", description: "Your account is not linked to a school.", variant: "destructive" });
           setIsLoading(false);
@@ -80,15 +93,11 @@ export default function ManageInstallmentsPage() {
       toast({ title: "Error", description: "User not identified.", variant: "destructive" });
       setIsLoading(false);
     }
-  }, [toast, fetchInstallments]);
+  }, [toast, fetchPageData]);
 
   const resetForm = () => {
-    setTitle('');
-    setStartDate('');
-    setEndDate('');
-    setLastDate('');
-    setDescription('');
-    setEditingInstallment(null);
+    setTitle(''); setStartDate(''); setEndDate(''); setLastDate('');
+    setDescription(''); setEditingInstallment(null);
   };
 
   const handleOpenDialog = (installment?: Installment) => {
@@ -107,37 +116,18 @@ export default function ManageInstallmentsPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !startDate || !endDate || !lastDate) {
-      toast({ title: "Error", description: "Title and all dates are required.", variant: "destructive" });
+    if (!title.trim() || !startDate || !endDate || !lastDate || !currentSchoolId) {
+      toast({ title: "Error", description: "Title, all dates, and school context are required.", variant: "destructive" });
       return;
     }
-    if (!currentSchoolId) {
-        toast({ title: "Error", description: "School context not found.", variant: "destructive"});
-        return;
-    }
     setIsSubmitting(true);
-
-    const installmentData = {
-      title: title.trim(),
-      start_date: startDate,
-      end_date: endDate,
-      last_date: lastDate,
-      description: description.trim() || undefined,
-      school_id: currentSchoolId,
-    };
-
-    let result;
-    if (editingInstallment) {
-      result = await updateInstallmentAction(editingInstallment.id, installmentData);
-    } else {
-      result = await createInstallmentAction(installmentData);
-    }
-
+    const installmentData = { title: title.trim(), start_date: startDate, end_date: endDate, last_date: lastDate, description: description.trim() || undefined, school_id: currentSchoolId };
+    let result = editingInstallment ? await updateInstallmentAction(editingInstallment.id, installmentData) : await createInstallmentAction(installmentData);
     if (result.ok) {
       toast({ title: editingInstallment ? "Installment Updated" : "Installment Created", description: result.message });
       resetForm();
       setIsFormDialogOpen(false);
-      if (currentSchoolId) fetchInstallments(currentSchoolId);
+      if (currentSchoolId) fetchPageData(currentSchoolId);
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -145,16 +135,11 @@ export default function ManageInstallmentsPage() {
   };
   
   const handleDeleteInstallment = async (installmentId: string) => {
-    if (!currentSchoolId) {
-        toast({ title: "Error", description: "Cannot delete without school context.", variant: "destructive"});
-        return;
-    }
+    if (!currentSchoolId) return;
     setIsSubmitting(true);
     const result = await deleteInstallmentAction(installmentId, currentSchoolId);
     toast({ title: result.ok ? "Installment Deleted" : "Error", description: result.message, variant: result.ok ? "destructive" : "destructive" });
-    if (result.ok && currentSchoolId) {
-      fetchInstallments(currentSchoolId);
-    }
+    if (result.ok && currentSchoolId) fetchPageData(currentSchoolId);
     setIsSubmitting(false);
   };
   
@@ -163,17 +148,24 @@ export default function ManageInstallmentsPage() {
     return isValid(date) ? format(date, 'MMM d, yyyy') : 'N/A';
   }
 
+  const filteredAssignedFees = useMemo(() => {
+    return assignedFees.filter(fee => {
+        const matchesInstallment = installmentFilter === 'all' || fee.installment_id === installmentFilter;
+        const matchesStatus = statusFilter === 'all' || fee.status === statusFilter;
+        return matchesInstallment && matchesStatus;
+    });
+  }, [assignedFees, installmentFilter, statusFilter]);
+
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Manage Fee Installments"
-        description="Create and manage fee installment periods for your school."
+        description="Create installment plans and view which fees have been assigned to them."
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" asChild>
-              <Link href="/admin/fees-management">
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees
-              </Link>
+              <Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link>
             </Button>
             <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isSubmitting}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Installment
@@ -181,112 +173,126 @@ export default function ManageInstallmentsPage() {
           </div>
         }
       />
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center"><Layers className="mr-2 h-5 w-5" />Installment Plans</CardTitle>
-          <CardDescription>A list of all created fee installments.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
-          ) : !currentSchoolId ? (
-            <p className="text-destructive text-center py-4">Your account is not associated with a school.</p>
-          ) : installments.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">
-              No installment plans have been created yet.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Start Date</TableHead>
-                  <TableHead>End Date</TableHead>
-                  <TableHead>Last Date for Payment</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {installments.map((installment) => (
-                  <TableRow key={installment.id}>
-                    <TableCell className="font-medium">{installment.title}</TableCell>
-                    <TableCell>{formatDate(installment.start_date)}</TableCell>
-                    <TableCell>{formatDate(installment.end_date)}</TableCell>
-                    <TableCell>{formatDate(installment.last_date)}</TableCell>
-                    <TableCell className="text-right">
-                       <AlertDialog>
-                          <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" disabled={isSubmitting}>
-                                      <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onSelect={() => handleOpenDialog(installment)}>
-                                      <Edit2 className="mr-2 h-4 w-4" /> Edit
-                                  </DropdownMenuItem>
-                                  <AlertDialogTrigger asChild>
-                                      <DropdownMenuItem className="text-destructive">
-                                          <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                      </DropdownMenuItem>
-                                  </AlertDialogTrigger>
-                              </DropdownMenuContent>
-                          </DropdownMenu>
-                           <AlertDialogContent>
-                              <AlertDialogHeader>
-                                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                      This action cannot be undone. This will permanently delete the "{installment.title}" installment plan.
-                                      This will fail if the plan is already linked to any fee payments.
-                                  </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                  <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteInstallment(installment.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
-                                      Delete
-                                  </AlertDialogAction>
-                              </AlertDialogFooter>
-                          </AlertDialogContent>
-                      </AlertDialog>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="plans">
+        <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="plans">Installment Plans</TabsTrigger>
+            <TabsTrigger value="assigned">Assigned Fees ({assignedFees.length})</TabsTrigger>
+        </TabsList>
+        <TabsContent value="plans">
+            <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center"><Layers className="mr-2 h-5 w-5" />Created Installment Plans</CardTitle>
+                  <CardDescription>A list of all created fee installments.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoading ? (
+                    <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
+                  ) : !currentSchoolId ? (
+                    <p className="text-destructive text-center py-4">Your account is not associated with a school.</p>
+                  ) : installments.length === 0 ? (
+                    <p className="text-muted-foreground text-center py-4">No installment plans have been created yet.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Title</TableHead>
+                          <TableHead>Start Date</TableHead>
+                          <TableHead>End Date</TableHead>
+                          <TableHead>Last Date for Payment</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {installments.map((installment) => (
+                          <TableRow key={installment.id}>
+                            <TableCell className="font-medium">{installment.title}</TableCell>
+                            <TableCell>{formatDate(installment.start_date)}</TableCell>
+                            <TableCell>{formatDate(installment.end_date)}</TableCell>
+                            <TableCell>{formatDate(installment.last_date)}</TableCell>
+                            <TableCell className="text-right">
+                               <AlertDialog>
+                                  <DropdownMenu>
+                                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                          <DropdownMenuItem onSelect={() => handleOpenDialog(installment)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                                          <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger>
+                                      </DropdownMenuContent>
+                                  </DropdownMenu>
+                                   <AlertDialogContent>
+                                      <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. Deleting this will not unassign it from existing fees, but it will no longer be available for new assignments.</AlertDialogDescription></AlertDialogHeader>
+                                      <AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteInstallment(installment.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter>
+                                  </AlertDialogContent>
+                              </AlertDialog>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+        </TabsContent>
+        <TabsContent value="assigned">
+            <Card>
+                 <CardHeader>
+                    <CardTitle className="flex items-center">Assigned Fees Log</CardTitle>
+                    <CardDescription>A list of all student fees that have been assigned to an installment plan.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="mb-4 flex flex-wrap gap-4">
+                        <div className="flex-grow">
+                          <Label htmlFor="installment-filter"><Filter className="inline-block mr-1 h-3 w-3" />Filter by Installment</Label>
+                          <Select value={installmentFilter} onValueChange={setInstallmentFilter} disabled={isLoading}>
+                              <SelectTrigger id="installment-filter"><SelectValue /></SelectTrigger>
+                              <SelectContent><SelectItem value="all">All Installments</SelectItem>{installments.map(i => <SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                         <div className="flex-grow">
+                          <Label htmlFor="status-filter"><Filter className="inline-block mr-1 h-3 w-3" />Filter by Status</Label>
+                          <Select value={statusFilter} onValueChange={setStatusFilter} disabled={isLoading}>
+                              <SelectTrigger id="status-filter"><SelectValue /></SelectTrigger>
+                              <SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Partially Paid">Partially Paid</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Overdue">Overdue</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                    </div>
+                     {isLoading ? (
+                        <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
+                     ) : filteredAssignedFees.length === 0 ? (
+                        <p className="text-muted-foreground text-center py-4">No fees assigned to installments match the current filters.</p>
+                     ) : (
+                        <Table>
+                            <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee</TableHead><TableHead>Installment</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                            <TableBody>{filteredAssignedFees.map(fee => (
+                                <TableRow key={fee.id}>
+                                    <TableCell className="font-medium">{fee.student.name}</TableCell>
+                                    <TableCell>{fee.fee_category.name}</TableCell>
+                                    <TableCell>{fee.installment?.title || 'N/A'}</TableCell>
+                                    <TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell>
+                                    <TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell>
+                                </TableRow>
+                            ))}</TableBody>
+                        </Table>
+                     )}
+                </CardContent>
+            </Card>
+        </TabsContent>
+      </Tabs>
 
+      {/* Dialog for Creating/Editing Installment Plans */}
       <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
         <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingInstallment ? 'Edit' : 'Create New'} Installment</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>{editingInstallment ? 'Edit' : 'Create New'} Installment</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="grid gap-4 py-4">
-              <div>
-                <Label htmlFor="title">Title</Label>
-                <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., First Term, Q1 Fees" required disabled={isSubmitting} />
-              </div>
+              <div><Label htmlFor="title">Title</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., First Term, Q1 Fees" required disabled={isSubmitting} /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><Label htmlFor="start_date">Start Date</Label><Input id="start_date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required disabled={isSubmitting} /></div>
                 <div><Label htmlFor="end_date">End Date</Label><Input id="end_date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required disabled={isSubmitting} /></div>
               </div>
-              <div>
-                <Label htmlFor="last_date">Last Date for Payment</Label>
-                <Input id="last_date" type="date" value={lastDate} onChange={(e) => setLastDate(e.target.value)} required disabled={isSubmitting} />
-              </div>
-              <div>
-                <Label htmlFor="description">Description (Optional)</Label>
-                <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this installment period" disabled={isSubmitting} />
-              </div>
+              <div><Label htmlFor="last_date">Last Date for Payment</Label><Input id="last_date" type="date" value={lastDate} onChange={(e) => setLastDate(e.target.value)} required disabled={isSubmitting} /></div>
+              <div><Label htmlFor="description">Description (Optional)</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this installment period" disabled={isSubmitting} /></div>
             </div>
-            <DialogFooter>
-              <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingInstallment ? 'Save Changes' : 'Create Installment'}
-              </Button>
-            </DialogFooter>
+            <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingInstallment ? 'Save Changes' : 'Create Installment'}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
