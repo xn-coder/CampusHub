@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, IndianRupee } from 'lucide-react';
 import Link from 'next/link';
 
+// NOTE: This page is currently a placeholder.
+// Its functionality can be built out similarly to "Manage Fee Types"
+// but likely with more direct, one-off assignment capabilities rather than definitions.
+
 export default function ManageSpecialFeeTypesPage() {
   return (
     <div className="flex flex-col gap-6">

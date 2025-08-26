@@ -1,4 +1,5 @@
 
+
 import type { LucideIcon } from 'lucide-react';
 
 // ENUMS from DB - Ensure these match your SQL ENUM definitions
@@ -360,12 +361,23 @@ export interface FeeCategory {
   updated_at?: string;
 }
 
+export interface FeeType {
+  id: string;
+  name: string;
+  description?: string | null;
+  school_id: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+
 export interface StudentFeePayment {
   id: string;
   student_id: string;
-  fee_category_id: string;
+  fee_category_id: string | null; // Can be null if a fee_type is used
+  fee_type_id?: string | null; // New field
   academic_year_id?: string | null;
-  installment_id?: string | null; // New field
+  installment_id?: string | null;
   assigned_amount: number;
   paid_amount: number;
   due_date?: string | null;
