@@ -247,9 +247,8 @@ export default function ManageFeeGroupsPage() {
                         </div>
 
                          {assignTargetType === 'individual' && (
-                            <div>
-                                <Label>Select Students</Label>
-                                <p className="text-xs text-muted-foreground mb-2">Select students from the chosen class. Showing {studentsInSelectedClass.length} student(s).</p>
+                             <div>
+                                <Label>Select Student(s)</Label>
                                 <div className="max-h-60 overflow-y-auto space-y-2 border p-2 rounded-md">
                                     {studentsInSelectedClass.length > 0 ? studentsInSelectedClass.map(student => (
                                         <div key={student.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
@@ -264,13 +263,7 @@ export default function ManageFeeGroupsPage() {
                                 </div>
                             </div>
                         )}
-                        <div>
-                            <Label>Fee Group to Assign</Label>
-                            <Select value={assignGroupId} onValueChange={setAssignGroupId}>
-                                <SelectTrigger><SelectValue placeholder="Select a fee group"/></SelectTrigger>
-                                <SelectContent>{feeGroups.map(fg => <SelectItem key={fg.id} value={fg.id}>{fg.name}</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
+                        <div><Label>Fee Group to Assign</Label><Select value={assignGroupId} onValueChange={setAssignGroupId}><SelectTrigger><SelectValue placeholder="Select a fee group"/></SelectTrigger><SelectContent>{feeGroups.map(fg => <SelectItem key={fg.id} value={fg.id}>{fg.name}</SelectItem>)}</SelectContent></Select></div>
                     </CardContent>
                     <CardFooter>
                         <Button type="submit" disabled={isSubmitting}>
