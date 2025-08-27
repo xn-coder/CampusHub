@@ -16,6 +16,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { createFeeTypeGroupAction, updateFeeTypeGroupAction, deleteFeeTypeGroupAction, assignFeeGroupToStudentsAction, getFeeTypeGroupsPageDataAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { format, parseISO, isValid } from 'date-fns';
 import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -157,7 +158,10 @@ export default function ManageFeeGroupsPage() {
   
   const handleAssignSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const studentIdsToAssign = assignTargetType === 'class' ? allStudents.filter(s => s.class_id === selectedClassId).map(s => s.id) : selectedStudentIds;
+    const studentIdsToAssign = assignTargetType === 'class' && selectedClassId 
+      ? allStudents.filter(s => s.class_id === selectedClassId).map(s => s.id) 
+      : selectedStudentIds;
+
     const finalAmounts = Object.fromEntries(
         Object.entries(assignAmounts).map(([key, value]) => [key, Number(value) || 0])
     );
