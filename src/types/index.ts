@@ -386,8 +386,8 @@ export interface FeeTypeGroup {
 export interface StudentFeePayment {
   id: string;
   student_id: string;
-  fee_category_id: string | null; // Can be null if a fee_type is used
-  fee_type_id?: string | null; // New field
+  fee_category_id: string; // Now mandatory for all fee records
+  fee_type_id?: string | null; // Optional
   fee_type_group_id?: string | null;
   academic_year_id?: string | null;
   installment_id?: string | null;
@@ -683,6 +683,7 @@ export interface Installment {
   id: string;
   school_id: string;
   title: string;
+  amount?: number | null;
   start_date: string; // YYYY-MM-DD
   end_date: string; // YYYY-MM-DD
   last_date: string; // YYYY-MM-DD

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Installment, Student, StudentFeePayment, ClassData, FeeCategory, AcademicYear } from '@/types';
-import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
+import { useState, useEffect, type FormEvent, useCallback } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, Layers, Loader2, MoreHorizontal, ArrowLeft, Receipt } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
@@ -21,7 +21,6 @@ import {
     assignFeesToInstallmentAction,
     getManageInstallmentsPageData
 } from './actions';
-import { getFeeStructureForClassAction } from '../manage-fee-structures/actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import Link from 'next/link';
@@ -46,7 +45,6 @@ export default function ManageInstallmentsPage() {
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [assignedFees, setAssignedFees] = useState<any[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
-  const [allFeeCategories, setAllFeeCategories] = useState<FeeCategory[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [allAcademicYears, setAllAcademicYears] = useState<AcademicYear[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,6 +57,7 @@ export default function ManageInstallmentsPage() {
   const [editingInstallment, setEditingInstallment] = useState<Installment | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState<number | ''>('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [lastDate, setLastDate] = useState('');
@@ -68,11 +67,10 @@ export default function ManageInstallmentsPage() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [assignInstallmentId, setAssignInstallmentId] = useState<string>('');
-  const [selectedFeeCategoryIds, setSelectedFeeCategoryIds] = useState<Record<string, { selected: boolean; amount: string }>>({});
+  const [assignAmount, setAssignAmount] = useState<number | ''>('');
   const [assignDueDate, setAssignDueDate] = useState<string>('');
   const [assignNotes, setAssignNotes] = useState('');
   const [assignAcademicYearId, setAssignAcademicYearId] = useState<string>('');
-  const [classFeeStructure, setClassFeeStructure] = useState<Record<string, number>>({});
 
 
   const fetchPageData = useCallback(async (schoolId: string) => {
@@ -83,18 +81,8 @@ export default function ManageInstallmentsPage() {
       setInstallments(result.installments || []);
       setAssignedFees(result.assignedFees || []);
       setAllStudents(result.students || []);
-      const feeCategories = result.feeCategories || [];
-      setAllFeeCategories(feeCategories);
-      const initialFeeSelectionState = feeCategories.reduce((acc, cat) => {
-        acc[cat.id] = { selected: false, amount: cat.amount?.toString() || '' };
-        return acc;
-      }, {} as Record<string, { selected: boolean; amount: string }>);
-      setSelectedFeeCategoryIds(initialFeeSelectionState);
       setAllClasses(result.classes || []);
-
-      const { data: years } = await supabase.from('academic_years').select('*').eq('school_id', schoolId);
-      setAllAcademicYears(years || []);
-
+      setAllAcademicYears(result.academicYears || []);
     } else {
       toast({ title: "Error fetching page data", description: result.message, variant: "destructive" });
     }
@@ -121,43 +109,25 @@ export default function ManageInstallmentsPage() {
     }
   }, [toast, fetchPageData]);
 
-  // Fetch fee structure when class and academic year change
+  // Auto-fill amount when installment plan is selected
   useEffect(() => {
-    async function fetchStructure() {
-        if (!selectedClassId || !assignAcademicYearId) {
-            setClassFeeStructure({});
-            return;
-        }
-        const result = await getFeeStructureForClassAction(selectedClassId, assignAcademicYearId);
-        if (result.ok && result.structure) {
-            setClassFeeStructure(result.structure.structure);
-        } else {
-            setClassFeeStructure({});
-        }
+    if (assignInstallmentId) {
+      const selectedInstallment = installments.find(i => i.id === assignInstallmentId);
+      if (selectedInstallment && selectedInstallment.amount) {
+        setAssignAmount(selectedInstallment.amount);
+      } else {
+        setAssignAmount('');
+      }
+    } else {
+      setAssignAmount('');
     }
-    fetchStructure();
-  }, [selectedClassId, assignAcademicYearId]);
-
-  // Update amounts when fee structure is loaded or fee categories change
-  useEffect(() => {
-    setSelectedFeeCategoryIds(prev => {
-        const newSelection = { ...prev };
-        allFeeCategories.forEach(cat => {
-            const structureAmount = classFeeStructure[cat.id];
-            const defaultAmount = cat.amount;
-            newSelection[cat.id] = {
-                ...newSelection[cat.id],
-                amount: (structureAmount ?? defaultAmount ?? '').toString()
-            };
-        });
-        return newSelection;
-    });
-  }, [classFeeStructure, allFeeCategories]);
+  }, [assignInstallmentId, installments]);
 
 
   const resetForm = () => {
     setTitle('');
     setDescription('');
+    setAmount('');
     setStartDate('');
     setEndDate('');
     setLastDate('');
@@ -171,12 +141,8 @@ export default function ManageInstallmentsPage() {
     setAssignInstallmentId('');
     setAssignDueDate('');
     setAssignNotes('');
+    setAssignAmount('');
     setAssignAcademicYearId('');
-    const resetFees = Object.keys(selectedFeeCategoryIds).reduce((acc, key) => {
-        acc[key] = { ...selectedFeeCategoryIds[key], selected: false };
-        return acc;
-    }, {} as typeof selectedFeeCategoryIds);
-    setSelectedFeeCategoryIds(resetFees);
   };
 
   const handleOpenDialog = (installment?: Installment) => {
@@ -184,6 +150,7 @@ export default function ManageInstallmentsPage() {
       setEditingInstallment(installment);
       setTitle(installment.title);
       setDescription(installment.description || '');
+      setAmount(installment.amount || '');
       setStartDate(format(parseISO(installment.start_date), 'yyyy-MM-dd'));
       setEndDate(format(parseISO(installment.end_date), 'yyyy-MM-dd'));
       setLastDate(format(parseISO(installment.last_date), 'yyyy-MM-dd'));
@@ -204,6 +171,7 @@ export default function ManageInstallmentsPage() {
     const installmentData = { 
       title: title.trim(),
       description: description.trim() || undefined,
+      amount: amount === '' ? null : Number(amount),
       school_id: currentSchoolId,
       start_date: startDate,
       end_date: endDate,
@@ -239,28 +207,20 @@ export default function ManageInstallmentsPage() {
     } else if (assignTargetType === 'individual' && selectedStudentId) {
         studentIdsToAssign = [selectedStudentId];
     }
-    
-    const feesToAssign = Object.entries(selectedFeeCategoryIds)
-        .filter(([, val]) => val.selected && val.amount && Number(val.amount) > 0)
-        .map(([categoryId, val]) => ({
-            category_id: categoryId,
-            amount: Number(val.amount)
-        }));
 
-    if (studentIdsToAssign.length === 0 || feesToAssign.length === 0 || !assignInstallmentId || !currentSchoolId) {
-        toast({ title: "Error", description: "Please select students, fee categories with amounts, and an installment plan.", variant: "destructive" });
+    if (studentIdsToAssign.length === 0 || !assignInstallmentId || assignAmount === '' || !currentSchoolId) {
+        toast({ title: "Error", description: "Please complete all fields in the assignment form.", variant: "destructive" });
         return;
     }
-    
     setIsSubmitting(true);
     const result = await assignFeesToInstallmentAction({
         student_ids: studentIdsToAssign,
-        fees_to_assign: feesToAssign,
         installment_id: assignInstallmentId,
+        amount: Number(assignAmount),
         due_date: assignDueDate || undefined,
         school_id: currentSchoolId,
         academic_year_id: assignAcademicYearId || undefined,
-        notes: assignNotes,
+        notes: assignNotes
     });
     if (result.ok) {
         toast({ title: "Fees Assigned", description: result.message });
@@ -270,27 +230,7 @@ export default function ManageInstallmentsPage() {
         toast({ title: "Error", description: result.message, variant: "destructive" });
     }
     setIsSubmitting(false);
-  };
-
-  const handleFeeSelectionChange = (categoryId: string, isSelected: boolean) => {
-    setSelectedFeeCategoryIds(prev => ({
-        ...prev,
-        [categoryId]: {
-            ...prev[categoryId],
-            selected: isSelected,
-        }
-    }));
-  };
-
-  const handleAmountChange = (categoryId: string, amount: string) => {
-    setSelectedFeeCategoryIds(prev => ({
-        ...prev,
-        [categoryId]: {
-            ...(prev[categoryId] || { selected: true }),
-            amount: amount
-        }
-    }));
-  };
+  }
 
   const formatDate = (dateString: string) => {
     try {
@@ -300,7 +240,7 @@ export default function ManageInstallmentsPage() {
         return 'Invalid Date';
     }
   };
-
+  
   const studentsInSelectedClass = useMemo(() => {
     if (!selectedClassId) return [];
     return allStudents.filter(s => s.class_id === selectedClassId);
@@ -332,7 +272,7 @@ export default function ManageInstallmentsPage() {
                 <CardContent>
                   {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
                   : installments.length === 0 ? <p className="text-muted-foreground text-center py-4">No installment plans have been created yet.</p>
-                  : <Table><TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Start Date</TableHead><TableHead>End Date</TableHead><TableHead>Last Payment Date</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{installments.map((item) => (<TableRow key={item.id}><TableCell className="font-medium">{item.title}</TableCell><TableCell>{formatDate(item.start_date)}</TableCell><TableCell>{formatDate(item.end_date)}</TableCell><TableCell>{formatDate(item.last_date)}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(item)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the installment plan "{item.title}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteInstallment(item.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
+                  : <Table><TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Default Amount</TableHead><TableHead>Start Date</TableHead><TableHead>End Date</TableHead><TableHead>Last Payment Date</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{installments.map((item) => (<TableRow key={item.id}><TableCell className="font-medium">{item.title}</TableCell><TableCell>{item.amount ? `₹${item.amount.toFixed(2)}` : 'N/A'}</TableCell><TableCell>{formatDate(item.start_date)}</TableCell><TableCell>{formatDate(item.end_date)}</TableCell><TableCell>{formatDate(item.last_date)}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(item)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the installment plan "{item.title}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteInstallment(item.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
                   }
                 </CardContent>
               </Card>
@@ -341,46 +281,44 @@ export default function ManageInstallmentsPage() {
         <TabsContent value="assign">
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5"/>Assign Fees</CardTitle>
-                    <CardDescription>Assign multiple fee categories to a class or an individual student under an installment plan.</CardDescription>
+                    <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5"/>Assign Fee Installment</CardTitle>
+                    <CardDescription>Assign an installment fee to an entire class or an individual student.</CardDescription>
                 </CardHeader>
                  <form onSubmit={handleAssignSubmit}>
                     <CardContent className="space-y-4">
-                        <div className="grid md:grid-cols-3 gap-4">
-                            <div><Label>Academic Year</Label><Select value={assignAcademicYearId} onValueChange={setAssignAcademicYearId}><SelectTrigger><SelectValue placeholder="Choose a year"/></SelectTrigger><SelectContent>{allAcademicYears.map(ay => <SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)}</SelectContent></Select></div>
-                            <div><Label>Assign To</Label><Select value={assignTargetType} onValueChange={(val) => setAssignTargetType(val as any)}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="class">Entire Class</SelectItem><SelectItem value="individual">Individual Student</SelectItem></SelectContent></Select></div>
-                             <div><Label>Select Class</Label><Select value={selectedClassId} onValueChange={setSelectedClassId}><SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger><SelectContent>{allClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div>
+                                <Label>Assign To</Label>
+                                <Select value={assignTargetType} onValueChange={(val) => { setAssignTargetType(val as any); setSelectedClassId(''); setSelectedStudentId(''); }}>
+                                    <SelectTrigger><SelectValue/></SelectTrigger>
+                                    <SelectContent><SelectItem value="class">Entire Class</SelectItem><SelectItem value="individual">Individual Student</SelectItem></SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label>Select Class</Label>
+                                <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+                                    <SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger>
+                                    <SelectContent>{allClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
                         </div>
                         {assignTargetType === 'individual' && (
-                            <div><Label>Select Student</Label><Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={!selectedClassId}><SelectTrigger><SelectValue placeholder="Choose a student from the selected class"/></SelectTrigger><SelectContent>{studentsInSelectedClass.length > 0 ? (studentsInSelectedClass.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)) : (<SelectItem value="none" disabled>No students in this class</SelectItem>)}</SelectContent></Select></div>
+                            <div><Label>Select Student</Label><Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={!selectedClassId || studentsInSelectedClass.length === 0}><SelectTrigger><SelectValue placeholder="Choose a student from the selected class"/></SelectTrigger><SelectContent>{studentsInSelectedClass.length > 0 ? (studentsInSelectedClass.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)) : (<SelectItem value="none" disabled>No students in this class</SelectItem>)}</SelectContent></Select></div>
                         )}
-                        <div>
-                            <Label>Fee Categories to Assign</Label>
-                            <Card className="max-h-60 overflow-y-auto p-2 border">
-                              <div className="space-y-3">
-                                {allFeeCategories.map(cat => (
-                                    <div key={cat.id} className="flex items-center space-x-3">
-                                        <Checkbox 
-                                            id={`cat-${cat.id}`} 
-                                            checked={selectedFeeCategoryIds[cat.id]?.selected || false}
-                                            onCheckedChange={checked => handleFeeSelectionChange(cat.id, !!checked)}
-                                        />
-                                        <Label htmlFor={`cat-${cat.id}`} className="font-normal flex-1 cursor-pointer">{cat.name}</Label>
-                                        <Input type="number" placeholder="Amount" className="w-32" value={selectedFeeCategoryIds[cat.id]?.amount || ''} onChange={(e) => handleAmountChange(cat.id, e.target.value)} disabled={!selectedFeeCategoryIds[cat.id]?.selected} required={selectedFeeCategoryIds[cat.id]?.selected} step="0.01" min="0.01"/>
-                                    </div>
-                                ))}
-                              </div>
-                            </Card>
-                        </div>
+
                         <div className="grid md:grid-cols-2 gap-4">
                            <div><Label>Installment Plan</Label><Select value={assignInstallmentId} onValueChange={setAssignInstallmentId} required><SelectTrigger><SelectValue placeholder="Select an installment plan"/></SelectTrigger><SelectContent>{installments.map(i => <SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>)}</SelectContent></Select></div>
-                           <div><Label>Due Date (Optional)</Label><Input type="date" value={assignDueDate} onChange={e => setAssignDueDate(e.target.value)} /></div>
+                           <div><Label>Amount (₹)</Label><Input type="number" placeholder="Enter amount..." value={assignAmount} onChange={e => setAssignAmount(e.target.value === '' ? '' : Number(e.target.value))} required step="0.01" min="0.01"/></div>
+                        </div>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div><Label>Academic Year (Optional)</Label><Select value={assignAcademicYearId} onValueChange={setAssignAcademicYearId}><SelectTrigger><SelectValue placeholder="Choose a year"/></SelectTrigger><SelectContent>{allAcademicYears.map(ay => <SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)}</SelectContent></Select></div>
+                            <div><Label>Due Date (Optional)</Label><Input type="date" value={assignDueDate} onChange={e => setAssignDueDate(e.target.value)} /></div>
                         </div>
                          <div><Label>Notes (Optional)</Label><Input value={assignNotes} onChange={e => setAssignNotes(e.target.value)} placeholder="e.g., Annual fee installment 1"/></div>
                     </CardContent>
                     <CardFooter>
                         <Button type="submit" disabled={isSubmitting}>
-                            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Assign Fees
+                            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Assign Installment
                         </Button>
                     </CardFooter>
                  </form>
@@ -389,7 +327,7 @@ export default function ManageInstallmentsPage() {
 
         <TabsContent value="log">
             <Card>
-                 <CardHeader><CardTitle className="flex items-center">Assigned Installment Fees Log</CardTitle></CardHeader>
+                 <CardHeader><CardTitle className="flex items-center">Assigned Installments Log</CardTitle></CardHeader>
                 <CardContent>
                      {isLoading ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>) : assignedFees.length === 0 ? (<p className="text-muted-foreground text-center py-4">No fees have been assigned to an installment plan yet.</p>) : (
                         <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Installment</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{assignedFees.map(fee => (<TableRow key={fee.id}><TableCell>{(fee.student as any)?.name}</TableCell><TableCell>{(fee.fee_category as any)?.name}</TableCell><TableCell>{(fee.installment as any)?.title}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell></TableRow>))}</TableBody></Table>
@@ -400,7 +338,7 @@ export default function ManageInstallmentsPage() {
       </Tabs>
 
       <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
-        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{editingInstallment ? 'Edit' : 'Create New'} Installment</DialogTitle></DialogHeader><form onSubmit={handleSubmit}><div className="grid gap-4 py-4"><div className="space-y-1"><Label htmlFor="title">Title</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., First Term, Q1 Fees" required disabled={isSubmitting} /></div><div className="grid grid-cols-2 gap-4"><div><Label htmlFor="start_date">Start Date</Label><Input id="start_date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required disabled={isSubmitting} /></div><div><Label htmlFor="end_date">End Date</Label><Input id="end_date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required disabled={isSubmitting} /></div></div><div><Label htmlFor="last_date">Last Date for Payment</Label><Input id="last_date" type="date" value={lastDate} onChange={(e) => setLastDate(e.target.value)} required disabled={isSubmitting} /></div><div className="space-y-1"><Label htmlFor="description">Description (Optional)</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this installment period" disabled={isSubmitting}/></div></div><DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingInstallment ? 'Save Changes' : 'Create Installment'}</Button></DialogFooter></form></DialogContent>
+        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{editingInstallment ? 'Edit' : 'Create New'} Installment Plan</DialogTitle></DialogHeader><form onSubmit={handleSubmit}><div className="grid gap-4 py-4"><div className="space-y-1"><Label htmlFor="title">Title</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., First Term, Q1 Fees" required disabled={isSubmitting} /></div><div className="space-y-1"><Label htmlFor="amount">Default Amount (₹, Optional)</Label><Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 5000.00" step="0.01" min="0" disabled={isSubmitting}/></div><div className="grid grid-cols-2 gap-4"><div><Label htmlFor="start_date">Start Date</Label><Input id="start_date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required disabled={isSubmitting} /></div><div><Label htmlFor="end_date">End Date</Label><Input id="end_date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required disabled={isSubmitting} /></div></div><div><Label htmlFor="last_date">Last Date for Payment</Label><Input id="last_date" type="date" value={lastDate} onChange={(e) => setLastDate(e.target.value)} required disabled={isSubmitting} /></div><div className="space-y-1"><Label htmlFor="description">Description (Optional)</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this installment period" disabled={isSubmitting}/></div></div><DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingInstallment ? 'Save Changes' : 'Create Installment'}</Button></DialogFooter></form></DialogContent>
       </Dialog>
     </div>
   );

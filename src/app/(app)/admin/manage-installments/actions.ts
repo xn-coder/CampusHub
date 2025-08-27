@@ -99,27 +99,9 @@ export async function deleteInstallmentAction(id: string, schoolId: string): Pro
   }
 }
 
-export async function getFeesForStudentsAction(studentIds: string[], schoolId: string): Promise<{ ok: boolean; fees?: (StudentFeePayment & {fee_category: FeeCategory | null})[]; message?: string }> {
-    if (!studentIds || !schoolId || studentIds.length === 0) return { ok: true, fees: [] };
-    const supabase = createSupabaseServerClient();
-    try {
-      const { data, error } = await supabase
-        .from('student_fee_payments')
-        .select('*, fee_category:fee_category_id(id, name, amount)')
-        .in('student_id', studentIds)
-        .eq('school_id', schoolId)
-        .neq('status', 'Paid'); // Only show fees that are not fully paid
-      if (error) throw error;
-      return { ok: true, fees: data as any[] };
-    } catch(e: any) {
-      return { ok: false, message: `Error fetching student fees: ${e.message}` };
-    }
-}
-
-
 interface AssignFeesToInstallmentInput {
   student_ids: string[];
-  fees_to_assign: { category_id: string; amount: number }[];
+  amount: number;
   installment_id: string;
   due_date?: string;
   school_id: string;
@@ -130,28 +112,41 @@ interface AssignFeesToInstallmentInput {
 export async function assignFeesToInstallmentAction(
   input: AssignFeesToInstallmentInput
 ): Promise<{ ok: boolean; message: string; assignmentsCreated: number }> {
-    const { student_ids, fees_to_assign, installment_id, school_id, ...rest } = input;
+    const { student_ids, amount, installment_id, school_id, ...rest } = input;
     const supabase = createSupabaseServerClient();
 
-    if (student_ids.length === 0 || fees_to_assign.length === 0) {
-        return { ok: false, message: "Students and Fee Categories must be selected.", assignmentsCreated: 0 };
+    if (student_ids.length === 0 || amount <= 0) {
+        return { ok: false, message: "Students and a valid amount must be selected.", assignmentsCreated: 0 };
+    }
+
+    // Find a "General" fee category or create it if it doesn't exist
+    let { data: generalCategory, error: categoryError } = await supabase.from('fee_categories').select('id').eq('school_id', school_id).eq('name', 'General').maybeSingle();
+
+    if (categoryError) {
+        return { ok: false, message: `Database error checking for fee category: ${categoryError.message}`, assignmentsCreated: 0 };
+    }
+    
+    if (!generalCategory) {
+        const { data: newCategory, error: newCategoryError } = await supabase.from('fee_categories').insert({ name: 'General', school_id }).select('id').single();
+        if (newCategoryError || !newCategory) {
+            return { ok: false, message: `Failed to create a default fee category: ${newCategoryError?.message}`, assignmentsCreated: 0 };
+        }
+        generalCategory = newCategory;
     }
     
     const assignmentsToInsert: Omit<StudentFeePayment, 'id' | 'created_at' | 'updated_at'>[] = [];
     
     for (const studentId of student_ids) {
-        for (const fee of fees_to_assign) {
-            assignmentsToInsert.push({
-                student_id: studentId,
-                fee_category_id: fee.category_id,
-                installment_id,
-                school_id,
-                assigned_amount: fee.amount,
-                paid_amount: 0,
-                status: 'Pending',
-                ...rest,
-            });
-        }
+        assignmentsToInsert.push({
+            student_id: studentId,
+            fee_category_id: generalCategory.id,
+            installment_id,
+            school_id,
+            assigned_amount: amount,
+            paid_amount: 0,
+            status: 'Pending',
+            ...rest,
+        });
     }
 
     if (assignmentsToInsert.length === 0) {
