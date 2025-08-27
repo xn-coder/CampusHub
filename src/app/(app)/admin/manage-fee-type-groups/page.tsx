@@ -56,6 +56,7 @@ export default function ManageFeeGroupsPage() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [assignGroupId, setAssignGroupId] = useState<string>('');
+  const [assignAmounts, setAssignAmounts] = useState<Record<string, number | ''>>({});
   
   const studentsInSelectedClass = useMemo(() => {
     if (!selectedClassId) return [];
@@ -113,6 +114,14 @@ export default function ManageFeeGroupsPage() {
     setSelectedFeeTypeIdsForGroup([]);
     setEditingFeeGroup(null);
   };
+  
+  const resetAssignmentForm = () => {
+    setAssignTargetType('class');
+    setSelectedClassId('');
+    setSelectedStudentIds([]);
+    setAssignGroupId('');
+    setAssignAmounts({});
+  };
 
   const handleOpenDialog = (group?: FeeTypeGroup) => {
     if (group) {
@@ -163,6 +172,9 @@ export default function ManageFeeGroupsPage() {
   const handleAssignSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const studentIdsToAssign = assignTargetType === 'class' ? allStudents.filter(s => s.class_id === selectedClassId).map(s => s.id) : selectedStudentIds;
+    const finalAmounts = Object.fromEntries(
+        Object.entries(assignAmounts).map(([key, value]) => [key, Number(value) || 0])
+    );
     if (studentIdsToAssign.length === 0 || !assignGroupId || !currentSchoolId) {
         toast({ title: "Error", description: "Please select students and a fee group.", variant: "destructive" });
         return;
@@ -171,14 +183,13 @@ export default function ManageFeeGroupsPage() {
     const result = await assignFeeGroupToStudentsAction({
         student_ids: studentIdsToAssign,
         fee_group_id: assignGroupId,
-        school_id: currentSchoolId
+        school_id: currentSchoolId,
+        amounts: finalAmounts
     });
     if (result.ok) {
         toast({ title: "Group Assigned", description: result.message });
         if(currentSchoolId) fetchPageData(currentSchoolId);
-        setSelectedClassId('');
-        setSelectedStudentIds([]);
-        setAssignGroupId('');
+        resetAssignmentForm();
     } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -247,7 +258,7 @@ export default function ManageFeeGroupsPage() {
                         </div>
 
                          {assignTargetType === 'individual' && (
-                             <div>
+                            <div>
                                 <Label>Select Student(s)</Label>
                                 <div className="max-h-60 overflow-y-auto space-y-2 border p-2 rounded-md">
                                     {studentsInSelectedClass.length > 0 ? studentsInSelectedClass.map(student => (
@@ -264,6 +275,29 @@ export default function ManageFeeGroupsPage() {
                             </div>
                         )}
                         <div><Label>Fee Group to Assign</Label><Select value={assignGroupId} onValueChange={setAssignGroupId}><SelectTrigger><SelectValue placeholder="Select a fee group"/></SelectTrigger><SelectContent>{feeGroups.map(fg => <SelectItem key={fg.id} value={fg.id}>{fg.name}</SelectItem>)}</SelectContent></Select></div>
+                        
+                        {assignGroupId && (
+                            <div className="space-y-3 pt-2 border-t">
+                                <h4 className="font-medium text-sm">Enter Amounts for Fee Types</h4>
+                                {allFeeTypes
+                                    .filter(ft => feeGroups.find(fg => fg.id === assignGroupId)?.fee_type_ids.includes(ft.id))
+                                    .map(ft => (
+                                    <div key={ft.id} className="grid grid-cols-3 items-center gap-2">
+                                        <Label htmlFor={`amount-${ft.id}`} className="col-span-2">{ft.display_name}</Label>
+                                        <Input
+                                            id={`amount-${ft.id}`}
+                                            type="number"
+                                            placeholder={`Default: ${ft.amount || 0}`}
+                                            value={assignAmounts[ft.id] || ''}
+                                            onChange={e => setAssignAmounts(prev => ({...prev, [ft.id]: e.target.value === '' ? '' : parseFloat(e.target.value)}))}
+                                            step="0.01"
+                                            min="0"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                     </CardContent>
                     <CardFooter>
                         <Button type="submit" disabled={isSubmitting}>
