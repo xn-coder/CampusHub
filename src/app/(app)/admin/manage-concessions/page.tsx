@@ -49,7 +49,7 @@ export default function ManageConcessionsPage() {
   const [description, setDescription] = useState('');
   
   // States for Assign Concession tab
-  const [assignTargetType, setAssignTargetType] = useState<'class' | 'individual'>('individual');
+  const [assignTargetType, setAssignTargetType] = useState<'individual' | 'class'>('individual');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [selectedFeePaymentId, setSelectedFeePaymentId] = useState<string>('');
@@ -245,7 +245,7 @@ export default function ManageConcessionsPage() {
                             </div>
                             <div>
                                 <Label>Select Class</Label>
-                                <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+                                <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={assignTargetType !== 'individual'}>
                                     <SelectTrigger><SelectValue placeholder="First, choose a class"/></SelectTrigger>
                                     <SelectContent>{allClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
                                 </Select>

@@ -203,9 +203,7 @@ export default function ManageFeeGroupsPage() {
         description="Bundle multiple fee types into groups for easier assignment."
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" asChild>
-              <Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link>
-            </Button>
+            <Button variant="outline" asChild><Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link></Button>
             <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isSubmitting}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add Fee Group
             </Button>
@@ -250,7 +248,7 @@ export default function ManageFeeGroupsPage() {
                             </div>
                             <div>
                                 <Label>Select Class</Label>
-                                <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+                                <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={!assignTargetType}>
                                     <SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger>
                                     <SelectContent>{allClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
                                 </Select>
