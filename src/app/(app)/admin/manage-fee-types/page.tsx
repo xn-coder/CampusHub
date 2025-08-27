@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import type { FeeType, StudentFeePayment, FeeCategory, Student, FeeTypeInstallmentType } from '@/types';
+import type { FeeType, StudentFeePayment, FeeCategory, Student, FeeTypeInstallmentType, ClassData } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
 import { PlusCircle, Edit2, Trash2, Save, FileBadge, Loader2, MoreHorizontal, ArrowLeft, Filter, Receipt } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +27,7 @@ import { getStudentsForSchoolAction } from '../manage-students/actions';
 import { getFeeCategoriesAction } from '../fee-categories/actions';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
+
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
   const { data: user, error } = await supabase.from('users').select('school_id').eq('id', userId).single();
   if (error || !user?.school_id) {
@@ -41,6 +42,7 @@ export default function ManageFeeTypesPage() {
   const [feeTypes, setFeeTypes] = useState<FeeType[]>([]);
   const [assignedFees, setAssignedFees] = useState<(StudentFeePayment & { student: {name: string, email: string}, fee_category: {name: string}, fee_type: {name: string}})[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [allClasses, setAllClasses] = useState<ClassData[]>([]);
   const [allFeeCategories, setAllFeeCategories] = useState<FeeCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,15 +69,20 @@ export default function ManageFeeTypesPage() {
   const [assignFeeTypeId, setAssignFeeTypeId] = useState<string>('');
   const [assignDueDate, setAssignDueDate] = useState<string>('');
   const [assignAmount, setAssignAmount] = useState<number | ''>('');
-
+  
+  const studentsInSelectedClass = useMemo(() => {
+    if (!selectedClassId) return [];
+    return allStudents.filter(s => s.class_id === selectedClassId);
+  }, [selectedClassId, allStudents]);
 
   const fetchPageData = useCallback(async (schoolId: string) => {
     setIsLoading(true);
-    const [feeTypesResult, assignedFeesResult, studentsResult, feeCategoriesResult] = await Promise.all([
+    const [feeTypesResult, assignedFeesResult, studentsResult, feeCategoriesResult, classesResult] = await Promise.all([
       getFeeTypesAction(schoolId),
       getAssignedFeesForFeeTypeAction(schoolId),
       getStudentsForSchoolAction(schoolId),
       getFeeCategoriesAction(schoolId),
+      supabase.from('classes').select('id, name, division').eq('school_id', schoolId)
     ]);
       
     if (feeTypesResult.ok && feeTypesResult.feeTypes) setFeeTypes(feeTypesResult.feeTypes);
@@ -89,6 +96,9 @@ export default function ManageFeeTypesPage() {
     
     if (feeCategoriesResult.ok && feeCategoriesResult.categories) setAllFeeCategories(feeCategoriesResult.categories);
     else toast({ title: "Error fetching fee categories", variant: "destructive" });
+
+    if (!classesResult.error) setAllClasses(classesResult.data || []);
+    else toast({ title: "Error fetching classes", variant: "destructive" });
 
     setIsLoading(false);
   }, [toast]);
@@ -260,17 +270,38 @@ export default function ManageFeeTypesPage() {
                         <div className="grid md:grid-cols-2 gap-4">
                             <div>
                                 <Label>Assign To</Label>
-                                <Select value={assignTargetType} onValueChange={(val) => setAssignTargetType(val as any)}>
+                                <Select value={assignTargetType} onValueChange={(val) => {setAssignTargetType(val as any); setSelectedClassId(''); setSelectedStudentIds([])}}>
                                     <SelectTrigger><SelectValue/></SelectTrigger>
                                     <SelectContent><SelectItem value="class">Entire Class</SelectItem><SelectItem value="individual">Individual Students</SelectItem></SelectContent>
                                 </Select>
                             </div>
-                            {assignTargetType === 'class' ? (
-                                <div><Label>Select Class</Label><Select value={selectedClassId} onValueChange={setSelectedClassId}><SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger><SelectContent>{allStudents.map(s => s.class_id).filter((v,i,a)=>a.indexOf(v)===i && v).map(cid => <SelectItem key={cid} value={cid!}>{(allStudents.find(s=>s.class_id===cid) as any)?.class?.name || cid}</SelectItem>)}</SelectContent></Select></div>
-                            ) : (
-                                <div><Label>Select Students</Label><p className="text-xs text-muted-foreground">Multi-select student feature coming soon. Please use 'Class' for now.</p></div>
-                            )}
+                            <div>
+                                <Label>Select Class</Label>
+                                <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+                                    <SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger>
+                                    <SelectContent>{allClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
                         </div>
+
+                         {assignTargetType === 'individual' && (
+                            <div>
+                                <Label>Select Students</Label>
+                                <p className="text-xs text-muted-foreground mb-2">Select students from the chosen class. Showing {studentsInSelectedClass.length} student(s).</p>
+                                <div className="max-h-60 overflow-y-auto space-y-2 border p-2 rounded-md">
+                                    {studentsInSelectedClass.length > 0 ? studentsInSelectedClass.map(student => (
+                                        <div key={student.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
+                                            <Checkbox
+                                                id={`assign-student-${student.id}`}
+                                                checked={selectedStudentIds.includes(student.id)}
+                                                onCheckedChange={(checked) => setSelectedStudentIds(prev => checked ? [...prev, student.id] : prev.filter(id => id !== student.id))}
+                                            />
+                                            <Label htmlFor={`assign-student-${student.id}`} className="font-normal w-full cursor-pointer">{student.name}</Label>
+                                        </div>
+                                    )) : <p className="text-sm text-muted-foreground text-center py-4">No students in this class or no class selected.</p>}
+                                </div>
+                            </div>
+                        )}
                         <div className="grid md:grid-cols-2 gap-4">
                            <div><Label>Fee Type to Assign</Label><Select value={assignFeeTypeId} onValueChange={setAssignFeeTypeId}><SelectTrigger><SelectValue placeholder="Select a fee type"/></SelectTrigger><SelectContent>{feeTypes.map(ft => <SelectItem key={ft.id} value={ft.id}>{ft.name}</SelectItem>)}</SelectContent></Select></div>
                            <div><Label>Amount (₹)</Label><Input type="number" placeholder="Enter amount" value={assignAmount} onChange={e => setAssignAmount(Number(e.target.value))} required/></div>

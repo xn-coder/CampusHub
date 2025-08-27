@@ -1,10 +1,8 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
-    FileText, 
     Layers, 
     Tags, 
     Group, 
@@ -12,8 +10,7 @@ import {
     FileBadge, 
     IndianRupee, 
     LayoutGrid,
-    ChevronRight,
-    Wallet
+    Wallet,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -52,21 +49,21 @@ const feeOptions: FeeManagementOption[] = [
     description: "Create specific fee variations.",
     icon: FileBadge,
     href: "/admin/manage-fee-types",
-    isImplemented: false,
+    isImplemented: true,
   },
   {
     title: "Manage Fee Type Groups",
     description: "Group fee types for easier assignment.",
     icon: Group,
     href: "/admin/manage-fee-groups",
-    isImplemented: false,
+    isImplemented: true,
   },
   {
     title: "Manage Special Fee Types",
     description: "Handle one-off or unique fees.",
     icon: IndianRupee,
     href: "/admin/manage-special-fee-types",
-    isImplemented: false,
+    isImplemented: true,
   },
   {
     title: "Manage Concessions",
