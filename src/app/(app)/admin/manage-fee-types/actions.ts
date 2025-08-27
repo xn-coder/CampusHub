@@ -4,20 +4,44 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { FeeType, StudentFeePayment, PaymentStatus, FeeTypeInstallmentType } from '@/types';
+import type { FeeType, StudentFeePayment, PaymentStatus, FeeTypeInstallmentType, Student, FeeCategory, ClassData } from '@/types';
 
-export async function getFeeTypesAction(schoolId: string): Promise<{ ok: boolean; feeTypes?: (FeeType & { fee_category: { name: string } | null })[], message?: string }> {
+export async function getFeeTypesPageDataAction(schoolId: string): Promise<{ 
+    ok: boolean; 
+    feeTypes?: (FeeType & { fee_category: { name: string } | null })[],
+    assignedFees?: any[],
+    students?: Student[],
+    classes?: ClassData[],
+    feeCategories?: FeeCategory[],
+    message?: string 
+}> {
   if (!schoolId) return { ok: false, message: "School ID is required." };
   const supabase = createSupabaseServerClient();
   try {
-    const { data, error } = await supabase
-      .from('fee_types')
-      .select('*, fee_category:fee_category_id(name)')
-      .eq('school_id', schoolId);
-    if (error) throw error;
-    return { ok: true, feeTypes: data as any[] || [] };
+    const [feeTypesRes, assignedFeesRes, studentsRes, feeCategoriesRes, classesRes] = await Promise.all([
+        supabase.from('fee_types').select('*, fee_category:fee_category_id(name)').eq('school_id', schoolId),
+        supabase.from('student_fee_payments').select('*, student:student_id(name, email), fee_category:fee_category_id(name), fee_type:fee_type_id(name)').eq('school_id', schoolId).not('fee_type_id', 'is', null),
+        supabase.from('students').select('*').eq('school_id', schoolId),
+        supabase.from('fee_categories').select('*').eq('school_id', schoolId),
+        supabase.from('classes').select('*').eq('school_id', schoolId),
+    ]);
+    
+    if (feeTypesRes.error) throw new Error(`Fee Types: ${feeTypesRes.error.message}`);
+    if (assignedFeesRes.error) throw new Error(`Assigned Fees: ${assignedFeesRes.error.message}`);
+    if (studentsRes.error) throw new Error(`Students: ${studentsRes.error.message}`);
+    if (feeCategoriesRes.error) throw new Error(`Fee Categories: ${feeCategoriesRes.error.message}`);
+    if (classesRes.error) throw new Error(`Classes: ${classesRes.error.message}`);
+
+    return { 
+        ok: true, 
+        feeTypes: feeTypesRes.data as any[] || [],
+        assignedFees: assignedFeesRes.data || [],
+        students: studentsRes.data || [],
+        classes: classesRes.data || [],
+        feeCategories: feeCategoriesRes.data || [],
+    };
   } catch (e: any) {
-    return { ok: false, message: `Failed to fetch fee types: ${e.message}` };
+    return { ok: false, message: `Failed to fetch page data: ${e.message}` };
   }
 }
 
@@ -60,21 +84,6 @@ export async function deleteFeeTypeAction(id: string, schoolId: string): Promise
   }
 }
 
-export async function getAssignedFeesForFeeTypeAction(schoolId: string): Promise<{ ok: boolean, fees?: any[], message?: string }> {
-  if (!schoolId) return { ok: false, message: "School ID required." };
-  const supabase = createSupabaseServerClient();
-  try {
-    const { data, error } = await supabase
-      .from('student_fee_payments')
-      .select('*, student:student_id(name, email), fee_category:fee_category_id(name), fee_type:fee_type_id(name)')
-      .eq('school_id', schoolId)
-      .not('fee_type_id', 'is', null);
-    if (error) throw error;
-    return { ok: true, fees: data || [] };
-  } catch (e: any) {
-    return { ok: false, message: e.message || "Failed to get assigned fees" };
-  }
-}
 
 export async function assignFeeTypeToStudentsAction(input: { student_ids: string[], fee_type_id: string, amount: number, due_date?: string, school_id: string }): Promise<{ ok: boolean; message: string; assignmentsCreated?: number }> {
     const { student_ids, fee_type_id, amount, due_date, school_id } = input;

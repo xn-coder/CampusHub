@@ -14,7 +14,7 @@ import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react
 import { PlusCircle, Edit2, Trash2, Save, FileBadge, Loader2, MoreHorizontal, ArrowLeft, Filter, Receipt } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { createFeeTypeAction, updateFeeTypeAction, deleteFeeTypeAction, getFeeTypesAction, getAssignedFeesForFeeTypeAction, assignFeeTypeToStudentsAction } from './actions';
+import { createFeeTypeAction, updateFeeTypeAction, deleteFeeTypeAction, getFeeTypesPageDataAction, assignFeeTypeToStudentsAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format, parseISO, isValid } from 'date-fns';
@@ -23,8 +23,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { getStudentsForSchoolAction } from '../manage-students/actions';
-import { getFeeCategoriesAction } from '../fee-categories/actions';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 
@@ -77,28 +75,17 @@ export default function ManageFeeTypesPage() {
 
   const fetchPageData = useCallback(async (schoolId: string) => {
     setIsLoading(true);
-    const [feeTypesResult, assignedFeesResult, studentsResult, feeCategoriesResult, classesResult] = await Promise.all([
-      getFeeTypesAction(schoolId),
-      getAssignedFeesForFeeTypeAction(schoolId),
-      getStudentsForSchoolAction(schoolId),
-      getFeeCategoriesAction(schoolId),
-      supabase.from('classes').select('id, name, division').eq('school_id', schoolId)
-    ]);
+    const result = await getFeeTypesPageDataAction(schoolId);
       
-    if (feeTypesResult.ok) setFeeTypes(feeTypesResult.feeTypes || []);
-    else toast({ title: "Error fetching fee types", variant: "destructive" });
-
-    if (assignedFeesResult.ok) setAssignedFees(assignedFeesResult.fees || []);
-    else toast({ title: "Error fetching assigned fees", variant: "destructive" });
-
-    if (studentsResult.ok) setAllStudents(studentsResult.students || []);
-    else toast({ title: "Error fetching students", variant: "destructive" });
-    
-    if (feeCategoriesResult.ok) setAllFeeCategories(feeCategoriesResult.categories || []);
-    else toast({ title: "Error fetching fee categories", variant: "destructive" });
-
-    if (!classesResult.error) setAllClasses(classesResult.data || []);
-    else toast({ title: "Error fetching classes", variant: "destructive" });
+    if (result.ok) {
+        setFeeTypes(result.feeTypes || []);
+        setAssignedFees(result.assignedFees || []);
+        setAllStudents(result.students || []);
+        setAllClasses(result.classes || []);
+        setAllFeeCategories(result.feeCategories || []);
+    } else {
+        toast({ title: "Error fetching page data", description: result.message, variant: "destructive" });
+    }
 
     setIsLoading(false);
   }, [toast]);
@@ -253,7 +240,7 @@ export default function ManageFeeTypesPage() {
                 <CardContent>
                   {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
                   : feeTypes.length === 0 ? <p className="text-muted-foreground text-center py-4">No fee types have been created yet.</p>
-                  : <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Display Name</TableHead><TableHead>Category</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{feeTypes.map((ft) => (<TableRow key={ft.id}><TableCell className="font-medium">{ft.name}</TableCell><TableCell>{ft.display_name}</TableCell><TableCell>{ft.fee_category?.name || 'N/A'}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(ft)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will permanently delete the fee type "{ft.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteFeeType(ft.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
+                  : <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Display Name</TableHead><TableHead>Category</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{feeTypes.map((ft) => (<TableRow key={ft.id}><TableCell className="font-medium">{ft.name}</TableCell><TableCell>{ft.display_name}</TableCell><TableCell>{ft.fee_category?.name || 'N/A'}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(ft as FeeType)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will permanently delete the fee type "{ft.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteFeeType(ft.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
                   }
                 </CardContent>
               </Card>
@@ -286,8 +273,7 @@ export default function ManageFeeTypesPage() {
 
                          {assignTargetType === 'individual' && (
                             <div>
-                                <Label>Select Students</Label>
-                                <p className="text-xs text-muted-foreground mb-2">Select students from the chosen class. Showing {studentsInSelectedClass.length} student(s).</p>
+                                <Label>Select Student(s)</Label>
                                 <div className="max-h-60 overflow-y-auto space-y-2 border p-2 rounded-md">
                                     {studentsInSelectedClass.length > 0 ? studentsInSelectedClass.map(student => (
                                         <div key={student.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
@@ -326,7 +312,7 @@ export default function ManageFeeTypesPage() {
                          <div className="flex-grow"><Label htmlFor="status-filter"><Filter className="inline-block mr-1 h-3 w-3" />Filter by Status</Label><Select value={statusFilter} onValueChange={setStatusFilter} disabled={isLoading}><SelectTrigger id="status-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Partially Paid">Partially Paid</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Overdue">Overdue</SelectItem></SelectContent></Select></div>
                     </div>
                      {isLoading ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>) : filteredAssignedFees.length === 0 ? (<p className="text-muted-foreground text-center py-4">No fees assigned for this fee type match the current filters.</p>) : (
-                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{filteredAssignedFees.map(fee => (<TableRow key={fee.id}><TableCell className="font-medium">{fee.student.name}</TableCell><TableCell>{fee.fee_type.name}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell></TableRow>))}</TableBody></Table>
+                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{filteredAssignedFees.map(fee => (<TableRow key={fee.id}><TableCell className="font-medium">{fee.student.name}</TableCell><TableCell>{fee.fee_type?.name || 'N/A'}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell></TableRow>))}</TableBody></Table>
                      )}
                 </CardContent>
             </Card>

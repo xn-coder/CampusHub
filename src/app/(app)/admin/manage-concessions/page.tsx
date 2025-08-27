@@ -143,7 +143,7 @@ export default function ManageConcessionsPage() {
       school_id: currentSchoolId 
     };
 
-    let result = editingConcession ? await updateConcessionAction(editingConcession.id, concessionData) : await createConcessionAction(concessionData);
+    let result = editingConcession ? await updateConcessionAction(editingConcession.id, concessionData) : await createConcessionAction(concessionData as any);
     if (result.ok) {
       toast({ title: editingConcession ? "Concession Updated" : "Concession Created", description: result.message });
       resetForm();

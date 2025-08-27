@@ -46,23 +46,18 @@ export default function ManageInstallmentsPage() {
   const [assignedFees, setAssignedFees] = useState<any[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
-  const [allAcademicYears, setAllAcademicYears] = useState<AcademicYear[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
 
-  // Form states for creating/editing installments
+  // Form states
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingInstallment, setEditingInstallment] = useState<Installment | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState<number | ''>('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [lastDate, setLastDate] = useState('');
   
-  // States for Assign Fees tab
+  // States for Assign Concession tab
   const [assignTargetType, setAssignTargetType] = useState<'class' | 'individual'>('class');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
@@ -70,6 +65,11 @@ export default function ManageInstallmentsPage() {
   const [assignAmount, setAssignAmount] = useState<number | ''>('');
   const [assignDueDate, setAssignDueDate] = useState<string>('');
   const [assignNotes, setAssignNotes] = useState('');
+  
+  const studentsInSelectedClass = useMemo(() => {
+    if (!selectedClassId) return [];
+    return allStudents.filter(s => s.class_id === selectedClassId);
+  }, [selectedClassId, allStudents]);
 
 
   const fetchPageData = useCallback(async (schoolId: string) => {
@@ -81,7 +81,6 @@ export default function ManageInstallmentsPage() {
         setAssignedFees(result.assignedFees || []);
         setAllStudents(result.students || []);
         setAllClasses(result.classes || []);
-        setAllAcademicYears(result.academicYears || []);
     } else {
         toast({ title: "Error fetching page data", description: result.message, variant: "destructive" });
     }
@@ -114,11 +113,14 @@ export default function ManageInstallmentsPage() {
       const selectedInstallment = installments.find(i => i.id === assignInstallmentId);
       if (selectedInstallment && selectedInstallment.amount) {
         setAssignAmount(selectedInstallment.amount);
+        setAssignDueDate(selectedInstallment.last_date);
       } else {
         setAssignAmount('');
+        setAssignDueDate('');
       }
     } else {
       setAssignAmount('');
+      setAssignDueDate('');
     }
   }, [assignInstallmentId, installments]);
 
@@ -126,10 +128,6 @@ export default function ManageInstallmentsPage() {
   const resetForm = () => {
     setTitle('');
     setDescription('');
-    setAmount('');
-    setStartDate('');
-    setEndDate('');
-    setLastDate('');
     setEditingInstallment(null);
   };
   
@@ -148,10 +146,6 @@ export default function ManageInstallmentsPage() {
       setEditingInstallment(installment);
       setTitle(installment.title);
       setDescription(installment.description || '');
-      setAmount(installment.amount || '');
-      setStartDate(format(parseISO(installment.start_date), 'yyyy-MM-dd'));
-      setEndDate(format(parseISO(installment.end_date), 'yyyy-MM-dd'));
-      setLastDate(format(parseISO(installment.last_date), 'yyyy-MM-dd'));
     } else {
       resetForm();
     }
@@ -160,8 +154,8 @@ export default function ManageInstallmentsPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !currentSchoolId || !startDate || !endDate || !lastDate) {
-      toast({ title: "Error", description: "Title and all dates are required.", variant: "destructive" });
+    if (!title.trim() || !currentSchoolId) {
+      toast({ title: "Error", description: "Title and school context are required.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
@@ -169,14 +163,10 @@ export default function ManageInstallmentsPage() {
     const installmentData = { 
       title: title.trim(),
       description: description.trim() || undefined,
-      amount: amount === '' ? null : Number(amount),
-      school_id: currentSchoolId,
-      start_date: startDate,
-      end_date: endDate,
-      last_date: lastDate,
+      school_id: currentSchoolId 
     };
 
-    let result = editingInstallment ? await updateInstallmentAction(editingInstallment.id, installmentData) : await createInstallmentAction(installmentData);
+    let result = editingInstallment ? await updateInstallmentAction(editingInstallment.id, installmentData) : await createInstallmentAction(installmentData as any);
     if (result.ok) {
       toast({ title: editingInstallment ? "Installment Updated" : "Installment Created", description: result.message });
       resetForm();
@@ -229,19 +219,15 @@ export default function ManageInstallmentsPage() {
     setIsSubmitting(false);
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string | null) => {
+    if(!dateString) return 'N/A';
     try {
         const date = parseISO(dateString);
-        return isValid(date) ? format(date, 'MMM d, yyyy') : 'N/A';
+        return isValid(date) ? format(date, 'MMM d, yyyy') : 'Invalid Date';
     } catch(e) {
         return 'Invalid Date';
     }
   };
-  
-  const studentsInSelectedClass = useMemo(() => {
-    if (!selectedClassId) return [];
-    return allStudents.filter(s => s.class_id === selectedClassId);
-  }, [selectedClassId, allStudents]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -269,7 +255,7 @@ export default function ManageInstallmentsPage() {
                 <CardContent>
                   {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
                   : installments.length === 0 ? <p className="text-muted-foreground text-center py-4">No installment plans have been created yet.</p>
-                  : <Table><TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Default Amount</TableHead><TableHead>Start Date</TableHead><TableHead>End Date</TableHead><TableHead>Last Payment Date</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{installments.map((item) => (<TableRow key={item.id}><TableCell className="font-medium">{item.title}</TableCell><TableCell>{item.amount ? `₹${item.amount.toFixed(2)}` : 'N/A'}</TableCell><TableCell>{formatDate(item.start_date)}</TableCell><TableCell>{formatDate(item.end_date)}</TableCell><TableCell>{formatDate(item.last_date)}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(item)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the installment plan "{item.title}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteInstallment(item.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
+                  : <Table><TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Default Amount</TableHead><TableHead>Last Payment Date</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{installments.map((item) => (<TableRow key={item.id}><TableCell className="font-medium">{item.title}</TableCell><TableCell>{item.amount ? `₹${item.amount.toFixed(2)}` : 'N/A'}</TableCell><TableCell>{formatDate(item.last_date)}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(item)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the installment plan "{item.title}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteInstallment(item.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
                   }
                 </CardContent>
               </Card>
@@ -340,11 +326,7 @@ export default function ManageInstallmentsPage() {
             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
               <div className="space-y-1"><Label htmlFor="title">Title</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., First Term, Q1 Fees" required disabled={isSubmitting} /></div>
               <div className="space-y-1"><Label htmlFor="amount">Default Amount (₹, Optional)</Label><Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 5000.00" step="0.01" min="0" disabled={isSubmitting}/></div>
-              <div className="grid grid-cols-2 gap-4">
-                  <div><Label htmlFor="start_date">Start Date</Label><Input id="start_date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required disabled={isSubmitting} /></div>
-                  <div><Label htmlFor="end_date">End Date</Label><Input id="end_date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required disabled={isSubmitting} /></div>
-              </div>
-              <div><Label htmlFor="last_date">Last Date for Payment</Label><Input id="last_date" type="date" value={lastDate} onChange={(e) => setLastDate(e.target.value)} required disabled={isSubmitting} /></div>
+              <div className="space-y-1"><Label htmlFor="last_date">Last Date for Payment</Label><Input id="last_date" type="date" value={lastDate} onChange={(e) => setLastDate(e.target.value)} required disabled={isSubmitting} /></div>
               <div className="space-y-1"><Label htmlFor="description">Description (Optional)</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this installment period" disabled={isSubmitting}/></div>
             </div>
             <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingInstallment ? 'Save Changes' : 'Create Installment'}</Button></DialogFooter>
