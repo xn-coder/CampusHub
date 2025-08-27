@@ -85,27 +85,6 @@ export async function deleteFeeTypeGroupAction(id: string, schoolId: string): Pr
   }
 }
 
-export async function getAssignedFeeGroupsAction(schoolId: string): Promise<{ ok: boolean, assignedGroups?: any[], message?: string}> {
-  if (!schoolId) return { ok: false, message: "School ID is required." };
-  const supabase = createSupabaseServerClient();
-  try {
-      const { data, error } = await supabase
-        .from('student_fee_payments')
-        .select(`
-            *,
-            student:student_id(name, email),
-            fee_type_group:fee_type_group_id(name)
-        `)
-        .eq('school_id', schoolId)
-        .not('fee_type_group_id', 'is', null);
-
-      if (error) throw error;
-      return { ok: true, assignedGroups: data || [] };
-  } catch (e: any) {
-      return { ok: false, message: e.message || "An unexpected server error." };
-  }
-}
-
 export async function assignFeeGroupToStudentsAction(input: { student_ids: string[], fee_group_id: string, school_id: string, amounts: Record<string, number> }): Promise<{ ok: boolean; message: string; assignmentsCreated?: number }> {
     const { student_ids, fee_group_id, school_id, amounts } = input;
     if (student_ids.length === 0 || !fee_group_id) {
