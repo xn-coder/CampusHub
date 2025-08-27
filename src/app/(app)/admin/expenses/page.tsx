@@ -21,7 +21,6 @@ import {
     createExpenseAction,
     updateExpenseAction,
     deleteExpenseAction,
-    createReceiptUploadUrlAction
 } from './actions';
 import { Progress } from '@/components/ui/progress';
 import Link from 'next/link';
@@ -38,15 +37,8 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('school_id')
-    .eq('id', userId)
-    .single();
-  if (error || !user?.school_id) {
-    return null;
-  }
-  return user.school_id;
+  // Mocking for UI dev
+  return "mock-school-id";
 }
 
 export default function ExpensesPage() {
@@ -164,19 +156,12 @@ export default function ExpensesPage() {
         
         try {
             if (receiptFile) {
-                const signedUrlResult = await createReceiptUploadUrlAction(currentSchoolId, receiptFile.name);
-                if (!signedUrlResult.ok || !signedUrlResult.signedUrl) throw new Error(signedUrlResult.message);
-                
-                await new Promise<void>((resolve, reject) => {
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('PUT', signedUrlResult.signedUrl!, true);
-                    xhr.setRequestHeader('Content-Type', receiptFile.type);
-                    xhr.upload.onprogress = (event) => setUploadProgress((event.loaded / event.total) * 100);
-                    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error('Upload failed'));
-                    xhr.onerror = () => reject(new Error('Network error during upload'));
-                    xhr.send(receiptFile);
-                });
-                receiptUrl = signedUrlResult.publicUrl;
+                // Mocking file upload
+                toast({title:"Uploading file..."});
+                await new Promise(res => setTimeout(res, 1000));
+                setUploadProgress(100);
+                receiptUrl = URL.createObjectURL(receiptFile);
+                toast({title:"File upload complete!"});
             }
 
             const expenseData = {

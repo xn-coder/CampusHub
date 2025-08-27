@@ -1,47 +1,27 @@
 
 'use server';
 
-import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { Expense, ExpenseCategory, User, SchoolDetails } from '@/types';
+import { format } from 'date-fns';
 
-// Action to create a signed URL for secure, direct-to-storage uploads
-export async function createReceiptUploadUrlAction(
-    schoolId: string,
-    fileName: string,
-): Promise<{ ok: boolean; message: string; signedUrl?: string; publicUrl?: string; }> {
-    const supabase = createSupabaseServerClient();
-    try {
-        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
-        const filePath = `public/expense-receipts/${schoolId}/${uuidv4()}-${sanitizedFileName}`;
+// --- MOCK DATA ---
+let mockExpenses: Expense[] = [
+    { id: 'exp-1', title: 'January Electricity Bill', amount: 15000, category_id: 'cat-2', date: format(new Date(), 'yyyy-MM-dd'), school_id: 'mock-school-id', recorded_by_user_id: 'user-admin', created_at: new Date().toISOString() },
+    { id: 'exp-2', title: 'Teacher Salaries - Jan', amount: 250000, category_id: 'cat-1', date: format(new Date(), 'yyyy-MM-dd'), school_id: 'mock-school-id', recorded_by_user_id: 'user-admin', created_at: new Date().toISOString() },
+    { id: 'exp-3', title: 'New Whiteboards', amount: 8000, category_id: 'cat-4', date: '2024-05-10', school_id: 'mock-school-id', recorded_by_user_id: 'user-admin', created_at: new Date().toISOString() },
+];
+let mockCategories: ExpenseCategory[] = [
+  { id: 'cat-1', name: 'Salaries', description: 'Monthly salaries for all staff.', school_id: 'mock-school-id' },
+  { id: 'cat-2', name: 'Utilities', description: 'Electricity, water, and internet bills.', school_id: 'mock-school-id' },
+  { id: 'cat-3', name: 'Maintenance', description: 'Building repairs and upkeep.', school_id: 'mock-school-id' },
+  { id: 'cat-4', name: 'Office Supplies', description: 'Stationery and other office needs.', school_id: 'mock-school-id' },
+];
 
-        const { data, error } = await supabase.storage
-            .from('campushub')
-            .createSignedUploadUrl(filePath);
+let mockUsers: User[] = [ { id: 'user-admin', name: 'Admin User', email: 'admin@example.com', role: 'admin' } ];
+let mockSchool: SchoolDetails = { id: 'mock-school-id', name: 'CampusHub Demo School', address: '123 Innovation Drive', admin_email: 'admin@example.com', admin_name: 'Admin User', status: 'Active' };
 
-        if (error) {
-            throw new Error(`Failed to create signed URL: ${error.message}`);
-        }
-        
-        const { data: publicUrlData } = supabase.storage
-            .from('campushub')
-            .getPublicUrl(filePath);
-
-        if (!publicUrlData?.publicUrl) {
-            throw new Error("Could not determine public URL for the file path.");
-        }
-
-        return {
-            ok: true,
-            message: "Signed URL created successfully.",
-            signedUrl: data.signedUrl,
-            publicUrl: publicUrlData.publicUrl,
-        };
-    } catch (e: any) {
-        return { ok: false, message: e.message || "An unexpected error occurred." };
-    }
-}
 
 interface ExpenseInput {
   title: string;
@@ -57,30 +37,17 @@ interface ExpenseInput {
 export async function createExpenseAction(
   input: ExpenseInput
 ): Promise<{ ok: boolean; message: string; expense?: Expense }> {
-  const supabaseAdmin = createSupabaseServerClient();
-  try {
-    const { error, data } = await supabaseAdmin
-      .from('expenses')
-      .insert({ ...input, id: uuidv4() })
-      .select()
-      .single();
-
-    if (error) {
-      if(error.message.includes('relation "public.expenses" does not exist')) {
-        console.warn("Create failed: Expenses table not found. Please run the required SQL migration.");
-        return { ok: false, message: 'Database setup incomplete.' };
-      }
-      throw error;
-    }
-    revalidatePath('/admin/expenses');
-    revalidatePath('/dashboard');
-    return { ok: true, message: 'Expense created successfully.', expense: data as Expense };
-  } catch(e: any) {
-    console.error("Error creating expense:", e);
-    return { ok: false, message: `Failed to create expense: ${e.message}` };
-  }
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const newExpense: Expense = {
+    id: uuidv4(),
+    ...input,
+    created_at: new Date().toISOString(),
+  };
+  mockExpenses.unshift(newExpense);
+  revalidatePath('/admin/expenses');
+  revalidatePath('/dashboard');
+  return { ok: true, message: 'Expense created successfully.', expense: newExpense };
 }
-
 
 export async function getExpensesPageDataAction(schoolId: string): Promise<{
     ok: boolean;
@@ -91,45 +58,20 @@ export async function getExpensesPageDataAction(schoolId: string): Promise<{
     if (!schoolId) {
         return { ok: false, message: "School ID is required." };
     }
-    const supabaseAdmin = createSupabaseServerClient();
-    try {
-        const [expensesRes, categoriesRes] = await Promise.all([
-            supabaseAdmin.from('expenses').select('*, category:category_id(name), recorded_by:recorded_by_user_id(name)').eq('school_id', schoolId).order('date', { ascending: false }),
-            supabaseAdmin.from('expense_categories').select('*').eq('school_id', schoolId).order('name'),
-        ]);
-
-        let expensesData: Expense[] = [];
-        if (expensesRes.error) {
-            if (expensesRes.error.message.includes('relation "public.expenses" does not exist')) {
-                console.warn("Expenses table does not exist. Returning empty array.");
-            } else {
-                throw new Error(`Fetching expenses failed: ${expensesRes.error.message}`);
-            }
-        } else {
-            expensesData = expensesRes.data as Expense[];
-        }
-
-        let categoriesData: ExpenseCategory[] = [];
-        if (categoriesRes.error) {
-             if (categoriesRes.error.message.includes('relation "public.expense_categories" does not exist')) {
-                console.warn("Expense Categories table does not exist. Returning empty array.");
-            } else {
-                throw new Error(`Fetching expense categories failed: ${categoriesRes.error.message}`);
-            }
-        } else {
-            categoriesData = categoriesRes.data || [];
-        }
-
-
-        return {
-            ok: true,
-            expenses: expensesData,
-            categories: categoriesData,
-        };
-    } catch (error: any) {
-        console.error("Error in getExpensesPageDataAction:", error);
-        return { ok: false, message: error.message || "An unexpected error occurred." };
-    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const schoolExpenses = mockExpenses
+      .filter(exp => exp.school_id === schoolId)
+      .map(exp => ({
+        ...exp,
+        category: mockCategories.find(c => c.id === exp.category_id),
+        recorded_by: mockUsers.find(u => u.id === exp.recorded_by_user_id)
+      }));
+      
+    return {
+        ok: true,
+        expenses: schoolExpenses,
+        categories: mockCategories,
+    };
 }
 
 
@@ -137,82 +79,30 @@ export async function updateExpenseAction(
   id: string,
   input: Partial<ExpenseInput> & { school_id: string }
 ): Promise<{ ok: boolean; message: string; expense?: Expense }> {
-  const supabaseAdmin = createSupabaseServerClient();
-  
-  try {
-    const { error, data } = await supabaseAdmin
-      .from('expenses')
-      .update(input)
-      .eq('id', id)
-      .eq('school_id', input.school_id)
-      .select()
-      .single();
-
-    if (error) {
-       if(error.message.includes('relation "public.expenses" does not exist')) {
-        console.warn("Update failed: Expenses table not found.");
-        return { ok: false, message: 'Database setup incomplete.' };
-      }
-      throw error;
-    }
-
-    revalidatePath('/admin/expenses');
-    revalidatePath('/dashboard');
-    return { ok: true, message: 'Expense updated successfully.', expense: data as Expense };
-  } catch (e: any) {
-    console.error("Error updating expense:", e);
-    return { ok: false, message: `Failed to update expense: ${e.message}` };
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const index = mockExpenses.findIndex(e => e.id === id);
+  if (index === -1) {
+    return { ok: false, message: 'Expense not found.' };
   }
+  mockExpenses[index] = { ...mockExpenses[index], ...input, updated_at: new Date().toISOString() };
+  revalidatePath('/admin/expenses');
+  revalidatePath('/dashboard');
+  return { ok: true, message: 'Expense updated successfully.', expense: mockExpenses[index] };
 }
 
 
 export async function deleteExpenseAction(id: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
-  const supabaseAdmin = createSupabaseServerClient();
-  try {
-    const { data: expenseToDelete, error: fetchError } = await supabaseAdmin
-      .from('expenses')
-      .select('receipt_url')
-      .eq('id', id)
-      .single();
-    
-    if (fetchError) {
-      if (fetchError.message.includes('relation "public.expenses" does not exist')) {
-        console.warn("Delete skipped: Expense record not found (table might not exist).");
-        return { ok: true, message: "Expense record already deleted (table does not exist)." };
-      }
-      throw fetchError;
-    }
-    
-    if (expenseToDelete?.receipt_url && expenseToDelete.receipt_url.includes(process.env.NEXT_PUBLIC_SUPABASE_URL!)) {
-        const filePath = new URL(expenseToDelete.receipt_url).pathname.replace(`/storage/v1/object/public/campushub/`, '');
-        const { error: storageError } = await supabaseAdmin.storage.from('campushub').remove([filePath.replace('/public/','')]);
-        if (storageError) {
-            console.warn(`Failed to delete receipt from storage, but proceeding with DB deletion. Path: ${filePath}, Error: ${storageError.message}`);
-        }
-    }
-
-    const { error } = await supabaseAdmin
-      .from('expenses')
-      .delete()
-      .eq('id', id)
-      .eq('school_id', schoolId);
-
-    if (error) {
-      if(error.message.includes('relation "public.expenses" does not exist')) {
-        console.warn("Delete skipped: Expense record not found (table does not exist).");
-        return { ok: true, message: "Expense record already deleted (table does not exist)." };
-      }
-      throw error;
-    }
-
-    revalidatePath('/admin/expenses');
-    revalidatePath('/dashboard');
-    return { ok: true, message: 'Expense deleted successfully.' };
-  } catch (e: any) {
-    console.error("Error deleting expense:", e);
-    return { ok: false, message: `Failed to delete expense: ${e.message}` };
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const initialLength = mockExpenses.length;
+  mockExpenses = mockExpenses.filter(e => e.id !== id);
+  if (mockExpenses.length === initialLength) {
+    return { ok: false, message: "Expense not found." };
   }
+  revalidatePath('/admin/expenses');
+  revalidatePath('/dashboard');
+  return { ok: true, message: 'Expense deleted successfully.' };
 }
+
 
 export async function getExpenseVoucherDataAction(expenseId: string): Promise<{
   ok: boolean;
@@ -220,35 +110,18 @@ export async function getExpenseVoucherDataAction(expenseId: string): Promise<{
   school?: SchoolDetails;
   message?: string;
 }> {
-  if (!expenseId) {
-    return { ok: false, message: "Expense ID is required." };
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const expense = mockExpenses.find(e => e.id === expenseId);
+  if (!expense) {
+    return { ok: false, message: "Expense record not found." };
   }
-  const supabase = createSupabaseServerClient();
-  try {
-    const { data: expense, error: expenseError } = await supabase
-      .from('expenses')
-      .select('*, category:category_id(name)')
-      .eq('id', expenseId)
-      .single();
-      
-    if (expenseError) throw new Error(`Fetching expense failed: ${expenseError.message}`);
-    if (!expense) throw new Error("Expense record not found.");
-    
-    const { data: school, error: schoolError } = await supabase
-      .from('schools')
-      .select('*')
-      .eq('id', expense.school_id)
-      .single();
-
-    if (schoolError) throw new Error(`Fetching school details failed: ${schoolError.message}`);
-    
-    return {
-      ok: true,
-      expense: expense as Expense,
-      school: school as SchoolDetails,
-    };
-  } catch (error: any) {
-    console.error("Error in getExpenseVoucherDataAction:", error);
-    return { ok: false, message: error.message || "An unexpected error occurred." };
-  }
+  const enrichedExpense = {
+    ...expense,
+    category: mockCategories.find(c => c.id === expense.category_id)
+  };
+  return {
+    ok: true,
+    expense: enrichedExpense,
+    school: mockSchool,
+  };
 }

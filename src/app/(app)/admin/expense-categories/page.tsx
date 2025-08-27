@@ -19,16 +19,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('school_id')
-    .eq('id', userId)
-    .single();
-  if (error || !user?.school_id) {
-    console.error("Error fetching user's school:", error?.message);
-    return null;
-  }
-  return user.school_id;
+  // Mocking this for UI development
+  return "mock-school-id";
 }
 
 export default function ExpenseCategoriesPage() {
