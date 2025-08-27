@@ -402,6 +402,16 @@ export interface StudentFeePayment {
   updated_at?: string;
 }
 
+// New type for Fee Concessions
+export interface Concession {
+  id: string;
+  title: string;
+  description?: string | null;
+  school_id: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 
 export interface ExpenseCategory {
   id: string;

@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -72,8 +71,8 @@ const feeOptions: FeeManagementOption[] = [
     title: "Manage Concessions",
     description: "Define and apply fee discounts.",
     icon: BadgePercent,
-    href: "#",
-    isImplemented: false,
+    href: "/admin/manage-concessions",
+    isImplemented: true,
   },
   {
     title: "Manage Fees Structures",
