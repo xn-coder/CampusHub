@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import type { Expense, ExpenseCategory } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Wallet, Loader2, Search, Download, ExternalLink, FileText, MoreHorizontal, Calendar as CalendarIcon } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Wallet, Loader2, Search, Download, ExternalLink, FileText, MoreHorizontal, Calendar as CalendarIcon, ArrowLeft, Tags } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, startOfDay, endOfDay, subDays } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
@@ -220,7 +220,7 @@ export default function ExpensesPage() {
             return acc;
         }, {} as Record<string, number>);
         return Object.entries(dataByCategory).map(([name, amount]) => ({ name, amount }));
-    }, [filteredExpenses, categories]);
+    }, [filteredExpenses, categories, getCategoryName]);
 
 
     return (
@@ -229,9 +229,11 @@ export default function ExpensesPage() {
                 title="Expense Management"
                 description="Track and manage all school expenditures."
                 actions={
-                    <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isLoading}>
-                        <PlusCircle className="mr-2 h-4 w-4" /> Add Expense
-                    </Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" asChild><Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link></Button>
+                    <Button variant="outline" asChild><Link href="/admin/expense-categories"><Tags className="mr-2 h-4 w-4" /> Manage Categories</Link></Button>
+                    <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isLoading}><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</Button>
+                  </div>
                 }
             />
             

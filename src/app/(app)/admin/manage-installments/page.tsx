@@ -70,7 +70,6 @@ export default function ManageInstallmentsPage() {
   const [assignAmount, setAssignAmount] = useState<number | ''>('');
   const [assignDueDate, setAssignDueDate] = useState<string>('');
   const [assignNotes, setAssignNotes] = useState('');
-  const [assignAcademicYearId, setAssignAcademicYearId] = useState<string>('');
 
 
   const fetchPageData = useCallback(async (schoolId: string) => {
@@ -142,7 +141,6 @@ export default function ManageInstallmentsPage() {
     setAssignDueDate('');
     setAssignNotes('');
     setAssignAmount('');
-    setAssignAcademicYearId('');
   };
 
   const handleOpenDialog = (installment?: Installment) => {
@@ -209,7 +207,7 @@ export default function ManageInstallmentsPage() {
     }
 
     if (studentIdsToAssign.length === 0 || !assignInstallmentId || assignAmount === '' || !currentSchoolId) {
-        toast({ title: "Error", description: "Please complete all fields in the assignment form.", variant: "destructive" });
+        toast({ title: "Error", description: "Please complete all required fields in the assignment form.", variant: "destructive" });
         return;
     }
     setIsSubmitting(true);
@@ -219,7 +217,6 @@ export default function ManageInstallmentsPage() {
         amount: Number(assignAmount),
         due_date: assignDueDate || undefined,
         school_id: currentSchoolId,
-        academic_year_id: assignAcademicYearId || undefined,
         notes: assignNotes
     });
     if (result.ok) {
@@ -311,10 +308,9 @@ export default function ManageInstallmentsPage() {
                            <div><Label>Amount (₹)</Label><Input type="number" placeholder="Enter amount..." value={assignAmount} onChange={e => setAssignAmount(e.target.value === '' ? '' : Number(e.target.value))} required step="0.01" min="0.01"/></div>
                         </div>
                         <div className="grid md:grid-cols-2 gap-4">
-                            <div><Label>Academic Year (Optional)</Label><Select value={assignAcademicYearId} onValueChange={setAssignAcademicYearId}><SelectTrigger><SelectValue placeholder="Choose a year"/></SelectTrigger><SelectContent>{allAcademicYears.map(ay => <SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)}</SelectContent></Select></div>
                             <div><Label>Due Date (Optional)</Label><Input type="date" value={assignDueDate} onChange={e => setAssignDueDate(e.target.value)} /></div>
+                            <div><Label>Notes (Optional)</Label><Input value={assignNotes} onChange={e => setAssignNotes(e.target.value)} placeholder="e.g., Annual fee installment 1"/></div>
                         </div>
-                         <div><Label>Notes (Optional)</Label><Input value={assignNotes} onChange={e => setAssignNotes(e.target.value)} placeholder="e.g., Annual fee installment 1"/></div>
                     </CardContent>
                     <CardFooter>
                         <Button type="submit" disabled={isSubmitting}>
@@ -338,7 +334,22 @@ export default function ManageInstallmentsPage() {
       </Tabs>
 
       <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
-        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{editingInstallment ? 'Edit' : 'Create New'} Installment Plan</DialogTitle></DialogHeader><form onSubmit={handleSubmit}><div className="grid gap-4 py-4"><div className="space-y-1"><Label htmlFor="title">Title</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., First Term, Q1 Fees" required disabled={isSubmitting} /></div><div className="space-y-1"><Label htmlFor="amount">Default Amount (₹, Optional)</Label><Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 5000.00" step="0.01" min="0" disabled={isSubmitting}/></div><div className="grid grid-cols-2 gap-4"><div><Label htmlFor="start_date">Start Date</Label><Input id="start_date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required disabled={isSubmitting} /></div><div><Label htmlFor="end_date">End Date</Label><Input id="end_date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required disabled={isSubmitting} /></div></div><div><Label htmlFor="last_date">Last Date for Payment</Label><Input id="last_date" type="date" value={lastDate} onChange={(e) => setLastDate(e.target.value)} required disabled={isSubmitting} /></div><div className="space-y-1"><Label htmlFor="description">Description (Optional)</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this installment period" disabled={isSubmitting}/></div></div><DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingInstallment ? 'Save Changes' : 'Create Installment'}</Button></DialogFooter></form></DialogContent>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>{editingInstallment ? 'Edit' : 'Create New'} Installment Plan</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
+              <div className="space-y-1"><Label htmlFor="title">Title</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., First Term, Q1 Fees" required disabled={isSubmitting} /></div>
+              <div className="space-y-1"><Label htmlFor="amount">Default Amount (₹, Optional)</Label><Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 5000.00" step="0.01" min="0" disabled={isSubmitting}/></div>
+              <div className="grid grid-cols-2 gap-4">
+                  <div><Label htmlFor="start_date">Start Date</Label><Input id="start_date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required disabled={isSubmitting} /></div>
+                  <div><Label htmlFor="end_date">End Date</Label><Input id="end_date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required disabled={isSubmitting} /></div>
+              </div>
+              <div><Label htmlFor="last_date">Last Date for Payment</Label><Input id="last_date" type="date" value={lastDate} onChange={(e) => setLastDate(e.target.value)} required disabled={isSubmitting} /></div>
+              <div className="space-y-1"><Label htmlFor="description">Description (Optional)</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this installment period" disabled={isSubmitting}/></div>
+            </div>
+            <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingInstallment ? 'Save Changes' : 'Create Installment'}</Button></DialogFooter>
+          </form>
+        </DialogContent>
       </Dialog>
     </div>
   );
