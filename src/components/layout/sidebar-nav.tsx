@@ -79,7 +79,7 @@ const adminNavItems: NavItem[] = [
   { href: '/admin/lms/courses', label: 'LMS Courses', icon: Library }, 
   { href: '/admin/lms/reports', label: 'LMS Reports', icon: BarChart3 },
   { href: '/admin/admissions', label: 'View Admissions', icon: FilePlus2 },
-  { href: '/fees-management', label: 'Fees Management', icon: Receipt },
+  { href: '/admin/fees-management', label: 'Fees Management', icon: Receipt },
   { href: '/admin/academic-years', label: 'Academic Years', icon: CalendarRange },
   { href: '/admin/subjects', label: 'Subjects', icon: BookOpenText },
   { href: '/admin/exams', label: 'Exams', icon: FileText },
