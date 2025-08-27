@@ -4,17 +4,45 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { FeeTypeGroup, StudentFeePayment, PaymentStatus, FeeType } from '@/types';
+import type { FeeTypeGroup, StudentFeePayment, PaymentStatus, FeeType, Student, ClassData } from '@/types';
 
-export async function getFeeTypeGroupsAction(schoolId: string): Promise<{ ok: boolean; groups?: FeeTypeGroup[], message?: string }> {
+
+export async function getFeeTypeGroupsPageDataAction(schoolId: string): Promise<{
+    ok: boolean;
+    groups?: FeeTypeGroup[];
+    assignedGroups?: any[];
+    students?: Student[];
+    classes?: ClassData[];
+    feeTypes?: FeeType[];
+    message?: string;
+}> {
   if (!schoolId) return { ok: false, message: "School ID is required." };
   const supabase = createSupabaseServerClient();
   try {
-    const { data, error } = await supabase.from('fee_type_groups').select('*').eq('school_id', schoolId);
-    if (error) throw error;
-    return { ok: true, groups: data || [] };
+    const [groupsRes, assignedGroupsRes, studentsRes, feeTypesRes, classesRes] = await Promise.all([
+      supabase.from('fee_type_groups').select('*').eq('school_id', schoolId),
+      supabase.from('student_fee_payments').select('*, student:student_id(name, email), fee_type_group:fee_type_group_id(name)').eq('school_id', schoolId).not('fee_type_group_id', 'is', null),
+      supabase.from('students').select('*').eq('school_id', schoolId),
+      supabase.from('fee_types').select('*').eq('school_id', schoolId),
+      supabase.from('classes').select('*').eq('school_id', schoolId),
+    ]);
+
+    if (groupsRes.error) throw new Error(`Fee Groups: ${groupsRes.error.message}`);
+    if (assignedGroupsRes.error) throw new Error(`Assigned Groups: ${assignedGroupsRes.error.message}`);
+    if (studentsRes.error) throw new Error(`Students: ${studentsRes.error.message}`);
+    if (feeTypesRes.error) throw new Error(`Fee Types: ${feeTypesRes.error.message}`);
+    if (classesRes.error) throw new Error(`Classes: ${classesRes.error.message}`);
+
+    return {
+      ok: true,
+      groups: groupsRes.data || [],
+      assignedGroups: assignedGroupsRes.data || [],
+      students: studentsRes.data || [],
+      classes: classesRes.data || [],
+      feeTypes: feeTypesRes.data || [],
+    };
   } catch (e: any) {
-    return { ok: false, message: e.message || "An unexpected server error occurred." };
+    return { ok: false, message: `Failed to load page data: ${e.message}` };
   }
 }
 
