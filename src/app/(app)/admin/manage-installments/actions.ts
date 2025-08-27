@@ -99,19 +99,20 @@ export async function deleteInstallmentAction(id: string, schoolId: string): Pro
   }
 }
 
-export async function getFeesForStudentsAction(studentIds: string[], schoolId: string): Promise<{ ok: boolean; fees?: StudentFeePayment[]; message?: string }> {
+export async function getFeesForStudentsAction(studentIds: string[], schoolId: string): Promise<{ ok: boolean; fees?: (StudentFeePayment & {fee_category: FeeCategory | null})[]; message?: string }> {
     if (!studentIds || !schoolId || studentIds.length === 0) return { ok: true, fees: [] };
     const supabase = createSupabaseServerClient();
     try {
-        const { data, error } = await supabase.from('student_fee_payments')
-            .select('*, fee_category:fee_category_id(name)')
-            .in('student_id', studentIds)
-            .eq('school_id', schoolId)
-            .eq('status', 'Pending');
-        if (error) throw error;
-        return { ok: true, fees: data as any[] };
+      const { data, error } = await supabase
+        .from('student_fee_payments')
+        .select('*, fee_category:fee_category_id(id, name, amount)')
+        .in('student_id', studentIds)
+        .eq('school_id', schoolId)
+        .neq('status', 'Paid'); // Only show fees that are not fully paid
+      if (error) throw error;
+      return { ok: true, fees: data as any[] };
     } catch(e: any) {
-        return { ok: false, message: `Error fetching student fees: ${e.message}`};
+      return { ok: false, message: `Error fetching student fees: ${e.message}` };
     }
 }
 
