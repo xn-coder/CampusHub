@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -15,6 +16,7 @@ import {
 import Link from 'next/link';
 
 interface FeeManagementOption {
+  id: string;
   title: string;
   description: string;
   icon: React.ElementType;
@@ -24,6 +26,7 @@ interface FeeManagementOption {
 
 const feeOptions: FeeManagementOption[] = [
   {
+    id: "fee-categories",
     title: "Manage Fee Categories",
     description: "Define fee types like tuition, labs, etc.",
     icon: Tags,
@@ -31,6 +34,7 @@ const feeOptions: FeeManagementOption[] = [
     isImplemented: true,
   },
   {
+    id: "expenses",
     title: "Manage Expenses",
     description: "Track and manage all school expenditures.",
     icon: Wallet,
@@ -38,6 +42,7 @@ const feeOptions: FeeManagementOption[] = [
     isImplemented: true,
   },
   {
+    id: "installments",
     title: "Manage Installments",
     description: "Set up payment installment plans.",
     icon: Layers,
@@ -45,6 +50,7 @@ const feeOptions: FeeManagementOption[] = [
     isImplemented: true,
   },
   {
+    id: "fee-types",
     title: "Manage Fee Types",
     description: "Create specific fee variations.",
     icon: FileBadge,
@@ -52,6 +58,7 @@ const feeOptions: FeeManagementOption[] = [
     isImplemented: true,
   },
   {
+    id: "fee-groups",
     title: "Manage Fee Type Groups",
     description: "Group fee types for easier assignment.",
     icon: Group,
@@ -59,6 +66,7 @@ const feeOptions: FeeManagementOption[] = [
     isImplemented: true,
   },
   {
+    id: "special-fees",
     title: "Manage Special Fee Types",
     description: "Handle one-off or unique fees.",
     icon: IndianRupee,
@@ -66,6 +74,7 @@ const feeOptions: FeeManagementOption[] = [
     isImplemented: true,
   },
   {
+    id: "concessions",
     title: "Manage Concessions",
     description: "Define and apply fee discounts.",
     icon: BadgePercent,
@@ -73,6 +82,7 @@ const feeOptions: FeeManagementOption[] = [
     isImplemented: true,
   },
   {
+    id: "fee-structures",
     title: "Manage Fee Structures",
     description: "Design fee structures for classes.",
     icon: LayoutGrid,
@@ -81,6 +91,7 @@ const feeOptions: FeeManagementOption[] = [
   },
 ];
 
+const visibleFeeOptions = feeOptions.filter(option => option.id !== 'fee-types');
 
 export default function FeesManagementPage() {
   return (
@@ -98,7 +109,7 @@ export default function FeesManagementPage() {
         </CardHeader>
         <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {feeOptions.map((option) => {
+                {visibleFeeOptions.map((option) => {
                     const CardWrapper = option.isImplemented ? Link : 'div';
                     return (
                         <CardWrapper key={option.title} href={option.href} className={option.isImplemented ? 'cursor-pointer' : 'cursor-not-allowed'}>
