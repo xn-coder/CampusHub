@@ -10,18 +10,23 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import type { ExpenseCategory } from '@/types';
-import { useState, useEffect, type FormEvent } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Tags, Loader2, MoreHorizontal, Eye, ArrowLeft } from 'lucide-react';
+import { useState, useEffect, type FormEvent, useCallback } from 'react';
+import { PlusCircle, Edit2, Trash2, Save, Tags, Loader2, MoreHorizontal, Eye, ArrowLeft, Ban } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { createExpenseCategoryAction, updateExpenseCategoryAction, deleteExpenseCategoryAction, getExpenseCategoriesAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import Link from 'next/link';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
-  // Mocking this for UI development
-  return "mock-school-id";
+  const { data: user, error } = await supabase.from('users').select('school_id').eq('id', userId).single();
+  if (error || !user?.school_id) {
+    console.error("Error fetching user's school:", error?.message);
+    return null;
+  }
+  return user.school_id;
 }
 
 export default function ExpenseCategoriesPage() {
@@ -30,6 +35,7 @@ export default function ExpenseCategoriesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -38,6 +44,23 @@ export default function ExpenseCategoriesPage() {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+
+  const fetchExpenseCategories = useCallback(async (schoolId: string) => {
+    setIsLoading(true);
+    const result = await getExpenseCategoriesAction(schoolId);
+      
+    if (result.ok && result.categories) {
+      setExpenseCategories(result.categories);
+      if(result.message?.includes('Feature not ready')) {
+          setPageError(result.message);
+      }
+    } else {
+      toast({ title: "Error fetching categories", description: result.message || "An unknown error occurred", variant: "destructive" });
+      setExpenseCategories([]);
+    }
+    setIsLoading(false);
+  }, [toast]);
+
 
   useEffect(() => {
     const userId = localStorage.getItem('currentUserId');
@@ -55,20 +78,8 @@ export default function ExpenseCategoriesPage() {
       toast({ title: "Error", description: "User not identified.", variant: "destructive" });
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, fetchExpenseCategories]);
 
-  async function fetchExpenseCategories(schoolId: string) {
-    setIsLoading(true);
-    const result = await getExpenseCategoriesAction(schoolId);
-      
-    if (result.ok && result.categories) {
-      setExpenseCategories(result.categories);
-    } else {
-      toast({ title: "Error fetching categories", description: result.message || "An unknown error occurred", variant: "destructive" });
-      setExpenseCategories([]);
-    }
-    setIsLoading(false);
-  }
 
   const resetForm = () => {
     setName('');
@@ -154,7 +165,7 @@ export default function ExpenseCategoriesPage() {
                     <ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees
                   </Link>
                 </Button>
-                <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isSubmitting}>
+                <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isSubmitting || !!pageError}>
                     <PlusCircle className="mr-2 h-4 w-4" /> Add Expense Category
                 </Button>
           </div>
@@ -166,7 +177,13 @@ export default function ExpenseCategoriesPage() {
           <CardDescription>Define and manage various expense types (e.g., Salaries, Utilities, Maintenance).</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {pageError ? (
+                <Alert variant="destructive">
+                  <Ban className="h-4 w-4" />
+                  <AlertTitle>Feature Unavailable</AlertTitle>
+                  <AlertDescription>{pageError}</AlertDescription>
+                </Alert>
+          ) : isLoading ? (
             <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
           ) : !currentSchoolId ? (
             <p className="text-destructive text-center py-4">Your account is not associated with a school. Cannot manage expense categories.</p>

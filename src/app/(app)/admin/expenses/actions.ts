@@ -4,8 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Expense, ExpenseCategory, User, SchoolDetails } from '@/types';
-import { format } from 'date-fns';
+import type { Expense, ExpenseCategory, SchoolDetails } from '@/types';
 
 interface ExpenseInput {
   title: string;
@@ -28,7 +27,12 @@ export async function createExpenseAction(
       .insert({ ...input, id: uuidv4() })
       .select()
       .single();
-    if (error) throw error;
+    if (error) {
+        if(error.message.includes('relation "public.expenses" does not exist')) {
+            return { ok: false, message: "Feature not ready: Expenses table does not exist in the database." };
+        }
+        throw error;
+    }
     
     revalidatePath('/admin/expenses');
     revalidatePath('/dashboard');
@@ -55,8 +59,20 @@ export async function getExpensesPageDataAction(schoolId: string): Promise<{
             supabase.from('expense_categories').select('*').eq('school_id', schoolId).order('name')
         ]);
         
-        if (expensesRes.error) throw new Error(`Failed to fetch expenses: ${expensesRes.error.message}`);
-        if (categoriesRes.error) throw new Error(`Failed to fetch expense categories: ${categoriesRes.error.message}`);
+        if (expensesRes.error) {
+            if(expensesRes.error.message.includes('relation "public.expenses" does not exist')) {
+                return { ok: false, message: "Feature not ready: Expenses table does not exist in the database." };
+            }
+            throw new Error(`Failed to fetch expenses: ${expensesRes.error.message}`);
+        }
+        if (categoriesRes.error) {
+             if(categoriesRes.error.message.includes('relation "public.expense_categories" does not exist')) {
+                // This is a soft failure, the page can still render without categories
+                console.warn("Expense Categories table does not exist.");
+                return { ok: true, expenses: expensesRes.data || [], categories: [] };
+             }
+            throw new Error(`Failed to fetch expense categories: ${categoriesRes.error.message}`);
+        }
 
         return {
             ok: true,

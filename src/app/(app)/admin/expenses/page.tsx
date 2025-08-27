@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import type { Expense, ExpenseCategory } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Wallet, Loader2, Search, Download, ExternalLink, FileText, MoreHorizontal, Calendar as CalendarIcon, ArrowLeft, Tags } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Wallet, Loader2, Search, ExternalLink, FileText, MoreHorizontal, Calendar as CalendarIcon, ArrowLeft, Tags, Ban } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, startOfDay, endOfDay, subDays } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
@@ -31,14 +31,20 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
 import type { DateRange } from 'react-day-picker';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+
 
 const chartConfig = {
   amount: { label: "Amount", color: "hsl(var(--chart-2))" },
 } satisfies ChartConfig;
 
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
-  // Mocking for UI dev
-  return "mock-school-id";
+  const { data: user, error } = await supabase.from('users').select('school_id').eq('id', userId).single();
+    if (error || !user?.school_id) {
+        console.error("Error fetching user's school:", error?.message);
+        return null;
+    }
+  return user.school_id;
 }
 
 export default function ExpensesPage() {
@@ -54,6 +60,7 @@ export default function ExpensesPage() {
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+    const [pageError, setPageError] = useState<string | null>(null);
     
     // Form state
     const [title, setTitle] = useState('');
@@ -61,9 +68,7 @@ export default function ExpensesPage() {
     const [categoryId, setCategoryId] = useState('');
     const [date, setDate] = useState('');
     const [notes, setNotes] = useState('');
-    const [receiptFile, setReceiptFile] = useState<File | null>(null);
-    const [uploadProgress, setUploadProgress] = useState(0);
-
+    
     // Filtering
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
@@ -75,12 +80,16 @@ export default function ExpensesPage() {
 
     const loadPageData = useCallback(async (schoolId: string) => {
         setIsLoading(true);
+        setPageError(null);
         const result = await getExpensesPageDataAction(schoolId);
         if (result.ok) {
             setExpenses(result.expenses || []);
             setCategories(result.categories || []);
         } else {
             toast({ title: "Error loading data", description: result.message, variant: "destructive" });
+             if(result.message?.includes("expenses table does not exist")){
+                setPageError(result.message);
+            }
         }
         setIsLoading(false);
     }, [toast]);
@@ -118,8 +127,8 @@ export default function ExpensesPage() {
     };
     
     const resetForm = () => {
-        setTitle(''); setAmount(''); setCategoryId(''); setDate(format(new Date(), 'yyyy-MM-dd')); setNotes(''); setReceiptFile(null);
-        setEditingExpense(null); setUploadProgress(0);
+        setTitle(''); setAmount(''); setCategoryId(''); setDate(format(new Date(), 'yyyy-MM-dd')); setNotes('');
+        setEditingExpense(null);
     };
 
     const handleOpenDialog = (expense?: Expense) => {
@@ -136,15 +145,6 @@ export default function ExpensesPage() {
         setIsDialogOpen(true);
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0] || null;
-        if (file && file.size > 5 * 1024 * 1024) { // 5MB limit
-            toast({ title: "File is too large", description: "Receipts must be smaller than 5MB.", variant: "destructive" });
-            return;
-        }
-        setReceiptFile(file);
-    };
-
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         if (!currentSchoolId || !currentAdminUserId || !title || amount === '' || !categoryId || !date) {
@@ -152,20 +152,10 @@ export default function ExpensesPage() {
             return;
         }
         setIsSubmitting(true);
-        let receiptUrl: string | undefined = editingExpense?.receipt_url || undefined;
         
         try {
-            if (receiptFile) {
-                // Mocking file upload
-                toast({title:"Uploading file..."});
-                await new Promise(res => setTimeout(res, 1000));
-                setUploadProgress(100);
-                receiptUrl = URL.createObjectURL(receiptFile);
-                toast({title:"File upload complete!"});
-            }
-
             const expenseData = {
-                title, amount: Number(amount), category_id: categoryId, date, notes, receipt_url: receiptUrl,
+                title, amount: Number(amount), category_id: categoryId, date, notes,
                 school_id: currentSchoolId, recorded_by_user_id: currentAdminUserId
             };
 
@@ -200,11 +190,9 @@ export default function ExpensesPage() {
 
     const filteredExpenses = useMemo(() => {
         return expenses.filter(exp => {
-            const matchesCategory = categoryFilter === 'all' || exp.category_id === categoryFilter;
-            
             const expDate = parseISO(exp.date);
             const matchesDate = dateRange?.from && dateRange?.to ? expDate >= dateRange.from && expDate <= dateRange.to : true;
-
+            const matchesCategory = categoryFilter === 'all' || exp.category_id === categoryFilter;
             const matchesSearch = searchTerm === '' ||
                 exp.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (exp.notes && exp.notes.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -220,7 +208,7 @@ export default function ExpensesPage() {
             return acc;
         }, {} as Record<string, number>);
         return Object.entries(dataByCategory).map(([name, amount]) => ({ name, amount }));
-    }, [filteredExpenses, categories, getCategoryName]);
+    }, [filteredExpenses, categories]);
 
 
     return (
@@ -232,7 +220,7 @@ export default function ExpensesPage() {
                   <div className="flex items-center gap-2">
                     <Button variant="outline" asChild><Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link></Button>
                     <Button variant="outline" asChild><Link href="/admin/expense-categories"><Tags className="mr-2 h-4 w-4" /> Manage Categories</Link></Button>
-                    <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isLoading}><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</Button>
+                    <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isLoading || !!pageError}><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</Button>
                   </div>
                 }
             />
@@ -244,84 +232,91 @@ export default function ExpensesPage() {
                         <CardDescription>View, filter, and manage all recorded expenses.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="mb-4 flex flex-col md:flex-row gap-4">
-                             <Input
-                                placeholder="Search by title or notes..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="max-w-sm"
-                            />
-                            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                                <SelectTrigger className="md:w-[200px]"><SelectValue placeholder="All Categories" /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Categories</SelectItem>
-                                    {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                            <Select value={filterPreset} onValueChange={handleFilterChange}>
-                                <SelectTrigger className="md:w-[180px]"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="this_month">This Month</SelectItem>
-                                    <SelectItem value="last_7_days">Last 7 Days</SelectItem>
-                                    <SelectItem value="this_year">This Year</SelectItem>
-                                    <SelectItem value="custom">Custom Range</SelectItem>
-                                </SelectContent>
-                            </Select>
-                             {filterPreset === 'custom' && (
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button id="date" variant={"outline"} className="w-full justify-start text-left font-normal md:w-auto">
-                                            <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {dateRange?.from ? (dateRange.to ? `${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}` : format(dateRange.from, "LLL dd, y")) : <span>Pick a date range</span>}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                        <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={1}/>
-                                    </PopoverContent>
-                                </Popover>
-                            )}
-                        </div>
-                        {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Date</TableHead><TableHead>Title</TableHead><TableHead>Category</TableHead>
-                                        <TableHead>Receipt</TableHead><TableHead className="text-right">Amount (₹)</TableHead>
-                                        <TableHead className="text-right">Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {filteredExpenses.map((expense) => (
-                                        <TableRow key={expense.id}>
-                                            <TableCell>{format(parseISO(expense.date), 'PP')}</TableCell>
-                                            <TableCell className="font-medium">{expense.title}</TableCell>
-                                            <TableCell>{getCategoryName(expense.category_id)}</TableCell>
-                                            <TableCell>
-                                                {expense.receipt_url ? (<a href={expense.receipt_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline"><ExternalLink className="h-4 w-4" /></a>) : 'None'}
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono">₹{expense.amount.toFixed(2)}</TableCell>
-                                            <TableCell className="text-right">
-                                                <AlertDialog>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem asChild><Link href={`/admin/expenses/${expense.id}/voucher`}><FileText className="mr-2 h-4 w-4" /> View Voucher</Link></DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(expense)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                                            <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. This will permanently delete the expense record for "{expense.title}".</AlertDialogDescription></AlertDialogHeader>
-                                                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(expense.id)} className="bg-destructive hover:bg-destructive/90">Continue</AlertDialogAction></AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-                                            </TableCell>
+                       {pageError ? (
+                            <Alert variant="destructive">
+                                <Ban className="h-4 w-4" />
+                                <AlertTitle>Feature Unavailable</AlertTitle>
+                                <AlertDescription>{pageError}</AlertDescription>
+                            </Alert>
+                       ) : (
+                        <>
+                            <div className="mb-4 flex flex-col md:flex-row gap-4">
+                                <Input
+                                    placeholder="Search by title or notes..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="max-w-sm"
+                                />
+                                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                                    <SelectTrigger className="md:w-[200px]"><SelectValue placeholder="All Categories" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Categories</SelectItem>
+                                        {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                                <Select value={filterPreset} onValueChange={handleFilterChange}>
+                                    <SelectTrigger className="md:w-[180px]"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="this_month">This Month</SelectItem>
+                                        <SelectItem value="last_7_days">Last 7 Days</SelectItem>
+                                        <SelectItem value="this_year">This Year</SelectItem>
+                                        <SelectItem value="custom">Custom Range</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {filterPreset === 'custom' && (
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button id="date" variant={"outline"} className="w-full justify-start text-left font-normal md:w-auto">
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {dateRange?.from ? (dateRange.to ? `${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}` : format(dateRange.from, "LLL dd, y")) : <span>Pick a date range</span>}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start">
+                                            <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={1}/>
+                                        </PopoverContent>
+                                    </Popover>
+                                )}
+                            </div>
+                            {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Date</TableHead><TableHead>Title</TableHead><TableHead>Category</TableHead>
+                                            <TableHead className="text-right">Amount (₹)</TableHead>
+                                            <TableHead className="text-right">Actions</TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        )}
-                        {!isLoading && filteredExpenses.length === 0 && <p className="text-center text-muted-foreground py-4">No expenses found matching your criteria.</p>}
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filteredExpenses.map((expense) => (
+                                            <TableRow key={expense.id}>
+                                                <TableCell>{format(parseISO(expense.date), 'PP')}</TableCell>
+                                                <TableCell className="font-medium">{expense.title}</TableCell>
+                                                <TableCell>{getCategoryName(expense.category_id)}</TableCell>
+                                                <TableCell className="text-right font-mono">₹{expense.amount.toFixed(2)}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <AlertDialog>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                <DropdownMenuItem asChild><Link href={`/admin/expenses/${expense.id}/voucher`}><FileText className="mr-2 h-4 w-4" /> View Voucher</Link></DropdownMenuItem>
+                                                                <DropdownMenuItem onSelect={() => handleOpenDialog(expense)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                                                                <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. This will permanently delete the expense record for "{expense.title}".</AlertDialogDescription></AlertDialogHeader>
+                                                            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(expense.id)} className="bg-destructive hover:bg-destructive/90">Continue</AlertDialogAction></AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            )}
+                            {!isLoading && filteredExpenses.length === 0 && <p className="text-center text-muted-foreground py-4">No expenses found matching your criteria.</p>}
+                        </>
+                       )}
                     </CardContent>
                 </Card>
                 <div className="lg:col-span-1">
@@ -360,8 +355,6 @@ export default function ExpensesPage() {
                             </div>
                             <div><Label htmlFor="date">Date</Label><Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required disabled={isSubmitting}/></div>
                             <div><Label htmlFor="notes">Notes</Label><Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={isSubmitting}/></div>
-                            <div><Label htmlFor="receiptFile">Receipt (Optional)</Label><Input id="receiptFile" type="file" onChange={handleFileChange} disabled={isSubmitting}/></div>
-                            {isSubmitting && uploadProgress > 0 && <Progress value={uploadProgress} />}
                         </div>
                         <DialogFooter className="mt-4">
                             <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>

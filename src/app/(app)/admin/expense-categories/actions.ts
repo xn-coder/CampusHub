@@ -23,13 +23,15 @@ export async function getExpenseCategoriesAction(schoolId: string): Promise<{ ok
         .select('*')
         .eq('school_id', schoolId)
         .order('name');
-    if (error) throw error;
+    if (error) {
+        if(error.message.includes('relation "public.expense_categories" does not exist')) {
+            return { ok: true, categories: [], message: "Feature not ready: Expense Categories table does not exist in the database."};
+        }
+        throw error;
+    }
     return { ok: true, categories: data || [] };
   } catch(e: any) {
     console.error("Error fetching expense categories:", e);
-    if(e.message.includes('relation "public.expense_categories" does not exist')) {
-        return { ok: true, categories: [], message: "Expense Categories table not set up."};
-    }
     return { ok: false, message: e.message || "An unexpected error occurred."};
   }
 }

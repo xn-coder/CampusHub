@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Loader2, Printer } from 'lucide-react';
 import { getExpenseVoucherDataAction } from '../../actions';
-import type { Expense, SchoolDetails, ExpenseCategory } from '@/types';
+import type { Expense, SchoolDetails } from '@/types';
 import Image from 'next/image';
 import { format, parseISO } from 'date-fns';
 
@@ -30,10 +30,10 @@ function numberToWords(num: number): string {
     str += (n[2] !== '00') ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'lakh ' : '';
     str += (n[3] !== '00') ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'thousand ' : '';
     str += (n[4] !== '0') ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'hundred ' : '';
-    str += (n[5] !== '00') ? ((str !== '') ? '' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
+    str += (n[5] !== '00') ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
     
-    // Capitalize first letter
-    return (str.charAt(0).toUpperCase() + str.slice(1)).trim();
+    // Capitalize first letter and make the rest lowercase, then join.
+    return str.trim().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
 }
 
 function VoucherContent() {
@@ -47,10 +47,10 @@ function VoucherContent() {
         if (expenseId) {
             getExpenseVoucherDataAction(expenseId)
                 .then(result => {
-                    if (result.ok) {
+                    if (result.ok && result.expense && result.school) {
                         setVoucherData({
-                            expense: result.expense!,
-                            school: result.school!,
+                            expense: result.expense,
+                            school: result.school,
                         });
                     } else {
                         setError(result.message || "Failed to load voucher data.");
@@ -127,8 +127,8 @@ function VoucherContent() {
                         <span>{format(parseISO(expense.date), 'dd MMM, yyyy')}</span>
                     </div>
                     <div className="col-span-2 flex">
-                        <span className="font-semibold w-32">Narration</span>
-                        <span>{expense.notes || 'N/A'}</span>
+                        <span className="font-semibold w-32 shrink-0">Narration</span>
+                        <span className="break-words">: {expense.notes || 'N/A'}</span>
                     </div>
                 </div>
 
@@ -148,8 +148,8 @@ function VoucherContent() {
                                 <td className="p-2 text-right h-24 align-top">{(expense.amount).toFixed(2)}</td>
                             </tr>
                             <tr>
-                                <td className="p-2 border-t border-r border-gray-400" colSpan={2}>
-                                    <span className="font-semibold">Amount in Words:</span> Rupees {numberToWords(expense.amount)} Only
+                                <td className="p-2 border-t border-r border-gray-400 font-semibold" colSpan={2}>
+                                    Amount in Words: Rupees {numberToWords(expense.amount)} Only
                                 </td>
                                 <td className="p-2 border-t border-gray-400">
                                     <div className="flex justify-between border-b border-gray-300 py-1"><span>Total Amount</span><span>{(expense.amount).toFixed(2)}</span></div>
