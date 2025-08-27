@@ -1,99 +1,176 @@
 
 'use server';
 
+import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Installment, StudentFeePayment, PaymentStatus } from '@/types';
-
-// MOCK DATA STORE
-let mockInstallments: Installment[] = [
-    { id: 'inst-1', school_id: 'mock-school', title: 'First Term', start_date: '2024-04-01', end_date: '2024-07-31', last_date: '2024-08-15', description: 'First term fees for the academic year.'},
-    { id: 'inst-2', school_id: 'mock-school', title: 'Second Term', start_date: '2024-08-01', end_date: '2024-11-30', last_date: '2024-12-15', description: 'Second term fees.'},
-];
-
-let mockAssignedFees: (StudentFeePayment & { student: {name: string, email: string}, fee_category: {name: string}, installment: {title: string}})[] = [];
+import type { Installment, StudentFeePayment, PaymentStatus, Student, FeeCategory, ClassData } from '@/types';
 
 
-export async function getInstallmentsAction(schoolId: string): Promise<{ ok: boolean; message?: string; installments?: Installment[] }> {
-  if (!schoolId) {
-    return { ok: false, message: "School ID is required." };
-  }
-  await new Promise(resolve => setTimeout(resolve, 300));
-  return { ok: true, installments: [...mockInstallments] };
+export async function getManageInstallmentsPageData(schoolId: string): Promise<{
+    ok: boolean;
+    installments?: Installment[];
+    students?: Student[];
+    feeCategories?: FeeCategory[];
+    classes?: ClassData[];
+    assignedFees?: any[];
+    message?: string;
+}> {
+    if (!schoolId) {
+        return { ok: false, message: "School ID is required." };
+    }
+    const supabase = createSupabaseServerClient();
+    try {
+        const [installmentsRes, studentsRes, feeCategoriesRes, classesRes, assignedFeesRes] = await Promise.all([
+            supabase.from('installments').select('*').eq('school_id', schoolId).order('start_date', { ascending: false }),
+            supabase.from('students').select('id, name, class_id').eq('school_id', schoolId),
+            supabase.from('fee_categories').select('id, name, amount').eq('school_id', schoolId),
+            supabase.from('classes').select('id, name, division').eq('school_id', schoolId),
+            supabase.from('student_fee_payments')
+                .select(`*, student:student_id(name), fee_category:fee_category_id(name), installment:installment_id(title)`)
+                .eq('school_id', schoolId)
+                .not('installment_id', 'is', null)
+        ]);
+
+        if (installmentsRes.error) throw new Error(`Installments: ${installmentsRes.error.message}`);
+        if (studentsRes.error) throw new Error(`Students: ${studentsRes.error.message}`);
+        if (feeCategoriesRes.error) throw new Error(`Fee Categories: ${feeCategoriesRes.error.message}`);
+        if (classesRes.error) throw new Error(`Classes: ${classesRes.error.message}`);
+        if (assignedFeesRes.error) throw new Error(`Assigned Fees: ${assignedFeesRes.error.message}`);
+
+        return {
+            ok: true,
+            installments: installmentsRes.data || [],
+            students: studentsRes.data || [],
+            feeCategories: feeCategoriesRes.data || [],
+            classes: classesRes.data || [],
+            assignedFees: assignedFeesRes.data || [],
+        };
+    } catch (e: any) {
+        return { ok: false, message: `Failed to load page data: ${e.message}` };
+    }
 }
+
 
 export async function createInstallmentAction(
   input: Omit<Installment, 'id'>
 ): Promise<{ ok: boolean; message: string; installment?: Installment }> {
-  const newInstallment: Installment = { ...input, id: uuidv4() };
-  mockInstallments.push(newInstallment);
-  revalidatePath('/admin/manage-installments');
-  return { ok: true, message: 'Installment created successfully (mock).', installment: newInstallment };
+  const supabase = createSupabaseServerClient();
+  try {
+    const { error, data } = await supabase.from('installments').insert({ ...input, id: uuidv4() }).select().single();
+    if (error) throw error;
+    revalidatePath('/admin/manage-installments');
+    return { ok: true, message: 'Installment created successfully.', installment: data };
+  } catch (e: any) {
+    return { ok: false, message: `Failed to create installment: ${e.message}` };
+  }
 }
 
 export async function updateInstallmentAction(
   id: string,
   input: Partial<Omit<Installment, 'id'>>
 ): Promise<{ ok: boolean; message: string; installment?: Installment }> {
-  const index = mockInstallments.findIndex(i => i.id === id);
-  if (index === -1) {
-    return { ok: false, message: "Installment not found." };
+  const supabase = createSupabaseServerClient();
+  try {
+    const { error, data } = await supabase.from('installments').update(input).eq('id', id).select().single();
+    if (error) throw error;
+    revalidatePath('/admin/manage-installments');
+    return { ok: true, message: 'Installment updated successfully.', installment: data };
+  } catch (e: any) {
+    return { ok: false, message: `Failed to update installment: ${e.message}` };
   }
-  mockInstallments[index] = { ...mockInstallments[index], ...input };
-  revalidatePath('/admin/manage-installments');
-  return { ok: true, message: 'Installment updated successfully (mock).', installment: mockInstallments[index] };
 }
 
 export async function deleteInstallmentAction(id: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
-  mockInstallments = mockInstallments.filter(i => i.id !== id);
-  revalidatePath('/admin/manage-installments');
-  return { ok: true, message: 'Installment deleted successfully (mock).' };
+  const supabase = createSupabaseServerClient();
+  try {
+    // Check for dependencies before deleting
+    const { count } = await supabase.from('student_fee_payments').select('id', { count: 'exact', head: true }).eq('installment_id', id);
+    if(count && count > 0) {
+        return { ok: false, message: `Cannot delete: this installment is used in ${count} fee record(s).`};
+    }
+    
+    const { error } = await supabase.from('installments').delete().eq('id', id).eq('school_id', schoolId);
+    if (error) throw error;
+    revalidatePath('/admin/manage-installments');
+    return { ok: true, message: 'Installment deleted successfully.' };
+  } catch (e: any) {
+    return { ok: false, message: `Failed to delete installment: ${e.message}` };
+  }
 }
 
-export async function getAssignedFeesAction(schoolId: string): Promise<{
-    ok: boolean;
-    fees?: (StudentFeePayment & { student: {name: string, email: string}, fee_category: {name: string}, installment: {title: string}})[];
-    message?: string;
-}> {
-    if(!schoolId) return { ok: false, message: "School ID is required." };
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return { ok: true, fees: [...mockAssignedFees] };
+export async function getFeesForStudentsAction(studentIds: string[], schoolId: string): Promise<{ ok: boolean; fees?: StudentFeePayment[]; message?: string }> {
+    if (!studentIds || !schoolId || studentIds.length === 0) return { ok: true, fees: [] };
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data, error } = await supabase.from('student_fee_payments')
+            .select('*, fee_category:fee_category_id(name)')
+            .in('student_id', studentIds)
+            .eq('school_id', schoolId)
+            .eq('status', 'Pending');
+        if (error) throw error;
+        return { ok: true, fees: data as any[] };
+    } catch(e: any) {
+        return { ok: false, message: `Error fetching student fees: ${e.message}`};
+    }
 }
 
-interface AssignFeesInput {
+
+interface AssignFeesToInstallmentInput {
   student_ids: string[];
   fee_category_ids: string[];
   installment_id: string;
   due_date?: string;
   school_id: string;
+  academic_year_id?: string;
+  notes?: string;
 }
 
-export async function assignFeesToStudentsAction(
-  input: AssignFeesInput
+export async function assignFeesToInstallmentAction(
+  input: AssignFeesToInstallmentInput
 ): Promise<{ ok: boolean; message: string; assignmentsCreated: number }> {
-    const { student_ids, fee_category_ids, installment_id, due_date, school_id } = input;
-    let count = 0;
-    // This is a simulation. In a real app, you'd fetch student and category names.
+    const { student_ids, fee_category_ids, installment_id, school_id, ...rest } = input;
+    const supabase = createSupabaseServerClient();
+
+    if (student_ids.length === 0 || fee_category_ids.length === 0) {
+        return { ok: false, message: "Students and Fee Categories must be selected.", assignmentsCreated: 0 };
+    }
+    
+    // Fetch default amounts for selected fee categories
+    const { data: categories, error: catError } = await supabase.from('fee_categories').select('id, amount').in('id', fee_category_ids);
+    if(catError) return { ok: false, message: `Could not fetch category amounts: ${catError.message}`, assignmentsCreated: 0};
+    const categoryAmountMap = new Map(categories?.map(c => [c.id, c.amount || 0]));
+
+    const assignmentsToInsert: Omit<StudentFeePayment, 'id' | 'created_at' | 'updated_at'>[] = [];
+    
     for (const studentId of student_ids) {
-        for (const catId of fee_category_ids) {
-            const newFee = {
-                id: uuidv4(),
+        for (const categoryId of fee_category_ids) {
+            assignmentsToInsert.push({
                 student_id: studentId,
-                fee_category_id: catId,
+                fee_category_id: categoryId,
                 installment_id,
-                assigned_amount: 5000, // mock amount
-                paid_amount: 0,
-                due_date,
-                status: 'Pending' as PaymentStatus,
                 school_id,
-                student: { name: `Student ${studentId.substring(0,4)}`, email: 'student@mock.com' },
-                fee_category: { name: `Fee Cat ${catId.substring(0,4)}` },
-                installment: { title: `Installment ${installment_id.substring(0,4)}` }
-            };
-            mockAssignedFees.push(newFee);
-            count++;
+                assigned_amount: categoryAmountMap.get(categoryId) || 0,
+                paid_amount: 0,
+                status: 'Pending',
+                ...rest,
+            });
         }
     }
-    revalidatePath('/admin/manage-installments');
-    return { ok: true, message: `Successfully assigned ${count} new fee records.`, assignmentsCreated: count };
+
+    if (assignmentsToInsert.length === 0) {
+      return { ok: true, message: "No new assignments to create.", assignmentsCreated: 0 };
+    }
+
+    try {
+      const { error, count } = await supabase.from('student_fee_payments').insert(assignmentsToInsert);
+      if (error) throw error;
+      
+      revalidatePath('/admin/manage-installments');
+      revalidatePath('/admin/student-fees');
+
+      return { ok: true, message: `Successfully created ${count} new fee assignments.`, assignmentsCreated: count || 0 };
+    } catch(e: any) {
+        return { ok: false, message: `Failed to create assignments: ${e.message}`, assignmentsCreated: 0};
+    }
 }

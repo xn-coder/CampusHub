@@ -1,15 +1,12 @@
-"use server";
+
+'use server';
 
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { ClassData, AcademicYear, FeeCategory, FeeStructure } from '@/types';
 import { getAcademicYearsForSchoolAction } from '../academic-years/actions';
 import { getFeeCategoriesAction } from '../fee-categories/actions';
-
-// MOCK DATA STORE
-let mockFeeStructures: FeeStructure[] = [
-    { id: 'fs-1', school_id: 'mock-school', class_id: 'cls-1', academic_year_id: 'ay-1', structure: { 'fc-1': 50000, 'fc-2': 5000 } },
-];
+import { createSupabaseServerClient } from '@/lib/supabaseClient';
 
 export async function getManageFeeStructuresPageDataAction(schoolId: string): Promise<{
   ok: boolean;
@@ -19,25 +16,19 @@ export async function getManageFeeStructuresPageDataAction(schoolId: string): Pr
   feeCategories?: FeeCategory[];
 }> {
     if(!schoolId) return { ok: false, message: "School ID is required." };
+    const supabase = createSupabaseServerClient();
     
-    // In a real scenario, you'd fetch this from the DB. Here, we call other mock actions.
-    const [yearsResult, categoriesResult] = await Promise.all([
+    const [yearsResult, categoriesResult, classesResult] = await Promise.all([
         getAcademicYearsForSchoolAction(schoolId),
-        getFeeCategoriesAction(schoolId)
+        getFeeCategoriesAction(schoolId),
+        supabase.from('classes').select('id, name, division').eq('school_id', schoolId)
     ]);
-    
-    // Simulate fetching classes
-    const mockClasses: ClassData[] = [
-      { id: 'cls-1', name: 'Grade 10', division: 'A', school_id: 'mock-school', class_name_id: 'cn-1', section_name_id: 'sn-1' },
-      { id: 'cls-2', name: 'Grade 10', division: 'B', school_id: 'mock-school', class_name_id: 'cn-1', section_name_id: 'sn-2' },
-      { id: 'cls-3', name: 'Grade 11', division: 'Science', school_id: 'mock-school', class_name_id: 'cn-2', section_name_id: 'sn-3' },
-    ];
     
     return {
         ok: true,
         academicYears: yearsResult.years,
         feeCategories: categoriesResult.categories,
-        classes: mockClasses,
+        classes: classesResult.data || [],
     };
 }
 
@@ -47,9 +38,18 @@ export async function getFeeStructureForClassAction(classId: string, academicYea
   message?: string;
   structure?: FeeStructure;
 }> {
-    await new Promise(res => setTimeout(res, 200));
-    const structure = mockFeeStructures.find(s => s.class_id === classId && s.academic_year_id === academicYearId);
-    return { ok: true, structure };
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data, error } = await supabase.from('fee_structures')
+            .select('*')
+            .eq('class_id', classId)
+            .eq('academic_year_id', academicYearId)
+            .maybeSingle();
+        if (error) throw error;
+        return { ok: true, structure: data as FeeStructure | undefined };
+    } catch(e: any) {
+        return { ok: false, message: `Error fetching fee structure: ${e.message}`};
+    }
 }
 
 
@@ -59,24 +59,22 @@ export async function saveFeeStructureAction(
   structure: Record<string, number>,
   schoolId: string
 ): Promise<{ ok: boolean; message: string; structure?: FeeStructure }> {
-    const existingIndex = mockFeeStructures.findIndex(s => s.class_id === classId && s.academic_year_id === academicYearId);
-    
-    if (existingIndex > -1) {
-        // Update existing
-        mockFeeStructures[existingIndex].structure = structure;
+    const supabase = createSupabaseServerClient();
+    try {
+        const { error, data } = await supabase.from('fee_structures')
+            .upsert({
+                class_id: classId,
+                academic_year_id: academicYearId,
+                school_id: schoolId,
+                structure: structure
+            }, { onConflict: 'class_id, academic_year_id', ignoreDuplicates: false })
+            .select()
+            .single();
+
+        if (error) throw error;
         revalidatePath('/admin/manage-fee-structures');
-        return { ok: true, message: 'Fee structure updated successfully (mock).', structure: mockFeeStructures[existingIndex] };
-    } else {
-        // Create new
-        const newStructure: FeeStructure = {
-            id: uuidv4(),
-            class_id: classId,
-            academic_year_id: academicYearId,
-            structure: structure,
-            school_id: schoolId
-        };
-        mockFeeStructures.push(newStructure);
-        revalidatePath('/admin/manage-fee-structures');
-        return { ok: true, message: 'Fee structure created successfully (mock).', structure: newStructure };
+        return { ok: true, message: 'Fee structure saved successfully.', structure: data };
+    } catch(e: any) {
+        return { ok: false, message: `Error saving fee structure: ${e.message}`};
     }
 }
