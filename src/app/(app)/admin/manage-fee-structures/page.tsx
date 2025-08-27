@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -201,7 +202,6 @@ export default function ManageFeeStructuresPage() {
                     <Button onClick={handleSaveStructure} disabled={isSubmitting || Object.keys(currentStructure).length === 0}>
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Structure
                     </Button>
-                     <Button disabled>Apply to Students (Coming Soon)</Button>
                 </div>
             </CardFooter>
          )}
