@@ -4,17 +4,45 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { FeeTypeGroup, StudentFeePayment, PaymentStatus, FeeType } from '@/types';
+import type { FeeTypeGroup, StudentFeePayment, PaymentStatus, FeeType, Student, ClassData } from '@/types';
 
-export async function getFeeTypeGroupsAction(schoolId: string): Promise<{ ok: boolean; groups?: FeeTypeGroup[], message?: string }> {
+
+export async function getFeeTypeGroupsPageDataAction(schoolId: string): Promise<{
+    ok: boolean;
+    groups?: FeeTypeGroup[];
+    assignedGroups?: any[];
+    students?: Student[];
+    classes?: ClassData[];
+    feeTypes?: FeeType[];
+    message?: string;
+}> {
   if (!schoolId) return { ok: false, message: "School ID is required." };
   const supabase = createSupabaseServerClient();
   try {
-    const { data, error } = await supabase.from('fee_type_groups').select('*').eq('school_id', schoolId);
-    if (error) throw error;
-    return { ok: true, groups: data || [] };
+    const [groupsRes, assignedGroupsRes, studentsRes, feeTypesRes, classesRes] = await Promise.all([
+      supabase.from('fee_type_groups').select('*').eq('school_id', schoolId),
+      supabase.from('student_fee_payments').select('*, student:student_id(name, email), fee_type_group:fee_type_group_id(name)').eq('school_id', schoolId).not('fee_type_group_id', 'is', null),
+      supabase.from('students').select('*').eq('school_id', schoolId),
+      supabase.from('fee_types').select('*').eq('school_id', schoolId),
+      supabase.from('classes').select('*').eq('school_id', schoolId),
+    ]);
+
+    if (groupsRes.error) throw new Error(`Fee Groups: ${groupsRes.error.message}`);
+    if (assignedGroupsRes.error) throw new Error(`Assigned Groups: ${assignedGroupsRes.error.message}`);
+    if (studentsRes.error) throw new Error(`Students: ${studentsRes.error.message}`);
+    if (feeTypesRes.error) throw new Error(`Fee Types: ${feeTypesRes.error.message}`);
+    if (classesRes.error) throw new Error(`Classes: ${classesRes.error.message}`);
+
+    return {
+      ok: true,
+      groups: groupsRes.data || [],
+      assignedGroups: assignedGroupsRes.data || [],
+      students: studentsRes.data || [],
+      classes: classesRes.data || [],
+      feeTypes: feeTypesRes.data || [],
+    };
   } catch (e: any) {
-    return { ok: false, message: e.message || "An unexpected server error occurred." };
+    return { ok: false, message: `Failed to load page data: ${e.message}` };
   }
 }
 
@@ -57,29 +85,8 @@ export async function deleteFeeTypeGroupAction(id: string, schoolId: string): Pr
   }
 }
 
-export async function getAssignedFeeGroupsAction(schoolId: string): Promise<{ ok: boolean, assignedGroups?: any[], message?: string}> {
-  if (!schoolId) return { ok: false, message: "School ID is required." };
-  const supabase = createSupabaseServerClient();
-  try {
-      const { data, error } = await supabase
-        .from('student_fee_payments')
-        .select(`
-            *,
-            student:student_id(name, email),
-            fee_type_group:fee_type_group_id(name)
-        `)
-        .eq('school_id', schoolId)
-        .not('fee_type_group_id', 'is', null);
-
-      if (error) throw error;
-      return { ok: true, assignedGroups: data || [] };
-  } catch (e: any) {
-      return { ok: false, message: e.message || "An unexpected server error." };
-  }
-}
-
-export async function assignFeeGroupToStudentsAction(input: { student_ids: string[], fee_group_id: string, school_id: string }): Promise<{ ok: boolean; message: string; assignmentsCreated?: number }> {
-    const { student_ids, fee_group_id, school_id } = input;
+export async function assignFeeGroupToStudentsAction(input: { student_ids: string[], fee_group_id: string, school_id: string, amounts: Record<string, number> }): Promise<{ ok: boolean; message: string; assignmentsCreated?: number }> {
+    const { student_ids, fee_group_id, school_id, amounts } = input;
     if (student_ids.length === 0 || !fee_group_id) {
         return { ok: false, message: "Students and a fee group must be selected." };
     }
@@ -95,17 +102,20 @@ export async function assignFeeGroupToStudentsAction(input: { student_ids: strin
         let newAssignments: any[] = [];
         for (const studentId of student_ids) {
             for (const feeType of feeTypes) {
-                newAssignments.push({
-                    id: uuidv4(),
-                    student_id: studentId,
-                    fee_category_id: feeType.fee_category_id,
-                    fee_type_id: feeType.id,
-                    fee_type_group_id: fee_group_id,
-                    assigned_amount: feeType.amount || 0,
-                    paid_amount: 0,
-                    status: 'Pending' as PaymentStatus,
-                    school_id: school_id
-                });
+                const assignedAmount = amounts[feeType.id] ?? feeType.amount ?? 0;
+                if (assignedAmount > 0) { // Only assign if there's an amount
+                    newAssignments.push({
+                        id: uuidv4(),
+                        student_id: studentId,
+                        fee_category_id: feeType.fee_category_id,
+                        fee_type_id: feeType.id,
+                        fee_type_group_id: fee_group_id,
+                        assigned_amount: assignedAmount,
+                        paid_amount: 0,
+                        status: 'Pending' as PaymentStatus,
+                        school_id: school_id
+                    });
+                }
             }
         }
         
@@ -113,9 +123,9 @@ export async function assignFeeGroupToStudentsAction(input: { student_ids: strin
             const { error: insertError, count } = await supabase.from('student_fee_payments').insert(newAssignments);
             if (insertError) throw insertError;
             revalidatePath('/admin/manage-fee-groups');
-            return { ok: true, message: `Assigned group to ${count} students.`, assignmentsCreated: count || 0 };
+            return { ok: true, message: `Successfully assigned ${count} fee records.`, assignmentsCreated: count || 0 };
         }
-        return { ok: true, message: "No new assignments were created." };
+        return { ok: true, message: "No new assignments were created (amounts might be zero)." };
     } catch(e: any) {
         return { ok: false, message: `Failed to assign group: ${e.message}`};
     }
