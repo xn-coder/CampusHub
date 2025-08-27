@@ -39,7 +39,7 @@ async function fetchUserSchoolId(userId: string): Promise<string | null> {
 
 export default function ManageFeeTypesPage() {
   const { toast } = useToast();
-  const [feeTypes, setFeeTypes] = useState<FeeType[]>([]);
+  const [feeTypes, setFeeTypes] = useState<(FeeType & { fee_category: { name: string } | null })[]>([]);
   const [assignedFees, setAssignedFees] = useState<(StudentFeePayment & { student: {name: string, email: string}, fee_category: {name: string}, fee_type: {name: string}})[]>([]);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
@@ -85,16 +85,16 @@ export default function ManageFeeTypesPage() {
       supabase.from('classes').select('id, name, division').eq('school_id', schoolId)
     ]);
       
-    if (feeTypesResult.ok && feeTypesResult.feeTypes) setFeeTypes(feeTypesResult.feeTypes);
+    if (feeTypesResult.ok) setFeeTypes(feeTypesResult.feeTypes || []);
     else toast({ title: "Error fetching fee types", variant: "destructive" });
 
-    if (assignedFeesResult.ok && assignedFeesResult.fees) setAssignedFees(assignedFeesResult.fees);
+    if (assignedFeesResult.ok) setAssignedFees(assignedFeesResult.fees || []);
     else toast({ title: "Error fetching assigned fees", variant: "destructive" });
 
-    if (studentsResult.ok && studentsResult.students) setAllStudents(studentsResult.students);
+    if (studentsResult.ok) setAllStudents(studentsResult.students || []);
     else toast({ title: "Error fetching students", variant: "destructive" });
     
-    if (feeCategoriesResult.ok && feeCategoriesResult.categories) setAllFeeCategories(feeCategoriesResult.categories);
+    if (feeCategoriesResult.ok) setAllFeeCategories(feeCategoriesResult.categories || []);
     else toast({ title: "Error fetching fee categories", variant: "destructive" });
 
     if (!classesResult.error) setAllClasses(classesResult.data || []);
@@ -183,7 +183,7 @@ export default function ManageFeeTypesPage() {
   
   const handleAssignSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const studentIdsToAssign = assignTargetType === 'class' ? allStudents.filter(s => s.class_id === selectedClassId).map(s => s.id) : selectedStudentIds;
+    const studentIdsToAssign = assignTargetType === 'class' && selectedClassId ? allStudents.filter(s => s.class_id === selectedClassId).map(s => s.id) : selectedStudentIds;
     if (studentIdsToAssign.length === 0 || !assignFeeTypeId || !currentSchoolId || assignAmount === '') {
         toast({ title: "Error", description: "Please select students, a fee type, and enter an amount.", variant: "destructive" });
         return;
@@ -253,7 +253,7 @@ export default function ManageFeeTypesPage() {
                 <CardContent>
                   {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
                   : feeTypes.length === 0 ? <p className="text-muted-foreground text-center py-4">No fee types have been created yet.</p>
-                  : <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Display Name</TableHead><TableHead>Category</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{feeTypes.map((ft) => (<TableRow key={ft.id}><TableCell className="font-medium">{ft.name}</TableCell><TableCell>{ft.display_name}</TableCell><TableCell>{(ft as any).fee_category?.name || 'N/A'}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(ft)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will permanently delete the fee type "{ft.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteFeeType(ft.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
+                  : <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Display Name</TableHead><TableHead>Category</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{feeTypes.map((ft) => (<TableRow key={ft.id}><TableCell className="font-medium">{ft.name}</TableCell><TableCell>{ft.display_name}</TableCell><TableCell>{ft.fee_category?.name || 'N/A'}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(ft)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will permanently delete the fee type "{ft.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteFeeType(ft.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
                   }
                 </CardContent>
               </Card>
@@ -319,9 +319,7 @@ export default function ManageFeeTypesPage() {
 
         <TabsContent value="assigned-log">
             <Card>
-                 <CardHeader>
-                    <CardTitle className="flex items-center">Assigned Fees Log</CardTitle>
-                </CardHeader>
+                 <CardHeader><CardTitle className="flex items-center">Assigned Fees Log</CardTitle></CardHeader>
                 <CardContent>
                     <div className="mb-4 flex flex-wrap gap-4">
                         <div className="flex-grow"><Label htmlFor="fee-type-filter"><Filter className="inline-block mr-1 h-3 w-3" />Filter by Fee Type</Label><Select value={feeTypeFilter} onValueChange={setFeeTypeFilter} disabled={isLoading}><SelectTrigger id="fee-type-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Types</SelectItem>{feeTypes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
