@@ -13,7 +13,7 @@ import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react
 import { PlusCircle, Edit2, Trash2, Save, Group, Loader2, MoreHorizontal, ArrowLeft, Filter, Receipt } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { createFeeTypeGroupAction, updateFeeTypeGroupAction, deleteFeeTypeGroupAction, getFeeTypeGroupsAction, getAssignedFeeGroupsAction, assignFeeGroupToStudentsAction } from './actions';
+import { createFeeTypeGroupAction, updateFeeTypeGroupAction, deleteFeeTypeGroupAction, getFeeTypeGroupsPageDataAction, assignFeeGroupToStudentsAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format, parseISO, isValid } from 'date-fns';
@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getStudentsForSchoolAction } from '../manage-students/actions';
-import { getFeeTypesAction } from '../manage-fee-types/actions';
+import { getFeeTypesPageDataAction } from '../manage-fee-types/actions';
 
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
   const { data: user, error } = await supabase.from('users').select('school_id').eq('id', userId).single();
@@ -56,6 +56,7 @@ export default function ManageFeeGroupsPage() {
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [assignGroupId, setAssignGroupId] = useState<string>('');
+  const [assignAmounts, setAssignAmounts] = useState<Record<string, number | ''>>({});
   
   const studentsInSelectedClass = useMemo(() => {
     if (!selectedClassId) return [];
@@ -64,19 +65,18 @@ export default function ManageFeeGroupsPage() {
 
   const fetchPageData = useCallback(async (schoolId: string) => {
     setIsLoading(true);
-    const [groupsResult, assignedGroupsResult, studentsResult, feeTypesResult, classesResult] = await Promise.all([
-      getFeeTypeGroupsAction(schoolId),
-      getAssignedFeeGroupsAction(schoolId),
+    const [groupsResult, studentsResult, feeTypesResult, classesResult] = await Promise.all([
+      getFeeTypeGroupsPageDataAction(schoolId),
       getStudentsForSchoolAction(schoolId),
-      getFeeTypesAction(schoolId),
+      getFeeTypesPageDataAction(schoolId),
       supabase.from('classes').select('id, name, division').eq('school_id', schoolId)
     ]);
       
-    if (groupsResult.ok) setFeeGroups(groupsResult.groups || []);
-    else toast({ title: "Error fetching fee groups", variant: "destructive" });
-
-    if (assignedGroupsResult.ok) setAssignedGroups(assignedGroupsResult.assignedGroups || []);
-    else toast({ title: "Error fetching assigned groups", variant: "destructive" });
+    if (groupsResult.ok) {
+        setFeeGroups(groupsResult.groups || []);
+        setAssignedGroups(groupsResult.assignedGroups || []);
+    }
+    else toast({ title: "Error fetching fee groups data", variant: "destructive" });
 
     if (studentsResult.ok) setAllStudents(studentsResult.students || []);
     else toast({ title: "Error fetching students", variant: "destructive" });
@@ -124,6 +124,14 @@ export default function ManageFeeGroupsPage() {
     }
     setIsFormDialogOpen(true);
   };
+  
+   const resetAssignmentForm = () => {
+    setAssignTargetType('class');
+    setSelectedClassId('');
+    setSelectedStudentIds([]);
+    setAssignGroupId('');
+    setAssignAmounts({});
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -162,7 +170,10 @@ export default function ManageFeeGroupsPage() {
   
   const handleAssignSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const studentIdsToAssign = assignTargetType === 'class' ? allStudents.filter(s => s.class_id === selectedClassId).map(s => s.id) : selectedStudentIds;
+    const studentIdsToAssign = assignTargetType === 'class' && selectedClassId ? allStudents.filter(s => s.class_id === selectedClassId).map(s => s.id) : selectedStudentIds;
+    const finalAmounts = Object.fromEntries(
+        Object.entries(assignAmounts).map(([key, value]) => [key, Number(value) || 0])
+    );
     if (studentIdsToAssign.length === 0 || !assignGroupId || !currentSchoolId) {
         toast({ title: "Error", description: "Please select students and a fee group.", variant: "destructive" });
         return;
@@ -171,14 +182,13 @@ export default function ManageFeeGroupsPage() {
     const result = await assignFeeGroupToStudentsAction({
         student_ids: studentIdsToAssign,
         fee_group_id: assignGroupId,
-        school_id: currentSchoolId
+        school_id: currentSchoolId,
+        amounts: finalAmounts
     });
     if (result.ok) {
         toast({ title: "Group Assigned", description: result.message });
         if(currentSchoolId) fetchPageData(currentSchoolId);
-        setSelectedClassId('');
-        setSelectedStudentIds([]);
-        setAssignGroupId('');
+        resetAssignmentForm();
     } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -192,9 +202,7 @@ export default function ManageFeeGroupsPage() {
         description="Bundle multiple fee types into groups for easier assignment."
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" asChild>
-              <Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link>
-            </Button>
+            <Button variant="outline" asChild><Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link></Button>
             <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isSubmitting}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add Fee Group
             </Button>
@@ -239,7 +247,7 @@ export default function ManageFeeGroupsPage() {
                             </div>
                             <div>
                                 <Label>Select Class</Label>
-                                <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+                                <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={allClasses.length === 0}>
                                     <SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger>
                                     <SelectContent>{allClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
                                 </Select>
@@ -248,8 +256,7 @@ export default function ManageFeeGroupsPage() {
 
                          {assignTargetType === 'individual' && (
                             <div>
-                                <Label>Select Students</Label>
-                                <p className="text-xs text-muted-foreground mb-2">Select students from the chosen class. Showing {studentsInSelectedClass.length} student(s).</p>
+                                <Label>Select Student(s)</Label>
                                 <div className="max-h-60 overflow-y-auto space-y-2 border p-2 rounded-md">
                                     {studentsInSelectedClass.length > 0 ? studentsInSelectedClass.map(student => (
                                         <div key={student.id} className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-muted/50">
@@ -265,6 +272,29 @@ export default function ManageFeeGroupsPage() {
                             </div>
                         )}
                         <div><Label>Fee Group to Assign</Label><Select value={assignGroupId} onValueChange={setAssignGroupId}><SelectTrigger><SelectValue placeholder="Select a fee group"/></SelectTrigger><SelectContent>{feeGroups.map(fg => <SelectItem key={fg.id} value={fg.id}>{fg.name}</SelectItem>)}</SelectContent></Select></div>
+                        
+                        {assignGroupId && (
+                            <div className="space-y-3 pt-2 border-t">
+                                <h4 className="font-medium text-sm">Enter Amounts for Fee Types</h4>
+                                {allFeeTypes
+                                    .filter(ft => feeGroups.find(fg => fg.id === assignGroupId)?.fee_type_ids.includes(ft.id))
+                                    .map(ft => (
+                                    <div key={ft.id} className="grid grid-cols-3 items-center gap-2">
+                                        <Label htmlFor={`amount-${ft.id}`} className="col-span-2">{ft.display_name}</Label>
+                                        <Input
+                                            id={`amount-${ft.id}`}
+                                            type="number"
+                                            placeholder={`Default: ${ft.amount || 0}`}
+                                            value={assignAmounts[ft.id] || ''}
+                                            onChange={e => setAssignAmounts(prev => ({...prev, [ft.id]: e.target.value === '' ? '' : parseFloat(e.target.value)}))}
+                                            step="0.01"
+                                            min="0"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                     </CardContent>
                     <CardFooter>
                         <Button type="submit" disabled={isSubmitting}>
