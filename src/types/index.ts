@@ -412,6 +412,17 @@ export interface Concession {
   updated_at?: string;
 }
 
+// New type for Fee Structures
+export interface FeeStructure {
+    id: string;
+    class_id: string;
+    academic_year_id: string;
+    school_id: string;
+    structure: Record<string, number>; // Maps fee_category_id to an amount
+    created_at?: string;
+    updated_at?: string;
+}
+
 
 export interface ExpenseCategory {
   id: string;

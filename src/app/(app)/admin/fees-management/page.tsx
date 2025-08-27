@@ -75,11 +75,11 @@ const feeOptions: FeeManagementOption[] = [
     isImplemented: true,
   },
   {
-    title: "Manage Fees Structures",
+    title: "Manage Fee Structures",
     description: "Design fee structures for classes.",
     icon: LayoutGrid,
-    href: "#",
-    isImplemented: false,
+    href: "/admin/manage-fee-structures",
+    isImplemented: true,
   },
 ];
 
