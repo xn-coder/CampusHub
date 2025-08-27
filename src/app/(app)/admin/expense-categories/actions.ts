@@ -1,18 +1,10 @@
 
 'use server';
 
+import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { ExpenseCategory } from '@/types';
-
-// --- MOCK DATA ---
-// This data will reset on every server restart.
-let mockExpenseCategories: ExpenseCategory[] = [
-  { id: 'cat-1', name: 'Salaries', description: 'Monthly salaries for all staff.', school_id: 'mock-school-id' },
-  { id: 'cat-2', name: 'Utilities', description: 'Electricity, water, and internet bills.', school_id: 'mock-school-id' },
-  { id: 'cat-3', name: 'Maintenance', description: 'Building repairs and upkeep.', school_id: 'mock-school-id' },
-  { id: 'cat-4', name: 'Office Supplies', description: 'Stationery and other office needs.', school_id: 'mock-school-id' },
-];
 
 interface ExpenseCategoryInput {
   name: string;
@@ -24,59 +16,89 @@ export async function getExpenseCategoriesAction(schoolId: string): Promise<{ ok
   if (!schoolId) {
     return { ok: false, message: "School ID is required." };
   }
-  // Simulate async operation
-  await new Promise(resolve => setTimeout(resolve, 300));
-  return { ok: true, categories: mockExpenseCategories.filter(c => c.school_id === schoolId) };
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data, error } = await supabase
+        .from('expense_categories')
+        .select('*')
+        .eq('school_id', schoolId)
+        .order('name');
+    if (error) throw error;
+    return { ok: true, categories: data || [] };
+  } catch(e: any) {
+    console.error("Error fetching expense categories:", e);
+    if(e.message.includes('relation "public.expense_categories" does not exist')) {
+        return { ok: true, categories: [], message: "Expense Categories table not set up."};
+    }
+    return { ok: false, message: e.message || "An unexpected error occurred."};
+  }
 }
+
 
 export async function createExpenseCategoryAction(
   input: ExpenseCategoryInput
 ): Promise<{ ok: boolean; message: string; category?: ExpenseCategory }> {
-  const existing = mockExpenseCategories.find(c => c.name.toLowerCase() === input.name.toLowerCase() && c.school_id === input.school_id);
-  if (existing) {
-    return { ok: false, message: `An expense category named "${input.name}" already exists.` };
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data: existing } = await supabase
+        .from('expense_categories')
+        .select('id')
+        .eq('name', input.name.trim())
+        .eq('school_id', input.school_id)
+        .maybeSingle();
+        
+    if(existing) {
+        return { ok: false, message: `An expense category named "${input.name}" already exists.`};
+    }
+
+    const { data, error } = await supabase
+        .from('expense_categories')
+        .insert({ ...input, id: uuidv4() })
+        .select()
+        .single();
+    if(error) throw error;
+    revalidatePath('/admin/expense-categories');
+    revalidatePath('/admin/expenses');
+    return { ok: true, message: 'Expense category created successfully.', category: data };
+  } catch(e: any) {
+    return { ok: false, message: `Failed to create category: ${e.message}`};
   }
-  
-  const newCategory: ExpenseCategory = {
-    id: uuidv4(),
-    ...input,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-  mockExpenseCategories.push(newCategory);
-  
-  revalidatePath('/admin/expense-categories');
-  revalidatePath('/admin/expenses');
-  return { ok: true, message: 'Expense category created successfully.', category: newCategory };
 }
 
 export async function updateExpenseCategoryAction(
   id: string,
   input: Partial<ExpenseCategoryInput> & { school_id: string }
 ): Promise<{ ok: boolean; message: string; category?: ExpenseCategory }> {
-  const index = mockExpenseCategories.findIndex(c => c.id === id);
-  if (index === -1) {
-    return { ok: false, message: "Category not found." };
-  }
-
-  const updatedCategory = { ...mockExpenseCategories[index], ...input, updated_at: new Date().toISOString() };
-  mockExpenseCategories[index] = updatedCategory;
-  
-  revalidatePath('/admin/expense-categories');
-  revalidatePath('/admin/expenses');
-  return { ok: true, message: 'Expense category updated successfully.', category: updatedCategory };
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data, error } = await supabase
+            .from('expense_categories')
+            .update({ name: input.name, description: input.description })
+            .eq('id', id)
+            .eq('school_id', input.school_id)
+            .select()
+            .single();
+        if(error) throw error;
+        revalidatePath('/admin/expense-categories');
+        revalidatePath('/admin/expenses');
+        return { ok: true, message: 'Expense category updated.', category: data };
+    } catch(e: any) {
+        return { ok: false, message: `Failed to update category: ${e.message}`};
+    }
 }
 
 export async function deleteExpenseCategoryAction(id: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
-  // In a real app, you'd check dependencies here (e.g., if any expenses use this category).
-  const initialLength = mockExpenseCategories.length;
-  mockExpenseCategories = mockExpenseCategories.filter(c => c.id !== id);
+  const supabase = createSupabaseServerClient();
+  try {
+    const { count } = await supabase.from('expenses').select('id', {count: 'exact', head: true}).eq('category_id', id);
+    if(count && count > 0) return { ok: false, message: `Cannot delete: this category is used in ${count} expense record(s).`};
 
-  if (mockExpenseCategories.length === initialLength) {
-      return { ok: false, message: "Category not found." };
+    const { error } = await supabase.from('expense_categories').delete().eq('id', id).eq('school_id', schoolId);
+    if(error) throw error;
+    revalidatePath('/admin/expense-categories');
+    revalidatePath('/admin/expenses');
+    return { ok: true, message: 'Expense category deleted.' };
+  } catch(e: any) {
+    return { ok: false, message: `Failed to delete category: ${e.message}`};
   }
-
-  revalidatePath('/admin/expense-categories');
-  revalidatePath('/admin/expenses');
-  return { ok: true, message: 'Expense category deleted successfully.' };
 }

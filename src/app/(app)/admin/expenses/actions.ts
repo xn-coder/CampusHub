@@ -1,27 +1,11 @@
 
 'use server';
 
+import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { Expense, ExpenseCategory, User, SchoolDetails } from '@/types';
 import { format } from 'date-fns';
-
-// --- MOCK DATA ---
-let mockExpenses: Expense[] = [
-    { id: 'exp-1', title: 'January Electricity Bill', amount: 15000, category_id: 'cat-2', date: format(new Date(), 'yyyy-MM-dd'), school_id: 'mock-school-id', recorded_by_user_id: 'user-admin', created_at: new Date().toISOString() },
-    { id: 'exp-2', title: 'Teacher Salaries - Jan', amount: 250000, category_id: 'cat-1', date: format(new Date(), 'yyyy-MM-dd'), school_id: 'mock-school-id', recorded_by_user_id: 'user-admin', created_at: new Date().toISOString() },
-    { id: 'exp-3', title: 'New Whiteboards', amount: 8000, category_id: 'cat-4', date: '2024-05-10', school_id: 'mock-school-id', recorded_by_user_id: 'user-admin', created_at: new Date().toISOString() },
-];
-let mockCategories: ExpenseCategory[] = [
-  { id: 'cat-1', name: 'Salaries', description: 'Monthly salaries for all staff.', school_id: 'mock-school-id' },
-  { id: 'cat-2', name: 'Utilities', description: 'Electricity, water, and internet bills.', school_id: 'mock-school-id' },
-  { id: 'cat-3', name: 'Maintenance', description: 'Building repairs and upkeep.', school_id: 'mock-school-id' },
-  { id: 'cat-4', name: 'Office Supplies', description: 'Stationery and other office needs.', school_id: 'mock-school-id' },
-];
-
-let mockUsers: User[] = [ { id: 'user-admin', name: 'Admin User', email: 'admin@example.com', role: 'admin' } ];
-let mockSchool: SchoolDetails = { id: 'mock-school-id', name: 'CampusHub Demo School', address: '123 Innovation Drive', admin_email: 'admin@example.com', admin_name: 'Admin User', status: 'Active' };
-
 
 interface ExpenseInput {
   title: string;
@@ -37,16 +21,22 @@ interface ExpenseInput {
 export async function createExpenseAction(
   input: ExpenseInput
 ): Promise<{ ok: boolean; message: string; expense?: Expense }> {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  const newExpense: Expense = {
-    id: uuidv4(),
-    ...input,
-    created_at: new Date().toISOString(),
-  };
-  mockExpenses.unshift(newExpense);
-  revalidatePath('/admin/expenses');
-  revalidatePath('/dashboard');
-  return { ok: true, message: 'Expense created successfully.', expense: newExpense };
+  const supabase = createSupabaseServerClient();
+  try {
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert({ ...input, id: uuidv4() })
+      .select()
+      .single();
+    if (error) throw error;
+    
+    revalidatePath('/admin/expenses');
+    revalidatePath('/dashboard');
+    return { ok: true, message: 'Expense created successfully.', expense: data };
+  } catch(e: any) {
+    console.error("Error creating expense:", e);
+    return { ok: false, message: `Failed to create expense: ${e.message}` };
+  }
 }
 
 export async function getExpensesPageDataAction(schoolId: string): Promise<{
@@ -58,20 +48,25 @@ export async function getExpensesPageDataAction(schoolId: string): Promise<{
     if (!schoolId) {
         return { ok: false, message: "School ID is required." };
     }
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const schoolExpenses = mockExpenses
-      .filter(exp => exp.school_id === schoolId)
-      .map(exp => ({
-        ...exp,
-        category: mockCategories.find(c => c.id === exp.category_id),
-        recorded_by: mockUsers.find(u => u.id === exp.recorded_by_user_id)
-      }));
-      
-    return {
-        ok: true,
-        expenses: schoolExpenses,
-        categories: mockCategories,
-    };
+    const supabase = createSupabaseServerClient();
+    try {
+        const [expensesRes, categoriesRes] = await Promise.all([
+            supabase.from('expenses').select('*, category:category_id(name), recorded_by:recorded_by_user_id(name)').eq('school_id', schoolId).order('date', { ascending: false }),
+            supabase.from('expense_categories').select('*').eq('school_id', schoolId).order('name')
+        ]);
+        
+        if (expensesRes.error) throw new Error(`Failed to fetch expenses: ${expensesRes.error.message}`);
+        if (categoriesRes.error) throw new Error(`Failed to fetch expense categories: ${categoriesRes.error.message}`);
+
+        return {
+            ok: true,
+            expenses: expensesRes.data || [],
+            categories: categoriesRes.data || [],
+        };
+    } catch (e: any) {
+        console.error("Error fetching expense page data:", e);
+        return { ok: false, message: `An unexpected error occurred: ${e.message}` };
+    }
 }
 
 
@@ -79,28 +74,41 @@ export async function updateExpenseAction(
   id: string,
   input: Partial<ExpenseInput> & { school_id: string }
 ): Promise<{ ok: boolean; message: string; expense?: Expense }> {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  const index = mockExpenses.findIndex(e => e.id === id);
-  if (index === -1) {
-    return { ok: false, message: 'Expense not found.' };
+  const supabase = createSupabaseServerClient();
+  try {
+    const { school_id, ...updateData } = input;
+    const { data, error } = await supabase
+        .from('expenses')
+        .update(updateData)
+        .eq('id', id)
+        .eq('school_id', school_id)
+        .select()
+        .single();
+    if (error) throw error;
+    
+    revalidatePath('/admin/expenses');
+    revalidatePath('/dashboard');
+    return { ok: true, message: 'Expense updated successfully.', expense: data };
+  } catch(e: any) {
+    console.error("Error updating expense:", e);
+    return { ok: false, message: `Failed to update expense: ${e.message}` };
   }
-  mockExpenses[index] = { ...mockExpenses[index], ...input, updated_at: new Date().toISOString() };
-  revalidatePath('/admin/expenses');
-  revalidatePath('/dashboard');
-  return { ok: true, message: 'Expense updated successfully.', expense: mockExpenses[index] };
 }
 
 
 export async function deleteExpenseAction(id: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  const initialLength = mockExpenses.length;
-  mockExpenses = mockExpenses.filter(e => e.id !== id);
-  if (mockExpenses.length === initialLength) {
-    return { ok: false, message: "Expense not found." };
+  const supabase = createSupabaseServerClient();
+  try {
+      const { error } = await supabase.from('expenses').delete().eq('id', id).eq('school_id', schoolId);
+      if (error) throw error;
+      
+      revalidatePath('/admin/expenses');
+      revalidatePath('/dashboard');
+      return { ok: true, message: 'Expense deleted successfully.' };
+  } catch (e: any) {
+      console.error("Error deleting expense:", e);
+      return { ok: false, message: `Failed to delete expense: ${e.message}` };
   }
-  revalidatePath('/admin/expenses');
-  revalidatePath('/dashboard');
-  return { ok: true, message: 'Expense deleted successfully.' };
 }
 
 
@@ -110,18 +118,34 @@ export async function getExpenseVoucherDataAction(expenseId: string): Promise<{
   school?: SchoolDetails;
   message?: string;
 }> {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  const expense = mockExpenses.find(e => e.id === expenseId);
-  if (!expense) {
-    return { ok: false, message: "Expense record not found." };
+  const supabase = createSupabaseServerClient();
+  try {
+      const { data: expense, error: expenseError } = await supabase
+        .from('expenses')
+        .select('*, category:category_id(name)')
+        .eq('id', expenseId)
+        .single();
+      
+      if (expenseError || !expense) {
+        return { ok: false, message: expenseError?.message || "Expense record not found." };
+      }
+      
+      const { data: school, error: schoolError } = await supabase
+        .from('schools')
+        .select('*')
+        .eq('id', expense.school_id)
+        .single();
+        
+      if(schoolError || !school) {
+        return { ok: false, message: schoolError?.message || "School details not found." };
+      }
+
+      return {
+        ok: true,
+        expense: expense,
+        school: school,
+      };
+  } catch(e: any) {
+    return { ok: false, message: `An unexpected error occurred: ${e.message}` };
   }
-  const enrichedExpense = {
-    ...expense,
-    category: mockCategories.find(c => c.id === expense.category_id)
-  };
-  return {
-    ok: true,
-    expense: enrichedExpense,
-    school: mockSchool,
-  };
 }
