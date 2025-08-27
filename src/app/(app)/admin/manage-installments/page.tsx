@@ -77,13 +77,13 @@ export default function ManageInstallmentsPage() {
     const result = await getManageInstallmentsPageData(schoolId);
       
     if (result.ok) {
-      setInstallments(result.installments || []);
-      setAssignedFees(result.assignedFees || []);
-      setAllStudents(result.students || []);
-      setAllClasses(result.classes || []);
-      setAllAcademicYears(result.academicYears || []);
+        setInstallments(result.installments || []);
+        setAssignedFees(result.assignedFees || []);
+        setAllStudents(result.students || []);
+        setAllClasses(result.classes || []);
+        setAllAcademicYears(result.academicYears || []);
     } else {
-      toast({ title: "Error fetching page data", description: result.message, variant: "destructive" });
+        toast({ title: "Error fetching page data", description: result.message, variant: "destructive" });
     }
 
     setIsLoading(false);
@@ -255,10 +255,10 @@ export default function ManageInstallmentsPage() {
           </div>
         }
       />
-      <Tabs defaultValue="assign">
+      <Tabs defaultValue="plans">
         <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="assign">Assign Fees to Installment</TabsTrigger>
             <TabsTrigger value="plans">Installment Plans</TabsTrigger>
+            <TabsTrigger value="assign">Assign Fees to Installment</TabsTrigger>
             <TabsTrigger value="log">Assignment Log ({assignedFees.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="plans">
