@@ -344,9 +344,9 @@ export default function ExpensesPage() {
                             {isLoading ? <div className="flex justify-center items-center h-48"><Loader2 className="h-8 w-8 animate-spin" /></div> :
                              chartData.length === 0 ? <p className="text-muted-foreground text-center py-10">No expense data for selected period.</p> :
                              <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
-                                <BarChart accessibilityLayer data={chartData} layout="vertical" margin={{ left: 10 }}>
+                                <BarChart accessibilityLayer data={chartData} layout="vertical" margin={{ left: 10, right: 10 }}>
                                     <CartesianGrid horizontal={false} />
-                                    <YAxis dataKey="name" type="category" tickLine={false} tickMargin={10} axisLine={false} className="text-xs" width={80} />
+                                    <YAxis dataKey="name" type="category" tickLine={false} tickMargin={10} axisLine={false} className="text-xs" width={80} interval={0} />
                                     <XAxis dataKey="amount" type="number" hide />
                                     <Tooltip cursor={{ fill: "hsl(var(--muted))" }} formatter={(value) => `₹${Number(value).toFixed(2)}`} content={<ChartTooltipContent indicator="line" />}/>
                                     <Bar dataKey="amount" layout="vertical" fill="var(--color-amount)" radius={4} />
@@ -364,7 +364,7 @@ export default function ExpensesPage() {
                     <form onSubmit={handleSubmit}>
                         <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
                             <div><Label htmlFor="title">Title</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required disabled={isSubmitting}/></div>
-                            <div><Label htmlFor="amount">Amount (₹)</Label><Input id="amount" type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} required disabled={isSubmitting}/></div>
+                            <div><Label htmlFor="amount">Amount (₹)</Label><Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} required disabled={isSubmitting}/></div>
                             <div><Label htmlFor="categoryId">Category</Label>
                                 <Select value={categoryId} onValueChange={setCategoryId} required disabled={isSubmitting}>
                                     <SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger>

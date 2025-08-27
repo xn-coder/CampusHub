@@ -81,7 +81,7 @@ export async function getDashboardDataAction(userId: string, userRole: UserRole)
         school_id: effectiveSchoolId,
         user_role: userRole,
         user_id: userId,
-        student_class_id: studentProfileData?.class_id,
+        student_user_id: userRole === 'student' ? userId : undefined,
         teacher_class_ids: teacherClassIds
     });
     if (announcementsResult.ok) {
