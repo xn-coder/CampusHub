@@ -119,7 +119,7 @@ export async function getFeesForStudentsAction(studentIds: string[], schoolId: s
 
 interface AssignFeesToInstallmentInput {
   student_ids: string[];
-  fee_category_ids: string[];
+  fees_to_assign: { category_id: string; amount: number }[];
   installment_id: string;
   due_date?: string;
   school_id: string;
@@ -130,28 +130,23 @@ interface AssignFeesToInstallmentInput {
 export async function assignFeesToInstallmentAction(
   input: AssignFeesToInstallmentInput
 ): Promise<{ ok: boolean; message: string; assignmentsCreated: number }> {
-    const { student_ids, fee_category_ids, installment_id, school_id, ...rest } = input;
+    const { student_ids, fees_to_assign, installment_id, school_id, ...rest } = input;
     const supabase = createSupabaseServerClient();
 
-    if (student_ids.length === 0 || fee_category_ids.length === 0) {
+    if (student_ids.length === 0 || fees_to_assign.length === 0) {
         return { ok: false, message: "Students and Fee Categories must be selected.", assignmentsCreated: 0 };
     }
     
-    // Fetch default amounts for selected fee categories
-    const { data: categories, error: catError } = await supabase.from('fee_categories').select('id, amount').in('id', fee_category_ids);
-    if(catError) return { ok: false, message: `Could not fetch category amounts: ${catError.message}`, assignmentsCreated: 0};
-    const categoryAmountMap = new Map(categories?.map(c => [c.id, c.amount || 0]));
-
     const assignmentsToInsert: Omit<StudentFeePayment, 'id' | 'created_at' | 'updated_at'>[] = [];
     
     for (const studentId of student_ids) {
-        for (const categoryId of fee_category_ids) {
+        for (const fee of fees_to_assign) {
             assignmentsToInsert.push({
                 student_id: studentId,
-                fee_category_id: categoryId,
+                fee_category_id: fee.category_id,
                 installment_id,
                 school_id,
-                assigned_amount: categoryAmountMap.get(categoryId) || 0,
+                assigned_amount: fee.amount,
                 paid_amount: 0,
                 status: 'Pending',
                 ...rest,
