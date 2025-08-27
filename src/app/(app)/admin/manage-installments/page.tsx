@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import type { Installment, Student, StudentFeePayment, ClassData, FeeCategory } from '@/types';
 import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react';
-import { PlusCircle, Edit2, Trash2, Save, Layers, Loader2, MoreHorizontal, ArrowLeft, Receipt, Filter } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Save, Layers, Loader2, MoreHorizontal, ArrowLeft, Receipt } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
 import { 
@@ -47,7 +47,6 @@ export default function ManageInstallmentsPage() {
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [allFeeCategories, setAllFeeCategories] = useState<FeeCategory[]>([]);
   const [allClasses, setAllClasses] = useState<ClassData[]>([]);
-
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
@@ -62,13 +61,15 @@ export default function ManageInstallmentsPage() {
   const [endDate, setEndDate] = useState('');
   const [lastDate, setLastDate] = useState('');
   
-  // States for Assign Concession tab
+  // States for Assign Fees tab
   const [assignTargetType, setAssignTargetType] = useState<'class' | 'individual'>('class');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [assignInstallmentId, setAssignInstallmentId] = useState<string>('');
   const [selectedFeeCategoryIds, setSelectedFeeCategoryIds] = useState<string[]>([]);
   const [assignDueDate, setAssignDueDate] = useState<string>('');
+  const [assignNotes, setAssignNotes] = useState('');
+
 
   const fetchPageData = useCallback(async (schoolId: string) => {
     setIsLoading(true);
@@ -105,7 +106,6 @@ export default function ManageInstallmentsPage() {
       setIsLoading(false);
     }
   }, [toast, fetchPageData]);
-
 
   const resetForm = () => {
     setTitle('');
@@ -170,36 +170,43 @@ export default function ManageInstallmentsPage() {
   
   const handleAssignSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const studentIdsToAssign = assignTargetType === 'class'
-      ? allStudents.filter(s => s.class_id === selectedClassId).map(s => s.id)
-      : selectedStudentIds;
+    let studentIdsToAssign: string[] = [];
 
+    if (assignTargetType === 'class' && selectedClassId) {
+        studentIdsToAssign = allStudents.filter(s => s.class_id === selectedClassId).map(s => s.id);
+    } else if (assignTargetType === 'individual' && selectedStudentId) {
+        studentIdsToAssign = [selectedStudentId];
+    }
+    
     if (studentIdsToAssign.length === 0 || selectedFeeCategoryIds.length === 0 || !assignInstallmentId || !currentSchoolId) {
         toast({ title: "Error", description: "Please select students, fee categories, and an installment plan.", variant: "destructive" });
         return;
     }
+    
     setIsSubmitting(true);
     const result = await assignFeesToInstallmentAction({
         student_ids: studentIdsToAssign,
         fee_category_ids: selectedFeeCategoryIds,
         installment_id: assignInstallmentId,
         due_date: assignDueDate || undefined,
-        school_id: currentSchoolId
+        school_id: currentSchoolId,
+        notes: assignNotes
     });
     if (result.ok) {
         toast({ title: "Fees Assigned", description: result.message });
         if(currentSchoolId) fetchPageData(currentSchoolId);
         setSelectedClassId('');
-        setSelectedStudentIds([]);
+        setSelectedStudentId('');
         setSelectedFeeCategoryIds([]);
         setAssignInstallmentId('');
         setAssignDueDate('');
+        setAssignNotes('');
     } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
     }
     setIsSubmitting(false);
   }
-  
+
   const formatDate = (dateString: string) => {
     try {
         const date = parseISO(dateString);
@@ -208,7 +215,12 @@ export default function ManageInstallmentsPage() {
         return 'Invalid Date';
     }
   };
-  
+
+  const studentsInSelectedClass = useMemo(() => {
+    if (!selectedClassId) return [];
+    return allStudents.filter(s => s.class_id === selectedClassId);
+  }, [selectedClassId, allStudents]);
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -221,16 +233,16 @@ export default function ManageInstallmentsPage() {
           </div>
         }
       />
-      <Tabs defaultValue="plans">
+      <Tabs defaultValue="assign">
         <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="assign">Assign Fees</TabsTrigger>
             <TabsTrigger value="plans">Installment Plans</TabsTrigger>
-            <TabsTrigger value="assign">Assign Fees to Installment</TabsTrigger>
             <TabsTrigger value="log">Assignment Log ({assignedFees.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="plans">
             <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center"><Layers className="mr-2 h-5 w-5" />Created Installment Plans</CardTitle>
+                  <CardTitle className="flex items-center"><Layers className="mr-2 h-5 w-5" />Defined Installment Plans</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
@@ -244,19 +256,42 @@ export default function ManageInstallmentsPage() {
         <TabsContent value="assign">
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5"/>Assign Fees</CardTitle>
-                    <CardDescription>Assign multiple fee categories to a class or individual students under an installment plan.</CardDescription>
+                    <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5"/>Assign Fees to an Installment</CardTitle>
+                    <CardDescription>Assign multiple fee categories to a class or an individual student under an installment plan.</CardDescription>
                 </CardHeader>
                  <form onSubmit={handleAssignSubmit}>
                     <CardContent className="space-y-4">
                         <div className="grid md:grid-cols-2 gap-4">
-                            <div><Label>Assign To</Label><Select value={assignTargetType} onValueChange={(val) => setAssignTargetType(val as any)}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="class">Entire Class</SelectItem><SelectItem value="individual">Individual Students</SelectItem></SelectContent></Select></div>
-                            {assignTargetType === 'class' ? (
-                                <div><Label>Select Class</Label><Select value={selectedClassId} onValueChange={setSelectedClassId}><SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger><SelectContent>{allClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent></Select></div>
-                            ) : (
-                                <div><Label>Select Students</Label><p className="text-xs text-muted-foreground">Multi-select student feature coming soon. Please use 'Class' for now.</p></div>
-                            )}
+                            <div>
+                              <Label>Assign To</Label>
+                              <Select value={assignTargetType} onValueChange={(val) => { setAssignTargetType(val as any); setSelectedClassId(''); setSelectedStudentId(''); }}>
+                                  <SelectTrigger><SelectValue/></SelectTrigger>
+                                  <SelectContent><SelectItem value="class">Entire Class</SelectItem><SelectItem value="individual">Individual Student</SelectItem></SelectContent>
+                              </Select>
+                            </div>
+                             <div>
+                                <Label>Select Class</Label>
+                                <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+                                    <SelectTrigger><SelectValue placeholder="Choose a class"/></SelectTrigger>
+                                    <SelectContent>{allClasses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
                         </div>
+                        {assignTargetType === 'individual' && (
+                            <div>
+                                <Label>Select Student</Label>
+                                <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={!selectedClassId}>
+                                    <SelectTrigger><SelectValue placeholder="Choose a student from the selected class"/></SelectTrigger>
+                                    <SelectContent>
+                                        {studentsInSelectedClass.length > 0 ? (
+                                            studentsInSelectedClass.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
+                                        ) : (
+                                            <SelectItem value="none" disabled>No students in this class</SelectItem>
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                         <div>
                             <Label>Fee Categories to Assign</Label>
                             <Card className="max-h-60 overflow-y-auto p-2 border">
@@ -278,6 +313,10 @@ export default function ManageInstallmentsPage() {
                            <div><Label>Installment Plan</Label><Select value={assignInstallmentId} onValueChange={setAssignInstallmentId}><SelectTrigger><SelectValue placeholder="Select an installment plan"/></SelectTrigger><SelectContent>{installments.map(i => <SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>)}</SelectContent></Select></div>
                            <div><Label>Due Date (Optional)</Label><Input type="date" value={assignDueDate} onChange={e => setAssignDueDate(e.target.value)} /></div>
                         </div>
+                         <div>
+                            <Label>Notes (Optional)</Label>
+                            <Input value={assignNotes} onChange={e => setAssignNotes(e.target.value)} placeholder="e.g., Annual fee installment 1"/>
+                        </div>
                     </CardContent>
                     <CardFooter>
                         <Button type="submit" disabled={isSubmitting}>
@@ -293,7 +332,7 @@ export default function ManageInstallmentsPage() {
                  <CardHeader><CardTitle className="flex items-center">Assigned Installment Fees Log</CardTitle></CardHeader>
                 <CardContent>
                      {isLoading ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>) : assignedFees.length === 0 ? (<p className="text-muted-foreground text-center py-4">No fees have been assigned to an installment plan yet.</p>) : (
-                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Installment</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{assignedFees.map(fee => (<TableRow key={fee.id}><TableCell>{fee.student.name}</TableCell><TableCell>{fee.fee_category?.name || 'N/A'}</TableCell><TableCell>{fee.installment?.title || 'N/A'}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell></TableRow>))}</TableBody></Table>
+                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Installment</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{assignedFees.map(fee => (<TableRow key={fee.id}><TableCell>{(fee.student as any)?.name}</TableCell><TableCell>{(fee.fee_category as any)?.name}</TableCell><TableCell>{(fee.installment as any)?.title}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell></TableRow>))}</TableBody></Table>
                      )}
                 </CardContent>
             </Card>
