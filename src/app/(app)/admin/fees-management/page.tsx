@@ -1,3 +1,4 @@
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -57,8 +58,8 @@ const feeOptions: FeeManagementOption[] = [
     title: "Manage Fee Type Groups",
     description: "Group fee types for easier assignment.",
     icon: Group,
-    href: "#",
-    isImplemented: false,
+    href: "/admin/manage-fee-groups",
+    isImplemented: true,
   },
   {
     title: "Manage Special Fee Types",

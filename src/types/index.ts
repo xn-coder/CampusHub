@@ -375,12 +375,20 @@ export interface FeeType {
   updated_at?: string;
 }
 
+export interface FeeTypeGroup {
+  id: string;
+  name: string;
+  school_id: string;
+  fee_type_ids: string[];
+}
+
 
 export interface StudentFeePayment {
   id: string;
   student_id: string;
   fee_category_id: string | null; // Can be null if a fee_type is used
   fee_type_id?: string | null; // New field
+  fee_type_group_id?: string | null;
   academic_year_id?: string | null;
   installment_id?: string | null;
   assigned_amount: number;
