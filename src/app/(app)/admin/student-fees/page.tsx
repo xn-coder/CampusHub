@@ -24,6 +24,7 @@ import {
   updateStudentFeeAction,
 } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
+import { supabase } from '@/lib/supabaseClient';
 
 type StudentFeeStatus = 'Paid' | 'Partially Paid' | 'Pending' | 'Overdue';
 
@@ -126,7 +127,7 @@ export default function AdminStudentFeesPage() {
       setAcademicYears(pageDataResult.academicYears || []);
       setClasses(pageDataResult.classes || []);
        // Also fetch installments for the dropdowns
-      const { data: installmentsData } = await createSupabaseServerClient().from('installments').select('*').eq('school_id', schoolId);
+      const { data: installmentsData } = await supabase.from('installments').select('*').eq('school_id', schoolId);
       setInstallments(installmentsData || []);
     } else {
       toast({ title: "Error loading fee data", description: pageDataResult.message, variant: "destructive" });
@@ -390,3 +391,5 @@ export default function AdminStudentFeesPage() {
     </div>
   );
 }
+
+    
