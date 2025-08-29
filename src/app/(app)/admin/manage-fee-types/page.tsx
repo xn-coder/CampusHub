@@ -55,6 +55,8 @@ export default function ManageFeeTypesPage() {
   const [selectedFeeCategoryId, setSelectedFeeCategoryId] = useState('');
   const [isRefundable, setIsRefundable] = useState(false);
   const [description, setDescription] = useState('');
+  const [defaultAmount, setDefaultAmount] = useState<number | ''>('');
+
 
   // Filtering state for assigned fees
   const [feeTypeFilter, setFeeTypeFilter] = useState('all');
@@ -78,8 +80,8 @@ export default function ManageFeeTypesPage() {
     const result = await getFeeTypesPageDataAction(schoolId);
       
     if (result.ok) {
-        setFeeTypes(result.feeTypes?.filter(ft => ft.installment_type === 'installments') || []);
-        setAssignedFees(result.assignedFees?.filter(af => feeTypes.some(ft => ft.id === af.fee_type_id)) || []);
+        setFeeTypes(result.feeTypes || []);
+        setAssignedFees(result.assignedFees || []);
         setAllStudents(result.students || []);
         setAllClasses(result.classes || []);
         setAllFeeCategories(result.feeCategories || []);
@@ -88,7 +90,7 @@ export default function ManageFeeTypesPage() {
     }
 
     setIsLoading(false);
-  }, [toast, feeTypes]);
+  }, [toast]);
   
   useEffect(() => {
     const userId = localStorage.getItem('currentUserId');
@@ -108,9 +110,23 @@ export default function ManageFeeTypesPage() {
     }
   }, [toast, fetchPageData]);
 
+  // When assignFeeTypeId changes, auto-fill the amount from the fee type definition
+  useEffect(() => {
+    if (assignFeeTypeId) {
+        const selectedFeeType = feeTypes.find(ft => ft.id === assignFeeTypeId);
+        if (selectedFeeType?.amount) {
+            setAssignAmount(selectedFeeType.amount);
+        } else {
+            setAssignAmount('');
+        }
+    }
+  }, [assignFeeTypeId, feeTypes]);
+
+
   const resetForm = () => {
     setName(''); setDisplayName(''); setInstallmentType('installments');
     setSelectedFeeCategoryId(''); setIsRefundable(false); setDescription('');
+    setDefaultAmount('');
     setEditingFeeType(null);
   };
 
@@ -123,6 +139,7 @@ export default function ManageFeeTypesPage() {
       setSelectedFeeCategoryId(feeType.fee_category_id);
       setIsRefundable(feeType.is_refundable);
       setDescription(feeType.description || '');
+      setDefaultAmount(feeType.amount ?? '');
     } else {
       resetForm();
     }
@@ -144,7 +161,8 @@ export default function ManageFeeTypesPage() {
       fee_category_id: selectedFeeCategoryId,
       is_refundable: isRefundable,
       description: description.trim() || undefined, 
-      school_id: currentSchoolId 
+      school_id: currentSchoolId,
+      amount: defaultAmount === '' ? undefined : Number(defaultAmount),
     };
 
     let result = editingFeeType ? await updateFeeTypeAction(editingFeeType.id, feeTypeData) : await createFeeTypeAction(feeTypeData);
@@ -214,7 +232,7 @@ export default function ManageFeeTypesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Manage Fee Types"
-        description="Create reusable fee types (e.g., 'Late Fee', 'Re-evaluation Fee') and assign them to students."
+        description="Create reusable fee types (e.g., 'Late Fee', 'Annual Fee', 'Special Event Fee') and assign them to students."
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" asChild><Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link></Button>
@@ -228,7 +246,7 @@ export default function ManageFeeTypesPage() {
         <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="plans">Fee Type Definitions</TabsTrigger>
             <TabsTrigger value="assign">Assign Fee Type</TabsTrigger>
-            <TabsTrigger value="assigned-log">Assigned Fees Log ({assignedFees.length})</TabsTrigger>
+            <TabsTrigger value="assigned-log">Assignment Log ({assignedFees.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="plans">
             <Card>
@@ -238,7 +256,7 @@ export default function ManageFeeTypesPage() {
                 <CardContent>
                   {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
                   : feeTypes.length === 0 ? <p className="text-muted-foreground text-center py-4">No fee types have been created yet.</p>
-                  : <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Display Name</TableHead><TableHead>Category</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{feeTypes.map((ft) => (<TableRow key={ft.id}><TableCell className="font-medium">{ft.name}</TableCell><TableCell>{ft.display_name}</TableCell><TableCell>{ft.fee_category?.name || 'N/A'}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(ft as FeeType)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will permanently delete the fee type "{ft.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteFeeType(ft.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
+                  : <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Display Name</TableHead><TableHead>Category</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{feeTypes.map((ft) => (<TableRow key={ft.id}><TableCell className="font-medium">{ft.name}</TableCell><TableCell>{ft.display_name}</TableCell><TableCell>{ft.fee_category?.name || 'N/A'}</TableCell><TableCell className="capitalize">{ft.installment_type.replace('_', ' ')}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(ft as FeeType)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will permanently delete the fee type "{ft.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteFeeType(ft.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
                   }
                 </CardContent>
               </Card>
@@ -287,7 +305,7 @@ export default function ManageFeeTypesPage() {
                             </div>
                         )}
                         <div className="grid md:grid-cols-2 gap-4">
-                           <div><Label>Fee Type to Assign</Label><Select value={assignFeeTypeId} onValueChange={setAssignFeeTypeId}><SelectTrigger><SelectValue placeholder="Select a fee type"/></SelectTrigger><SelectContent>{feeTypes.map(ft => <SelectItem key={ft.id} value={ft.id}>{ft.name}</SelectItem>)}</SelectContent></Select></div>
+                           <div><Label>Fee Type to Assign</Label><Select value={assignFeeTypeId} onValueChange={setAssignFeeTypeId}><SelectTrigger><SelectValue placeholder="Select a fee type"/></SelectTrigger><SelectContent>{feeTypes.map(ft => <SelectItem key={ft.id} value={ft.id}>{ft.display_name}</SelectItem>)}</SelectContent></Select></div>
                            <div><Label>Amount (₹)</Label><Input type="number" placeholder="Enter amount" value={assignAmount} onChange={e => setAssignAmount(Number(e.target.value))} required/></div>
                         </div>
                         <div><Label>Due Date (Optional)</Label><Input type="date" value={assignDueDate} onChange={e => setAssignDueDate(e.target.value)} /></div>
@@ -306,7 +324,7 @@ export default function ManageFeeTypesPage() {
                  <CardHeader><CardTitle className="flex items-center">Assigned Fees Log</CardTitle></CardHeader>
                 <CardContent>
                     <div className="mb-4 flex flex-wrap gap-4">
-                        <div className="flex-grow"><Label htmlFor="fee-type-filter"><Filter className="inline-block mr-1 h-3 w-3" />Filter by Fee Type</Label><Select value={feeTypeFilter} onValueChange={setFeeTypeFilter} disabled={isLoading}><SelectTrigger id="fee-type-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Types</SelectItem>{feeTypes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-grow"><Label htmlFor="fee-type-filter"><Filter className="inline-block mr-1 h-3 w-3" />Filter by Fee Type</Label><Select value={feeTypeFilter} onValueChange={setFeeTypeFilter} disabled={isLoading}><SelectTrigger id="fee-type-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Types</SelectItem>{feeTypes.map(i => <SelectItem key={i.id} value={i.id}>{i.display_name}</SelectItem>)}</SelectContent></Select></div>
                          <div className="flex-grow"><Label htmlFor="status-filter"><Filter className="inline-block mr-1 h-3 w-3" />Filter by Status</Label><Select value={statusFilter} onValueChange={setStatusFilter} disabled={isLoading}><SelectTrigger id="status-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Partially Paid">Partially Paid</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Overdue">Overdue</SelectItem></SelectContent></Select></div>
                     </div>
                      {isLoading ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>) : filteredAssignedFees.length === 0 ? (<p className="text-muted-foreground text-center py-4">No fees assigned for this fee type match the current filters.</p>) : (
@@ -333,10 +351,10 @@ export default function ManageFeeTypesPage() {
                 <Input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g., Late Fee, Re-evaluation Fee" required disabled={isSubmitting} />
               </div>
                <div>
-                  <Label>Installment Type</Label>
+                  <Label>Fee Classification</Label>
                    <RadioGroup value={installmentType} onValueChange={(val) => setInstallmentType(val as FeeTypeInstallmentType)} className="flex gap-4 pt-2">
-                        <div className="flex items-center space-x-2"><RadioGroupItem value="installments" id="type-installments"/><Label htmlFor="type-installments" className="font-normal">Installments</Label></div>
-                        <div className="flex items-center space-x-2"><RadioGroupItem value="extra_charge" id="type-extra"/><Label htmlFor="type-extra" className="font-normal">Extra Charge</Label></div>
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="installments" id="type-installments"/><Label htmlFor="type-installments" className="font-normal">Regular/Installment</Label></div>
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="extra_charge" id="type-extra"/><Label htmlFor="type-extra" className="font-normal">Special/Extra Charge</Label></div>
                     </RadioGroup>
               </div>
               <div>
@@ -347,6 +365,10 @@ export default function ManageFeeTypesPage() {
                         {allFeeCategories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label htmlFor="defaultAmount">Default Amount (₹, Optional)</Label>
+                <Input id="defaultAmount" type="number" value={defaultAmount} onChange={e => setDefaultAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} disabled={isSubmitting} />
               </div>
                <div className="flex items-center space-x-2">
                 <Checkbox id="isRefundable" checked={isRefundable} onCheckedChange={(checked) => setIsRefundable(!!checked)} disabled={isSubmitting}/>

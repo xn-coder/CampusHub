@@ -54,7 +54,7 @@ const feeConfigOptions: FeeManagementOption[] = [
   {
     id: "fee-types",
     title: "Manage Fee Types",
-    description: "Create specific fee variations.",
+    description: "Create specific fee variations, like 'Late Fee' or 'Annual Fee'.",
     icon: FileBadge,
     href: "/admin/manage-fee-types",
     isImplemented: true,
@@ -83,23 +83,23 @@ const feeConfigOptions: FeeManagementOption[] = [
     href: "/admin/manage-fee-structures",
     isImplemented: true,
   },
-   {
-    id: "special-fees",
-    title: "Manage Special Fee Types",
-    description: "Handle one-off or unique fees.",
-    icon: IndianRupee,
-    href: "/admin/manage-special-fee-types",
-    isImplemented: true,
-  },
 ];
 
 const feeReportOptions: FeeManagementOption[] = [
   {
     id: "student-fees-report",
-    title: "Student Fee Records",
+    title: "Student Payments",
     description: "View, filter, and manage individual student fee assignments and payment statuses.",
     icon: Users,
     href: "/admin/student-fees",
+    isImplemented: true,
+  },
+    {
+    id: "dues-report",
+    title: "Dues Reports",
+    description: "View outstanding and overdue fee reports for students and classes.",
+    icon: Users,
+    href: "/admin/student-fees?status=Unpaid",
     isImplemented: true,
   },
   {
@@ -168,20 +168,55 @@ export default function FeesManagementPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {feeReportOptions.map((option) => (
-                    <Link key={option.id} href={option.href} className='cursor-pointer'>
-                       <Card className="h-full transition-all hover:border-primary hover:shadow-md">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-sm font-medium">{option.title}</CardTitle>
-                                <option.icon className="h-4 w-4 text-muted-foreground" />
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-xs text-muted-foreground">{option.description}</p>
-                            </CardContent>
-                        </Card>
-                    </Link>
-                ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+               {/* Dues Reports Column */}
+                <div className="col-span-1">
+                    <h3 className="text-lg font-semibold text-red-600 mb-2">Dues Reports</h3>
+                    <div className="flex flex-col space-y-2 text-sm">
+                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Yearly Head-Wise Dues Summary</Link>
+                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Outstanding Due Summary</Link>
+                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Class Wise Outstanding Due Summary</Link>
+                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Complete Outstanding Dues</Link>
+                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">All Students Due Report</Link>
+                        <span className="text-muted-foreground cursor-not-allowed">Consolidated Dues Report (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Fee Student Follow Up (Soon)</span>
+                    </div>
+                </div>
+                 {/* Collection Reports Column */}
+                <div className="col-span-1">
+                    <h3 className="text-lg font-semibold text-green-600 mb-2">Collection Reports</h3>
+                    <div className="flex flex-col space-y-2 text-sm">
+                         <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Daily Collection Report</Link>
+                         <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Date-wise Collection</Link>
+                         <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Head Wise Collection</Link>
+                         <span className="text-muted-foreground cursor-not-allowed">Deleted Fee Collection (Soon)</span>
+                         <span className="text-muted-foreground cursor-not-allowed">Cashier-wise Collection (Soon)</span>
+                         <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Yearly Collection Report</Link>
+                         <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Consolidated Collection Report</Link>
+                    </div>
+                </div>
+                {/* General Reports Column */}
+                <div className="col-span-1">
+                    <h3 className="text-lg font-semibold text-blue-600 mb-2">General Reports</h3>
+                    <div className="flex flex-col space-y-2 text-sm">
+                        <Link href="/admin/student-fees" className="text-primary hover:underline">All Fee Transactions</Link>
+                        <span className="text-muted-foreground cursor-not-allowed">Fee Ledger Book (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Concession Report (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Fee Type/Group Wise Report (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Fee Defaulter List (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Fee Structure Report (Soon)</span>
+                    </div>
+                </div>
+                 {/* Student Reports Column */}
+                <div className="col-span-1">
+                    <h3 className="text-lg font-semibold text-purple-600 mb-2">Student Reports</h3>
+                    <div className="flex flex-col space-y-2 text-sm">
+                        <span className="text-muted-foreground cursor-not-allowed">Student Fee Card (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Student Ledger (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Student Fee Receipt (Soon)</span>
+                         <span className="text-muted-foreground cursor-not-allowed">Student Hostel Report (Soon)</span>
+                    </div>
+                </div>
             </div>
         </CardContent>
       </Card>

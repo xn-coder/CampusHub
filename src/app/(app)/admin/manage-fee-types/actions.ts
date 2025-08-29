@@ -41,7 +41,7 @@ export async function getFeeTypesPageDataAction(schoolId: string): Promise<{
         feeCategories: feeCategoriesRes.data || [],
     };
   } catch (e: any) {
-    return { ok: false, message: `Failed to fetch page data: ${e.message}` };
+    return { ok: false, message: `Failed to load page data: ${e.message}` };
   }
 }
 
