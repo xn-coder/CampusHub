@@ -89,7 +89,7 @@ const feeConfigOptions: FeeManagementOption[] = [
     description: "Handle one-off or unique fees.",
     icon: IndianRupee,
     href: "/admin/manage-special-fee-types",
-    isImplemented: false,
+    isImplemented: true,
   },
 ];
 
