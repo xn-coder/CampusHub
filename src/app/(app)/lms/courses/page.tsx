@@ -9,12 +9,12 @@ import { useState, useEffect, useMemo, useCallback, type FormEvent } from 'react
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import Image from 'next/image';
-import { 
+import {
     getAdminLmsPageData,
-    assignCourseToSchoolAudienceAction, 
+    assignCourseToSchoolAudienceAction,
     enrollSchoolInCourseAction,
     unassignCourseFromSchoolAction
-} from './actions';
+} from '@/app/(app)/admin/lms/courses/actions';
 import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard, Edit2, Trash2, CalendarDays, ShoppingCart, CheckCheck, MoreHorizontal, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -118,7 +118,7 @@ export default function SchoolLmsCoursesPage() {
       setIsSubmitting(false);
   };
   
-  const handleUnassignCourse = async (courseId: string) => {
+    const handleUnassignCourse = async (courseId: string) => {
     if (!currentSchool) return;
     if (confirm("Are you sure you want to unassign this course from your school? This will unenroll all users and remove it from your school's catalog.")) {
       setIsSubmitting(true);

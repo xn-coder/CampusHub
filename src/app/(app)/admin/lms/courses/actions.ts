@@ -607,6 +607,29 @@ export async function enrollSchoolInCourseAction(courseId: string, schoolId: str
   return { ok: true, message: "School successfully enrolled in the free course." };
 }
 
+export async function unassignCourseFromSchoolAction(courseId: string, schoolId: string): Promise<{ ok: boolean, message: string }> {
+    const supabase = createSupabaseServerClient();
+    try {
+        // Unenroll all users from this school for this course first
+        await supabase.from('lms_student_course_enrollments').delete().eq('course_id', courseId).eq('school_id', schoolId);
+        await supabase.from('lms_teacher_course_enrollments').delete().eq('course_id', courseId).eq('school_id', schoolId);
+        
+        // Remove the availability record
+        const { error: availabilityError } = await supabase.from('lms_course_school_availability').delete().eq('course_id', courseId).eq('school_id', schoolId);
+        if (availabilityError) throw new Error(`Failed to unassign course: ${availabilityError.message}`);
+
+        // Also remove subscription if it exists
+        await supabase.from('lms_school_subscriptions').delete().eq('course_id', courseId).eq('school_id', schoolId);
+
+        revalidatePath('/admin/lms/courses');
+        revalidatePath('/lms/available-courses');
+        return { ok: true, message: "Course unassigned from your school. All users have been unenrolled."};
+
+    } catch (e: any) {
+        console.error("Error in unassignCourseFromSchoolAction:", e);
+        return { ok: false, message: e.message || 'An unexpected error occurred.' };
+    }
+}
 
 
 export async function enrollUserInCourseAction(
