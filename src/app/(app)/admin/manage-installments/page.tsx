@@ -56,8 +56,10 @@ export default function ManageInstallmentsPage() {
   const [editingInstallment, setEditingInstallment] = useState<Installment | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState<number | ''>('');
+  const [lastDate, setLastDate] = useState('');
   
-  // States for Assign Concession tab
+  // States for Assign Group tab
   const [assignTargetType, setAssignTargetType] = useState<'class' | 'individual'>('class');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
@@ -128,6 +130,8 @@ export default function ManageInstallmentsPage() {
   const resetForm = () => {
     setTitle('');
     setDescription('');
+    setAmount('');
+    setLastDate('');
     setEditingInstallment(null);
   };
   
@@ -146,6 +150,8 @@ export default function ManageInstallmentsPage() {
       setEditingInstallment(installment);
       setTitle(installment.title);
       setDescription(installment.description || '');
+      setAmount(installment.amount || '');
+      setLastDate(installment.last_date ? format(parseISO(installment.last_date), 'yyyy-MM-dd') : '');
     } else {
       resetForm();
     }
@@ -154,8 +160,8 @@ export default function ManageInstallmentsPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !currentSchoolId) {
-      toast({ title: "Error", description: "Title and school context are required.", variant: "destructive" });
+    if (!title.trim() || !lastDate || !currentSchoolId) {
+      toast({ title: "Error", description: "Title, Last Date, and school context are required.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
@@ -163,6 +169,11 @@ export default function ManageInstallmentsPage() {
     const installmentData = { 
       title: title.trim(),
       description: description.trim() || undefined,
+      amount: amount === '' ? undefined : Number(amount),
+      last_date: lastDate,
+      // The start and end dates are not used in the UI form, so we can omit them or set defaults if needed
+      start_date: format(new Date(), 'yyyy-MM-dd'),
+      end_date: lastDate,
       school_id: currentSchoolId 
     };
 
@@ -196,7 +207,7 @@ export default function ManageInstallmentsPage() {
         studentIdsToAssign = [selectedStudentId];
     }
 
-    if (studentIdsToAssign.length === 0 || !assignInstallmentId || assignAmount === '' || !currentSchoolId) {
+    if (studentIdsToAssign.length === 0 || !assignInstallmentId || assignAmount === '' || !currentSchoolId || !currentAdminUserId) {
         toast({ title: "Error", description: "Please complete all required fields in the assignment form.", variant: "destructive" });
         return;
     }
@@ -312,7 +323,7 @@ export default function ManageInstallmentsPage() {
                  <CardHeader><CardTitle className="flex items-center">Assigned Installments Log</CardTitle></CardHeader>
                 <CardContent>
                      {isLoading ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>) : assignedFees.length === 0 ? (<p className="text-muted-foreground text-center py-4">No fees have been assigned to an installment plan yet.</p>) : (
-                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Installment</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{assignedFees.map(fee => (<TableRow key={fee.id}><TableCell>{(fee.student as any)?.name}</TableCell><TableCell>{(fee.fee_category as any)?.name}</TableCell><TableCell>{(fee.installment as any)?.title}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell></TableRow>))}</TableBody></Table>
+                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Installment</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{assignedFees.map(fee => (<TableRow key={fee.id}><TableCell>{fee.student?.name || 'N/A'}</TableCell><TableCell>{fee.fee_category?.name || 'N/A'}</TableCell><TableCell>{fee.installment?.title || 'N/A'}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell></TableRow>))}</TableBody></Table>
                      )}
                 </CardContent>
             </Card>
