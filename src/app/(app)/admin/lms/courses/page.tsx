@@ -13,16 +13,14 @@ import {
     getAdminLmsPageData,
     assignCourseToSchoolAudienceAction, 
     enrollSchoolInCourseAction,
-    createCoursePaymentOrderAction,
-    verifyCoursePaymentAndEnrollAction
+    unassignCourseFromSchoolAction
 } from './actions';
-import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard, Edit2, Trash2, CalendarDays, ShoppingCart, CheckCheck, MoreHorizontal } from 'lucide-react';
+import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard, Edit2, Trash2, CalendarDays, ShoppingCart, CheckCheck, MoreHorizontal, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import Script from 'next/script';
 import { differenceInDays, parseISO, isPast } from 'date-fns';
 
 
@@ -119,77 +117,22 @@ export default function SchoolLmsCoursesPage() {
 
       setIsSubmitting(false);
   };
-
-  const handleOpenSubscriptionDialog = (course: Course) => {
-    setCourseToAction(course);
-    setIsSubscribeDialogOpen(true);
-  };
-
-  const handleSubscribeCourse = async () => {
-    if (!currentUserId || !currentSchool || !courseToAction) {
-      toast({ title: "Error", description: "User ID or School ID not found.", variant: "destructive" });
-      return;
-    }
-    setIsSubmitting(true);
-    const result = await createCoursePaymentOrderAction(courseToAction.id, currentUserId);
-    
-    if (!result.ok) {
+  
+    const handleUnassignCourse = async (courseId: string) => {
+    if (!currentSchool) return;
+    if (confirm("Are you sure you want to unassign this course from your school? This will unenroll all users and remove it from your school's catalog.")) {
+      setIsSubmitting(true);
+      const result = await unassignCourseFromSchoolAction(courseId, currentSchool.id);
+      if(result.ok) {
+        toast({ title: "Course Unassigned", description: result.message });
+        if (currentUserId) await fetchPageData(currentUserId);
+      } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
-        setIsSubmitting(false);
-        setIsSubscribeDialogOpen(false);
-        return;
-    }
-    if(result.isMock) {
-        toast({ title: "Success!", description: result.message });
-        if(currentUserId) await fetchPageData(currentUserId);
-        setIsSubmitting(false);
-        setIsSubscribeDialogOpen(false);
-        return;
-    }
-    if (result.order) {
-        const rzpOptions = {
-            key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-            amount: result.order.amount,
-            currency: "INR",
-            name: "CampusHub Course Subscription",
-            description: `Payment for ${courseToAction.title}`,
-            order_id: result.order.id,
-            handler: async (response: any) => {
-                setIsSubmitting(true);
-                const verifyResult = await verifyCoursePaymentAndEnrollAction(
-                    response.razorpay_payment_id,
-                    response.razorpay_order_id,
-                    response.razorpay_signature
-                );
-                if (verifyResult.ok) {
-                    toast({ title: "Success", description: verifyResult.message });
-                    if(currentUserId) await fetchPageData(currentUserId);
-                } else {
-                    toast({ title: "Payment Verification Failed", description: verifyResult.message, variant: "destructive" });
-                }
-                setIsSubmitting(false);
-                setIsSubscribeDialogOpen(false);
-            },
-            prefill: {
-                name: currentSchool?.admin_name,
-                email: currentSchool?.admin_email,
-                contact: currentSchool?.contact_phone,
-            },
-            theme: { color: "#3399cc" },
-            modal: {
-                ondismiss: () => {
-                    setIsSubmitting(false);
-                    setIsSubscribeDialogOpen(false);
-                }
-            }
-        };
-        const rzp1 = new (window as any).Razorpay(rzpOptions);
-        rzp1.open();
-    } else {
-       setIsSubmitting(false);
-       setIsSubscribeDialogOpen(false);
+      }
+      setIsSubmitting(false);
     }
   };
+
 
   const filteredCourses = courses.filter(course =>
     course.title.toLowerCase().includes(searchTerm.toLowerCase())
@@ -198,27 +141,12 @@ export default function SchoolLmsCoursesPage() {
   const paginatedCourses = filteredCourses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const totalPages = Math.ceil(filteredCourses.length / ITEMS_PER_PAGE);
   
-  const PriceDisplay = ({ course }: { course: Course }) => {
-    const tagClass = "absolute bottom-2 right-2 bg-black/50 text-white text-xs font-bold px-2 py-1 rounded";
-    if (!course.is_paid || !course.price) return <div className={tagClass}>Free</div>;
-
-    const discount = course.discount_percentage || 0;
-    const finalPrice = course.price * (1 - discount / 100);
-
-    return (
-        <div className={`${tagClass} flex items-baseline gap-1.5`}>
-            {discount > 0 && <span className="line-through opacity-70">₹{course.price.toFixed(2)}</span>}
-            <span>₹{finalPrice.toFixed(2)}</span>
-        </div>
-    );
-  };
-  
   const SubscriptionBadge = ({ course }: { course: Course }) => {
-    if (!course.isEnrolled || !course.is_paid || !(course as any).subscription_end_date) {
+    if (!course.isEnrolled || !course.is_paid || !course.subscription_end_date) {
         return null;
     }
 
-    const endDate = parseISO((course as any).subscription_end_date);
+    const endDate = parseISO(course.subscription_end_date);
     const now = new Date();
     const daysLeft = differenceInDays(endDate, now);
     
@@ -243,7 +171,6 @@ export default function SchoolLmsCoursesPage() {
 
   return (
     <>
-    <Script id="razorpay-checkout-js" src="https://checkout.razorpay.com/v1/checkout.js" />
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Course Catalog"
@@ -291,7 +218,6 @@ export default function SchoolLmsCoursesPage() {
                                 data-ai-hint="course cover"
                             />
                             <SubscriptionBadge course={course} />
-                            <PriceDisplay course={course} />
                         </div>
                         <CardHeader>
                             <CardTitle className="line-clamp-2">{course.title}</CardTitle>
@@ -302,12 +228,14 @@ export default function SchoolLmsCoursesPage() {
                         <CardFooter className="flex-col sm:flex-row gap-2">
                            {course.isEnrolled ? (
                                 <>
-                                    <Button asChild className="w-full" variant="secondary">
-                                        <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                                            <UserPlus className="mr-2 h-4 w-4"/> User list
-                                        </Link>
+                                    <Button asChild className="w-full" variant="secondary" onClick={() => handleOpenAssignDialog(course)}>
+                                      <div className="flex items-center cursor-pointer">
+                                        <UserPlus className="mr-2 h-4 w-4"/> Assign
+                                      </div>
                                     </Button>
-                                    <Button onClick={() => handleOpenAssignDialog(course)} className="w-full" variant="outline">Assign course</Button>
+                                    <Button onClick={() => handleUnassignCourse(course.id)} className="w-full" variant="destructive" disabled={isSubmitting}>
+                                        <XCircle className="mr-2 h-4 w-4" /> Unassign
+                                    </Button>
                                 </>
                             ) : (
                                 <>
@@ -316,15 +244,9 @@ export default function SchoolLmsCoursesPage() {
                                             <Eye className="mr-2 h-4 w-4"/> Preview
                                         </Link>
                                     </Button>
-                                    {course.is_paid ? (
-                                        <Button className="w-full" onClick={() => handleOpenSubscriptionDialog(course)} disabled={isSubmitting}>
-                                            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <ShoppingCart className="mr-2 h-4 w-4" />} Subscribe
-                                        </Button>
-                                    ) : (
-                                        <Button className="w-full" onClick={() => handleEnrollFreeCourse(course.id)} disabled={isSubmitting}>
-                                            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCheck className="mr-2 h-4 w-4" />} Enroll School
-                                        </Button>
-                                    )}
+                                    <Button className="w-full" onClick={() => handleEnrollFreeCourse(course.id)} disabled={isSubmitting}>
+                                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCheck className="mr-2 h-4 w-4" />} Enroll School
+                                    </Button>
                                 </>
                            )}
                         </CardFooter>
@@ -386,31 +308,6 @@ export default function SchoolLmsCoursesPage() {
                 <Button onClick={handleAssignCourse} disabled={isSubmitting || (assignTarget === 'class' && !assignTargetClassId)}>
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
                     Set Visibility
-                </Button>
-            </DialogFooter>
-        </DialogContent>
-    </Dialog>
-    <Dialog open={isSubscribeDialogOpen} onOpenChange={setIsSubscribeDialogOpen}>
-        <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Subscribe to: {courseToAction?.title}</DialogTitle>
-                <DialogDescription>Review the details below and proceed to payment to unlock this course for your school.</DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-                <p><strong>Plan:</strong> One-Time Payment</p>
-                <p><strong>Amount:</strong> ₹{(courseToAction?.price || 0).toFixed(2)}</p>
-                {courseToAction?.discount_percentage && courseToAction.discount_percentage > 0 &&
-                    <p><strong>Discount:</strong> {courseToAction.discount_percentage}%</p>
-                }
-                <p className="text-lg font-bold mt-2">
-                    Total Payable: ₹{((courseToAction?.price || 0) * (1 - (courseToAction?.discount_percentage || 0) / 100)).toFixed(2)}
-                </p>
-            </div>
-            <DialogFooter>
-                <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                <Button onClick={handleSubscribeCourse} disabled={isSubmitting}>
-                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-                    Pay Now & Subscribe
                 </Button>
             </DialogFooter>
         </DialogContent>
