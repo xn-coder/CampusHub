@@ -78,8 +78,8 @@ export default function ManageSpecialFeeTypesPage() {
     const result = await getSpecialFeeTypesPageDataAction(schoolId);
       
     if (result.ok) {
-        setFeeTypes(result.feeTypes || []);
-        setAssignedFees(result.assignedFees || []);
+        setFeeTypes(result.feeTypes?.filter(ft => ft.installment_type === 'extra_charge') || []);
+        setAssignedFees(result.assignedFees?.filter(af => feeTypes.some(ft => ft.id === af.fee_type_id)) || []);
         setAllStudents(result.students || []);
         setAllClasses(result.classes || []);
         setAllFeeCategories(result.feeCategories || []);
@@ -88,7 +88,7 @@ export default function ManageSpecialFeeTypesPage() {
     }
 
     setIsLoading(false);
-  }, [toast]);
+  }, [toast, feeTypes]);
   
   useEffect(() => {
     const userId = localStorage.getItem('currentUserId');

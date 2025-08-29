@@ -78,8 +78,8 @@ export default function ManageFeeTypesPage() {
     const result = await getFeeTypesPageDataAction(schoolId);
       
     if (result.ok) {
-        setFeeTypes(result.feeTypes || []);
-        setAssignedFees(result.assignedFees || []);
+        setFeeTypes(result.feeTypes?.filter(ft => ft.installment_type === 'installments') || []);
+        setAssignedFees(result.assignedFees?.filter(af => feeTypes.some(ft => ft.id === af.fee_type_id)) || []);
         setAllStudents(result.students || []);
         setAllClasses(result.classes || []);
         setAllFeeCategories(result.feeCategories || []);
@@ -88,7 +88,7 @@ export default function ManageFeeTypesPage() {
     }
 
     setIsLoading(false);
-  }, [toast]);
+  }, [toast, feeTypes]);
   
   useEffect(() => {
     const userId = localStorage.getItem('currentUserId');
@@ -217,9 +217,7 @@ export default function ManageFeeTypesPage() {
         description="Create reusable fee types (e.g., 'Late Fee', 'Re-evaluation Fee') and assign them to students."
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" asChild>
-              <Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link>
-            </Button>
+            <Button variant="outline" asChild><Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link></Button>
             <Button onClick={() => handleOpenDialog()} disabled={!currentSchoolId || isSubmitting}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add Fee Type
             </Button>
