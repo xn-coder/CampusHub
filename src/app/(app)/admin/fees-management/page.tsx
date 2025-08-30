@@ -85,42 +85,6 @@ const feeConfigOptions: FeeManagementOption[] = [
   },
 ];
 
-const feeReportOptions: FeeManagementOption[] = [
-  {
-    id: "student-fees-report",
-    title: "Student Payments",
-    description: "View, filter, and manage individual student fee assignments and payment statuses.",
-    icon: Users,
-    href: "/admin/student-fees",
-    isImplemented: true,
-  },
-    {
-    id: "dues-report",
-    title: "Dues Reports",
-    description: "View outstanding and overdue fee reports for students and classes.",
-    icon: Users,
-    href: "/admin/student-fees?status=Unpaid",
-    isImplemented: true,
-  },
-  {
-    id: "expenses-report",
-    title: "Expense Management",
-    description: "Log, track, and generate reports for all school-related expenditures.",
-    icon: Wallet,
-    href: "/admin/expenses",
-    isImplemented: true,
-  },
-  {
-    id: "receipts-report",
-    title: "Receipt Vouchers",
-    description: "Generate and view all non-student fee related income receipts.",
-    icon: Receipt,
-    href: "/admin/receipts",
-    isImplemented: true,
-  },
-];
-
-
 export default function FeesManagementPage() {
   return (
     <div className="flex flex-col gap-6">

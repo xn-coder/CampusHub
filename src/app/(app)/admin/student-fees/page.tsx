@@ -11,10 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment } from '@/types';
+import { DollarSign, FileText, Loader2, CreditCard, Download, FolderOpen, PlusCircle, Save, Edit2, Trash2 } from 'lucide-react';
 import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
-import { PlusCircle, Trash2, Save, Receipt, DollarSign, Search, Loader2, FileDown, Edit2, FolderOpen } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO, isValid, isPast, isToday, startOfYear } from 'date-fns';
+import { format, parseISO, isValid, isPast, isToday, startOfYear, subDays } from 'date-fns';
 import {
   assignMultipleFeesToClassAction,
   recordStudentFeePaymentAction,
@@ -26,6 +26,8 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/lib/supabaseClient';
 import { useSearchParams } from 'next/navigation';
+import { getConcessionsAction } from '@/app/(app)/admin/manage-concessions/actions';
+import { applyConcessionAction } from '@/app/(app)/admin/fees-management/actions';
 
 type StudentFeeStatus = 'Paid' | 'Partially Paid' | 'Pending' | 'Overdue';
 
@@ -40,9 +42,8 @@ interface StudentFeeSummary {
   totalDue: number;
   status: StudentFeeStatus;
   payments: StudentFeePayment[];
-  summaryId: string; // A unique identifier for the summary itself
+  summaryId: string;
 }
-
 
 export default function AdminStudentFeesPage() {
   const { toast } = useToast();
@@ -52,55 +53,56 @@ export default function AdminStudentFeesPage() {
   const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [classes, setClasses] = useState<ClassData[]>([]);
-  const [installments, setInstallments] = useState<Installment[]>([]); // New state for installments
+  const [installments, setInstallments] = useState<Installment[]>([]);
+  const [concessions, setConcessions] = useState<any[]>([]);
 
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // Dialog states
   const [isAssignFeeDialogOpen, setIsAssignFeeDialogOpen] = useState(false);
   const [isRecordPaymentDialogOpen, setIsRecordPaymentDialogOpen] = useState(false);
   const [isEditFeeDialogOpen, setIsEditFeeDialogOpen] = useState(false);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
+  const [isConcessionDialogOpen, setIsConcessionDialogOpen] = useState(false);
 
-  // States for data being acted upon
   const [editingFeePayment, setEditingFeePayment] = useState<StudentFeePayment | null>(null);
   const [selectedStudentSummary, setSelectedStudentSummary] = useState<StudentFeeSummary | null>(null);
 
-  // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAcademicYearFilter, setSelectedAcademicYearFilter] = useState<string>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
 
-  // Assign Fee form states
   const [selectedClassIdForFee, setSelectedClassIdForFee] = useState<string>('');
   const [selectedFeeCategoryIds, setSelectedFeeCategoryIds] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string | undefined>(undefined);
-  const [selectedInstallmentId, setSelectedInstallmentId] = useState<string | undefined>(undefined); // New state
+  const [selectedInstallmentId, setSelectedInstallmentId] = useState<string | undefined>(undefined);
 
-  // Record Payment form states
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentDate, setPaymentDate] = useState<string>('');
 
-  // Edit Fee form states
   const [editAssignedAmount, setEditAssignedAmount] = useState<number | ''>('');
   const [editDueDate, setEditDueDate] = useState<string>('');
   const [editNotes, setEditNotes] = useState<string>('');
-  const [editInstallmentId, setEditInstallmentId] = useState<string | undefined>(''); // New state for edit
+  const [editInstallmentId, setEditInstallmentId] = useState<string | undefined>('');
 
-
+  const [concessionFeePayment, setConcessionFeePayment] = useState<StudentFeePayment | null>(null);
+  const [selectedConcessionId, setSelectedConcessionId] = useState<string>('');
+  const [concessionAmount, setConcessionAmount] = useState<number | ''>('');
+  
   useEffect(() => {
     const adminUserId = localStorage.getItem('currentUserId');
+    setCurrentUserId(adminUserId);
     if (!adminUserId) {
       toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
       setIsLoadingPage(false);
       return;
     }
     
-    // Set date on client mount to avoid hydration mismatch
     setPaymentDate(format(new Date(), 'yyyy-MM-dd'));
 
     async function loadInitialData() {
@@ -110,6 +112,8 @@ export default function AdminStudentFeesPage() {
 
       if (schoolId) {
         await refreshAllFeeData(schoolId);
+        const concessionResult = await getConcessionsAction(schoolId);
+        if(concessionResult.ok) setConcessions(concessionResult.concessions || []);
       } else {
         toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
       }
@@ -120,7 +124,7 @@ export default function AdminStudentFeesPage() {
   
   const refreshAllFeeData = useCallback(async (schoolId: string) => {
     if (!schoolId) return;
-    setIsLoadingPage(true); // Indicate loading for refresh
+    setIsLoadingPage(true);
     const pageDataResult = await fetchStudentFeesPageDataAction(schoolId);
     if (pageDataResult.ok) {
       setFeePayments(pageDataResult.feePayments || []);
@@ -129,15 +133,11 @@ export default function AdminStudentFeesPage() {
       const fetchedYears = pageDataResult.academicYears || [];
       setAcademicYears(fetchedYears);
       setClasses(pageDataResult.classes || []);
-       // Also fetch installments for the dropdowns
-      const { data: installmentsData } = await supabase.from('installments').select('*').eq('school_id', schoolId);
-      setInstallments(installmentsData || []);
+      setInstallments(pageDataResult.installments || []);
 
-      // Handle query params for filtering
       const statusParam = searchParams.get('status');
-      if (statusParam) {
-        setSelectedStatusFilter(statusParam);
-      }
+      if (statusParam) setSelectedStatusFilter(statusParam);
+      
       const periodParam = searchParams.get('period');
       if (periodParam === 'this_year' && fetchedYears.length > 0) {
         const currentYear = fetchedYears.find(year => {
@@ -146,17 +146,14 @@ export default function AdminStudentFeesPage() {
             const today = new Date();
             return today >= startDate && today <= endDate;
         }) || fetchedYears[0];
-        setSelectedAcademicYearFilter(currentYear.id);
+        if (currentYear) setSelectedAcademicYearFilter(currentYear.id);
       }
-
     } else {
       toast({ title: "Error loading fee data", description: pageDataResult.message, variant: "destructive" });
     }
     setIsLoadingPage(false);
   }, [toast, searchParams]);
 
-
-  // Memoized getter functions
   const getStudentName = useMemo(() => (studentId: string) => students.find(s => s.id === studentId)?.name || 'N/A', [students]);
   const getStudentRollNumber = useMemo(() => (studentId: string) => students.find(s => s.id === studentId)?.roll_number || 'N/A', [students]);
   const getFeeCategoryName = useMemo(() => (feeCategoryId: string) => feeCategories.find(fc => fc.id === feeCategoryId)?.name || 'N/A', [feeCategories]);
@@ -171,20 +168,20 @@ export default function AdminStudentFeesPage() {
     return installments.find(i => i.id === installmentId)?.title || 'N/A';
   }, [installments]);
 
-  // Dialog open/close handlers
   const handleOpenAssignFeeDialog = () => { resetAssignFeeForm(); setIsAssignFeeDialogOpen(true); };
   const handleOpenRecordPaymentDialog = (feePayment: StudentFeePayment) => { resetRecordPaymentForm(); setEditingFeePayment(feePayment); setIsRecordPaymentDialogOpen(true); };
   const handleOpenEditFeeDialog = (feePayment: StudentFeePayment) => {
-    setEditingFeePayment(feePayment);
-    setEditAssignedAmount(feePayment.assigned_amount);
+    setEditingFeePayment(feePayment); setEditAssignedAmount(feePayment.assigned_amount);
     setEditDueDate(feePayment.due_date ? format(parseISO(feePayment.due_date), 'yyyy-MM-dd') : '');
-    setEditNotes(feePayment.notes || '');
-    setEditInstallmentId(feePayment.installment_id || undefined); // Set installment
+    setEditNotes(feePayment.notes || ''); setEditInstallmentId(feePayment.installment_id || undefined);
     setIsEditFeeDialogOpen(true);
   };
   const handleOpenDetailsDialog = (summary: StudentFeeSummary) => { setSelectedStudentSummary(summary); setIsDetailsDialogOpen(true); };
+  const handleOpenConcessionDialog = (feePayment: StudentFeePayment) => {
+    setConcessionFeePayment(feePayment); setSelectedConcessionId(''); setConcessionAmount('');
+    setIsConcessionDialogOpen(true);
+  };
 
-  // Form state reset functions
   const resetAssignFeeForm = () => {
     setSelectedClassIdForFee(''); setSelectedFeeCategoryIds([]); setDueDate(''); setNotes(''); 
     setSelectedAcademicYearId(undefined); setSelectedInstallmentId(undefined); setEditingFeePayment(null);
@@ -196,7 +193,6 @@ export default function AdminStudentFeesPage() {
     setPaymentAmount(''); setPaymentDate(format(new Date(), 'yyyy-MM-dd')); setEditingFeePayment(null);
   };
 
-  // Submit handlers
   const handleAssignFeeSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!currentSchoolId) { toast({ title: "Error", description: "School context is required.", variant: "destructive" }); return; }
@@ -257,6 +253,32 @@ export default function AdminStudentFeesPage() {
     }
     setIsSubmitting(false);
   };
+  
+   const handleApplyConcession = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!concessionFeePayment || !selectedConcessionId || concessionAmount === '' || !currentSchoolId || !currentUserId) {
+        toast({ title: "Error", description: "All fields are required to apply a concession.", variant: "destructive" });
+        return;
+    }
+    setIsSubmitting(true);
+    const result = await applyConcessionAction({
+      student_id: concessionFeePayment.student_id,
+      fee_payment_id: concessionFeePayment.id,
+      concession_id: selectedConcessionId,
+      amount: Number(concessionAmount),
+      school_id: currentSchoolId,
+      applied_by_user_id: currentUserId,
+    });
+
+    if (result.ok) {
+      toast({ title: "Concession Applied", description: result.message });
+      setIsConcessionDialogOpen(false);
+      if (currentSchoolId) refreshAllFeeData(currentSchoolId);
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsSubmitting(false);
+  };
 
   const handleDeleteFeeAssignment = async (feePaymentId: string) => {
      if (!currentSchoolId) return;
@@ -309,14 +331,15 @@ export default function AdminStudentFeesPage() {
     return studentFeeSummaries.filter(summary => {
         const matchesSearch = summary.studentName.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesAcademicYear = selectedAcademicYearFilter === 'all' || (selectedAcademicYearFilter === 'general' && !summary.academicYearId) || summary.academicYearId === selectedAcademicYearFilter;
+        const matchesClass = selectedClassFilter === 'all' || summary.studentClassId === selectedClassFilter;
         const matchesStatus = (() => {
             if (selectedStatusFilter === 'all') return true;
             if (selectedStatusFilter === 'Unpaid') return ['Pending', 'Partially Paid', 'Overdue'].includes(summary.status);
             return summary.status === selectedStatusFilter;
         })();
-        return matchesSearch && matchesAcademicYear && matchesStatus;
+        return matchesSearch && matchesAcademicYear && matchesStatus && matchesClass;
     });
-  }, [studentFeeSummaries, searchTerm, selectedAcademicYearFilter, selectedStatusFilter]);
+  }, [studentFeeSummaries, searchTerm, selectedAcademicYearFilter, selectedStatusFilter, selectedClassFilter]);
 
   const handleDownloadCsv = () => {
     if (filteredSummaries.length === 0) {
@@ -339,31 +362,35 @@ export default function AdminStudentFeesPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Student Fee Management" description="Assign fees to students, record payments, and track financial records."
+        title="Student Fee Records" description="Assign fees to students, record payments, and track financial records."
         actions={<Button onClick={handleOpenAssignFeeDialog} disabled={!currentSchoolId || isSubmitting || isLoadingPage}><PlusCircle className="mr-2 h-4 w-4" /> Assign New Fee</Button>}
       />
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Student Fee Records</CardTitle>
+          <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Fee Summary</CardTitle>
           <CardDescription>A summarized overview of each student's fee status, grouped by academic year. Click "View & Manage" for details.</CardDescription>
         </CardHeader>
         <CardContent>
-           <div className="mb-4 flex flex-col md:flex-row gap-4 items-center">
-             <Input placeholder="Search by student name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-md" disabled={isLoadingPage}/>
+           <div className="mb-4 flex flex-col md:flex-row gap-4">
+             <Input placeholder="Search by student name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm" disabled={isLoadingPage}/>
             <Select value={selectedAcademicYearFilter} onValueChange={setSelectedAcademicYearFilter} disabled={isLoadingPage || academicYears.length === 0}>
-                <SelectTrigger className="md:w-[200px]"><SelectValue placeholder="All Years" /></SelectTrigger>
+                <SelectTrigger className="w-full md:w-[200px]"><SelectValue placeholder="All Years" /></SelectTrigger>
                 <SelectContent><SelectItem value="all">All Years</SelectItem><SelectItem value="general">General</SelectItem>{academicYears.map(ay => <SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)}</SelectContent>
             </Select>
+             <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter} disabled={isLoadingPage || classes.length === 0}>
+                <SelectTrigger className="w-full md:w-[200px]"><SelectValue placeholder="All Classes" /></SelectTrigger>
+                <SelectContent><SelectItem value="all">All Classes</SelectItem>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
+            </Select>
             <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter} disabled={isLoadingPage}>
-                <SelectTrigger className="md:w-[180px]"><SelectValue placeholder="Filter by status" /></SelectTrigger>
+                <SelectTrigger className="w-full md:w-[180px]"><SelectValue placeholder="Filter by status" /></SelectTrigger>
                 <SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Partially Paid">Partially Paid</SelectItem><SelectItem value="Overdue">Overdue</SelectItem></SelectContent>
             </Select>
             <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredSummaries.length === 0} className="md:ml-auto"><FileDown className="mr-2 h-4 w-4" />Download Summary</Button>
            </div>
           {isLoadingPage ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>) : !currentSchoolId ? (<p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>) : filteredSummaries.length === 0 ? (<p className="text-muted-foreground text-center py-4">{searchTerm || selectedAcademicYearFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}</p>) : (
             <Table>
-              <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Roll Number</TableHead><TableHead>Class</TableHead><TableHead>Academic Year</TableHead><TableHead className="text-right">Total Assigned (<span className="font-mono">₹</span>)</TableHead><TableHead className="text-right">Total Paid (<span className="font-mono">₹</span>)</TableHead><TableHead className="text-right">Total Due (<span className="font-mono">₹</span>)</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredSummaries.map((summary) => (<TableRow key={summary.summaryId}><TableCell className="font-medium">{summary.studentName}</TableCell><TableCell><span className="font-mono text-xs">{getStudentRollNumber(summary.studentId)}</span></TableCell><TableCell>{getStudentClass(summary.studentClassId)}</TableCell><TableCell>{summary.academicYearName}</TableCell><TableCell className="text-right"><span className="font-mono">₹</span>{summary.totalAssigned.toFixed(2)}</TableCell><TableCell className="text-right"><span className="font-mono">₹</span>{summary.totalPaid.toFixed(2)}</TableCell><TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</TableCell><TableCell><Badge variant={summary.status === 'Paid' ? 'default' : summary.status === 'Partially Paid' ? 'secondary' : summary.status === 'Overdue' ? 'destructive' : 'outline'}>{summary.status}</Badge></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}><FolderOpen className="mr-1 h-3 w-3" /> View Details</Button></TableCell></TableRow>))}</TableBody>
+              <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Academic Year</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+              <TableBody>{filteredSummaries.map((summary) => (<TableRow key={summary.summaryId}><TableCell className="font-medium">{summary.studentName} <span className="font-mono text-xs text-muted-foreground">({getStudentRollNumber(summary.studentId)})</span></TableCell><TableCell>{getStudentClass(summary.studentClassId)}</TableCell><TableCell>{summary.academicYearName}</TableCell><TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</TableCell><TableCell><Badge variant={summary.status === 'Paid' ? 'default' : summary.status === 'Partially Paid' ? 'secondary' : summary.status === 'Overdue' ? 'destructive' : 'outline'}>{summary.status}</Badge></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}><FolderOpen className="mr-1 h-3 w-3" /> View & Manage</Button></TableCell></TableRow>))}</TableBody>
             </Table>
           )}
         </CardContent>
@@ -386,7 +413,7 @@ export default function AdminStudentFeesPage() {
       
       <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}><DialogContent className="sm:max-w-3xl">
            <DialogHeader><DialogTitle>Fee Details for: {selectedStudentSummary?.studentName}</DialogTitle><CardDescription>Academic Year: {selectedStudentSummary?.academicYearName} | Total Due: <span className="font-mono">₹</span>{selectedStudentSummary?.totalDue.toFixed(2)}</CardDescription></DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Fee Category</TableHead><TableHead>Installment</TableHead><TableHead>Assigned (<span className="font-mono">₹</span>)</TableHead><TableHead>Paid (<span className="font-mono">₹</span>)</TableHead><TableHead>Due Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{(selectedStudentSummary?.payments || []).map((fp) => (<TableRow key={fp.id}><TableCell className="font-medium">{getFeeCategoryName(fp.fee_category_id)}</TableCell><TableCell>{getInstallmentTitle(fp.installment_id)}</TableCell><TableCell><span className="font-mono">₹</span>{fp.assigned_amount.toFixed(2)}</TableCell><TableCell><span className="font-mono">₹</span>{fp.paid_amount.toFixed(2)}</TableCell><TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell><TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell><TableCell className="text-right space-x-1">{fp.status !== 'Paid' && (<Button variant="outline" size="sm" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}><DollarSign className="mr-1 h-3 w-3"/>Record Pay</Button>)}<Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}><Edit2 className="h-4 w-4"/></Button><Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}><Trash2 className="h-4 w-4"/></Button></TableCell></TableRow>))}</TableBody></Table></div>
+          <div className="max-h-[60vh] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Fee Category</TableHead><TableHead>Due Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{(selectedStudentSummary?.payments || []).map((fp) => (<TableRow key={fp.id}><TableCell className="font-medium">{getFeeCategoryName(fp.fee_category_id)}</TableCell><TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell><TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell><TableCell className="text-right space-x-1">{fp.status !== 'Paid' && (<><Button variant="outline" size="sm" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}><DollarSign className="mr-1 h-3 w-3"/>Record Pay</Button><Button variant="outline" size="sm" onClick={() => handleOpenConcessionDialog(fp)}>Apply Concession</Button></>)}<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}><Edit2 className="h-4 w-4"/></Button><Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}><Trash2 className="h-4 w-4"/></Button></TableCell></TableRow>))}</TableBody></Table></div>
            <DialogFooter><DialogClose asChild><Button variant="outline">Close</Button></DialogClose></DialogFooter>
       </DialogContent></Dialog>
 
@@ -409,7 +436,17 @@ export default function AdminStudentFeesPage() {
             <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting || !editingFeePayment || (editingFeePayment.paid_amount >= editingFeePayment.assigned_amount)}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <DollarSign className="mr-2 h-4 w-4" /> } Record Payment</Button></DialogFooter>
           </form>
       </DialogContent></Dialog>
+      
+       <Dialog open={isConcessionDialogOpen} onOpenChange={setIsConcessionDialogOpen}><DialogContent className="sm:max-w-md">
+            <DialogHeader><DialogTitle>Apply Concession</DialogTitle><DialogDescription>Apply a concession to the fee '{getFeeCategoryName(concessionFeePayment?.fee_category_id || '')}' for {getStudentName(concessionFeePayment?.student_id || '')}.</DialogDescription></DialogHeader>
+            <form onSubmit={handleApplyConcession}>
+                <div className="grid gap-4 py-4">
+                    <div><Label htmlFor="concessionType">Concession Type</Label><Select value={selectedConcessionId} onValueChange={setSelectedConcessionId} required><SelectTrigger><SelectValue placeholder="Select concession type"/></SelectTrigger><SelectContent>{concessions.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent></Select></div>
+                    <div><Label htmlFor="concessionAmount">Concession Amount (₹)</Label><Input id="concessionAmount" type="number" value={concessionAmount} onChange={e => setConcessionAmount(Number(e.target.value))} required min="0.01" max={(concessionFeePayment?.assigned_amount || 0) - (concessionFeePayment?.paid_amount || 0)}/></div>
+                </div>
+                <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Apply Concession</Button></DialogFooter>
+            </form>
+       </DialogContent></Dialog>
     </div>
   );
 }
-

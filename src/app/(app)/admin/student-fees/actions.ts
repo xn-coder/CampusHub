@@ -4,21 +4,10 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { StudentFeePayment, PaymentStatus, Student, FeeCategory, AcademicYear, ClassData } from '@/types';
-import { isPast, startOfDay } from 'date-fns';
+import type { StudentFeePayment, PaymentStatus, Student, FeeCategory, AcademicYear, ClassData, Installment } from '@/types';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
-
-interface AssignFeeInput {
-  student_id: string;
-  fee_category_id: string;
-  assigned_amount: number;
-  due_date?: string;
-  notes?: string;
-  academic_year_id?: string;
-  school_id: string;
-}
 
 export async function fetchAdminSchoolIdForFees(userId: string): Promise<string | null> {
   if (!userId) {
@@ -46,6 +35,7 @@ export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<
   feeCategories?: FeeCategory[];
   academicYears?: AcademicYear[];
   classes?: ClassData[];
+  installments?: Installment[];
   message?: string;
 }> {
   if (!schoolId) {
@@ -53,12 +43,13 @@ export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<
   }
   const supabaseAdmin = createSupabaseServerClient();
   try {
-    const [paymentsRes, studentsRes, categoriesRes, academicYearsRes, classesRes] = await Promise.all([
+    const [paymentsRes, studentsRes, categoriesRes, academicYearsRes, classesRes, installmentsRes] = await Promise.all([
       supabaseAdmin.from('student_fee_payments').select('*').eq('school_id', schoolId).order('due_date', { ascending: false, nullsFirst: false }),
       supabaseAdmin.from('students').select('*').eq('school_id', schoolId).order('name'),
       supabaseAdmin.from('fee_categories').select('*').eq('school_id', schoolId).order('name'),
       supabaseAdmin.from('academic_years').select('*').eq('school_id', schoolId).order('start_date', { ascending: false }),
-      supabaseAdmin.from('classes').select('*').eq('school_id', schoolId).order('name')
+      supabaseAdmin.from('classes').select('*').eq('school_id', schoolId).order('name'),
+      supabaseAdmin.from('installments').select('*').eq('school_id', schoolId).order('title')
     ]);
 
     if (paymentsRes.error) throw new Error(`Fetching fee payments failed: ${paymentsRes.error.message}`);
@@ -66,6 +57,7 @@ export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<
     if (categoriesRes.error) throw new Error(`Fetching fee categories failed: ${categoriesRes.error.message}`);
     if (academicYearsRes.error) throw new Error(`Fetching academic years failed: ${academicYearsRes.error.message}`);
     if (classesRes.error) throw new Error(`Fetching classes failed: ${classesRes.error.message}`);
+    if (installmentsRes.error) throw new Error(`Fetching installments failed: ${installmentsRes.error.message}`);
 
     return {
       ok: true,
@@ -74,6 +66,7 @@ export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<
       feeCategories: categoriesRes.data || [],
       academicYears: academicYearsRes.data || [],
       classes: classesRes.data || [],
+      installments: installmentsRes.data || [],
     };
   } catch (error: any) {
     console.error("Error in fetchStudentFeesPageDataAction:", error);
@@ -83,7 +76,15 @@ export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<
 
 
 export async function assignStudentFeeAction(
-  input: AssignFeeInput
+  input: {
+      student_id: string;
+      fee_category_id: string;
+      assigned_amount: number;
+      due_date?: string;
+      notes?: string;
+      academic_year_id?: string;
+      school_id: string;
+  }
 ): Promise<{ ok: boolean; message: string; feePayment?: StudentFeePayment }> {
   const supabaseAdmin = createSupabaseServerClient();
   const feePaymentId = uuidv4();
@@ -153,7 +154,6 @@ export async function assignMultipleFeesToClassAction(
         return { ok: false, message: `Failed to fetch fee category details: ${categoriesError.message}`, assignmentsCreated: 0 };
     }
 
-    // Determine the key for checking existing assignments. If an installment is selected, it's part of the uniqueness criteria.
     let existingCheckQuery = supabaseAdmin
         .from('student_fee_payments')
         .select('student_id, fee_category_id, installment_id')
@@ -163,7 +163,16 @@ export async function assignMultipleFeesToClassAction(
     
     if (restOfInput.installment_id) {
         existingCheckQuery = existingCheckQuery.eq('installment_id', restOfInput.installment_id);
+    } else {
+        existingCheckQuery = existingCheckQuery.is('installment_id', null);
     }
+    
+    if (restOfInput.academic_year_id) {
+      existingCheckQuery = existingCheckQuery.eq('academic_year_id', restOfInput.academic_year_id);
+    } else {
+      existingCheckQuery = existingCheckQuery.is('academic_year_id', null);
+    }
+
 
     const { data: existingAssignments, error: existingCheckError } = await existingCheckQuery;
 
@@ -196,7 +205,7 @@ export async function assignMultipleFeesToClassAction(
     }
     
     if (feeAssignments.length === 0) {
-        return { ok: true, message: "No new fees to assign. All selected fees may already be assigned to these students for this installment.", assignmentsCreated: 0 };
+        return { ok: true, message: "No new fees to assign. All selected fees may already be assigned to these students for this period.", assignmentsCreated: 0 };
     }
 
     const { error: insertError, count } = await supabaseAdmin
@@ -508,15 +517,14 @@ export async function checkStudentFeeStatusAction(
   }
   const supabase = createSupabaseServerClient();
   try {
-    // A student is a defaulter if they have any fee that is not 'Paid' AND its due_date is in the past.
     const { data: overdueFees, error } = await supabase
       .from('student_fee_payments')
       .select('id, due_date')
       .eq('student_id', studentProfileId)
       .eq('school_id', schoolId)
       .in('status', ['Pending', 'Partially Paid', 'Overdue'])
-      .lt('due_date', new Date().toISOString()) // Check if due date is less than today
-      .limit(1); // We only need to know if at least one exists
+      .lt('due_date', new Date().toISOString()) 
+      .limit(1);
 
     if (error) {
       console.error("Error fetching student fee status:", error);
@@ -616,29 +624,44 @@ export async function verifyRazorpayPaymentAction(
     return { ok: false, message: "Payment verification failed: Invalid signature." };
   }
 
-  // Signature is valid, now fetch the order to get the fee IDs and amount.
   if (!razorpayInstance) {
     return { ok: false, message: "Razorpay is not configured on the server." };
   }
   
   try {
     const orderDetails = await razorpayInstance.orders.fetch(razorpay_order_id);
-    const paidAmount = orderDetails.amount_paid / 100; // Convert from paisa to rupees
+    const paidAmount = orderDetails.amount_paid / 100;
     const feePaymentIds: string[] = JSON.parse(orderDetails.notes?.fee_payment_ids || '[]');
     
     if (feePaymentIds.length === 0) {
       return { ok: false, message: "No fee records found in the payment order." };
     }
     
-    // For simplicity, we assume the full due amount for the selected fees was paid.
-    // A more complex system might distribute the paidAmount across the fees.
+    let amountToDistribute = paidAmount;
+    
     for (const feeId of feePaymentIds) {
-      await recordStudentFeePaymentAction({
-        fee_payment_id: feeId,
-        payment_amount: paidAmount / feePaymentIds.length, // Distribute payment equally for this simple case
-        payment_date: new Date().toISOString(),
-        school_id: schoolId
-      });
+        if(amountToDistribute <= 0) break;
+        
+        const {data: feeRecord, error: fetchError} = await supabaseAdmin.from('student_fee_payments').select('assigned_amount, paid_amount').eq('id', feeId).single();
+        if(fetchError || !feeRecord) {
+            console.error(`Could not find fee record ${feeId} during payment verification.`);
+            continue;
+        }
+
+        const dueOnThisRecord = feeRecord.assigned_amount - feeRecord.paid_amount;
+        const paymentForThisRecord = Math.min(dueOnThisRecord, amountToDistribute);
+
+        if (paymentForThisRecord > 0) {
+          const recordResult = await recordStudentFeePaymentAction({
+            fee_payment_id: feeId,
+            payment_amount: paymentForThisRecord,
+            payment_date: new Date().toISOString(),
+            school_id: schoolId
+          });
+          if(recordResult.ok) {
+            amountToDistribute -= paymentForThisRecord;
+          }
+        }
     }
 
     revalidatePath('/student/payment-history');
