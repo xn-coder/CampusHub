@@ -19,7 +19,7 @@ export async function getFeeTypesPageDataAction(schoolId: string): Promise<{
   const supabase = createSupabaseServerClient();
   try {
     const [feeTypesRes, assignedFeesRes, studentsRes, feeCategoriesRes, classesRes] = await Promise.all([
-        supabase.from('fee_types').select('*, fee_category:fee_category_id(name)').eq('school_id', schoolId),
+        supabase.from('fee_types').select('*, fee_category:fee_category_id(name)').eq('school_id', schoolId).eq('installment_type', 'installments'),
         supabase.from('student_fee_payments').select('*, student:student_id(name, email), fee_category:fee_category_id(name), fee_type:fee_type_id(name)').eq('school_id', schoolId).not('fee_type_id', 'is', null),
         supabase.from('students').select('*').eq('school_id', schoolId),
         supabase.from('fee_categories').select('*').eq('school_id', schoolId),
@@ -48,7 +48,7 @@ export async function getFeeTypesPageDataAction(schoolId: string): Promise<{
 export async function createFeeTypeAction(input: Omit<FeeType, 'id'>): Promise<{ ok: boolean; message: string; feeType?: FeeType }> {
   const supabase = createSupabaseServerClient();
   try {
-    const { data, error } = await supabase.from('fee_types').insert({ ...input, id: uuidv4() }).select().single();
+    const { data, error } = await supabase.from('fee_types').insert({ ...input, id: uuidv4(), installment_type: 'installments' }).select().single();
     if (error) throw error;
     revalidatePath('/admin/manage-fee-types');
     return { ok: true, message: 'Fee type created.', feeType: data };
@@ -60,7 +60,9 @@ export async function createFeeTypeAction(input: Omit<FeeType, 'id'>): Promise<{
 export async function updateFeeTypeAction(id: string, input: Partial<Omit<FeeType, 'id'>>): Promise<{ ok: boolean; message: string; feeType?: FeeType }> {
   const supabase = createSupabaseServerClient();
   try {
-    const { data, error } = await supabase.from('fee_types').update(input).eq('id', id).select().single();
+    // Ensure installment_type is not changed during update from this action
+    const { installment_type, ...updateData } = input;
+    const { data, error } = await supabase.from('fee_types').update(updateData).eq('id', id).select().single();
     if (error) throw error;
     revalidatePath('/admin/manage-fee-types');
     return { ok: true, message: 'Fee type updated.', feeType: data };

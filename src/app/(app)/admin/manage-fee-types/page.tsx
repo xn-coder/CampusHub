@@ -23,8 +23,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-
 
 async function fetchUserSchoolId(userId: string): Promise<string | null> {
   const { data: user, error } = await supabase.from('users').select('school_id').eq('id', userId).single();
@@ -51,7 +49,6 @@ export default function ManageFeeTypesPage() {
   const [editingFeeType, setEditingFeeType] = useState<FeeType | null>(null);
   const [name, setName] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [installmentType, setInstallmentType] = useState<FeeTypeInstallmentType>('installments');
   const [selectedFeeCategoryId, setSelectedFeeCategoryId] = useState('');
   const [isRefundable, setIsRefundable] = useState(false);
   const [description, setDescription] = useState('');
@@ -110,7 +107,6 @@ export default function ManageFeeTypesPage() {
     }
   }, [toast, fetchPageData]);
 
-  // When assignFeeTypeId changes, auto-fill the amount from the fee type definition
   useEffect(() => {
     if (assignFeeTypeId) {
         const selectedFeeType = feeTypes.find(ft => ft.id === assignFeeTypeId);
@@ -124,7 +120,7 @@ export default function ManageFeeTypesPage() {
 
 
   const resetForm = () => {
-    setName(''); setDisplayName(''); setInstallmentType('installments');
+    setName(''); setDisplayName('');
     setSelectedFeeCategoryId(''); setIsRefundable(false); setDescription('');
     setDefaultAmount('');
     setEditingFeeType(null);
@@ -135,7 +131,6 @@ export default function ManageFeeTypesPage() {
       setEditingFeeType(feeType);
       setName(feeType.name);
       setDisplayName(feeType.display_name);
-      setInstallmentType(feeType.installment_type);
       setSelectedFeeCategoryId(feeType.fee_category_id);
       setIsRefundable(feeType.is_refundable);
       setDescription(feeType.description || '');
@@ -157,7 +152,7 @@ export default function ManageFeeTypesPage() {
     const feeTypeData = { 
       name: name.trim(),
       display_name: displayName.trim(),
-      installment_type: installmentType,
+      installment_type: 'installments' as FeeTypeInstallmentType,
       fee_category_id: selectedFeeCategoryId,
       is_refundable: isRefundable,
       description: description.trim() || undefined, 
@@ -232,7 +227,7 @@ export default function ManageFeeTypesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Manage Fee Types"
-        description="Create reusable fee types (e.g., 'Late Fee', 'Annual Fee', 'Special Event Fee') and assign them to students."
+        description="Create reusable fee types for installments and general fees."
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" asChild><Link href="/admin/fees-management"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Fees</Link></Button>
@@ -251,12 +246,12 @@ export default function ManageFeeTypesPage() {
         <TabsContent value="plans">
             <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center"><FileBadge className="mr-2 h-5 w-5" />Created Fee Types</CardTitle>
+                  <CardTitle className="flex items-center"><FileBadge className="mr-2 h-5 w-5" />Regular Fee Types (For Installments)</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {isLoading ? <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>
-                  : feeTypes.length === 0 ? <p className="text-muted-foreground text-center py-4">No fee types have been created yet.</p>
-                  : <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Display Name</TableHead><TableHead>Category</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{feeTypes.map((ft) => (<TableRow key={ft.id}><TableCell className="font-medium">{ft.name}</TableCell><TableCell>{ft.display_name}</TableCell><TableCell>{ft.fee_category?.name || 'N/A'}</TableCell><TableCell className="capitalize">{ft.installment_type.replace('_', ' ')}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(ft as FeeType)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will permanently delete the fee type "{ft.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteFeeType(ft.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
+                  : feeTypes.length === 0 ? <p className="text-muted-foreground text-center py-4">No regular fee types have been created yet.</p>
+                  : <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Display Name</TableHead><TableHead>Category</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{feeTypes.map((ft) => (<TableRow key={ft.id}><TableCell className="font-medium">{ft.name}</TableCell><TableCell>{ft.display_name}</TableCell><TableCell>{ft.fee_category?.name || 'N/A'}</TableCell><TableCell className="text-right"><AlertDialog><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={isSubmitting}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenDialog(ft as FeeType)}><Edit2 className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem><AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem></AlertDialogTrigger></DropdownMenuContent></DropdownMenu><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone and will permanently delete the fee type "{ft.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteFeeType(ft.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}</TableBody></Table>
                   }
                 </CardContent>
               </Card>
@@ -349,13 +344,6 @@ export default function ManageFeeTypesPage() {
               <div>
                 <Label htmlFor="displayName">Display Name</Label>
                 <Input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g., Late Fee, Re-evaluation Fee" required disabled={isSubmitting} />
-              </div>
-               <div>
-                  <Label>Fee Classification</Label>
-                   <RadioGroup value={installmentType} onValueChange={(val) => setInstallmentType(val as FeeTypeInstallmentType)} className="flex gap-4 pt-2">
-                        <div className="flex items-center space-x-2"><RadioGroupItem value="installments" id="type-installments"/><Label htmlFor="type-installments" className="font-normal">Regular/Installment</Label></div>
-                        <div className="flex items-center space-x-2"><RadioGroupItem value="extra_charge" id="type-extra"/><Label htmlFor="type-extra" className="font-normal">Special/Extra Charge</Label></div>
-                    </RadioGroup>
               </div>
               <div>
                 <Label htmlFor="feeCategoryId">Fee Category</Label>
