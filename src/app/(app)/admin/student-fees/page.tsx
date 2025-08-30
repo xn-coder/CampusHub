@@ -11,10 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment } from '@/types';
-import { useState, useEffect, type FormEvent, useMemo } from 'react';
+import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
 import { PlusCircle, Trash2, Save, Receipt, DollarSign, Search, Loader2, FileDown, Edit2, FolderOpen } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO, isValid, isPast, isToday } from 'date-fns';
+import { format, parseISO, isValid, isPast, isToday, startOfYear } from 'date-fns';
 import {
   assignMultipleFeesToClassAction,
   recordStudentFeePaymentAction,
@@ -25,6 +25,7 @@ import {
 } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/lib/supabaseClient';
+import { useSearchParams } from 'next/navigation';
 
 type StudentFeeStatus = 'Paid' | 'Partially Paid' | 'Pending' | 'Overdue';
 
@@ -45,6 +46,7 @@ interface StudentFeeSummary {
 
 export default function AdminStudentFeesPage() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
   const [feePayments, setFeePayments] = useState<StudentFeePayment[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
@@ -115,8 +117,8 @@ export default function AdminStudentFeesPage() {
     }
     loadInitialData();
   }, [toast]);
-
-  async function refreshAllFeeData(schoolId: string) {
+  
+  const refreshAllFeeData = useCallback(async (schoolId: string) => {
     if (!schoolId) return;
     setIsLoadingPage(true); // Indicate loading for refresh
     const pageDataResult = await fetchStudentFeesPageDataAction(schoolId);
@@ -124,16 +126,35 @@ export default function AdminStudentFeesPage() {
       setFeePayments(pageDataResult.feePayments || []);
       setStudents(pageDataResult.students || []);
       setFeeCategories(pageDataResult.feeCategories || []);
-      setAcademicYears(pageDataResult.academicYears || []);
+      const fetchedYears = pageDataResult.academicYears || [];
+      setAcademicYears(fetchedYears);
       setClasses(pageDataResult.classes || []);
        // Also fetch installments for the dropdowns
       const { data: installmentsData } = await supabase.from('installments').select('*').eq('school_id', schoolId);
       setInstallments(installmentsData || []);
+
+      // Handle query params for filtering
+      const statusParam = searchParams.get('status');
+      if (statusParam) {
+        setSelectedStatusFilter(statusParam);
+      }
+      const periodParam = searchParams.get('period');
+      if (periodParam === 'this_year' && fetchedYears.length > 0) {
+        const currentYear = fetchedYears.find(year => {
+            const startDate = parseISO(year.start_date);
+            const endDate = parseISO(year.end_date);
+            const today = new Date();
+            return today >= startDate && today <= endDate;
+        }) || fetchedYears[0];
+        setSelectedAcademicYearFilter(currentYear.id);
+      }
+
     } else {
       toast({ title: "Error loading fee data", description: pageDataResult.message, variant: "destructive" });
     }
     setIsLoadingPage(false);
-  }
+  }, [toast, searchParams]);
+
 
   // Memoized getter functions
   const getStudentName = useMemo(() => (studentId: string) => students.find(s => s.id === studentId)?.name || 'N/A', [students]);
@@ -392,4 +413,3 @@ export default function AdminStudentFeesPage() {
   );
 }
 
-    

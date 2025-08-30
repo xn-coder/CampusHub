@@ -35,23 +35,7 @@ const feeConfigOptions: FeeManagementOption[] = [
     href: "/admin/fee-categories",
     isImplemented: true,
   },
-  {
-    id: "expense-categories",
-    title: "Manage Expense Categories",
-    description: "Define categories for school expenses.",
-    icon: Wallet,
-    href: "/admin/expense-categories",
-    isImplemented: true,
-  },
-  {
-    id: "installments",
-    title: "Manage Installments",
-    description: "Set up payment installment plans.",
-    icon: Layers,
-    href: "/admin/manage-installments",
-    isImplemented: true,
-  },
-  {
+   {
     id: "fee-types",
     title: "Manage Fee Types",
     description: "Create specific fee variations, like 'Late Fee' or 'Annual Fee'.",
@@ -60,11 +44,27 @@ const feeConfigOptions: FeeManagementOption[] = [
     isImplemented: true,
   },
   {
+    id: "special-fee-types",
+    title: "Manage Special Fee Types",
+    description: "Handle one-off charges like 'event fee' or 're-exam fee'.",
+    icon: FileBadge,
+    href: "/admin/manage-special-fee-types",
+    isImplemented: true,
+  },
+  {
     id: "fee-groups",
     title: "Manage Fee Type Groups",
     description: "Group fee types for easier assignment.",
     icon: Group,
     href: "/admin/manage-fee-groups",
+    isImplemented: true,
+  },
+  {
+    id: "installments",
+    title: "Manage Installments",
+    description: "Set up payment installment plans.",
+    icon: Layers,
+    href: "/admin/manage-installments",
     isImplemented: true,
   },
   {
@@ -173,11 +173,11 @@ export default function FeesManagementPage() {
                 <div className="col-span-1">
                     <h3 className="text-lg font-semibold text-red-600 mb-2">Dues Reports</h3>
                     <div className="flex flex-col space-y-2 text-sm">
-                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Yearly Head-Wise Dues Summary</Link>
+                        <Link href="/admin/student-fees?period=this_year&status=Unpaid" className="text-primary hover:underline">Yearly Head-Wise Dues Summary</Link>
                         <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Outstanding Due Summary</Link>
-                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Class Wise Outstanding Due Summary</Link>
+                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Class Wise Outstanding Dues</Link>
                         <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Complete Outstanding Dues</Link>
-                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">All Students Due Report</Link>
+                        <Link href="/admin/student-fees" className="text-primary hover:underline">All Students Fee Report</Link>
                         <span className="text-muted-foreground cursor-not-allowed">Consolidated Dues Report (Soon)</span>
                         <span className="text-muted-foreground cursor-not-allowed">Fee Student Follow Up (Soon)</span>
                     </div>
@@ -186,12 +186,12 @@ export default function FeesManagementPage() {
                 <div className="col-span-1">
                     <h3 className="text-lg font-semibold text-green-600 mb-2">Collection Reports</h3>
                     <div className="flex flex-col space-y-2 text-sm">
-                         <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Daily Collection Report</Link>
+                         <Link href="/admin/student-fees?period=today&status=Paid" className="text-primary hover:underline">Daily Collection Report</Link>
                          <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Date-wise Collection</Link>
                          <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Head Wise Collection</Link>
                          <span className="text-muted-foreground cursor-not-allowed">Deleted Fee Collection (Soon)</span>
                          <span className="text-muted-foreground cursor-not-allowed">Cashier-wise Collection (Soon)</span>
-                         <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Yearly Collection Report</Link>
+                         <Link href="/admin/student-fees?period=this_year&status=Paid" className="text-primary hover:underline">Yearly Collection Report</Link>
                          <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Consolidated Collection Report</Link>
                     </div>
                 </div>
