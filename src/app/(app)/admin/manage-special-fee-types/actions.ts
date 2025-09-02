@@ -22,7 +22,7 @@ export async function getSpecialFeeTypesPageDataAction(schoolId: string): Promis
   try {
     const [feeTypesRes, assignedFeesRes, studentsRes, feeCategoriesRes, classesRes] = await Promise.all([
         supabase.from('fee_types').select('*, fee_category:fee_category_id(name)').eq('school_id', schoolId).eq('installment_type', 'extra_charge'),
-        supabase.from('student_fee_payments').select('*, student:student_id(name, email), fee_category:fee_category_id(name), fee_type:fee_type_id(name)').eq('school_id', schoolId).not('fee_type_id', 'is', null),
+        supabase.from('student_fee_payments').select('*, student:student_id(name, email), fee_category:fee_category_id(name), fee_type:fee_type_id(name)').eq('school_id', schoolId).not('fee_type_id', 'is', null).eq('fee_type_id', 'in', '(select id from fee_types where installment_type = \'extra_charge\')'),
         supabase.from('students').select('*').eq('school_id', schoolId),
         supabase.from('fee_categories').select('*').eq('school_id', schoolId),
         supabase.from('classes').select('*').eq('school_id', schoolId),
