@@ -18,19 +18,29 @@ export async function getFeeTypesPageDataAction(schoolId: string): Promise<{
   if (!schoolId) return { ok: false, message: "School ID is required." };
   const supabase = createSupabaseServerClient();
   try {
-    const [feeTypesRes, assignedFeesRes, studentsRes, feeCategoriesRes, classesRes] = await Promise.all([
+    const [feeTypesRes, studentsRes, feeCategoriesRes, classesRes] = await Promise.all([
         supabase.from('fee_types').select('*, fee_category:fee_category_id(name)').eq('school_id', schoolId).eq('installment_type', 'installments'),
-        supabase.from('student_fee_payments').select('*, student:student_id(name, email), fee_category:fee_category_id(name), fee_type:fee_type_id(name)').eq('school_id', schoolId).not('fee_type_id', 'is', null).eq('fee_type_id', 'in', '(select id from fee_types where installment_type = \'installments\')'),
         supabase.from('students').select('*').eq('school_id', schoolId),
         supabase.from('fee_categories').select('*').eq('school_id', schoolId),
         supabase.from('classes').select('*').eq('school_id', schoolId).order('name'),
     ]);
     
     if (feeTypesRes.error) throw new Error(`Fee Types: ${feeTypesRes.error.message}`);
-    if (assignedFeesRes.error) throw new Error(`Assigned Fees: ${assignedFeesRes.error.message}`);
     if (studentsRes.error) throw new Error(`Students: ${studentsRes.error.message}`);
     if (feeCategoriesRes.error) throw new Error(`Fee Categories: ${feeCategoriesRes.error.message}`);
     if (classesRes.error) throw new Error(`Classes: ${classesRes.error.message}`);
+    
+    const installmentFeeTypeIds = (feeTypesRes.data || []).map(ft => ft.id);
+    let assignedFeesRes: any = { data: [], error: null };
+    if (installmentFeeTypeIds.length > 0) {
+        assignedFeesRes = await supabase.from('student_fee_payments')
+            .select('*, student:student_id(name, email), fee_category:fee_category_id(name), fee_type:fee_type_id(name)')
+            .eq('school_id', schoolId)
+            .in('fee_type_id', installmentFeeTypeIds);
+    }
+    
+    if (assignedFeesRes.error) throw new Error(`Assigned Fees: ${assignedFeesRes.error.message}`);
+
 
     return { 
         ok: true, 
