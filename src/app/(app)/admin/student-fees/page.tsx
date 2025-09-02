@@ -10,9 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment } from '@/types';
+import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession } from '@/types';
 import { DollarSign, FileText, Loader2, CreditCard, Download, FolderOpen, PlusCircle, Save, Edit2, Trash2 } from 'lucide-react';
-import { useState, useEffect, type FormEvent, useMemo, useCallback } from 'react';
+import { useState, useEffect, type FormEvent, useMemo, useCallback, Suspense } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid, isPast, isToday, startOfYear, subDays } from 'date-fns';
 import {
@@ -22,12 +22,13 @@ import {
   fetchAdminSchoolIdForFees,
   fetchStudentFeesPageDataAction,
   updateStudentFeeAction,
+  applyConcessionAction,
 } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/lib/supabaseClient';
 import { useSearchParams } from 'next/navigation';
 import { getConcessionsAction } from '@/app/(app)/admin/manage-concessions/actions';
-import { applyConcessionAction } from '@/app/(app)/admin/fees-management/actions';
+
 
 type StudentFeeStatus = 'Paid' | 'Partially Paid' | 'Pending' | 'Overdue';
 
@@ -45,7 +46,7 @@ interface StudentFeeSummary {
   summaryId: string;
 }
 
-export default function AdminStudentFeesPage() {
+function StudentFeesPageContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const [feePayments, setFeePayments] = useState<StudentFeePayment[]>([]);
@@ -54,7 +55,7 @@ export default function AdminStudentFeesPage() {
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [installments, setInstallments] = useState<Installment[]>([]);
-  const [concessions, setConcessions] = useState<any[]>([]);
+  const [concessions, setConcessions] = useState<Concession[]>([]);
 
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -94,34 +95,6 @@ export default function AdminStudentFeesPage() {
   const [selectedConcessionId, setSelectedConcessionId] = useState<string>('');
   const [concessionAmount, setConcessionAmount] = useState<number | ''>('');
   
-  useEffect(() => {
-    const adminUserId = localStorage.getItem('currentUserId');
-    setCurrentUserId(adminUserId);
-    if (!adminUserId) {
-      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
-      setIsLoadingPage(false);
-      return;
-    }
-    
-    setPaymentDate(format(new Date(), 'yyyy-MM-dd'));
-
-    async function loadInitialData() {
-      setIsLoadingPage(true);
-      const schoolId = await fetchAdminSchoolIdForFees(adminUserId);
-      setCurrentSchoolId(schoolId);
-
-      if (schoolId) {
-        await refreshAllFeeData(schoolId);
-        const concessionResult = await getConcessionsAction(schoolId);
-        if(concessionResult.ok) setConcessions(concessionResult.concessions || []);
-      } else {
-        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
-      }
-      setIsLoadingPage(false);
-    }
-    loadInitialData();
-  }, [toast]);
-  
   const refreshAllFeeData = useCallback(async (schoolId: string) => {
     if (!schoolId) return;
     setIsLoadingPage(true);
@@ -154,6 +127,35 @@ export default function AdminStudentFeesPage() {
     setIsLoadingPage(false);
   }, [toast, searchParams]);
 
+  useEffect(() => {
+    const adminUserId = localStorage.getItem('currentUserId');
+    setCurrentUserId(adminUserId);
+    if (!adminUserId) {
+      toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
+      setIsLoadingPage(false);
+      return;
+    }
+    
+    setPaymentDate(format(new Date(), 'yyyy-MM-dd'));
+
+    async function loadInitialData() {
+      setIsLoadingPage(true);
+      const schoolId = await fetchAdminSchoolIdForFees(adminUserId!);
+      setCurrentSchoolId(schoolId);
+
+      if (schoolId) {
+        await refreshAllFeeData(schoolId);
+        const concessionResult = await getConcessionsAction(schoolId);
+        if(concessionResult.ok) setConcessions(concessionResult.concessions || []);
+      } else {
+        toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
+      }
+      setIsLoadingPage(false);
+    }
+    loadInitialData();
+  }, [toast, refreshAllFeeData]);
+  
+
   const getStudentName = useMemo(() => (studentId: string) => students.find(s => s.id === studentId)?.name || 'N/A', [students]);
   const getStudentRollNumber = useMemo(() => (studentId: string) => students.find(s => s.id === studentId)?.roll_number || 'N/A', [students]);
   const getFeeCategoryName = useMemo(() => (feeCategoryId: string) => feeCategories.find(fc => fc.id === feeCategoryId)?.name || 'N/A', [feeCategories]);
@@ -173,7 +175,7 @@ export default function AdminStudentFeesPage() {
   const handleOpenEditFeeDialog = (feePayment: StudentFeePayment) => {
     setEditingFeePayment(feePayment); setEditAssignedAmount(feePayment.assigned_amount);
     setEditDueDate(feePayment.due_date ? format(parseISO(feePayment.due_date), 'yyyy-MM-dd') : '');
-    setEditNotes(feePayment.notes || ''); setEditInstallmentId(feePayment.installment_id || undefined);
+    setEditNotes(payment.notes || ''); setEditInstallmentId(payment.installment_id || undefined);
     setIsEditFeeDialogOpen(true);
   };
   const handleOpenDetailsDialog = (summary: StudentFeeSummary) => { setSelectedStudentSummary(summary); setIsDetailsDialogOpen(true); };
@@ -358,6 +360,17 @@ export default function AdminStudentFeesPage() {
     link.setAttribute("href", url); link.setAttribute("download", `student_fees_summary_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
+  
+    if (isLoadingPage) {
+    return (
+        <div className="flex flex-col gap-6">
+            <PageHeader title="Student Fee Records" />
+            <div className="flex justify-center items-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mr-2"/> <span>Loading fee records...</span>
+            </div>
+        </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -368,7 +381,7 @@ export default function AdminStudentFeesPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Fee Summary</CardTitle>
-          <CardDescription>A summarized overview of each student's fee status, grouped by academic year. Click "View & Manage" for details.</CardDescription>
+          <CardDescription>A summarized overview of each student's fee status, grouped by academic year. Click "View &amp; Manage" for details.</CardDescription>
         </CardHeader>
         <CardContent>
            <div className="mb-4 flex flex-col md:flex-row gap-4">
@@ -390,7 +403,7 @@ export default function AdminStudentFeesPage() {
           {isLoadingPage ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>) : !currentSchoolId ? (<p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>) : filteredSummaries.length === 0 ? (<p className="text-muted-foreground text-center py-4">{searchTerm || selectedAcademicYearFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}</p>) : (
             <Table>
               <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Academic Year</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredSummaries.map((summary) => (<TableRow key={summary.summaryId}><TableCell className="font-medium">{summary.studentName} <span className="font-mono text-xs text-muted-foreground">({getStudentRollNumber(summary.studentId)})</span></TableCell><TableCell>{getStudentClass(summary.studentClassId)}</TableCell><TableCell>{summary.academicYearName}</TableCell><TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</TableCell><TableCell><Badge variant={summary.status === 'Paid' ? 'default' : summary.status === 'Partially Paid' ? 'secondary' : summary.status === 'Overdue' ? 'destructive' : 'outline'}>{summary.status}</Badge></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}><FolderOpen className="mr-1 h-3 w-3" /> View & Manage</Button></TableCell></TableRow>))}</TableBody>
+              <TableBody>{filteredSummaries.map((summary) => (<TableRow key={summary.summaryId}><TableCell className="font-medium">{summary.studentName} <span className="font-mono text-xs text-muted-foreground">({getStudentRollNumber(summary.studentId)})</span></TableCell><TableCell>{getStudentClass(summary.studentClassId)}</TableCell><TableCell>{summary.academicYearName}</TableCell><TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</TableCell><TableCell><Badge variant={summary.status === 'Paid' ? 'default' : summary.status === 'Partially Paid' ? 'secondary' : summary.status === 'Overdue' ? 'destructive' : 'outline'}>{summary.status}</Badge></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}><FolderOpen className="mr-1 h-3 w-3" /> View &amp; Manage</Button></TableCell></TableRow>))}</TableBody>
             </Table>
           )}
         </CardContent>
@@ -449,4 +462,12 @@ export default function AdminStudentFeesPage() {
        </DialogContent></Dialog>
     </div>
   );
+}
+
+export default function StudentFeesPage() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <StudentFeesPageContent />
+        </Suspense>
+    );
 }
