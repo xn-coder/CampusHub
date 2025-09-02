@@ -24,7 +24,7 @@ export async function getSpecialFeeTypesPageDataAction(schoolId: string): Promis
         supabase.from('fee_types').select('*, fee_category:fee_category_id(name)').eq('school_id', schoolId).eq('installment_type', 'extra_charge'),
         supabase.from('students').select('*').eq('school_id', schoolId),
         supabase.from('fee_categories').select('*').eq('school_id', schoolId),
-        supabase.from('classes').select('*').eq('school_id', schoolId),
+        supabase.from('classes').select('*').eq('school_id', schoolId).order('name'),
     ]);
     
     if (feeTypesRes.error) throw new Error(`Fee Types: ${feeTypesRes.error.message}`);
@@ -97,7 +97,7 @@ export async function deleteSpecialFeeTypeAction(id: string, schoolId: string): 
 }
 
 
-export async function assignSpecialFeeTypeToStudentsAction(input: { student_ids: string[], fee_type_id: string, amount: number, due_date?: string, school_id: string }): Promise<{ ok: boolean; message: string; assignmentsCreated?: number }> {
+export async function assignSpecialFeeTypeToStudentsAction(input: { student_ids: string[], fee_type_id: string, amount: number, due_date?: string, school_id: string }): Promise<{ ok: boolean; message: string; assignmentsCreated?: number, assignmentsUpdated?: number }> {
     const { student_ids, fee_type_id, amount, due_date, school_id } = input;
     if (student_ids.length === 0 || !fee_type_id || amount <= 0) {
         return { ok: false, message: "Students, a fee type, and a valid amount must be selected." };
@@ -107,23 +107,59 @@ export async function assignSpecialFeeTypeToStudentsAction(input: { student_ids:
         const { data: feeType, error: feeTypeError } = await supabase.from('fee_types').select('fee_category_id').eq('id', fee_type_id).single();
         if (feeTypeError || !feeType) return { ok: false, message: "Fee type not found." };
         
-        const newAssignments = student_ids.map(studentId => ({
-            id: uuidv4(),
-            student_id: studentId,
-            fee_category_id: feeType.fee_category_id,
-            fee_type_id: fee_type_id,
-            assigned_amount: amount,
-            paid_amount: 0,
-            due_date: due_date,
-            status: 'Pending' as PaymentStatus,
-            school_id: school_id
-        }));
+        const { data: existingRecords, error: fetchError } = await supabase
+            .from('student_fee_payments')
+            .select('id, student_id')
+            .in('student_id', student_ids)
+            .eq('fee_type_id', fee_type_id);
+            
+        if (fetchError) throw new Error(`DB Error checking for existing fees: ${fetchError.message}`);
+
+        const existingStudentIds = new Set((existingRecords || []).map(r => r.student_id));
+        const studentsToInsert = student_ids.filter(id => !existingStudentIds.has(id));
+        const studentsToUpdate = student_ids.filter(id => existingStudentIds.has(id));
         
-        const { error: insertError, count } = await supabase.from('student_fee_payments').insert(newAssignments);
-        if (insertError) throw insertError;
+        let assignmentsCreated = 0;
+        let assignmentsUpdated = 0;
+        
+        // Batch insert new records
+        if (studentsToInsert.length > 0) {
+            const newAssignments = studentsToInsert.map(studentId => ({
+                id: uuidv4(),
+                student_id: studentId,
+                fee_category_id: feeType.fee_category_id,
+                fee_type_id: fee_type_id,
+                assigned_amount: amount,
+                paid_amount: 0,
+                due_date: due_date,
+                status: 'Pending' as PaymentStatus,
+                school_id: school_id
+            }));
+            const { count, error: insertError } = await supabase.from('student_fee_payments').insert(newAssignments);
+            if (insertError) throw new Error(`Failed to insert new assignments: ${insertError.message}`);
+            assignmentsCreated = count || 0;
+        }
+
+        // Batch update existing records
+        if (studentsToUpdate.length > 0) {
+            const { count, error: updateError } = await supabase
+                .from('student_fee_payments')
+                .update({ assigned_amount: amount, due_date: due_date })
+                .in('student_id', studentsToUpdate)
+                .eq('fee_type_id', fee_type_id);
+            if (updateError) throw new Error(`Failed to update existing assignments: ${updateError.message}`);
+            assignmentsUpdated = count || 0;
+        }
+        
         revalidatePath('/admin/manage-special-fee-types');
         revalidatePath('/admin/student-fees');
-        return { ok: true, message: `Special fee assigned to ${count} student(s).`, assignmentsCreated: count || 0 };
+        
+        return { 
+            ok: true, 
+            message: `Created ${assignmentsCreated} new fee records and updated ${assignmentsUpdated} existing ones.`, 
+            assignmentsCreated, 
+            assignmentsUpdated 
+        };
     } catch(e: any) {
         return { ok: false, message: `Failed to assign fees: ${e.message}`};
     }
