@@ -110,7 +110,12 @@ export default function SchoolLmsCoursesPage() {
 
       if(result.ok) {
         toast({title: "Success!", description: `Your school now has access to this course. You can assign it to users.`});
-        if (currentUserId) await fetchPageData(currentUserId);
+        // Optimistically update UI to avoid full refetch
+        setCourses(prevCourses => 
+            prevCourses.map(c => 
+                c.id === courseId ? { ...c, isEnrolled: true } : c
+            )
+        );
       } else {
         toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
       }
