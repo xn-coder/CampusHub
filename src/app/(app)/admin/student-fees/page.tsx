@@ -26,7 +26,7 @@ import {
     updatePaymentMethodAction,
     deletePaymentMethodAction,
     getPaymentMethodsAction
-} from './payment-method-actions';
+} from '../student-fees/payment-method-actions';
 import { useSearchParams } from 'next/navigation';
 import { Textarea } from '@/components/ui/textarea';
 import { getAdminSchoolIdAction } from '../academic-years/actions';
@@ -472,3 +472,5 @@ export default function StudentFeesPage() {
         </Suspense>
     );
 }
+
+    
