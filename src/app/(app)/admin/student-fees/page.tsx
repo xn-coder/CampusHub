@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -64,7 +65,6 @@ import { parse } from "path";
 
 // Define types for the fetched data
 type Class = { id: string; name: string; division: string };
-type Student = { id: string; name: string; roll_number?: string | null; class_id?: string | null };
 type FeeHistoryEntry = StudentFeePayment & { fee_category_name: string; installment_title?: string | null };
 
 
@@ -114,7 +114,7 @@ function StudentFeesPageContent() {
   const [studentFeeHistory, setStudentFeeHistory] = useState<FeeHistoryEntry[]>([]);
   const [selectedInstallmentId, setSelectedInstallmentId] = useState<string | undefined>(undefined);
 
-  const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
+  const [paymentAmount, setPaymentAmount] = useState<Record<string, number | ''>>({});
   const [paymentDate, setPaymentDate] = useState<string>('');
 
   const [editAssignedAmount, setEditAssignedAmount] = useState<number | ''>('');
@@ -202,7 +202,7 @@ function StudentFeesPageContent() {
   }, [installments]);
 
   const handleOpenAssignFeeDialog = () => { resetAssignFeeForm(); setIsAssignFeeDialogOpen(true); };
-  const handleOpenRecordPaymentDialog = (feePayment: StudentFeePayment) => { resetRecordPaymentForm(); setEditingFeePayment(feePayment); setIsRecordPaymentDialogOpen(true); };
+  const handleOpenRecordPaymentDialog = (feePayment: StudentFeePayment) => { setPaymentAmount({}); setEditingFeePayment(feePayment); setIsRecordPaymentDialogOpen(true); };
   const handleOpenEditFeeDialog = (feePayment: StudentFeePayment) => {
     setEditingFeePayment(feePayment); setEditAssignedAmount(feePayment.assigned_amount);
     setEditDueDate(feePayment.due_date ? format(parseISO(feePayment.due_date), 'yyyy-MM-dd') : '');
@@ -212,7 +212,7 @@ function StudentFeesPageContent() {
   const handleOpenDetailsDialog = (summary: StudentFeeSummary) => { setSelectedStudentSummary(summary); setIsDetailsDialogOpen(true); };
   const handleOpenConcessionDialog = (feePayment: StudentFeePayment) => {
     setConcessionFeePayment(feePayment); setSelectedConcessionId(''); setConcessionAmount('');
- setPaymentAmount(''); setPaymentNotes({}); // Clear payment form states
+    setPaymentAmount({}); 
     setIsConcessionDialogOpen(true);
   };
 
@@ -223,11 +223,7 @@ function StudentFeesPageContent() {
   const resetEditFeeForm = () => {
     setEditingFeePayment(null); setEditAssignedAmount(''); setEditDueDate(''); setEditNotes(''); setEditInstallmentId(undefined);
   };
-  const resetRecordPaymentForm = () => {
- setPaymentAmount({}); // Reset payment amounts for all fees
- setPaymentNotes({}); // Reset notes for all fees
-  };
-
+  
   const handleAssignFeeSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!currentSchoolId) { toast({ title: "Error", description: "School context is required.", variant: "destructive" }); return; }
@@ -270,28 +266,36 @@ function StudentFeesPageContent() {
     setIsSubmitting(false);
   };
 
-  const handleRecordPaymentSubmit = async (e: FormEvent) => {
-    // This handler is for the *dialog* payment form. The new record payment form below has its own handler.
-    // Keep this for compatibility with the old dialog, but the new form is preferred.
-    e.preventDefault();
-    if (!editingFeePayment || paymentAmount === '' || Number(paymentAmount) <= 0 || !currentSchoolId) {
-      toast({ title: "Error", description: "Valid payment amount and fee record context are required.", variant: "destructive" }); return;
+  const handleRecordPaymentSubmit = async (feePaymentId: string, amount: number, notes?: string) => {
+    if (!currentSchoolId) {
+      toast({ title: "Error", description: "School context is missing.", variant: "destructive" });
+      return;
     }
 
-    const amountToPay = Number(paymentAmount);
-    const amountDue = (editingFeePayment.assigned_amount ?? 0) - (editingFeePayment.paid_amount ?? 0);
-    if (amountToPay > amountDue + 0.001) { // Allow small floating point inaccuracies
-         toast({ title: "Error", description: `Payment amount cannot exceed the amount due (${amountDue.toFixed(2)})`, variant: "destructive" }); return;
+    const feeToPay = feePayments.find(fp => fp.id === feePaymentId);
+    if (!feeToPay) {
+      toast({ title: "Error", description: "Fee record not found.", variant: "destructive" });
+      return;
+    }
+
+    const amountDue = feeToPay.assigned_amount - feeToPay.paid_amount;
+    if (amount > amountDue + 0.001) {
+      toast({ title: "Error", description: `Payment amount cannot exceed the amount due (₹${amountDue.toFixed(2)})`, variant: "destructive" });
+      return;
     }
 
     setIsSubmitting(true);
     const result = await recordStudentFeePaymentAction({
-      fee_payment_id: editingFeePayment.id, payment_amount: amountToPay, payment_date: paymentDate, school_id: currentSchoolId,
+      fee_payment_id: feePaymentId,
+      payment_amount: amount,
+      payment_date: format(new Date(), 'yyyy-MM-dd'),
+      school_id: currentSchoolId,
+      notes: notes || undefined,
     });
+
     if (result.ok) {
       toast({ title: "Payment Recorded", description: result.message });
-      setIsRecordPaymentDialogOpen(false);
-      if (currentSchoolId) refreshAllFeeData(currentSchoolId);
+      if (currentSchoolId) await refreshAllFeeData(currentSchoolId);
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -488,15 +492,9 @@ function StudentFeesPageContent() {
                         classes={classes}
                         students={students} // Pass all students to the form
                         feeCategories={feeCategories}
+                        feePayments={feePayments}
                         installments={installments}
-                        onRecordPayment={async (feeId, amount, notes) => {
-                             if (!currentSchoolId) return;
-                             const result = await recordStudentFeePaymentAction({
-                                fee_payment_id: feeId, payment_amount: amount, payment_date: format(new Date(), 'yyyy-MM-dd'), school_id: currentSchoolId, notes: notes || undefined,
-                             });
-                             toast({ title: result.ok ? "Payment Recorded" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
-                            if (result.ok && currentSchoolId) refreshAllFeeData(currentSchoolId); // Refresh data after successful payment
-                        }}
+                        onRecordPayment={handleRecordPaymentSubmit}
                     />
                 </CardContent>
             </Card>
@@ -539,7 +537,19 @@ function StudentFeesPageContent() {
 
       <Dialog open={isRecordPaymentDialogOpen} onOpenChange={setIsRecordPaymentDialogOpen}><DialogContent className="sm:max-w-md">
  <DialogHeader><DialogTitle>Record Payment for {editingFeePayment ? getStudentName(editingFeePayment.student_id) : ''}</DialogTitle><DialogDescription>Fee: {editingFeePayment ? getFeeCategoryName(editingFeePayment.fee_category_id) : ''} <br/>Assigned: <span className="font-mono">₹</span>{editingFeePayment?.assigned_amount.toFixed(2)} | Paid: <span className="font-mono">₹</span>{editingFeePayment?.paid_amount.toFixed(2)} | Due: <span className="font-mono">₹</span>{((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)) > 0 ? ((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)).toFixed(2) : '0.00'}</DialogDescription></DialogHeader>
-          <form onSubmit={handleRecordPaymentSubmit}><div className="grid gap-4 py-4"><div><Label htmlFor="paymentAmount">Payment Amount (<span className="font-mono">₹</span>)</Label><Input id="paymentAmount" type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="Amount being paid" step="0.01" min="0.01" required disabled={isSubmitting}/></div><div><Label htmlFor="paymentDate">Payment Date</Label><Input id="paymentDate" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required disabled={isSubmitting}/></div></div>
+          <form onSubmit={(e) => {
+              e.preventDefault();
+              if (editingFeePayment) {
+                handleRecordPaymentSubmit(editingFeePayment.id, Number(paymentAmount[editingFeePayment.id] || 0));
+              }
+            }}>
+            <div className="grid gap-4 py-4">
+              <div>
+                <Label htmlFor="paymentAmount">Payment Amount (<span className="font-mono">₹</span>)</Label>
+                <Input id="paymentAmount" type="number" value={paymentAmount[editingFeePayment?.id || ''] || ''} onChange={(e) => setPaymentAmount(prev => ({ ...prev, [editingFeePayment!.id]: e.target.value === '' ? '' : parseFloat(e.target.value) }))} placeholder="Amount being paid" step="0.01" min="0.01" required disabled={isSubmitting}/>
+              </div>
+              <div><Label htmlFor="paymentDate">Payment Date</Label><Input id="paymentDate" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required disabled={isSubmitting}/></div>
+            </div>
             <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting || !editingFeePayment || (editingFeePayment.paid_amount >= editingFeePayment.assigned_amount)}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <DollarSign className="mr-2 h-4 w-4" /> } Record Payment</Button></DialogFooter>
           </form>
       </DialogContent></Dialog>
@@ -575,10 +585,6 @@ function BasicPaymentModal() {
                         <Label htmlFor="modal-payment-amount">Amount Paid</Label>
                         <Input id="modal-payment-amount" type="number" placeholder="Enter amount" />
                     </div>
-                    <div>
-                        <Label htmlFor="modal-payment-notes">Notes</Label>
-                        <Input id="modal-payment-notes" type="text" placeholder="Add notes (optional)" />
-                    </div>
                 </div>
                 <DialogFooter>
                     <Button variant="outline">Cancel</Button>
@@ -590,17 +596,16 @@ function BasicPaymentModal() {
 }
 
 
-function RecordPaymentForm({ classes, students, feePayments, feeCategories, installments, onRecordPayment, isSubmitting, schoolId }: {
-     classes: ClassData[], students: Student[], feeCategories: FeeCategory[], installments: Installment[], onRecordPayment: (feeId: string, amount: number, notes: string) => Promise<void>,
+function RecordPaymentForm({ classes, students, feePayments, feeCategories, installments, onRecordPayment }: {
+     classes: ClassData[], students: Student[], feePayments: StudentFeePayment[], feeCategories: FeeCategory[], installments: Installment[], onRecordPayment: (feeId: string, amount: number, notes: string) => Promise<void>,
 }) {
     const [selectedClassId, setSelectedClassId] = useState('');
     const [selectedStudentId, setSelectedStudentId] = useState('');
     const [paymentAmount, setPaymentAmount] = useState<Record<string, number | ''>>({});
     const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
-
-    // Keep track of which fee payment is currently being processed for payment
     const [payingFeeId, setPayingFeeId] = useState<string | null>(null);
-    const studentsInClass = useMemo(() => students.filter(s => s.class_id === selectedClassId), [students, selectedClassId]); // Use the students prop directly
+
+    const studentsInClass = useMemo(() => students.filter(s => s.class_id === selectedClassId), [students, selectedClassId]); 
     const pendingFeesForStudent = useMemo(() => {
         return feePayments.filter(fp => fp.student_id === selectedStudentId && fp.status !== 'Paid');
     }, [feePayments, selectedStudentId]);
@@ -611,21 +616,16 @@ function RecordPaymentForm({ classes, students, feePayments, feeCategories, inst
         }
         return feeCategories.find(fc => fc.id === fee.fee_category_id)?.name || 'Fee';
     };
-
-    // Use this state to disable the payment buttons while any payment is being processed
-    const [isAnyPaymentRecording, setIsAnyPaymentRecording] = useState(false);
-
+    
     const handlePayClick = async (fee: StudentFeePayment) => {
         const amount = paymentAmount[fee.id];
-        const notes = paymentNotes[fee.id] || undefined; // Pass undefined if notes are empty
-        if (typeof amount === 'number' && amount > 0 && !isAnyPaymentRecording) {
-            setIsAnyPaymentRecording(true);
+        const notes = paymentNotes[fee.id] || '';
+        if (typeof amount === 'number' && amount > 0 && !payingFeeId) {
             setPayingFeeId(fee.id);
             await onRecordPayment(fee.id, amount, notes);
-            setPaymentAmount(prev => ({...prev, [fee.id]: ''})); // Clear amount after successful payment
+            setPaymentAmount(prev => ({...prev, [fee.id]: ''}));
             setPaymentNotes(prev => ({...prev, [fee.id]: ''}));
-             setPayingFeeId(null); // Reset after payment is processed
-            setIsRecordingPayment(false);
+            setPayingFeeId(null);
         }
     };
 
@@ -652,57 +652,56 @@ function RecordPaymentForm({ classes, students, feePayments, feeCategories, inst
                 <div className="border-t pt-4">
                     <h3 className="font-semibold mb-2">Pending Fees for {students.find(s=>s.id === selectedStudentId)?.name}</h3>
                     {pendingFeesForStudent.length > 0 ? (
-                        <Table className="min-w-full divide-y divide-gray-200">
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Fee Type</TableHead>
-                                    <TableHead className="text-right">Amount Due</TableHead>
-                                    <TableHead>Notes (Optional)</TableHead>
-                                    <TableHead className="w-[150px]">Payment Amount</TableHead>
-                                    <TableHead className="text-right">Action</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {pendingFeesForStudent.map(fee => {
-                                    const due = fee.assigned_amount - fee.paid_amount;
-                                    return (
-                                        <TableRow key={fee.id}>
-                                            <TableCell>{getFeeName(fee)}</TableCell>
-                                            <TableCell className="text-right font-mono">₹{due.toFixed(2)}</TableCell>
-                                            <TableCell className="w-[250px]">
-                                                <Input
-                                                    type="text"
-                                                    placeholder="Payment notes"
-                                                    value={paymentNotes[fee.id] || ''}
-                                                    onChange={e => setPaymentNotes(prev => ({...prev, [fee.id]: e.target.value}))}
-                                                />
-                                            </TableCell>
-                                            <TableCell>
-                                                <Input
-                                                    type="number"
-                                                    placeholder={`Max: ${due.toFixed(2)}`}
-                                                    max={due}
-                                                    step="0.01"
-                                                    min="0.01"
-                                                    value={paymentAmount[fee.id] || ''}
-                                                    onChange={e => setPaymentAmount(prev => ({...prev, [fee.id]: Number(e.target.value)}))}
-                                                    disabled={isRecordingPayment}
-                                                />
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <Button
-                                                    onClick={() => handlePayClick(fee)}
-                                                    size="sm"
-                                                    disabled={isAnyPaymentRecording || !paymentAmount[fee.id] || Number(paymentAmount[fee.id]) <= 0}
-                                                >
-                                                    {payingFeeId === fee.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null} Record Pay
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    )
-                                })}
-                            </TableBody>
-                        </Table>
+                        <div className="space-y-4">
+                            {pendingFeesForStudent.map(fee => {
+                                const due = fee.assigned_amount - fee.paid_amount;
+                                return (
+                                    <Card key={fee.id} className="bg-muted/50">
+                                      <CardHeader className="p-4">
+                                        <CardTitle className="text-base">{getFeeName(fee)}</CardTitle>
+                                        <CardDescription>Amount Due: <span className="font-mono font-semibold text-foreground">₹{due.toFixed(2)}</span></CardDescription>
+                                      </CardHeader>
+                                      <CardContent className="p-4 pt-0 grid sm:grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                          <Label htmlFor={`amount-${fee.id}`}>Payment Amount</Label>
+                                          <Input
+                                              id={`amount-${fee.id}`}
+                                              type="number"
+                                              placeholder={`Max: ${due.toFixed(2)}`}
+                                              max={due}
+                                              step="0.01"
+                                              min="0.01"
+                                              value={paymentAmount[fee.id] || ''}
+                                              onChange={e => setPaymentAmount(prev => ({...prev, [fee.id]: e.target.value === '' ? '' : parseFloat(e.target.value)}))}
+                                              disabled={!!payingFeeId}
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label htmlFor={`notes-${fee.id}`}>Notes (Optional)</Label>
+                                          <Input
+                                              id={`notes-${fee.id}`}
+                                              type="text"
+                                              placeholder="e.g., transaction ID"
+                                              value={paymentNotes[fee.id] || ''}
+                                              onChange={e => setPaymentNotes(prev => ({...prev, [fee.id]: e.target.value}))}
+                                              disabled={!!payingFeeId}
+                                          />
+                                        </div>
+                                      </CardContent>
+                                      <CardFooter className="p-4 pt-0">
+                                         <Button
+                                            onClick={() => handlePayClick(fee)}
+                                            size="sm"
+                                            disabled={!!payingFeeId || !paymentAmount[fee.id] || Number(paymentAmount[fee.id]) <= 0}
+                                        >
+                                            {payingFeeId === fee.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4" />} 
+                                            Record Payment for this Fee
+                                        </Button>
+                                      </CardFooter>
+                                    </Card>
+                                )
+                            })}
+                        </div>
                     ) : <p className="text-muted-foreground text-center py-4">This student has no pending fees.</p>}
                 </div>
             )}
@@ -717,4 +716,3 @@ export default function StudentFeesPage() {
         </Suspense>
     );
 }
-
