@@ -23,6 +23,9 @@ import {
 import { supabase } from '@/lib/supabaseClient';
 import { useSearchParams } from 'next/navigation';
 
+const PAYMENT_METHODS = [
+    "Cash", "Cheque", "Online", "Bank Transfer", "UPI", "Credit Card", "Debit Card"
+];
 
 function StudentFeesPageContent() {
   const { toast } = useToast();
@@ -96,10 +99,7 @@ function StudentFeesPageContent() {
                         </DialogDescription>
                     </DialogHeader>
                     <ul className="list-disc list-inside space-y-2 py-4">
-                        <li>Cash</li>
-                        <li>Cheque</li>
-                        <li>Online</li>
-                        <li>Bank Transfer</li>
+                        {PAYMENT_METHODS.map(method => <li key={method}>{method}</li>)}
                     </ul>
                     <DialogFooter>
                         <DialogClose asChild><Button>Close</Button></DialogClose>
@@ -284,7 +284,11 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
                                                     <TableCell>
                                                         <Select value={paymentModes[fee.id] || 'Cash'} onValueChange={val => setPaymentModes(prev => ({...prev, [fee.id]: val}))} disabled={payingFeeId === fee.id}>
                                                             <SelectTrigger><SelectValue /></SelectTrigger>
-                                                            <SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Cheque">Cheque</SelectItem><SelectItem value="Online">Online</SelectItem><SelectItem value="Bank Transfer">Bank Transfer</SelectItem></SelectContent>
+                                                            <SelectContent>
+                                                                {PAYMENT_METHODS.map(method => (
+                                                                    <SelectItem key={method} value={method}>{method}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
                                                         </Select>
                                                     </TableCell>
                                                      <TableCell>
