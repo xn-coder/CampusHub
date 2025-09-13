@@ -8,11 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession } from '@/types';
-import { DollarSign, FileText, Loader2, CreditCard, Download, FolderOpen, PlusCircle, Save, Edit2, Trash2 } from 'lucide-react';
+import { DollarSign, FileText, Loader2, CreditCard, Download, FolderOpen, PlusCircle, Save, Edit2, Trash2, Receipt } from 'lucide-react';
 import { useState, useEffect, type FormEvent, useMemo, useCallback, Suspense, useRef } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid, isPast, isToday, startOfYear, subDays } from 'date-fns';
@@ -61,7 +61,6 @@ import {
   getStudentsByClass,
   getStudentFeeHistory,
 } from "./actions";
-import { parse } from "path";
 
 // Define types for the fetched data
 type Class = { id: string; name: string; division: string };
@@ -290,7 +289,6 @@ function StudentFeesPageContent() {
       payment_amount: amount,
       payment_date: format(new Date(), 'yyyy-MM-dd'),
       school_id: currentSchoolId,
-      notes: notes || undefined,
     });
 
     if (result.ok) {
