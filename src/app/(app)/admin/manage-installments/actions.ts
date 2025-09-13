@@ -165,3 +165,69 @@ export async function assignFeesToInstallmentAction(
         return { ok: false, message: `Failed to create assignments: ${e.message}`, assignmentsCreated: 0};
     }
 }
+
+interface UpdateStudentFeeInput {
+  assigned_amount: number;
+  due_date?: string;
+  notes?: string;
+  installment_id?: string | null;
+}
+
+export async function updateStudentFeeAction(
+  id: string,
+  schoolId: string,
+  updates: UpdateStudentFeeInput
+): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  
+  if (!id || !schoolId) {
+    return { ok: false, message: "Fee Payment ID and School ID are required." };
+  }
+  
+  const { error } = await supabaseAdmin
+    .from('student_fee_payments')
+    .update(updates)
+    .eq('id', id)
+    .eq('school_id', schoolId);
+
+  if (error) {
+    console.error("Error updating student fee assignment:", error);
+    return { ok: false, message: `Failed to update fee assignment: ${error.message}` };
+  }
+
+  revalidatePath('/admin/manage-installments');
+  return { ok: true, message: 'Fee assignment updated successfully.' };
+}
+
+
+export async function deleteStudentFeeAssignmentAction(
+  feePaymentId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  const { data: feePayment, error: fetchError } = await supabaseAdmin
+    .from('student_fee_payments')
+    .select('paid_amount')
+    .eq('id', feePaymentId)
+    .eq('school_id', schoolId)
+    .single();
+
+  if (fetchError) {
+    return { ok: false, message: `Error checking fee: ${fetchError.message}` };
+  }
+  if (feePayment && feePayment.paid_amount > 0) {
+    return { ok: false, message: "Cannot delete: This fee has payments recorded." };
+  }
+
+  const { error } = await supabaseAdmin
+    .from('student_fee_payments')
+    .delete()
+    .eq('id', feePaymentId)
+    .eq('school_id', schoolId);
+
+  if (error) {
+    return { ok: false, message: `Failed to delete fee: ${error.message}` };
+  }
+  revalidatePath('/admin/manage-installments');
+  return { ok: true, message: 'Fee assignment deleted successfully.' };
+}

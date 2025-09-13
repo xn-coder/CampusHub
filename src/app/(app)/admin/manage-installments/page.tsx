@@ -19,7 +19,9 @@ import {
     updateInstallmentAction, 
     deleteInstallmentAction, 
     assignFeesToInstallmentAction,
-    getManageInstallmentsPageData
+    getManageInstallmentsPageData,
+    updateStudentFeeAction,
+    deleteStudentFeeAssignmentAction
 } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -58,6 +60,12 @@ export default function ManageInstallmentsPage() {
   const [description, setDescription] = useState('');
   const [lastDate, setLastDate] = useState('');
   
+  // Edit Assignment Dialog
+  const [isEditAssignmentOpen, setIsEditAssignmentOpen] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState<StudentFeePayment | null>(null);
+  const [editAmount, setEditAmount] = useState<number | ''>('');
+  const [editDueDate, setEditDueDate] = useState('');
+
   // States for Assign Group tab
   const [assignTargetType, setAssignTargetType] = useState<'class' | 'individual'>('class');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
@@ -222,6 +230,47 @@ export default function ManageInstallmentsPage() {
     setIsSubmitting(false);
   }
 
+  const handleOpenEditAssignmentDialog = (fee: StudentFeePayment) => {
+    setEditingAssignment(fee);
+    setEditAmount(fee.assigned_amount);
+    setEditDueDate(fee.due_date ? format(parseISO(fee.due_date), 'yyyy-MM-dd') : '');
+    setIsEditAssignmentOpen(true);
+  };
+  
+  const handleEditAssignmentSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingAssignment || editAmount === '' || !currentSchoolId) {
+        toast({title: "Error", description: "All fields are required.", variant: "destructive"});
+        return;
+    }
+    setIsSubmitting(true);
+    const result = await updateStudentFeeAction(editingAssignment.id, currentSchoolId, {
+        assigned_amount: Number(editAmount),
+        due_date: editDueDate || undefined,
+    });
+    if (result.ok) {
+        toast({title: "Success", description: result.message});
+        setIsEditAssignmentOpen(false);
+        if (currentSchoolId) fetchPageData(currentSchoolId);
+    } else {
+        toast({title: "Error", description: result.message, variant: "destructive"});
+    }
+    setIsSubmitting(false);
+  }
+  
+  const handleDeleteFeeAssignment = async (feePaymentId: string) => {
+    if (!currentSchoolId) return;
+    setIsSubmitting(true);
+    const result = await deleteStudentFeeAssignmentAction(feePaymentId, currentSchoolId);
+    if (result.ok) {
+      toast({ title: "Assignment Deleted", description: result.message, variant: "destructive" });
+      if (currentSchoolId) fetchPageData(currentSchoolId);
+    } else {
+      toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
+    }
+    setIsSubmitting(false);
+  };
+
   const formatDate = (dateString?: string | null) => {
     if(!dateString) return 'N/A';
     try {
@@ -315,7 +364,28 @@ export default function ManageInstallmentsPage() {
                  <CardHeader><CardTitle className="flex items-center">Assigned Installments Log</CardTitle></CardHeader>
                 <CardContent>
                      {isLoading ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>) : assignedFees.length === 0 ? (<p className="text-muted-foreground text-center py-4">No fees have been assigned to an installment plan yet.</p>) : (
-                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Installment</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{assignedFees.map(fee => (<TableRow key={fee.id}><TableCell>{fee.student?.name || 'N/A'}</TableCell><TableCell>{fee.fee_category?.name || 'N/A'}</TableCell><TableCell>{fee.installment?.title || 'N/A'}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell></TableRow>))}</TableBody></Table>
+                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Installment</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{assignedFees.map(fee => (<TableRow key={fee.id}><TableCell>{fee.student?.name || 'N/A'}</TableCell><TableCell>{fee.fee_category?.name || 'N/A'}</TableCell><TableCell>{fee.installment?.title || 'N/A'}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell>
+                        <TableCell className="text-right space-x-1">
+                          <Button size="sm" variant="ghost" onClick={() => handleOpenEditAssignmentDialog(fee)}><Edit2 className="h-4 w-4"/></Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="ghost" className="text-destructive"><Trash2 className="h-4 w-4"/></Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone and will permanently delete the fee assignment for {fee.student.name}.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteFeeAssignment(fee.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </TableCell>
+                        </TableRow>))}</TableBody></Table>
                      )}
                 </CardContent>
             </Card>
@@ -332,6 +402,26 @@ export default function ManageInstallmentsPage() {
               <div className="space-y-1"><Label htmlFor="description">Description (Optional)</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this installment period" disabled={isSubmitting}/></div>
             </div>
             <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingInstallment ? 'Save Changes' : 'Create Installment'}</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditAssignmentOpen} onOpenChange={setIsEditAssignmentOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Assigned Fee</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditAssignmentSubmit}>
+            <div className="space-y-4 py-4">
+              <div><Label htmlFor="editAmount">Assigned Amount (₹)</Label><Input id="editAmount" type="number" value={editAmount} onChange={e => setEditAmount(Number(e.target.value))} required disabled={isSubmitting}/></div>
+              <div><Label htmlFor="editDueDate">Due Date</Label><Input id="editDueDate" type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} disabled={isSubmitting}/></div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save
+              </Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
