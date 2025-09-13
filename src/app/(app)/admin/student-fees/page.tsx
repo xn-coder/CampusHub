@@ -379,7 +379,7 @@ function PaymentMethodsManager({ schoolId }: { schoolId: string }) {
                     <DialogTitle>Manage Payment Methods</DialogTitle>
                     <DialogDescription>Add, edit, or remove accepted payment methods for your school.</DialogDescription>
                 </DialogHeader>
-                <div className="grid md:grid-cols-2 gap-6 py-4">
+                <div className="grid md:grid-cols-2 gap-6 py-4 max-h-[60vh] overflow-y-auto px-1">
                     <div className="space-y-4">
                         <h3 className="font-semibold">{isEditing ? 'Edit Method' : 'Add New Method'}</h3>
                         <form onSubmit={handleFormSubmit} className="space-y-3">
