@@ -212,8 +212,13 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
 
     const getFeeTitle = (payment: StudentFeePayment) => {
         if (!payment) return 'N/A';
-        if ((payment as any).installment?.title) return `Installment: ${(payment as any).installment.title}`;
-        return (payment as any).fee_category?.name || 'N/A';
+        const feeType = (payment as any).fee_type;
+        const installment = (payment as any).installment;
+        const category = (payment as any).fee_category;
+
+        if (installment?.title) return `Installment: ${installment.title}`;
+        if (feeType?.display_name) return `Special Fee: ${feeType.display_name}`;
+        return category?.name || 'N/A';
     };
     
     const formatDateSafe = (dateString?: string | null) => {
