@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession } from '@/types';
-import { DollarSign, Loader2, CreditCard, FolderOpen, Save, Edit2, Trash2, ReceiptText, PlusCircle, FileDown, Receipt } from 'lucide-react';
+import { DollarSign, Loader2, CreditCard, FolderOpen, Save, Edit2, Trash2, PlusCircle, FileDown, Receipt } from 'lucide-react';
 import { useState, useEffect, type FormEvent, useMemo, useCallback, Suspense, useRef } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid, isPast, isToday, startOfYear, subDays } from 'date-fns';
@@ -153,7 +153,6 @@ function StudentFeesPageContent() {
     setConcessionFeePayment(feePayment); setSelectedConcessionId(''); setConcessionAmount('');
     setIsConcessionDialogOpen(true);
   };
-  const handleOpenAssignFeeDialog = () => setIsAssignFeeDialogOpen(true);
 
   const resetEditFeeForm = () => {
     setEditingFeePayment(null); setEditAssignedAmount(''); setEditDueDate(''); setEditNotes(''); setEditInstallmentId(undefined);
@@ -313,7 +312,6 @@ function StudentFeesPageContent() {
       <div className="flex flex-col gap-6 min-h-screen">
         <PageHeader
           title="Student Fee Records" description="Assign fees to students, record payments, and track financial records."
-          actions={<Button onClick={handleOpenAssignFeeDialog} disabled={!currentSchoolId || isSubmitting || isLoadingPage}><Receipt className="mr-2 h-4 w-4" /> Assign New Fee</Button>}
         />
   
         {!currentSchoolId ? (
@@ -353,8 +351,8 @@ function StudentFeesPageContent() {
                       <SelectTrigger className="w-full md:w-[180px]"><SelectValue placeholder="Filter by status" /></SelectTrigger>
                       <SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Partially Paid">Partially Paid</SelectItem><SelectItem value="Overdue">Overdue</SelectItem></SelectContent>
                   </Select>
-                  <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredSummaries.length === 0} className="md:ml-auto"><FileDown className="mr-2 h-4 w-4" />Download Summary</Button>
-                 </div>
+                    <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredSummaries.length === 0} className="md:ml-auto"><FileDown className="mr-2 h-4 w-4" />Download Summary</Button>
+                   </div>
                 {isLoadingPage ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>) : !currentSchoolId ? (<p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>) : filteredSummaries.length === 0 ? (<p className="text-muted-foreground text-center py-4">{searchTerm || selectedAcademicYearFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}</p>) : (
                   <Table className="min-w-full divide-y divide-gray-200">
                     <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Academic Year</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
@@ -414,7 +412,6 @@ function StudentFeesPageContent() {
 function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
     const [isFetchingStudents, setIsFetchingStudents] = useState(false);
     
     const [classes, setClasses] = useState<ClassData[]>([]);
@@ -434,8 +431,12 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
             if (!schoolId) return;
             setIsLoading(true);
             const { data: classesData, error } = await supabase.from('classes').select('*').eq('school_id', schoolId);
-            if (error) toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
-            else setClasses(classesData || []);
+            if (error) {
+                toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
+                setClasses([]);
+            } else {
+                setClasses(classesData || []);
+            }
             setIsLoading(false);
         }
         loadClasses();
