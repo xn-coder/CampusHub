@@ -145,8 +145,10 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
     }, [schoolId, toast]);
 
     useEffect(() => {
-        loadPageData();
-    }, [loadPageData]);
+        if(schoolId) {
+            loadPageData();
+        }
+    }, [loadPageData, schoolId]);
 
 
     useEffect(() => {
@@ -437,5 +439,3 @@ export default function StudentFeesPage() {
         </Suspense>
     );
 }
-
-    
