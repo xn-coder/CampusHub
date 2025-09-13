@@ -1,10 +1,11 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { Concession, StudentFeePayment, Student, FeeCategory, ClassData } from '@/types';
+import type { Concession, StudentFeePayment, Student, FeeCategory, ClassData, PaymentStatus } from '@/types';
 
 
 export async function getManageConcessionsPageData(schoolId: string): Promise<{
@@ -20,7 +21,7 @@ export async function getManageConcessionsPageData(schoolId: string): Promise<{
     try {
         const [concessionsRes, assignedConcessionsRes, studentsRes, classesRes] = await Promise.all([
             supabase.from('concessions').select('*').eq('school_id', schoolId),
-            supabase.from('student_fee_concessions').select('*, student:student_id(name), fee_payment:student_fee_payment_id(fee_category:fee_category_id(name)), concession:concession_id(title)').eq('school_id', schoolId),
+            supabase.from('student_fee_concessions').select('*, student:student_id(name), fee_payment:student_fee_payment_id(*, fee_category:fee_category_id(name)), concession:concession_id(title)').eq('school_id', schoolId),
             supabase.from('students').select('id, name, class_id').eq('school_id', schoolId),
             supabase.from('classes').select('id, name, division').eq('school_id', schoolId),
         ]);
@@ -46,7 +47,7 @@ export async function getManageConcessionsPageData(schoolId: string): Promise<{
 export async function createConcessionAction(input: Omit<Concession, 'id'>): Promise<{ ok: boolean; message: string; concession?: Concession }> {
   const supabase = createSupabaseServerClient();
   try {
-    const { error, data } = await supabase.from('concessions').insert({ ...input, id: uuidv4() }).select().single();
+    const { data, error } = await supabase.from('concessions').insert({ ...input, id: uuidv4() }).select().single();
     if (error) throw error;
     revalidatePath('/admin/manage-concessions');
     return { ok: true, message: 'Concession created successfully.', concession: data };
@@ -58,7 +59,7 @@ export async function createConcessionAction(input: Omit<Concession, 'id'>): Pro
 export async function updateConcessionAction(id: string, input: Partial<Omit<Concession, 'id'>>): Promise<{ ok: boolean; message: string; concession?: Concession }> {
   const supabase = createSupabaseServerClient();
   try {
-    const { error, data } = await supabase.from('concessions').update(input).eq('id', id).select().single();
+    const { data, error } = await supabase.from('concessions').update(input).eq('id', id).select().single();
     if (error) throw error;
     revalidatePath('/admin/manage-concessions');
     return { ok: true, message: 'Concession updated successfully.', concession: data };
@@ -146,4 +147,75 @@ export async function assignConcessionAction(input: AssignConcessionInput): Prom
         // Here you would rollback the transaction if it failed
         return { ok: false, message: e.message || "Failed to apply concession."};
     }
+}
+
+
+export async function deleteStudentFeeAssignmentAction(
+  feePaymentId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  const { data: feePayment, error: fetchError } = await supabaseAdmin
+    .from('student_fee_payments')
+    .select('paid_amount')
+    .eq('id', feePaymentId)
+    .eq('school_id', schoolId)
+    .single();
+
+  if (fetchError) {
+    return { ok: false, message: `Error checking fee: ${fetchError.message}` };
+  }
+  if (feePayment && feePayment.paid_amount > 0) {
+    return { ok: false, message: "Cannot delete: This fee has payments recorded." };
+  }
+
+  // Also delete from student_fee_concessions if it exists
+  await supabaseAdmin.from('student_fee_concessions').delete().eq('student_fee_payment_id', feePaymentId);
+
+  const { error } = await supabaseAdmin
+    .from('student_fee_payments')
+    .delete()
+    .eq('id', feePaymentId)
+    .eq('school_id', schoolId);
+
+  if (error) {
+    return { ok: false, message: `Failed to delete fee: ${error.message}` };
+  }
+  revalidatePath('/admin/manage-concessions');
+  revalidatePath('/admin/student-fees');
+  return { ok: true, message: 'Fee assignment and any associated concession records deleted successfully.' };
+}
+
+
+interface UpdateStudentFeeInput {
+  assigned_amount?: number;
+  due_date?: string;
+  notes?: string;
+}
+
+export async function updateStudentFeeAction(
+  id: string,
+  schoolId: string,
+  updates: UpdateStudentFeeInput
+): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  
+  if (!id || !schoolId) {
+    return { ok: false, message: "Fee Payment ID and School ID are required." };
+  }
+  
+  const { error } = await supabaseAdmin
+    .from('student_fee_payments')
+    .update(updates)
+    .eq('id', id)
+    .eq('school_id', schoolId);
+
+  if (error) {
+    console.error("Error updating student fee assignment:", error);
+    return { ok: false, message: `Failed to update fee assignment: ${error.message}` };
+  }
+
+  revalidatePath('/admin/manage-concessions');
+  revalidatePath('/admin/student-fees');
+  return { ok: true, message: 'Fee assignment updated successfully.' };
 }

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -14,7 +15,7 @@ import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react
 import { PlusCircle, Edit2, Trash2, Save, BadgePercent, Loader2, MoreHorizontal, ArrowLeft, Receipt } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { createConcessionAction, updateConcessionAction, deleteConcessionAction, getManageConcessionsPageData, assignConcessionAction, getFeesForStudentsAction } from './actions';
+import { createConcessionAction, updateConcessionAction, deleteConcessionAction, getManageConcessionsPageData, assignConcessionAction, getFeesForStudentsAction, updateStudentFeeAction, deleteStudentFeeAssignmentAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import Link from 'next/link';
@@ -47,6 +48,13 @@ export default function ManageConcessionsPage() {
   const [editingConcession, setEditingConcession] = useState<Concession | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  
+  // Edit Assignment Dialog
+  const [isEditAssignmentOpen, setIsEditAssignmentOpen] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState<StudentFeePayment | null>(null);
+  const [editAmount, setEditAmount] = useState<number | ''>('');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editNotes, setEditNotes] = useState('');
   
   // States for Assign Concession tab
   const [assignTargetType, setAssignTargetType] = useState<'individual' | 'class'>('individual');
@@ -192,6 +200,52 @@ export default function ManageConcessionsPage() {
     setIsSubmitting(false);
   }
 
+  const handleOpenEditAssignmentDialog = (fee: StudentFeePayment) => {
+    setEditingAssignment(fee);
+    setEditAmount(fee.assigned_amount);
+    setEditDueDate(fee.due_date ? format(parseISO(fee.due_date), 'yyyy-MM-dd') : '');
+    setEditNotes(fee.notes || '');
+    setIsEditAssignmentOpen(true);
+  };
+  
+  const handleEditAssignmentSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingAssignment || editAmount === '' || !currentSchoolId) {
+        toast({title: "Error", description: "All fields are required.", variant: "destructive"});
+        return;
+    }
+    setIsSubmitting(true);
+    const result = await updateStudentFeeAction(editingAssignment.id, currentSchoolId, {
+        assigned_amount: Number(editAmount),
+        due_date: editDueDate || undefined,
+        notes: editNotes,
+    });
+    if (result.ok) {
+        toast({title: "Success", description: result.message});
+        setIsEditAssignmentOpen(false);
+        if (currentSchoolId) fetchPageData(currentSchoolId);
+    } else {
+        toast({title: "Error", description: result.message, variant: "destructive"});
+    }
+    setIsSubmitting(false);
+  }
+
+   const handleDeleteFeeAssignment = async (feePaymentId: string) => {
+    if (!currentSchoolId) return;
+    if (confirm("Are you sure you want to delete this fee assignment and its concession record?")) {
+        setIsSubmitting(true);
+        const result = await deleteStudentFeeAssignmentAction(feePaymentId, currentSchoolId);
+        if (result.ok) {
+            toast({ title: "Assignment Deleted", description: result.message, variant: "destructive" });
+            if (currentSchoolId) fetchPageData(currentSchoolId);
+        } else {
+            toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
+        }
+        setIsSubmitting(false);
+    }
+  };
+
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -295,7 +349,28 @@ export default function ManageConcessionsPage() {
                  <CardHeader><CardTitle className="flex items-center">Assigned Concessions Log</CardTitle></CardHeader>
                 <CardContent>
                      {isLoading ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>) : assignedConcessions.length === 0 ? (<p className="text-muted-foreground text-center py-4">No concessions have been assigned yet.</p>) : (
-                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Concession</TableHead><TableHead>Amount</TableHead></TableRow></TableHeader><TableBody>{assignedConcessions.map(item => (<TableRow key={item.id}><TableCell>{item.student?.name || 'N/A'}</TableCell><TableCell>{item.fee_payment?.fee_category?.name || 'N/A'}</TableCell><TableCell>{item.concession?.title || 'N/A'}</TableCell><TableCell>₹{item.concession_amount.toFixed(2)}</TableCell></TableRow>))}</TableBody></Table>
+                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Concession</TableHead><TableHead>Amount</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{assignedConcessions.map(item => (<TableRow key={item.id}><TableCell>{item.student?.name || 'N/A'}</TableCell><TableCell>{item.fee_payment?.fee_category?.name || 'N/A'}</TableCell><TableCell>{item.concession?.title || 'N/A'}</TableCell><TableCell>₹{item.concession_amount.toFixed(2)}</TableCell>
+                         <TableCell className="text-right space-x-1">
+                          <Button size="sm" variant="ghost" onClick={() => handleOpenEditAssignmentDialog(item.fee_payment)}><Edit2 className="h-4 w-4"/></Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="ghost" className="text-destructive"><Trash2 className="h-4 w-4"/></Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone and will permanently delete the fee assignment for {item.student?.name}.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteFeeAssignment(item.fee_payment.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </TableCell>
+                        </TableRow>))}</TableBody></Table>
                      )}
                 </CardContent>
             </Card>
@@ -308,6 +383,27 @@ export default function ManageConcessionsPage() {
           <form onSubmit={handleSubmit}>
             <div className="grid gap-4 py-4"><div className="space-y-1"><Label htmlFor="title">Title</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Sibling Discount, Scholarship" required disabled={isSubmitting} /></div><div className="space-y-1"><Label htmlFor="description">Description (Optional)</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of the concession" disabled={isSubmitting}/></div></div>
             <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingConcession ? 'Save Changes' : 'Create Concession'}</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={isEditAssignmentOpen} onOpenChange={setIsEditAssignmentOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Assigned Fee</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditAssignmentSubmit}>
+            <div className="space-y-4 py-4">
+              <div><Label htmlFor="editAmount">Assigned Amount (₹)</Label><Input id="editAmount" type="number" value={editAmount} onChange={e => setEditAmount(Number(e.target.value))} required disabled={isSubmitting}/></div>
+              <div><Label htmlFor="editDueDate">Due Date</Label><Input id="editDueDate" type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} disabled={isSubmitting}/></div>
+              <div><Label htmlFor="editNotes">Notes</Label><Input id="editNotes" value={editNotes} onChange={e => setEditNotes(e.target.value)} disabled={isSubmitting}/></div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save
+              </Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
