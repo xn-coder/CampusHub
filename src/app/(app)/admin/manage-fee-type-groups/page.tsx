@@ -279,7 +279,7 @@ export default function ManageFeeGroupsPage() {
                                         <Input
                                             id={`amount-${ft.id}`}
                                             type="number"
-                                            placeholder={`Default: ${ft.amount || 0}`}
+                                            placeholder="Enter amount"
                                             value={assignAmounts[ft.id] || ''}
                                             onChange={e => setAssignAmounts(prev => ({...prev, [ft.id]: e.target.value === '' ? '' : parseFloat(e.target.value)}))}
                                             step="0.01"

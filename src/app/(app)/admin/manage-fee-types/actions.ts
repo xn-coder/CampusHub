@@ -55,7 +55,7 @@ export async function getFeeTypesPageDataAction(schoolId: string): Promise<{
   }
 }
 
-export async function createFeeTypeAction(input: Omit<FeeType, 'id' | 'amount'>): Promise<{ ok: boolean; message: string; feeType?: FeeType }> {
+export async function createFeeTypeAction(input: Omit<FeeType, 'id'>): Promise<{ ok: boolean; message: string; feeType?: FeeType }> {
   const supabase = createSupabaseServerClient();
   try {
     const { data, error } = await supabase.from('fee_types').insert({ ...input, id: uuidv4(), installment_type: 'installments' }).select().single();
@@ -67,7 +67,7 @@ export async function createFeeTypeAction(input: Omit<FeeType, 'id' | 'amount'>)
   }
 }
 
-export async function updateFeeTypeAction(id: string, input: Partial<Omit<FeeType, 'id' | 'amount'>>): Promise<{ ok: boolean; message: string; feeType?: FeeType }> {
+export async function updateFeeTypeAction(id: string, input: Partial<Omit<FeeType, 'id'>>): Promise<{ ok: boolean; message: string; feeType?: FeeType }> {
   const supabase = createSupabaseServerClient();
   try {
     // Ensure installment_type is not changed during update from this action
