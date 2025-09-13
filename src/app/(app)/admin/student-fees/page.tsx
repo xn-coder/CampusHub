@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession } from '@/types';
-import { DollarSign, FileText, Loader2, CreditCard, Download, FolderOpen, PlusCircle, Save, Edit2, Trash2, Receipt } from 'lucide-react';
+import { DollarSign, FileText, Loader2, CreditCard, Download, FolderOpen, PlusCircle, Save, Edit2, Trash2, Receipt, FileDown } from 'lucide-react';
 import { useState, useEffect, type FormEvent, useMemo, useCallback, Suspense, useRef } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid, isPast, isToday, startOfYear, subDays } from 'date-fns';
