@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession } from '@/types';
-import { DollarSign, Loader2, CreditCard, FolderOpen, Save, Edit2, Trash2, Receipt, ReceiptText, FileDown } from 'lucide-react';
+import { DollarSign, Loader2, CreditCard, FolderOpen, Save, Edit2, Trash2, ReceiptText, PlusCircle, FileDown } from 'lucide-react';
 import { useState, useEffect, type FormEvent, useMemo, useCallback, Suspense, useRef } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid, isPast, isToday, startOfYear, subDays } from 'date-fns';
@@ -23,6 +23,8 @@ import {
   updateStudentFeeAction,
   applyConcessionAction,
   getConcessionsAction,
+  getStudentsByClass,
+  getStudentFeeHistory,
 } from './actions';
 import { supabase } from '@/lib/supabaseClient';
 import { useSearchParams } from 'next/navigation';
@@ -140,9 +142,6 @@ function StudentFeesPageContent() {
     return installments.find(i => i.id === installmentId)?.title || 'N/A';
   }, [installments]);
 
-  const handleOpenRecordPaymentDialog = (feePayment: StudentFeePayment) => { 
-    setEditingFeePayment(feePayment); 
-  };
   const handleOpenEditFeeDialog = (feePayment: StudentFeePayment) => {
     setEditingFeePayment(feePayment); setEditAssignedAmount(feePayment.assigned_amount);
     setEditDueDate(feePayment.due_date ? format(parseISO(feePayment.due_date), 'yyyy-MM-dd') : '');
@@ -175,42 +174,6 @@ function StudentFeesPageContent() {
         if (currentSchoolId) refreshAllFeeData(currentSchoolId);
     } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
-    }
-    setIsSubmitting(false);
-  };
-
-  const handleRecordPaymentSubmit = async (feePaymentId: string, amount: number, notes?: string, mode?: string) => {
-    if (!currentSchoolId) {
-      toast({ title: "Error", description: "School context is missing.", variant: "destructive" });
-      return;
-    }
-
-    const feeToPay = feePayments.find(fp => fp.id === feePaymentId);
-    if (!feeToPay) {
-      toast({ title: "Error", description: "Fee record not found.", variant: "destructive" });
-      return;
-    }
-
-    const amountDue = feeToPay.assigned_amount - feeToPay.paid_amount;
-    if (amount > amountDue + 0.001) {
-      toast({ title: "Error", description: `Payment amount cannot exceed the amount due (₹${amountDue.toFixed(2)})`, variant: "destructive" });
-      return;
-    }
-
-    setIsSubmitting(true);
-    const result = await recordStudentFeePaymentAction({
-      fee_payment_id: feePaymentId,
-      payment_amount: amount,
-      payment_date: format(new Date(), 'yyyy-MM-dd'),
-      school_id: currentSchoolId,
-      payment_mode: mode || 'Cash'
-    });
-
-    if (result.ok) {
-      toast({ title: "Payment Recorded", description: result.message });
-      if (currentSchoolId) await refreshAllFeeData(currentSchoolId);
-    } else {
-      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
     setIsSubmitting(false);
   };
@@ -346,6 +309,7 @@ function StudentFeesPageContent() {
     }
     
     return (
+        <>
         <div className="flex flex-col gap-6 min-h-screen">
           <PageHeader
             title="Student Fee Records" description="Assign fees to students, record payments, and track financial records."
@@ -403,17 +367,10 @@ function StudentFeesPageContent() {
                 <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center"><DollarSign className="mr-2 h-5 w-5" />Record Manual Payment</CardTitle>
-                      <CardDescription>Select a student to view their pending fees and record a payment.</CardDescription>
+                      <CardDescription>Select a student to view their fees and record a payment.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <RecordPaymentForm
-                            classes={classes}
-                            students={students} 
-                            feePayments={feePayments}
-                            feeCategories={feeCategories}
-                            installments={installments}
-                            onRecordPayment={handleRecordPaymentSubmit}
-                        />
+                        <RecordPaymentForm />
                     </CardContent>
                 </Card>
             </TabsContent>
@@ -422,7 +379,7 @@ function StudentFeesPageContent() {
           
           <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}><DialogContent className="sm:max-w-3xl">
                <DialogHeader><DialogTitle>Fee Details for: {selectedStudentSummary?.studentName}</DialogTitle><DialogDescription>Academic Year: {selectedStudentSummary?.academicYearName} | Total Due: <span className="font-mono">₹</span>{selectedStudentSummary?.totalDue.toFixed(2)}</DialogDescription></DialogHeader>
-              <div className="max-h-[60vh] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Fee Category</TableHead><TableHead>Due Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{(selectedStudentSummary?.payments || []).map((fp) => (<TableRow key={fp.id}><TableCell className="font-medium">{getFeeCategoryName(fp.fee_category_id)}</TableCell><TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell><TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell><TableCell className="text-right space-x-1">{fp.status !== 'Paid' && (<><Button variant="outline" size="sm" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}><DollarSign className="mr-1 h-3 w-3"/>Record Pay</Button><Button variant="outline" size="sm" onClick={() => handleOpenConcessionDialog(fp)}>Apply Concession</Button></>)}<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}><Edit2 className="h-4 w-4"/></Button><Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}><Trash2 className="h-4 w-4"/></Button></TableCell></TableRow>))}</TableBody></Table></div>
+              <div className="max-h-[60vh] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Fee Category</TableHead><TableHead>Due Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{(selectedStudentSummary?.payments || []).map((fp) => (<TableRow key={fp.id}><TableCell className="font-medium">{getFeeCategoryName(fp.fee_category_id)}</TableCell><TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell><TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell><TableCell className="text-right space-x-1">{fp.status !== 'Paid' && (<Button variant="outline" size="sm" onClick={() => handleOpenConcessionDialog(fp)}>Apply Concession</Button>)}<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}><Edit2 className="h-4 w-4"/></Button><Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}><Trash2 className="h-4 w-4"/></Button></TableCell></TableRow>))}</TableBody></Table></div>
                <DialogFooter><DialogClose asChild><Button variant="outline">Close</Button></DialogClose></DialogFooter>
           </DialogContent></Dialog>
     
@@ -438,14 +395,6 @@ function StudentFeesPageContent() {
                 <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Changes</Button></DialogFooter>
               </form>
           </DialogContent></Dialog>
-    
-          <Dialog open={!!editingFeePayment && !isConcessionDialogOpen && !isEditFeeDialogOpen} onOpenChange={() => setEditingFeePayment(null)}><DialogContent className="sm:max-w-md">
-     <DialogHeader><DialogTitle>Record Payment for {editingFeePayment ? getStudentName(editingFeePayment.student_id) : ''}</DialogTitle><DialogDescription>Fee: {editingFeePayment ? getFeeCategoryName(editingFeePayment.fee_category_id) : ''} <br/>Assigned: <span className="font-mono">₹</span>{editingFeePayment?.assigned_amount.toFixed(2)} | Paid: <span className="font-mono">₹</span>{editingFeePayment?.paid_amount.toFixed(2)} | Due: <span className="font-mono">₹</span>{((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)) > 0 ? ((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)).toFixed(2) : '0.00'}</DialogDescription></DialogHeader>
-              <RecordPaymentForm 
-                feePayment={editingFeePayment} 
-                onRecordPayment={handleRecordPaymentSubmit}
-              />
-          </DialogContent></Dialog>
           
           {/* Concession Dialog */}
            <Dialog open={isConcessionDialogOpen} onOpenChange={setIsConcessionDialogOpen}><DialogContent className="sm:max-w-md">
@@ -459,64 +408,200 @@ function StudentFeesPageContent() {
                 </form>
            </DialogContent></Dialog>
         </div>
+        </>
       );
 }
 
-function RecordPaymentForm({ feePayment, onRecordPayment }: {
-     feePayment: StudentFeePayment | null,
-     onRecordPayment: (feeId: string, amount: number, notes: string, mode: string) => Promise<void>,
-}) {
-    const [amount, setAmount] = useState<number | ''>('');
-    const [notes, setNotes] = useState('');
-    const [paymentMode, setPaymentMode] = useState('Cash');
+function RecordPaymentForm() {
+    const { toast } = useToast();
+    const [isLoading, setIsLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isFetchingStudents, setIsFetchingStudents] = useState(false);
+    
+    const [classes, setClasses] = useState<ClassData[]>([]);
+    const [students, setStudents] = useState<Student[]>([]);
+    const [studentFees, setStudentFees] = useState<StudentFeePayment[]>([]);
+
+    const [selectedClassId, setSelectedClassId] = useState('');
+    const [selectedStudentId, setSelectedStudentId] = useState('');
+    
+    const [paymentAmounts, setPaymentAmounts] = useState<Record<string, number | ''>>({});
+    const [paymentModes, setPaymentModes] = useState<Record<string, string>>({});
+    const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
+    const [payingFeeId, setPayingFeeId] = useState<string | null>(null);
+
+    useEffect(() => {
+        async function loadClasses() {
+            setIsLoading(true);
+            const schoolId = localStorage.getItem('currentSchoolId');
+            if (schoolId) {
+                const { data: classesData, error } = await supabase.from('classes').select('*').eq('school_id', schoolId);
+                if (error) toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
+                else setClasses(classesData || []);
+            }
+            setIsLoading(false);
+        }
+        loadClasses();
+    }, [toast]);
+
+    useEffect(() => {
+        async function loadStudents() {
+            if (!selectedClassId) {
+                setStudents([]);
+                setSelectedStudentId('');
+                setStudentFees([]);
+                return;
+            }
+            setIsFetchingStudents(true);
+            const schoolId = localStorage.getItem('currentSchoolId');
+            if (schoolId) {
+                const { data: studentsData, error } = await getStudentsByClass(schoolId, selectedClassId);
+                if (error) toast({ title: 'Error', description: 'Failed to load students.', variant: 'destructive' });
+                else setStudents(studentsData || []);
+            }
+            setIsFetchingStudents(false);
+        }
+        loadStudents();
+    }, [selectedClassId, toast]);
     
     useEffect(() => {
-        if(feePayment) {
-            const due = feePayment.assigned_amount - feePayment.paid_amount;
-            setAmount(due > 0 ? due : '');
-        }
-    }, [feePayment]);
+        async function loadFees() {
+            if (!selectedStudentId) {
+                setStudentFees([]);
+                return;
+            }
+            setIsLoading(true);
+            const { data, error } = await supabase
+                .from('student_fee_payments')
+                .select('*, fee_category:fee_category_id(name), installment:installment_id(title)')
+                .eq('student_id', selectedStudentId)
+                .order('due_date', { ascending: false });
 
-    if (!feePayment) return null;
-    
-    const handleSubmit = async (e: FormEvent) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        await onRecordPayment(feePayment.id, Number(amount), notes, paymentMode);
-        setIsSubmitting(false);
-    }
-    
+            if (error) toast({ title: 'Error', description: 'Failed to load student fees.', variant: 'destructive' });
+            else setStudentFees((data as any) || []);
+            setIsLoading(false);
+        }
+        loadFees();
+    }, [selectedStudentId, toast]);
+
+    const handlePayClick = async (feeId: string) => {
+        const amount = paymentAmounts[feeId];
+        const mode = paymentModes[feeId] || 'Cash';
+        const notes = paymentNotes[feeId];
+
+        if (typeof amount !== 'number' || amount <= 0) {
+            toast({ title: 'Invalid Amount', description: 'Please enter a valid payment amount.', variant: 'destructive' });
+            return;
+        }
+        
+        setPayingFeeId(feeId);
+        const result = await recordStudentFeePaymentAction({
+            fee_payment_id: feeId,
+            payment_amount: amount,
+            payment_date: format(new Date(), 'yyyy-MM-dd'),
+            school_id: localStorage.getItem('currentSchoolId')!,
+            payment_mode: mode,
+            notes: notes
+        });
+
+        if (result.ok) {
+            toast({ title: 'Payment Recorded', description: 'The payment was successfully recorded.' });
+            // Refetch fees for the student to update the UI
+             if (selectedStudentId) {
+                const { data, error } = await supabase.from('student_fee_payments').select('*, fee_category:fee_category_id(name), installment:installment_id(title)').eq('student_id', selectedStudentId).order('due_date', { ascending: false });
+                if (!error) setStudentFees((data as any) || []);
+            }
+            setPaymentAmounts(prev => ({...prev, [feeId]: ''}));
+            setPaymentNotes(prev => ({...prev, [feeId]: ''}));
+        } else {
+            toast({ title: 'Error', description: result.message, variant: 'destructive' });
+        }
+        setPayingFeeId(null);
+    };
+
+    const getFeeTitle = (payment: StudentFeePayment) => {
+        if ((payment as any).installment?.title) return `Installment: ${(payment as any).installment.title}`;
+        return (payment as any).fee_category?.name || 'N/A';
+    };
+
     return (
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-4">
-            <div>
-              <Label htmlFor="paymentAmount">Payment Amount (<span className="font-mono">₹</span>)</Label>
-              <Input id="paymentAmount" type="number" value={amount} onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="Amount being paid" step="0.01" min="0.01" required disabled={isSubmitting}/>
+        <div className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                    <Label htmlFor="classSelectPayment">Select Class</Label>
+                    <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading || classes.length === 0}>
+                        <SelectTrigger id="classSelectPayment"><SelectValue placeholder="Choose a class"/></SelectTrigger>
+                        <SelectContent>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
+                    </Select>
+                </div>
+                 <div>
+                    <Label htmlFor="studentSelectPayment">Select Student</Label>
+                    <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={isFetchingStudents || students.length === 0}>
+                        <SelectTrigger id="studentSelectPayment"><SelectValue placeholder="Choose a student"/></SelectTrigger>
+                        <SelectContent>{students.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                </div>
             </div>
-            <div>
-              <Label htmlFor="paymentMode">Payment Mode</Label>
-              <Select value={paymentMode} onValueChange={setPaymentMode}>
-                <SelectTrigger><SelectValue/></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Cash">Cash</SelectItem>
-                  <SelectItem value="Cheque">Cheque</SelectItem>
-                  <SelectItem value="Online">Online</SelectItem>
-                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div><Label htmlFor="paymentNotes">Notes (Optional)</Label><Input id="paymentNotes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g., Transaction ID, Cheque No." disabled={isSubmitting}/></div>
-          </div>
-          <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting || !amount || (feePayment.paid_amount >= feePayment.assigned_amount)}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <DollarSign className="mr-2 h-4 w-4" /> } Record Payment</Button></DialogFooter>
-        </form>
+            
+            {selectedStudentId && (
+                <Card>
+                    <CardHeader><CardTitle>Fee Records for Selected Student</CardTitle></CardHeader>
+                    <CardContent>
+                        {isLoading ? <Loader2 className="animate-spin" /> : studentFees.length === 0 ? <p className="text-muted-foreground">No fees found for this student.</p> : (
+                             <Table>
+                                <TableHeader><TableRow><TableHead>Fee Type</TableHead><TableHead>Amount Due</TableHead><TableHead className="w-[150px]">Payment Amount</TableHead><TableHead className="w-[150px]">Payment Mode</TableHead><TableHead className="w-[200px]">Notes</TableHead><TableHead className="w-[120px] text-right">Action</TableHead></TableRow></TableHeader>
+                                <TableBody>
+                                    {studentFees.map(fee => {
+                                        const due = fee.assigned_amount - fee.paid_amount;
+                                        const currentPayment = paymentAmounts[fee.id] || 0;
+                                        const remainingAfterPay = due - Number(currentPayment);
+                                        return(
+                                        <TableRow key={fee.id}>
+                                            <TableCell className="font-medium">{getFeeTitle(fee)}</TableCell>
+                                            <TableCell className={`font-mono ${due > 0 ? 'text-destructive' : 'text-green-600'}`}>₹{due.toFixed(2)}</TableCell>
+                                            
+                                            {due > 0 ? (
+                                                <>
+                                                    <TableCell>
+                                                        <Input type="number" placeholder="Enter amount" value={paymentAmounts[fee.id] || ''} onChange={e => setPaymentAmounts(prev => ({...prev, [fee.id]: e.target.value === '' ? '' : parseFloat(e.target.value)}))} max={due} step="0.01" disabled={payingFeeId === fee.id}/>
+                                                        {Number(currentPayment) > 0 && remainingAfterPay >= 0 && <p className="text-xs text-muted-foreground mt-1">Remaining: ₹{remainingAfterPay.toFixed(2)}</p>}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Select value={paymentModes[fee.id] || 'Cash'} onValueChange={val => setPaymentModes(prev => ({...prev, [fee.id]: val}))} disabled={payingFeeId === fee.id}>
+                                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                                            <SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Cheque">Cheque</SelectItem><SelectItem value="Online">Online</SelectItem><SelectItem value="Bank Transfer">Bank Transfer</SelectItem></SelectContent>
+                                                        </Select>
+                                                    </TableCell>
+                                                     <TableCell>
+                                                        <Input placeholder="Optional notes..." value={paymentNotes[fee.id] || ''} onChange={e => setPaymentNotes(prev => ({...prev, [fee.id]: e.target.value}))} disabled={payingFeeId === fee.id}/>
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button size="sm" onClick={() => handlePayClick(fee.id)} disabled={payingFeeId === fee.id || Number(paymentAmounts[fee.id] || 0) <= 0}>
+                                                            {payingFeeId === fee.id ? <Loader2 className="animate-spin" /> : 'Record'}
+                                                        </Button>
+                                                    </TableCell>
+                                                </>
+                                            ) : (
+                                                <TableCell colSpan={4} className="text-green-600">Paid in full on {formatDateSafe(fee.payment_date)}</TableCell>
+                                            )}
+                                        </TableRow>
+                                    )})}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+        </div>
     );
 }
 
+
 export default function StudentFeesPage() {
     return (
-        <Suspense fallback={<div>Loading...</div>}>
+        <Suspense fallback={<div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>}>
             <StudentFeesPageContent />
         </Suspense>
     );
 }
+
