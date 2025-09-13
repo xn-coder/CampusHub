@@ -295,18 +295,20 @@ interface RecordPaymentInput {
   payment_amount: number;
   payment_date: string;
   school_id: string;
+  payment_mode?: string;
+  notes?: string;
 }
 
 export async function recordStudentFeePaymentAction(
   input: RecordPaymentInput
 ): Promise<{ ok: boolean; message: string; feePayment?: StudentFeePayment }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { fee_payment_id, payment_amount, payment_date, school_id } = input; // payment_amount is the *new* amount being paid
+  const { fee_payment_id, payment_amount, payment_date, school_id, payment_mode, notes } = input;
 
 
   const { data: existingFeePayment, error: fetchError } = await supabaseAdmin
     .from('student_fee_payments')
-    .select('assigned_amount, paid_amount')
+    .select('assigned_amount, paid_amount, notes')
     .eq('id', fee_payment_id)
     .eq('school_id', school_id)
     .single();
@@ -328,6 +330,8 @@ export async function recordStudentFeePaymentAction(
 
   // Ensure the new paid amount does not exceed the assigned amount unless it's a full payment
   const finalPaidAmount = Math.min(newPaidAmount, existingFeePayment.assigned_amount);
+  
+  const updatedNotes = notes ? (existingFeePayment.notes ? `${existingFeePayment.notes}\n${notes}` : notes) : existingFeePayment.notes;
 
   const { error, data } = await supabaseAdmin
     .from('student_fee_payments')
@@ -335,6 +339,8 @@ export async function recordStudentFeePaymentAction(
       paid_amount: finalPaidAmount,
       status: newStatus,
       payment_date: payment_date,
+      payment_mode: payment_mode || 'Cash',
+      notes: updatedNotes,
     })
     .eq('id', fee_payment_id)
     .eq('school_id', school_id)
@@ -791,6 +797,20 @@ export async function verifyRazorpayPaymentAction(
   }
 }
 
+export async function getConcessionsAction(schoolId: string) {
+    if (!schoolId) return { ok: false, message: "School ID is required." };
+    const supabase = createSupabaseServerClient();
+    const { data, error } = await supabase.from('concessions').select('*').eq('school_id', schoolId);
+    if (error) {
+       if (error.message.includes('relation "public.concessions" does not exist')) {
+            console.warn("Concessions table not found. Feature may not work as expected.");
+            return { ok: true, concessions: [] }; // Graceful failure
+        }
+        return { ok: false, message: `DB Error: ${error.message}` };
+    }
+    return { ok: true, concessions: data };
+}
+
 export async function applyConcessionAction(input: {
   student_id: string;
   fee_payment_id: string;
@@ -814,7 +834,12 @@ export async function applyConcessionAction(input: {
             concession_amount: input.amount,
             applied_by_user_id: input.applied_by_user_id,
         });
-        if (concessionError) throw new Error(`Failed to record concession: ${concessionError.message}`);
+        if (concessionError) {
+          if (concessionError.message.includes('relation "public.student_fee_concessions" does not exist')) {
+            return { ok: false, message: "Database setup incomplete: 'student_fee_concessions' table is missing."};
+          }
+          throw new Error(`Failed to record concession: ${concessionError.message}`)
+        };
         
         const newPaidAmount = fee.paid_amount + input.amount;
         const newStatus: PaymentStatus = newPaidAmount >= fee.assigned_amount ? 'Paid' : 'Partially Paid';
@@ -831,12 +856,4 @@ export async function applyConcessionAction(input: {
         console.error("Error applying concession:", e);
         return { ok: false, message: e.message || "Failed to apply concession."};
     }
-}
-
-export async function getConcessionsAction(schoolId: string) {
-    if (!schoolId) return { ok: false, message: "School ID is required." };
-    const supabase = createSupabaseServerClient();
-    const { data, error } = await supabase.from('concessions').select('*').eq('school_id', schoolId);
-    if (error) return { ok: false, message: `DB Error: ${error.message}` };
-    return { ok: true, concessions: data };
 }
