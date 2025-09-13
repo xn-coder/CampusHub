@@ -17,7 +17,6 @@ import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid } from 'date-fns';
 import {
   recordStudentFeePaymentAction,
-  fetchAdminSchoolIdForFees,
   getStudentsByClass,
   getFeePaymentPageData,
   getFeesForStudentAction,
@@ -26,6 +25,7 @@ import {
     createPaymentMethodAction,
     updatePaymentMethodAction,
     deletePaymentMethodAction,
+    getPaymentMethodsAction
 } from './payment-method-actions';
 import { useSearchParams } from 'next/navigation';
 import { Textarea } from '@/components/ui/textarea';
