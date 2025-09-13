@@ -142,3 +142,49 @@ export async function getFeesForStudentAction(studentId: string): Promise<{ ok: 
     }
 }
     
+export async function getStudentPaymentHistoryAction(userId: string): Promise<{
+    ok: boolean;
+    payments?: StudentFeePayment[];
+    feeCategories?: FeeCategory[];
+    academicYears?: AcademicYear[];
+    studentProfile?: Student | null;
+    message?: string;
+}> {
+    if (!userId) {
+        return { ok: false, message: "User not identified." };
+    }
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data: student, error: studentError } = await supabase
+            .from('students')
+            .select('*')
+            .eq('user_id', userId)
+            .single();
+
+        if (studentError || !student) {
+            return { ok: false, message: "Student profile not found." };
+        }
+
+        const schoolId = student.school_id;
+
+        const [paymentsRes, categoriesRes, yearsRes] = await Promise.all([
+            supabase.from('student_fee_payments').select('*').eq('student_id', student.id).order('due_date', { ascending: false }),
+            supabase.from('fee_categories').select('*').eq('school_id', schoolId),
+            supabase.from('academic_years').select('*').eq('school_id', schoolId),
+        ]);
+
+        if (paymentsRes.error) throw new Error(`Failed to load payment history: ${paymentsRes.error.message}`);
+        if (categoriesRes.error) throw new Error(`Failed to load fee categories: ${categoriesRes.error.message}`);
+        if (yearsRes.error) throw new Error(`Failed to load academic years: ${yearsRes.error.message}`);
+
+        return {
+            ok: true,
+            payments: (paymentsRes.data as any) || [],
+            feeCategories: categoriesRes.data || [],
+            academicYears: yearsRes.data || [],
+            studentProfile: student as Student
+        };
+    } catch (e: any) {
+        return { ok: false, message: `An unexpected error occurred: ${e.message}` };
+    }
+}

@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -11,10 +10,9 @@ import { DollarSign, FileText, Loader2, CreditCard, Download, FolderOpen } from 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { getStudentPaymentHistoryAction, createRazorpayOrderAction, verifyRazorpayPaymentAction } from '@/app/(app)/admin/student-fees/actions';
+import { getStudentPaymentHistoryAction } from '@/app/(app)/admin/student-fees/actions';
 import { format, parseISO, isValid, isPast, isToday } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import Script from 'next/script';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 
@@ -24,7 +22,6 @@ export default function StudentPaymentHistoryPage() {
     const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
     const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isPaying, setIsPaying] = useState(false);
     
     const [currentStudentProfile, setCurrentStudentProfile] = useState<Student | null>(null);
     const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
@@ -62,95 +59,6 @@ export default function StudentPaymentHistoryPage() {
         .reduce((acc, payment) => acc + (payment.assigned_amount - payment.paid_amount), 0);
     }, [payments]);
 
-    const initiatePayment = async (amountToPay: number, feeIds: string[], description: string) => {
-        if (!currentStudentProfile || !currentSchoolId) {
-            toast({ title: 'Error', description: 'User context is missing.', variant: 'destructive' });
-            return;
-        }
-
-        setIsPaying(true);
-
-        const amountInPaisa = Math.round(amountToPay * 100);
-
-        const orderResult = await createRazorpayOrderAction(amountInPaisa, feeIds, currentStudentProfile.id, currentSchoolId);
-
-        if (!orderResult.ok) {
-            toast({ title: 'Payment Error', description: orderResult.message || 'Could not create payment order.', variant: 'destructive' });
-            setIsPaying(false);
-            return;
-        }
-        
-        if (orderResult.isMock) {
-            toast({ title: "Payment Successful", description: orderResult.message });
-            await loadPaymentData();
-            setIsPaying(false);
-            return;
-        }
-
-        if (orderResult.order) {
-            const options = {
-                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                amount: orderResult.order.amount,
-                currency: "INR",
-                name: "CampusHub Fee Payment",
-                description: description,
-                order_id: orderResult.order.id,
-                handler: async (response: any) => {
-                    const verifyResult = await verifyRazorpayPaymentAction(
-                        response.razorpay_payment_id,
-                        response.razorpay_order_id,
-                        response.razorpay_signature,
-                        currentSchoolId!
-                    );
-                    if (verifyResult.ok) {
-                        toast({ title: 'Payment Successful', description: verifyResult.message });
-                        await loadPaymentData();
-                    } else {
-                        toast({ title: 'Payment Failed', description: verifyResult.message, variant: 'destructive' });
-                    }
-                },
-                prefill: {
-                    name: currentStudentProfile.name,
-                    email: currentStudentProfile.email,
-                },
-                notes: {
-                    student_id: currentStudentProfile.id,
-                },
-                theme: {
-                    color: "#3399cc"
-                }
-            };
-
-            const rzp = new (window as any).Razorpay(options);
-            rzp.on('payment.failed', function (response: any){
-                console.error(response);
-                toast({
-                    title: 'Payment Failed',
-                    description: `Code: ${response.error.code}, Reason: ${response.error.reason}`,
-                    variant: 'destructive',
-                });
-            });
-            
-            rzp.open();
-        }
-        setIsPaying(false);
-    };
-
-    const handlePayFee = (payment: StudentFeePayment) => {
-        const dueAmount = payment.assigned_amount - payment.paid_amount;
-        if (dueAmount > 0) {
-            initiatePayment(dueAmount, [payment.id], `Payment for ${getFeeCategoryName(payment.fee_category_id)}`);
-        }
-    };
-    
-    const handlePayAllFees = () => {
-        if (totalDue <= 0) return;
-        const feeIdsToPay = payments
-            .filter(p => p.status !== 'Paid')
-            .map(p => p.id);
-        initiatePayment(totalDue, feeIdsToPay, 'Payment for all outstanding fees');
-    };
-
     const getFeeCategoryName = (categoryId: string) => {
         return feeCategories.find(fc => fc.id === categoryId)?.name || 'N/A';
     };
@@ -169,8 +77,6 @@ export default function StudentPaymentHistoryPage() {
 
 
   return (
-    <>
-      <Script id="razorpay-checkout-js" src="https://checkout.razorpay.com/v1/checkout.js" />
       <div className="flex flex-col gap-6">
         <PageHeader 
           title="My Payment History" 
@@ -179,7 +85,7 @@ export default function StudentPaymentHistoryPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center"><DollarSign className="mr-2 h-5 w-5" />Fee Payment Records</CardTitle>
-            <CardDescription>A detailed list of all assigned fees.</CardDescription>
+            <CardDescription>A detailed list of all assigned fees. Please contact the school administration to make a payment.</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -199,7 +105,6 @@ export default function StudentPaymentHistoryPage() {
                             <TableHead className="text-right">Paid</TableHead>
                             <TableHead className="text-right">Due</TableHead>
                             <TableHead>Status</TableHead>
-                            <TableHead className="text-right">Action</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -223,13 +128,6 @@ export default function StudentPaymentHistoryPage() {
                                             {payment.status}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell className="text-right">
-                                        {payment.status !== 'Paid' && (
-                                            <Button variant="outline" size="sm" onClick={() => handlePayFee(payment)} disabled={isPaying}>
-                                                <CreditCard className="mr-1 h-3 w-3" /> Pay Now
-                                            </Button>
-                                        )}
-                                    </TableCell>
                                 </TableRow>
                             )
                         })}
@@ -245,17 +143,10 @@ export default function StudentPaymentHistoryPage() {
                           <p className="text-muted-foreground">Overall Amount Due</p>
                           <p className="text-2xl font-bold"><span className="font-mono">₹</span>{totalDue.toFixed(2)}</p>
                       </div>
-                      {totalDue > 0 && (
-                          <Button onClick={handlePayAllFees} disabled={isPaying || isLoading}>
-                              {isPaying ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CreditCard className="mr-2 h-4 w-4"/>}
-                              Pay All Due Fees
-                          </Button>
-                      )}
                   </div>
               </CardFooter>
           )}
         </Card>
       </div>
-    </>
   );
 }
