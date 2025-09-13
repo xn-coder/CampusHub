@@ -17,7 +17,6 @@ import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid } from 'date-fns';
 import {
   recordStudentFeePaymentAction,
-  fetchAdminSchoolIdForFees,
   getStudentsByClass,
   getFeePaymentPageData,
   getFeesForStudentAction,
@@ -47,8 +46,8 @@ function StudentFeesPageContent() {
     
     async function loadInitialData() {
       setIsLoadingPage(true);
-      const schoolId = await fetchAdminSchoolIdForFees(adminUserId!);
-      setCurrentSchoolId(schoolId);
+      const schoolId = await getFeePaymentPageData(adminUserId!).then(res => res.schoolId); // Simplified fetch
+      setCurrentSchoolId(schoolId || null);
       if (!schoolId) {
         toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
       }
@@ -211,6 +210,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
     };
 
     const getFeeTitle = (payment: StudentFeePayment) => {
+        if (!payment) return 'N/A';
         if ((payment as any).installment?.title) return `Installment: ${(payment as any).installment.title}`;
         return (payment as any).fee_category?.name || 'N/A';
     };
@@ -257,6 +257,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
                                     <TableHeader><TableRow><TableHead>Fee Type</TableHead><TableHead>Assigned</TableHead><TableHead>Paid</TableHead><TableHead>Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                                     <TableBody>
                                         {studentFees.map(fee => {
+                                            if (!fee) return null; // FIX: Added null check here
                                             const due = fee.assigned_amount - fee.paid_amount;
                                             return(
                                             <TableRow key={fee.id}>
