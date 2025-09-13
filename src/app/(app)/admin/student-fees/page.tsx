@@ -10,37 +10,35 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession } from '@/types';
-import { DollarSign, Loader2, CreditCard, Save, ReceiptText, List } from 'lucide-react';
-import { useState, useEffect, type FormEvent, useMemo, useCallback, Suspense, useRef } from 'react';
+import type { StudentFeePayment, Student, ClassData } from '@/types';
+import { DollarSign, Loader2, Save, ReceiptText, List, PlusCircle, Edit2, Trash2 } from 'lucide-react';
+import { useState, useEffect, type FormEvent, useCallback, Suspense } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO, isValid, isPast, isToday } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import {
   recordStudentFeePaymentAction,
   fetchAdminSchoolIdForFees,
   getStudentsByClass,
 } from './actions';
+import {
+    getPaymentMethodsAction,
+    createPaymentMethodAction,
+    updatePaymentMethodAction,
+    deletePaymentMethodAction,
+    type PaymentMethod
+} from './payment-method-actions';
 import { supabase } from '@/lib/supabaseClient';
 import { useSearchParams } from 'next/navigation';
+import { Textarea } from '@/components/ui/textarea';
 
-const PAYMENT_METHODS = [
-    "Cash", "Cheque", "Online", "Bank Transfer", "UPI", "Credit Card", "Debit Card"
-];
 
 function StudentFeesPageContent() {
   const { toast } = useToast();
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
-  const refreshAllFeeData = useCallback(async (schoolId: string) => {
-    // This function is now simplified as it doesn't need to load all summary data,
-    // only what's necessary for the payment form (classes).
-  }, []);
-
+  
   useEffect(() => {
     const adminUserId = localStorage.getItem('currentUserId');
-    setCurrentUserId(adminUserId);
     if (!adminUserId) {
       toast({ title: "Error", description: "Admin user not identified.", variant: "destructive" });
       setIsLoadingPage(false);
@@ -57,7 +55,7 @@ function StudentFeesPageContent() {
       setIsLoadingPage(false);
     }
     loadInitialData();
-  }, [toast, refreshAllFeeData]);
+  }, [toast]);
 
   if (isLoadingPage) {
     return (
@@ -86,27 +84,7 @@ function StudentFeesPageContent() {
       <PageHeader
         title="Student Payouts"
         description="Select a class and student to record full or partial fee payments."
-        actions={
-            <Dialog>
-                <DialogTrigger asChild>
-                    <Button variant="outline"><List className="mr-2 h-4 w-4" /> Payment Methods</Button>
-                </DialogTrigger>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Available Payment Methods</DialogTitle>
-                        <DialogDescription>
-                            These are the currently supported payment methods you can select when recording a payment.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <ul className="list-disc list-inside space-y-2 py-4">
-                        {PAYMENT_METHODS.map(method => <li key={method}>{method}</li>)}
-                    </ul>
-                    <DialogFooter>
-                        <DialogClose asChild><Button>Close</Button></DialogClose>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        }
+        actions={<PaymentMethodsManager schoolId={currentSchoolId} />}
       />
       <Card>
         <CardHeader>
@@ -126,6 +104,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
     const [isLoadingClasses, setIsLoadingClasses] = useState(false);
     const [isFetchingStudents, setIsFetchingStudents] = useState(false);
     const [isFetchingFees, setIsFetchingFees] = useState(false);
+    const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
     
     const [classes, setClasses] = useState<ClassData[]>([]);
     const [students, setStudents] = useState<Student[]>([]);
@@ -139,22 +118,33 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
     const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
     const [payingFeeId, setPayingFeeId] = useState<string | null>(null);
 
-    const loadClasses = useCallback(async () => {
+    const loadPageData = useCallback(async () => {
         if (!schoolId) return;
         setIsLoadingClasses(true);
-        const { data: classesData, error } = await supabase.from('classes').select('*').eq('school_id', schoolId);
-        if (error) {
+        const [classesRes, methodsRes] = await Promise.all([
+            supabase.from('classes').select('*').eq('school_id', schoolId),
+            getPaymentMethodsAction(schoolId)
+        ]);
+
+        if (classesRes.error) {
             toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
             setClasses([]);
         } else {
-            setClasses(classesData || []);
+            setClasses(classesRes.data || []);
+        }
+
+        if (methodsRes.ok) {
+            setPaymentMethods(methodsRes.methods || []);
+        } else {
+            toast({ title: 'Error', description: 'Failed to load payment methods.', variant: 'destructive' });
         }
         setIsLoadingClasses(false);
     }, [schoolId, toast]);
 
     useEffect(() => {
-        loadClasses();
-    }, [loadClasses]);
+        loadPageData();
+    }, [loadPageData]);
+
 
     useEffect(() => {
         async function loadStudents() {
@@ -195,7 +185,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
 
     const handlePayClick = async (feeId: string) => {
         const amount = paymentAmounts[feeId];
-        const mode = paymentModes[feeId] || 'Cash';
+        const mode = paymentModes[feeId] || (paymentMethods.length > 0 ? paymentMethods[0].name : 'Cash');
         const notes = paymentNotes[feeId];
 
         if (typeof amount !== 'number' || amount <= 0) {
@@ -282,11 +272,11 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
                                                         {Number(currentPayment) > 0 && remainingAfterPay >= 0 && <p className="text-xs text-muted-foreground mt-1">Remaining: ₹{remainingAfterPay.toFixed(2)}</p>}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <Select value={paymentModes[fee.id] || 'Cash'} onValueChange={val => setPaymentModes(prev => ({...prev, [fee.id]: val}))} disabled={payingFeeId === fee.id}>
+                                                        <Select value={paymentModes[fee.id] || (paymentMethods.length > 0 ? paymentMethods[0].name : 'Cash')} onValueChange={val => setPaymentModes(prev => ({...prev, [fee.id]: val}))} disabled={payingFeeId === fee.id}>
                                                             <SelectTrigger><SelectValue /></SelectTrigger>
                                                             <SelectContent>
-                                                                {PAYMENT_METHODS.map(method => (
-                                                                    <SelectItem key={method} value={method}>{method}</SelectItem>
+                                                                {paymentMethods.map(method => (
+                                                                    <SelectItem key={method.id} value={method.name}>{method.name}</SelectItem>
                                                                 ))}
                                                             </SelectContent>
                                                         </Select>
@@ -312,6 +302,122 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
                 </Card>
             )}
         </div>
+    );
+}
+
+function PaymentMethodsManager({ schoolId }: { schoolId: string }) {
+    const { toast } = useToast();
+    const [methods, setMethods] = useState<PaymentMethod[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [isEditing, setIsEditing] = useState<PaymentMethod | null>(null);
+
+    const [name, setName] = useState('');
+    const [description, setDescription] = useState('');
+
+    const fetchMethods = useCallback(async () => {
+        setIsLoading(true);
+        const result = await getPaymentMethodsAction(schoolId);
+        if (result.ok) setMethods(result.methods || []);
+        else toast({ title: "Error", description: "Could not load payment methods." });
+        setIsLoading(false);
+    }, [schoolId, toast]);
+
+    useEffect(() => {
+        if (isDialogOpen) {
+            fetchMethods();
+        }
+    }, [isDialogOpen, fetchMethods]);
+
+    const handleFormSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+        if(!name.trim()) return;
+        setIsLoading(true);
+        const action = isEditing
+            ? updatePaymentMethodAction(isEditing.id, { name, description }, schoolId)
+            : createPaymentMethodAction({ name, description, school_id: schoolId });
+        
+        const result = await action;
+        if(result.ok) {
+            toast({ title: "Success", description: result.message });
+            fetchMethods();
+            setIsEditing(null);
+            setName('');
+            setDescription('');
+        } else {
+            toast({ title: "Error", description: result.message, variant: "destructive" });
+        }
+        setIsLoading(false);
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this payment method?")) return;
+        setIsLoading(true);
+        const result = await deletePaymentMethodAction(id, schoolId);
+        if (result.ok) {
+            toast({ title: "Deleted", description: result.message, variant: "destructive" });
+            fetchMethods();
+        } else {
+            toast({ title: "Error", description: result.message, variant: "destructive" });
+        }
+        setIsLoading(false);
+    };
+    
+    const startEditing = (method: PaymentMethod) => {
+        setIsEditing(method);
+        setName(method.name);
+        setDescription(method.description || '');
+    }
+
+    return (
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline"><List className="mr-2 h-4 w-4" /> Manage Payment Methods</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>Manage Payment Methods</DialogTitle>
+                    <DialogDescription>Add, edit, or remove accepted payment methods for your school.</DialogDescription>
+                </DialogHeader>
+                <div className="grid md:grid-cols-2 gap-6 py-4">
+                    <div className="space-y-4">
+                        <h3 className="font-semibold">{isEditing ? 'Edit Method' : 'Add New Method'}</h3>
+                        <form onSubmit={handleFormSubmit} className="space-y-3">
+                            <div>
+                                <Label htmlFor="method-name">Name</Label>
+                                <Input id="method-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Credit Card" required />
+                            </div>
+                             <div>
+                                <Label htmlFor="method-desc">Description (Optional)</Label>
+                                <Textarea id="method-desc" value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g., All major credit cards" />
+                            </div>
+                            <div className="flex gap-2">
+                                <Button type="submit" disabled={isLoading}>{isEditing ? 'Update' : 'Add'} Method</Button>
+                                {isEditing && <Button type="button" variant="ghost" onClick={() => {setIsEditing(null); setName(''); setDescription('');}}>Cancel</Button>}
+                            </div>
+                        </form>
+                    </div>
+                    <div className="space-y-2">
+                         <h3 className="font-semibold">Existing Methods</h3>
+                         <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
+                            {isLoading ? <Loader2 className="animate-spin" /> : methods.map(method => (
+                                <div key={method.id} className="flex justify-between items-center p-2 border rounded-md">
+                                    <span className="font-medium">{method.name}</span>
+                                    <div className="flex gap-1">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEditing(method)}><Edit2 className="h-4 w-4" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(method.id)}><Trash2 className="h-4 w-4" /></Button>
+                                    </div>
+                                </div>
+                            ))}
+                            {!isLoading && methods.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No methods created.</p>}
+                         </div>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button>Close</Button></DialogClose>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 
