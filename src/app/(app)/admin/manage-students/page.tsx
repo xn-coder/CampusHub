@@ -336,6 +336,7 @@ export default function ManageStudentsPage() {
                         <TableHead>Avatar</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Roll Number</TableHead>
+                        <TableHead>Email</TableHead>
                         <TableHead>Class</TableHead>
                         <TableHead>Academic Year</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
@@ -354,6 +355,7 @@ export default function ManageStudentsPage() {
                           <TableCell>
                               <span className="font-mono text-xs">{student.roll_number || 'N/A'}</span>
                           </TableCell>
+                          <TableCell>{student.email}</TableCell>
                           <TableCell>
                               {student.status && student.status !== 'Active' ? 
                                   <Badge variant="destructive">{student.status}</Badge> 

@@ -8,6 +8,10 @@ import type { StudentFeePayment, PaymentStatus, Student, FeeCategory, AcademicYe
 import { getAdminSchoolIdAction } from '../academic-years/actions';
 
 
+export async function fetchAdminSchoolIdForFees(adminUserId: string): Promise<string | null> {
+    return getAdminSchoolIdAction(adminUserId);
+}
+
 export async function getStudentsByClass(schoolId: string, classId: string): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
@@ -102,7 +106,14 @@ export async function getFeePaymentPageData(schoolId: string): Promise<{ ok: boo
         ]);
         
         if (classesRes.error) throw new Error(`Failed to load classes: ${classesRes.error.message}`);
-        if (methodsRes.error) throw new Error(`Failed to load payment methods: ${methodsRes.error.message}`);
+        if (methodsRes.error) {
+             if(methodsRes.error.message.includes('relation "public.payment_methods" does not exist')) {
+                // This is a soft failure, the page can still render without payment methods if table is missing
+                console.warn("Payment Methods table does not exist.");
+                return { ok: true, classes: classesRes.data || [], methods: [] };
+             }
+            throw new Error(`Failed to load payment methods: ${methodsRes.error.message}`);
+        }
 
         return {
             ok: true,
@@ -130,5 +141,4 @@ export async function getFeesForStudentAction(studentId: string): Promise<{ ok: 
         return { ok: false, message: `Failed to load fees: ${e.message}` };
     }
 }
-
     

@@ -4,42 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import type { Student, ClassData, AcademicYear } from '@/types';
-
-
-export async function getAdminSchoolId(adminUserId: string): Promise<string | null> {
-  if (!adminUserId) {
-    console.error("getAdminSchoolId: Admin User ID is required.");
-    return null;
-  }
-  const supabase = createSupabaseServerClient();
-  
-  const { data: userRec, error: userErr } = await supabase
-    .from('users')
-    .select('school_id')
-    .eq('id', adminUserId)
-    .single();
-
-  if (userErr && userErr.code !== 'PGRST116') {
-    console.error("Error fetching user record for school ID:", userErr.message);
-  }
-
-  if (userRec?.school_id) {
-    return userRec.school_id;
-  }
-
-  console.warn(`User ${adminUserId} has no school_id on their user record. Falling back to check schools.admin_user_id`);
-  const { data: school, error } = await supabase
-    .from('schools')
-    .select('id')
-    .eq('admin_user_id', adminUserId)
-    .single();
-
-  if (error || !school) {
-    console.error("Error fetching admin's school via fallback or admin not linked:", error?.message);
-    return null;
-  }
-  return school.id;
-}
+import { getAdminSchoolIdAction } from '../academic-years/actions';
 
 
 export async function getStudentsForSchoolAction(schoolId: string): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
@@ -79,7 +44,7 @@ export async function getManageStudentsPageDataAction(adminUserId: string): Prom
   const supabase = createSupabaseServerClient();
 
   try {
-    const schoolId = await getAdminSchoolId(adminUserId);
+    const schoolId = await getAdminSchoolIdAction(adminUserId);
     if (!schoolId) {
       return { ok: false, message: "Could not determine admin's school context." };
     }

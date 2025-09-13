@@ -20,8 +20,8 @@ import {
   getStudentsByClass,
   getFeePaymentPageData,
   getFeesForStudentAction,
+  fetchAdminSchoolIdForFees,
 } from './actions';
-import { getAdminSchoolIdAction } from '../academic-years/actions';
 import {
     createPaymentMethodAction,
     updatePaymentMethodAction,
@@ -47,7 +47,7 @@ function StudentFeesPageContent() {
     
     async function loadInitialData() {
       setIsLoadingPage(true);
-      const schoolId = await getAdminSchoolIdAction(adminUserId!);
+      const schoolId = await fetchAdminSchoolIdForFees(adminUserId!);
       setCurrentSchoolId(schoolId);
       if (!schoolId) {
         toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
@@ -465,5 +465,3 @@ export default function StudentFeesPage() {
         </Suspense>
     );
 }
-
-    
