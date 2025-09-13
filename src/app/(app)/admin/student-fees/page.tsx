@@ -122,31 +122,32 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
     const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
     const [payingFeeId, setPayingFeeId] = useState<string | null>(null);
 
-    useEffect(() => {
-        async function loadPageData() {
-            if(!schoolId) return;
-            setIsLoadingClasses(true);
-            const [classesRes, methodsRes] = await Promise.all([
-                supabase.from('classes').select('*').eq('school_id', schoolId).order('name'),
-                getPaymentMethodsAction(schoolId)
-            ]);
+    const loadClassesAndMethods = useCallback(async () => {
+        if(!schoolId) return;
+        setIsLoadingClasses(true);
+        const [classesRes, methodsRes] = await Promise.all([
+            supabase.from('classes').select('*').eq('school_id', schoolId).order('name'),
+            getPaymentMethodsAction(schoolId)
+        ]);
 
-            if (classesRes.error) {
-                toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
-                setClasses([]);
-            } else {
-                setClasses(classesRes.data || []);
-            }
-
-            if (methodsRes.ok) {
-                setPaymentMethods(methodsRes.methods || []);
-            } else {
-                toast({ title: 'Error', description: 'Failed to load payment methods.', variant: 'destructive' });
-            }
-            setIsLoadingClasses(false);
+        if (classesRes.error) {
+            toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
+            setClasses([]);
+        } else {
+            setClasses(classesRes.data || []);
         }
-        loadPageData();
+
+        if (methodsRes.ok) {
+            setPaymentMethods(methodsRes.methods || []);
+        } else {
+            toast({ title: 'Error', description: 'Failed to load payment methods.', variant: 'destructive' });
+        }
+        setIsLoadingClasses(false);
     }, [schoolId, toast]);
+
+    useEffect(() => {
+        loadClassesAndMethods();
+    }, [loadClassesAndMethods]);
 
 
     useEffect(() => {
