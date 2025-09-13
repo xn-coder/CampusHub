@@ -4,10 +4,7 @@
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
-import type { StudentFeePayment, PaymentStatus, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession } from '@/types';
-import Razorpay from 'razorpay';
-import crypto from 'crypto';
-
+import type { StudentFeePayment, PaymentStatus, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession, PaymentMethod } from '@/types';
 
 export async function fetchAdminSchoolIdForFees(userId: string): Promise<string | null> {
   if (!userId) {
@@ -33,7 +30,7 @@ export async function getStudentsByClass(schoolId: string, classId: string): Pro
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
     .from('students')
-    .select('*') // Select all fields needed for display in the student dropdown
+    .select('*')
     .eq('school_id', schoolId)
     .eq('class_id', classId)
     .order('name');
@@ -113,16 +110,58 @@ export async function recordStudentFeePaymentAction(
   return { ok: true, message: 'Payment recorded successfully.', feePayment: data as StudentFeePayment };
 }
 
-export async function getConcessionsAction(schoolId: string) {
+export async function getPaymentMethodsAction(schoolId: string): Promise<{ ok: boolean; methods?: PaymentMethod[]; message?: string }> {
     if (!schoolId) return { ok: false, message: "School ID is required." };
     const supabase = createSupabaseServerClient();
-    const { data, error } = await supabase.from('concessions').select('*').eq('school_id', schoolId);
-    if (error) {
-       if (error.message.includes('relation "public.concessions" does not exist')) {
-            console.warn("Concessions table not found. Feature may not work as expected.");
-            return { ok: true, concessions: [] }; // Graceful failure
-        }
-        return { ok: false, message: `DB Error: ${error.message}` };
+    try {
+        const { data, error } = await supabase
+            .from('payment_methods')
+            .select('*')
+            .eq('school_id', schoolId)
+            .order('name');
+        if (error) throw error;
+        return { ok: true, methods: data || [] };
+    } catch (e: any) {
+        return { ok: false, message: `DB Error: ${e.message}` };
     }
-    return { ok: true, concessions: data };
+}
+
+
+export async function getFeePaymentPageData(schoolId: string): Promise<{ ok: boolean; classes?: ClassData[]; methods?: PaymentMethod[]; message?: string }> {
+    if (!schoolId) return { ok: false, message: 'School ID is required' };
+    const supabase = createSupabaseServerClient();
+    try {
+        const [classesRes, methodsRes] = await Promise.all([
+            supabase.from('classes').select('*').eq('school_id', schoolId).order('name'),
+            supabase.from('payment_methods').select('*').eq('school_id', schoolId).order('name')
+        ]);
+        
+        if (classesRes.error) throw new Error(`Failed to load classes: ${classesRes.error.message}`);
+        if (methodsRes.error) throw new Error(`Failed to load payment methods: ${methodsRes.error.message}`);
+
+        return {
+            ok: true,
+            classes: classesRes.data || [],
+            methods: methodsRes.data || []
+        };
+    } catch (e: any) {
+        return { ok: false, message: e.message || 'An unexpected error occurred.' };
+    }
+}
+
+export async function getFeesForStudentAction(studentId: string): Promise<{ ok: boolean; fees?: StudentFeePayment[]; message?: string }> {
+    if (!studentId) return { ok: false, message: 'Student ID is required' };
+    const supabase = createSupabaseServerClient();
+    try {
+        const { data, error } = await supabase
+            .from('student_fee_payments')
+            .select('*, fee_category:fee_category_id(name), installment:installment_id(title)')
+            .eq('student_id', studentId)
+            .order('due_date', { ascending: false });
+
+        if (error) throw error;
+        return { ok: true, fees: (data as any) || [] };
+    } catch (e: any) {
+        return { ok: false, message: `Failed to load fees: ${e.message}` };
+    }
 }

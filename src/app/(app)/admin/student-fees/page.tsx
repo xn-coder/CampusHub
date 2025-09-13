@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import type { StudentFeePayment, Student, ClassData } from '@/types';
+import type { StudentFeePayment, Student, ClassData, PaymentMethod } from '@/types';
 import { DollarSign, Loader2, Save, List, Edit2, Trash2 } from 'lucide-react';
 import { useState, useEffect, type FormEvent, useCallback, Suspense } from 'react';
 import { useToast } from "@/hooks/use-toast";
@@ -19,15 +19,14 @@ import {
   recordStudentFeePaymentAction,
   fetchAdminSchoolIdForFees,
   getStudentsByClass,
+  getFeePaymentPageData,
+  getFeesForStudentAction,
 } from './actions';
 import {
-    getPaymentMethodsAction,
     createPaymentMethodAction,
     updatePaymentMethodAction,
     deletePaymentMethodAction,
-    type PaymentMethod
 } from './payment-method-actions';
-import { supabase } from '@/lib/supabaseClient';
 import { useSearchParams } from 'next/navigation';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -92,11 +91,7 @@ function StudentFeesPageContent() {
           <CardDescription>Select a student to view their fees and record a payment.</CardDescription>
         </CardHeader>
         <CardContent>
-            {currentSchoolId ? (
-                <RecordPaymentForm schoolId={currentSchoolId} />
-            ) : (
-                <p className="text-muted-foreground">Waiting for school context...</p>
-            )}
+             <RecordPaymentForm schoolId={currentSchoolId} />
         </CardContent>
       </Card>
     </div>
@@ -105,12 +100,12 @@ function StudentFeesPageContent() {
 
 function RecordPaymentForm({ schoolId }: { schoolId: string }) {
     const { toast } = useToast();
-    const [isLoadingClasses, setIsLoadingClasses] = useState(true);
+    const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
     const [isFetchingStudents, setIsFetchingStudents] = useState(false);
     const [isFetchingFees, setIsFetchingFees] = useState(false);
-    const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
     
     const [classes, setClasses] = useState<ClassData[]>([]);
+    const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
     const [students, setStudents] = useState<Student[]>([]);
     const [studentFees, setStudentFees] = useState<StudentFeePayment[]>([]);
 
@@ -122,46 +117,35 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
     const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
     const [payingFeeId, setPayingFeeId] = useState<string | null>(null);
 
-    const loadClassesAndMethods = useCallback(async () => {
-        if(!schoolId) return;
-        setIsLoadingClasses(true);
-        const [classesRes, methodsRes] = await Promise.all([
-            supabase.from('classes').select('*').eq('school_id', schoolId).order('name'),
-            getPaymentMethodsAction(schoolId)
-        ]);
-
-        if (classesRes.error) {
-            toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
-            setClasses([]);
+    const loadInitialData = useCallback(async () => {
+        setIsLoadingInitialData(true);
+        const result = await getFeePaymentPageData(schoolId);
+        if (result.ok) {
+            setClasses(result.classes || []);
+            setPaymentMethods(result.methods || []);
         } else {
-            setClasses(classesRes.data || []);
+            toast({ title: 'Error', description: result.message || 'Failed to load initial data.', variant: 'destructive' });
         }
-
-        if (methodsRes.ok) {
-            setPaymentMethods(methodsRes.methods || []);
-        } else {
-            toast({ title: 'Error', description: 'Failed to load payment methods.', variant: 'destructive' });
-        }
-        setIsLoadingClasses(false);
+        setIsLoadingInitialData(false);
     }, [schoolId, toast]);
 
     useEffect(() => {
-        loadClassesAndMethods();
-    }, [loadClassesAndMethods]);
+        loadInitialData();
+    }, [loadInitialData]);
 
 
     useEffect(() => {
         async function loadStudents() {
-            if (!selectedClassId) {
+            if (!selectedClassId || !schoolId) {
                 setStudents([]);
                 setSelectedStudentId('');
                 setStudentFees([]);
                 return;
             }
             setIsFetchingStudents(true);
-            const { data: studentsData, error } = await getStudentsByClass(schoolId, selectedClassId);
-            if (error) toast({ title: 'Error', description: 'Failed to load students.', variant: 'destructive' });
-            else setStudents(studentsData || []);
+            const { ok, students: studentsData, message } = await getStudentsByClass(schoolId, selectedClassId);
+            if (ok) setStudents(studentsData || []);
+            else toast({ title: 'Error', description: message || 'Failed to load students.', variant: 'destructive' });
             setIsFetchingStudents(false);
         }
         loadStudents();
@@ -174,14 +158,9 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
                 return;
             }
             setIsFetchingFees(true);
-            const { data, error } = await supabase
-                .from('student_fee_payments')
-                .select('*, fee_category:fee_category_id(name), installment:installment_id(title)')
-                .eq('student_id', selectedStudentId)
-                .order('due_date', { ascending: false });
-
-            if (error) toast({ title: 'Error', description: 'Failed to load student fees.', variant: 'destructive' });
-            else setStudentFees((data as any) || []);
+            const { ok, fees: feeData, message } = await getFeesForStudentAction(selectedStudentId);
+            if (ok) setStudentFees(feeData || []);
+            else toast({ title: 'Error', description: message || 'Failed to load student fees.', variant: 'destructive' });
             setIsFetchingFees(false);
         }
         loadFees();
@@ -209,10 +188,8 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
 
         if (result.ok) {
             toast({ title: 'Payment Recorded', description: 'The payment was successfully recorded.' });
-            if (selectedStudentId) {
-                const { data, error } = await supabase.from('student_fee_payments').select('*, fee_category:fee_category_id(name), installment:installment_id(title)').eq('student_id', selectedStudentId).order('due_date', { ascending: false });
-                if (!error) setStudentFees((data as any) || []);
-            }
+            const { ok, fees: updatedFees } = await getFeesForStudentAction(selectedStudentId);
+            if (ok) setStudentFees(updatedFees || []);
             setPaymentAmounts(prev => ({...prev, [feeId]: ''}));
             setPaymentNotes(prev => ({...prev, [feeId]: ''}));
         } else {
@@ -238,13 +215,13 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
             <div className="grid md:grid-cols-2 gap-4">
                 <div>
                     <Label htmlFor="classSelectPayment">Select Class</Label>
-                    <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingClasses}>
+                    <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingInitialData}>
                         <SelectTrigger id="classSelectPayment">
-                            <SelectValue placeholder={isLoadingClasses ? 'Loading classes...' : 'Choose a class'}/>
+                            <SelectValue placeholder={isLoadingInitialData ? 'Loading classes...' : 'Choose a class'}/>
                         </SelectTrigger>
                         <SelectContent>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
                     </Select>
-                     {classes.length === 0 && !isLoadingClasses && <p className="text-xs text-muted-foreground mt-1">No classes found.</p>}
+                     {classes.length === 0 && !isLoadingInitialData && <p className="text-xs text-muted-foreground mt-1">No classes found.</p>}
                 </div>
                  <div>
                     <Label htmlFor="studentSelectPayment">Select Student</Label>
@@ -262,7 +239,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
                 <Card>
                     <CardHeader><CardTitle>Fee Records for Selected Student</CardTitle></CardHeader>
                     <CardContent>
-                        {isFetchingFees ? <Loader2 className="animate-spin" /> : studentFees.length === 0 ? <p className="text-muted-foreground text-center py-4">No fees assigned for this student.</p> : (
+                        {isFetchingFees ? <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div> : studentFees.length === 0 ? <p className="text-muted-foreground text-center py-4">No fees assigned for this student.</p> : (
                              <Table>
                                 <TableHeader><TableRow><TableHead>Fee Type</TableHead><TableHead>Amount Due</TableHead><TableHead className="w-[150px]">Payment Amount</TableHead><TableHead className="w-[150px]">Payment Mode</TableHead><TableHead className="w-[200px]">Notes</TableHead><TableHead className="w-[120px] text-right">Action</TableHead></TableRow></TableHeader>
                                 <TableBody>
@@ -288,6 +265,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
                                                                 {paymentMethods.map(method => (
                                                                     <SelectItem key={method.id} value={method.name}>{method.name}</SelectItem>
                                                                 ))}
+                                                                 {paymentMethods.length === 0 && <SelectItem value="Cash">Cash</SelectItem>}
                                                             </SelectContent>
                                                         </Select>
                                                     </TableCell>
