@@ -20,7 +20,6 @@ import {
   getStudentsByClass,
   getFeePaymentPageData,
   getFeesForStudentAction,
-  fetchAdminSchoolIdForFees,
 } from './actions';
 import {
     createPaymentMethodAction,
@@ -30,6 +29,7 @@ import {
 } from './payment-method-actions';
 import { useSearchParams } from 'next/navigation';
 import { Textarea } from '@/components/ui/textarea';
+import { getAdminSchoolIdAction } from '../academic-years/actions';
 
 
 function StudentFeesPageContent() {
@@ -47,7 +47,7 @@ function StudentFeesPageContent() {
     
     async function loadInitialData() {
       setIsLoadingPage(true);
-      const schoolId = await fetchAdminSchoolIdForFees(adminUserId!);
+      const schoolId = await getAdminSchoolIdAction(adminUserId!);
       setCurrentSchoolId(schoolId);
       if (!schoolId) {
         toast({ title: "Error", description: "Admin not linked to a school.", variant: "destructive" });
@@ -217,7 +217,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
         const category = (payment as any).fee_category;
 
         if (installment?.title) return `Installment: ${installment.title}`;
-        if (feeType?.display_name) return `Special Fee: ${feeType.display_name}`;
+        if (feeType?.display_name) return feeType.display_name;
         return category?.name || 'N/A';
     };
     
@@ -270,7 +270,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
                                                 <TableCell className="font-medium">{getFeeTitle(fee)}</TableCell>
                                                 <TableCell className="font-mono">₹{fee.assigned_amount.toFixed(2)}</TableCell>
                                                 <TableCell className="font-mono">₹{fee.paid_amount.toFixed(2)}</TableCell>
-                                                <TableCell className={`font-mono font-semibold ${due > 0 ? 'text-destructive' : 'text-green-600'}`}>₹{due.toFixed(2)}</TableCell>
+                                                <TableCell className={`font-mono font-semibold ${due > 0 ? 'text-destructive' : ''}`}>₹{due.toFixed(2)}</TableCell>
                                                 <TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell>
                                                 <TableCell className="text-right">
                                                     {due > 0 ? (
@@ -416,12 +416,12 @@ function PaymentMethodsManager({ schoolId }: { schoolId: string }) {
             <DialogTrigger asChild>
                 <Button variant="outline"><List className="mr-2 h-4 w-4" /> Manage Payment Methods</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-xl">
+            <DialogContent className="max-w-xl max-h-[60vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Manage Payment Methods</DialogTitle>
                     <DialogDescription>Add, edit, or remove accepted payment methods for your school.</DialogDescription>
                 </DialogHeader>
-                <div className="grid md:grid-cols-2 gap-6 py-4 max-h-[60vh] overflow-y-auto px-1">
+                <div className="grid md:grid-cols-2 gap-6 py-4 px-1">
                     <div className="space-y-4">
                         <h3 className="font-semibold">{isEditing ? 'Edit Method' : 'Add New Method'}</h3>
                         <form onSubmit={handleFormSubmit} className="space-y-3">
@@ -470,3 +470,5 @@ export default function StudentFeesPage() {
         </Suspense>
     );
 }
+
+    
