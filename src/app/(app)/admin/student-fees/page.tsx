@@ -404,169 +404,159 @@ function StudentFeesPageContent() {
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
   
-    if (isLoadingPage && !currentSchoolId) { // Show initial loading only if school ID is not yet determined
-    return (
-        <div className="flex flex-col gap-6">
-            <PageHeader title="Student Fee Records" />
-            <div className="flex justify-center items-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-primary mr-2"/> <span>Loading fee records...</span>
-            </div>
-        </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-6 min-h-screen">
-      <PageHeader
-        title="Student Fee Records" description="Assign fees to students, record payments, and track financial records."
-        actions={<Button onClick={handleOpenAssignFeeDialog} disabled={!currentSchoolId || isSubmitting || isLoadingPage}><PlusCircle className="mr-2 h-4 w-4" /> Assign New Fee</Button>}
-      />
-
-      {!currentSchoolId ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>School Association Required</CardTitle>
-            <CardDescription>Your admin account is not associated with a school. Please contact support.</CardDescription>
-          </CardHeader>
-           <CardContent>
-               <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>
-           </CardContent>
-        </Card>
-      ) : isLoadingPage ? (
-         <div className="flex justify-center items-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-primary mr-2"/> <span className="text-lg">Loading fee records...</span>
-            </div>
-      ) : (
-
-       <> {/* Use a fragment when returning multiple top-level elements */}
-
-      <Tabs defaultValue="summary" className="flex flex-col gap-6">
-        <TabsList className="grid w-full grid-cols-2">
-             {/* Only show tabs if school ID is available and not in initial loading */}
-            <TabsTrigger value="summary" disabled={isLoadingPage}>Fee Summary</TabsTrigger>
-            <TabsTrigger value="payment">Record Payment</TabsTrigger>
-        </TabsList>
-        <TabsContent value="summary">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Fee Summary</CardTitle>
-              <CardDescription>A summarized overview of each student's fee status, grouped by academic year. Click "View &amp; Manage" for details.</CardDescription>
-           </CardHeader>
-            <CardContent>
-               <div className="mb-4 flex flex-col md:flex-row gap-4">
-                 <Input placeholder="Search by student name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm" disabled={isLoadingPage}/>
-                <Select value={selectedAcademicYearFilter} onValueChange={setSelectedAcademicYearFilter} disabled={isLoadingPage || academicYears.length === 0}>
-                    <SelectTrigger className="w-full md:w-[200px]"><SelectValue placeholder="All Years" /></SelectTrigger>
-                    <SelectContent><SelectItem value="all">All Years</SelectItem><SelectItem value="general">General</SelectItem>{academicYears.map(ay => <SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)}</SelectContent>
-                </Select>
-                 <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter} disabled={isLoadingPage || classes.length === 0}>
-                    <SelectTrigger className="w-full md:w-[200px]"><SelectValue placeholder="All Classes" /></SelectTrigger>
-                    <SelectContent><SelectItem value="all">All Classes</SelectItem>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
-                </Select>
-                <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter} disabled={isLoadingPage}>
-                    <SelectTrigger className="w-full md:w-[180px]"><SelectValue placeholder="Filter by status" /></SelectTrigger>
-                    <SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Partially Paid">Partially Paid</SelectItem><SelectItem value="Overdue">Overdue</SelectItem></SelectContent>
-                </Select>
-                <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredSummaries.length === 0} className="md:ml-auto"><FileDown className="mr-2 h-4 w-4" />Download Summary</Button>
-               </div>
-              {isLoadingPage ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>) : !currentSchoolId ? (<p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>) : filteredSummaries.length === 0 ? (<p className="text-muted-foreground text-center py-4">{searchTerm || selectedAcademicYearFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}</p>) : (
-                <Table className="min-w-full divide-y divide-gray-200">
-                  <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Academic Year</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                  <TableBody>{filteredSummaries.map((summary) => (<TableRow key={summary.summaryId}><TableCell className="font-medium">{summary.studentName} <span className="font-mono text-xs text-muted-foreground">({getStudentRollNumber(summary.studentId)})</span></TableCell><TableCell>{getStudentClass(summary.studentClassId)}</TableCell><TableCell>{summary.academicYearName}</TableCell><TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</TableCell><TableCell><Badge variant={summary.status === 'Paid' ? 'default' : summary.status === 'Partially Paid' ? 'secondary' : summary.status === 'Overdue' ? 'destructive' : 'outline'}>{summary.status}</Badge></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}><FolderOpen className="mr-1 h-3 w-3" /> View &amp; Manage</Button></TableCell></TableRow>))}</TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="payment">
-            <Card>
-                <CardHeader>
- <CardTitle className="flex items-center"><DollarSign className="mr-2 h-5 w-5" />Record Manual Payment</CardTitle>
-                    <CardDescription>Select a student to view their pending fees and record a payment.</CardDescription>
-            </CardHeader>
-                <CardContent>
-                    <RecordPaymentForm
-                        classes={classes}
-                        students={students} // Pass all students to the form
-                        feeCategories={feeCategories}
-                        feePayments={feePayments}
-                        installments={installments}
-                        onRecordPayment={handleRecordPaymentSubmit}
-                    />
-                </CardContent>
-            </Card>
-        </TabsContent>
-      </Tabs>
-      
-      <Dialog open={isAssignFeeDialogOpen} onOpenChange={setIsAssignFeeDialogOpen}><DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Assign New Fee to a Class</DialogTitle></DialogHeader>
-          <form onSubmit={handleAssignFeeSubmit}>
-            <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
-              <div><Label htmlFor="classIdForFee">Class</Label><Select value={selectedClassIdForFee} onValueChange={setSelectedClassIdForFee} required disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger><SelectContent>{classes.length > 0 ? classes.map(c => (<SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)) : <SelectItem value="-" disabled>No classes found</SelectItem>}</SelectContent></Select></div>
-              <div><Label>Fee Categories to Assign</Label><Card className="max-h-48 overflow-y-auto p-2 border"><div className="space-y-2">{feeCategories.length > 0 ? feeCategories.map(fc => (<div key={fc.id} className="flex items-center space-x-2"><Checkbox id={`fee-cat-${fc.id}`} checked={selectedFeeCategoryIds.includes(fc.id)} onCheckedChange={(checked) => {setSelectedFeeCategoryIds(prev => checked ? [...prev, fc.id] : prev.filter(id => id !== fc.id));}} disabled={isSubmitting} /><Label htmlFor={`fee-cat-${fc.id}`} className="font-normal w-full cursor-pointer">{fc.name} {fc.amount ? `(₹${fc.amount.toFixed(2)})` : ''}</Label></div>)) : <p className="text-xs text-muted-foreground text-center">No fee categories defined.</p>}</div></Card><p className="text-xs text-muted-foreground mt-1">The pre-defined amount for each selected category will be used.</p></div>
-              <div><Label htmlFor="dueDate">Due Date (Optional)</Label><Input id="dueDate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={isSubmitting}/></div>
-              <div><Label htmlFor="installmentId">Installment (Optional)</Label><Select value={selectedInstallmentId || 'none'} onValueChange={(val) => setSelectedInstallmentId(val === 'none' ? undefined : val)} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select installment" /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{installments.map(i => (<SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>))}</SelectContent></Select></div>
-              <div><Label htmlFor="academicYearId">Academic Year (Optional)</Label><Select value={selectedAcademicYearId} onValueChange={(val) => setSelectedAcademicYearId(val === 'none' ? undefined : val)} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select academic year" /></SelectTrigger><SelectContent><SelectItem value="none">None (General)</SelectItem>{academicYears.map(ay => (<SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>))}</SelectContent></Select></div>
-              <div><Label htmlFor="notes">Notes (Optional)</Label><Input id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any specific notes for this fee" disabled={isSubmitting}/></div>
-            </div>
-            <DialogFooter className="mt-4"><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" /> } Assign Fees</Button></DialogFooter>
-          </form>
-      </DialogContent></Dialog>
-      
-      <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}><DialogContent className="sm:max-w-3xl">
-           <DialogHeader><DialogTitle>Fee Details for: {selectedStudentSummary?.studentName}</DialogTitle><DialogDescription>Academic Year: {selectedStudentSummary?.academicYearName} | Total Due: <span className="font-mono">₹</span>{selectedStudentSummary?.totalDue.toFixed(2)}</DialogDescription></DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Fee Category</TableHead><TableHead>Due Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{(selectedStudentSummary?.payments || []).map((fp) => (<TableRow key={fp.id}><TableCell className="font-medium">{getFeeCategoryName(fp.fee_category_id)}</TableCell><TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell><TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell><TableCell className="text-right space-x-1">{fp.status !== 'Paid' && (<><Button variant="outline" size="sm" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}><DollarSign className="mr-1 h-3 w-3"/>Record Pay</Button><Button variant="outline" size="sm" onClick={() => handleOpenConcessionDialog(fp)}>Apply Concession</Button></>)}<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}><Edit2 className="h-4 w-4"/></Button><Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}><Trash2 className="h-4 w-4"/></Button></TableCell></TableRow>))}</TableBody></Table></div>
-           <DialogFooter><DialogClose asChild><Button variant="outline">Close</Button></DialogClose></DialogFooter>
-      </DialogContent></Dialog>
-
-      <Dialog open={isEditFeeDialogOpen} onOpenChange={setIsEditFeeDialogOpen}><DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Edit Fee for {getStudentName(editingFeePayment?.student_id || '')}</DialogTitle><CardDescription>Category: {getFeeCategoryName(editingFeePayment?.fee_category_id || '')}</CardDescription></DialogHeader>
-          <form onSubmit={handleEditFeeSubmit}>
-             <div className="grid gap-4 py-4">
-                <div><Label htmlFor="editAssignedAmount">Assigned Amount (<span className="font-mono">₹</span>)</Label><Input id="editAssignedAmount" type="number" value={editAssignedAmount} onChange={(e) => setEditAssignedAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} required disabled={isSubmitting}/></div>
-                <div><Label htmlFor="editDueDate">Due Date</Label><Input id="editDueDate" type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} disabled={isSubmitting}/></div>
-                <div><Label htmlFor="editInstallmentId">Installment</Label><Select value={editInstallmentId || 'none'} onValueChange={val => setEditInstallmentId(val === 'none' ? undefined : val)} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select an installment"/></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{installments.map(i => <SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>)}</SelectContent></Select></div>
-                <div><Label htmlFor="editNotes">Notes</Label><Input id="editNotes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} disabled={isSubmitting}/></div>
-            </div>
-            <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Changes</Button></DialogFooter>
-          </form>
-      </DialogContent></Dialog>
-
-      <Dialog open={isRecordPaymentDialogOpen} onOpenChange={setIsRecordPaymentDialogOpen}><DialogContent className="sm:max-w-md">
- <DialogHeader><DialogTitle>Record Payment for {editingFeePayment ? getStudentName(editingFeePayment.student_id) : ''}</DialogTitle><DialogDescription>Fee: {editingFeePayment ? getFeeCategoryName(editingFeePayment.fee_category_id) : ''} <br/>Assigned: <span className="font-mono">₹</span>{editingFeePayment?.assigned_amount.toFixed(2)} | Paid: <span className="font-mono">₹</span>{editingFeePayment?.paid_amount.toFixed(2)} | Due: <span className="font-mono">₹</span>{((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)) > 0 ? ((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)).toFixed(2) : '0.00'}</DialogDescription></DialogHeader>
-          <form onSubmit={(e) => {
-              e.preventDefault();
-              if (editingFeePayment) {
-                handleRecordPaymentSubmit(editingFeePayment.id, Number(paymentAmount[editingFeePayment.id] || 0));
-              }
-            }}>
-            <div className="grid gap-4 py-4">
-              <div>
-                <Label htmlFor="paymentAmount">Payment Amount (<span className="font-mono">₹</span>)</Label>
-                <Input id="paymentAmount" type="number" value={paymentAmount[editingFeePayment?.id || ''] || ''} onChange={(e) => setPaymentAmount(prev => ({ ...prev, [editingFeePayment!.id]: e.target.value === '' ? '' : parseFloat(e.target.value) }))} placeholder="Amount being paid" step="0.01" min="0.01" required disabled={isSubmitting}/>
-              </div>
-              <div><Label htmlFor="paymentDate">Payment Date</Label><Input id="paymentDate" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required disabled={isSubmitting}/></div>
-            </div>
-            <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting || !editingFeePayment || (editingFeePayment.paid_amount >= editingFeePayment.assigned_amount)}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <DollarSign className="mr-2 h-4 w-4" /> } Record Payment</Button></DialogFooter>
-          </form>
-      </DialogContent></Dialog>
-      
-      {/* Concession Dialog */}
-       <Dialog open={isConcessionDialogOpen} onOpenChange={setIsConcessionDialogOpen}><DialogContent className="sm:max-w-md">
-            <DialogHeader><DialogTitle>Apply Concession</DialogTitle><DialogDescription>Apply a concession to the fee '{getFeeCategoryName(concessionFeePayment?.fee_category_id || '')}' for {getStudentName(concessionFeePayment?.student_id || '')}.</DialogDescription></DialogHeader>
-            <form onSubmit={handleApplyConcession}>
-                <div className="grid gap-4 py-4">
-                    <div><Label htmlFor="concessionType">Concession Type</Label><Select value={selectedConcessionId} onValueChange={setSelectedConcessionId} required><SelectTrigger><SelectValue placeholder="Select concession type"/></SelectTrigger><SelectContent>{concessions.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent></Select></div>
-                    <div><Label htmlFor="concessionAmount">Concession Amount (₹)</Label><Input id="concessionAmount" type="number" value={concessionAmount} onChange={e => setConcessionAmount(Number(e.target.value))} required min="0.01" max={(concessionFeePayment?.assigned_amount || 0) - (concessionFeePayment?.paid_amount || 0)}/></div>
+    if (isLoadingPage && !currentSchoolId) {
+        return (
+            <div className="flex flex-col gap-6">
+                <PageHeader title="Student Fee Records" />
+                <div className="flex justify-center items-center h-64">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary mr-2"/> <span>Loading fee records...</span>
                 </div>
-                <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Apply Concession</Button></DialogFooter>
-            </form>
-       </DialogContent></Dialog>
-    </div>
-  );
-      )}</> )} {/* Close the fragment */}
-    </div>
-  );
+            </div>
+        );
+    }
+    
+    return (
+        <div className="flex flex-col gap-6 min-h-screen">
+          <PageHeader
+            title="Student Fee Records" description="Assign fees to students, record payments, and track financial records."
+            actions={<Button onClick={handleOpenAssignFeeDialog} disabled={!currentSchoolId || isSubmitting || isLoadingPage}><PlusCircle className="mr-2 h-4 w-4" /> Assign New Fee</Button>}
+          />
+    
+          {!currentSchoolId ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>School Association Required</CardTitle>
+                <CardDescription>Your admin account is not associated with a school. Please contact support.</CardDescription>
+              </CardHeader>
+               <CardContent>
+                   <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>
+               </CardContent>
+            </Card>
+          ) : (
+           <Tabs defaultValue="summary" className="flex flex-col gap-6">
+            <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="summary" disabled={isLoadingPage}>Fee Summary</TabsTrigger>
+                <TabsTrigger value="payment">Record Payment</TabsTrigger>
+            </TabsList>
+            <TabsContent value="summary">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Fee Summary</CardTitle>
+                  <CardDescription>A summarized overview of each student's fee status, grouped by academic year. Click "View &amp; Manage" for details.</CardDescription>
+               </CardHeader>
+                <CardContent>
+                   <div className="mb-4 flex flex-col md:flex-row gap-4">
+                     <Input placeholder="Search by student name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm" disabled={isLoadingPage}/>
+                    <Select value={selectedAcademicYearFilter} onValueChange={setSelectedAcademicYearFilter} disabled={isLoadingPage || academicYears.length === 0}>
+                        <SelectTrigger className="w-full md:w-[200px]"><SelectValue placeholder="All Years" /></SelectTrigger>
+                        <SelectContent><SelectItem value="all">All Years</SelectItem><SelectItem value="general">General</SelectItem>{academicYears.map(ay => <SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                     <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter} disabled={isLoadingPage || classes.length === 0}>
+                        <SelectTrigger className="w-full md:w-[200px]"><SelectValue placeholder="All Classes" /></SelectTrigger>
+                        <SelectContent><SelectItem value="all">All Classes</SelectItem>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter} disabled={isLoadingPage}>
+                        <SelectTrigger className="w-full md:w-[180px]"><SelectValue placeholder="Filter by status" /></SelectTrigger>
+                        <SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Partially Paid">Partially Paid</SelectItem><SelectItem value="Overdue">Overdue</SelectItem></SelectContent>
+                    </Select>
+                    <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredSummaries.length === 0} className="md:ml-auto"><FileDown className="mr-2 h-4 w-4" />Download Summary</Button>
+                   </div>
+                  {isLoadingPage ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>) : !currentSchoolId ? (<p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>) : filteredSummaries.length === 0 ? (<p className="text-muted-foreground text-center py-4">{searchTerm || selectedAcademicYearFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}</p>) : (
+                    <Table className="min-w-full divide-y divide-gray-200">
+                      <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Academic Year</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                      <TableBody>{filteredSummaries.map((summary) => (<TableRow key={summary.summaryId}><TableCell className="font-medium">{summary.studentName} <span className="font-mono text-xs text-muted-foreground">({getStudentRollNumber(summary.studentId)})</span></TableCell><TableCell>{getStudentClass(summary.studentClassId)}</TableCell><TableCell>{summary.academicYearName}</TableCell><TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</TableCell><TableCell><Badge variant={summary.status === 'Paid' ? 'default' : summary.status === 'Partially Paid' ? 'secondary' : summary.status === 'Overdue' ? 'destructive' : 'outline'}>{summary.status}</Badge></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}><FolderOpen className="mr-1 h-3 w-3" /> View &amp; Manage</Button></TableCell></TableRow>))}</TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="payment">
+                <Card>
+                    <CardHeader>
+     <CardTitle className="flex items-center"><DollarSign className="mr-2 h-5 w-5" />Record Manual Payment</CardTitle>
+                        <CardDescription>Select a student to view their pending fees and record a payment.</CardDescription>
+                </CardHeader>
+                    <CardContent>
+                        <RecordPaymentForm
+                            classes={classes}
+                            students={students} // Pass all students to the form
+                            feePayments={feePayments}
+                            feeCategories={feeCategories}
+                            installments={installments}
+                            onRecordPayment={handleRecordPaymentSubmit}
+                        />
+                    </CardContent>
+                </Card>
+            </TabsContent>
+          </Tabs>
+          )} 
+          
+          <Dialog open={isAssignFeeDialogOpen} onOpenChange={setIsAssignFeeDialogOpen}><DialogContent className="sm:max-w-lg">
+              <DialogHeader><DialogTitle>Assign New Fee to a Class</DialogTitle></DialogHeader>
+              <form onSubmit={handleAssignFeeSubmit}>
+                <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
+                  <div><Label htmlFor="classIdForFee">Class</Label><Select value={selectedClassIdForFee} onValueChange={setSelectedClassIdForFee} required disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger><SelectContent>{classes.length > 0 ? classes.map(c => (<SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)) : <SelectItem value="-" disabled>No classes found</SelectItem>}</SelectContent></Select></div>
+                  <div><Label>Fee Categories to Assign</Label><Card className="max-h-48 overflow-y-auto p-2 border"><div className="space-y-2">{feeCategories.length > 0 ? feeCategories.map(fc => (<div key={fc.id} className="flex items-center space-x-2"><Checkbox id={`fee-cat-${fc.id}`} checked={selectedFeeCategoryIds.includes(fc.id)} onCheckedChange={(checked) => {setSelectedFeeCategoryIds(prev => checked ? [...prev, fc.id] : prev.filter(id => id !== fc.id));}} disabled={isSubmitting} /><Label htmlFor={`fee-cat-${fc.id}`} className="font-normal w-full cursor-pointer">{fc.name} {fc.amount ? `(₹${fc.amount.toFixed(2)})` : ''}</Label></div>)) : <p className="text-xs text-muted-foreground text-center">No fee categories defined.</p>}</div></Card><p className="text-xs text-muted-foreground mt-1">The pre-defined amount for each selected category will be used.</p></div>
+                  <div><Label htmlFor="dueDate">Due Date (Optional)</Label><Input id="dueDate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={isSubmitting}/></div>
+                  <div><Label htmlFor="installmentId">Installment (Optional)</Label><Select value={selectedInstallmentId || 'none'} onValueChange={(val) => setSelectedInstallmentId(val === 'none' ? undefined : val)} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select installment" /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{installments.map(i => (<SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>))}</SelectContent></Select></div>
+                  <div><Label htmlFor="academicYearId">Academic Year (Optional)</Label><Select value={selectedAcademicYearId} onValueChange={(val) => setSelectedAcademicYearId(val === 'none' ? undefined : val)} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select academic year" /></SelectTrigger><SelectContent><SelectItem value="none">None (General)</SelectItem>{academicYears.map(ay => (<SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>))}</SelectContent></Select></div>
+                  <div><Label htmlFor="notes">Notes (Optional)</Label><Input id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any specific notes for this fee" disabled={isSubmitting}/></div>
+                </div>
+                <DialogFooter className="mt-4"><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" /> } Assign Fees</Button></DialogFooter>
+              </form>
+          </DialogContent></Dialog>
+          
+          <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}><DialogContent className="sm:max-w-3xl">
+               <DialogHeader><DialogTitle>Fee Details for: {selectedStudentSummary?.studentName}</DialogTitle><DialogDescription>Academic Year: {selectedStudentSummary?.academicYearName} | Total Due: <span className="font-mono">₹</span>{selectedStudentSummary?.totalDue.toFixed(2)}</DialogDescription></DialogHeader>
+              <div className="max-h-[60vh] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Fee Category</TableHead><TableHead>Due Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{(selectedStudentSummary?.payments || []).map((fp) => (<TableRow key={fp.id}><TableCell className="font-medium">{getFeeCategoryName(fp.fee_category_id)}</TableCell><TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell><TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell><TableCell className="text-right space-x-1">{fp.status !== 'Paid' && (<><Button variant="outline" size="sm" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}><DollarSign className="mr-1 h-3 w-3"/>Record Pay</Button><Button variant="outline" size="sm" onClick={() => handleOpenConcessionDialog(fp)}>Apply Concession</Button></>)}<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}><Edit2 className="h-4 w-4"/></Button><Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}><Trash2 className="h-4 w-4"/></Button></TableCell></TableRow>))}</TableBody></Table></div>
+               <DialogFooter><DialogClose asChild><Button variant="outline">Close</Button></DialogClose></DialogFooter>
+          </DialogContent></Dialog>
+    
+          <Dialog open={isEditFeeDialogOpen} onOpenChange={setIsEditFeeDialogOpen}><DialogContent className="sm:max-w-md">
+              <DialogHeader><DialogTitle>Edit Fee for {getStudentName(editingFeePayment?.student_id || '')}</DialogTitle><CardDescription>Category: {getFeeCategoryName(editingFeePayment?.fee_category_id || '')}</CardDescription></DialogHeader>
+              <form onSubmit={handleEditFeeSubmit}>
+                 <div className="grid gap-4 py-4">
+                    <div><Label htmlFor="editAssignedAmount">Assigned Amount (<span className="font-mono">₹</span>)</Label><Input id="editAssignedAmount" type="number" value={editAssignedAmount} onChange={(e) => setEditAssignedAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} required disabled={isSubmitting}/></div>
+                    <div><Label htmlFor="editDueDate">Due Date</Label><Input id="editDueDate" type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} disabled={isSubmitting}/></div>
+                    <div><Label htmlFor="editInstallmentId">Installment</Label><Select value={editInstallmentId || 'none'} onValueChange={val => setEditInstallmentId(val === 'none' ? undefined : val)} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select an installment"/></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{installments.map(i => <SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>)}</SelectContent></Select></div>
+                    <div><Label htmlFor="editNotes">Notes</Label><Input id="editNotes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} disabled={isSubmitting}/></div>
+                </div>
+                <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save Changes</Button></DialogFooter>
+              </form>
+          </DialogContent></Dialog>
+    
+          <Dialog open={isRecordPaymentDialogOpen} onOpenChange={setIsRecordPaymentDialogOpen}><DialogContent className="sm:max-w-md">
+     <DialogHeader><DialogTitle>Record Payment for {editingFeePayment ? getStudentName(editingFeePayment.student_id) : ''}</DialogTitle><DialogDescription>Fee: {editingFeePayment ? getFeeCategoryName(editingFeePayment.fee_category_id) : ''} <br/>Assigned: <span className="font-mono">₹</span>{editingFeePayment?.assigned_amount.toFixed(2)} | Paid: <span className="font-mono">₹</span>{editingFeePayment?.paid_amount.toFixed(2)} | Due: <span className="font-mono">₹</span>{((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)) > 0 ? ((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)).toFixed(2) : '0.00'}</DialogDescription></DialogHeader>
+              <form onSubmit={(e) => {
+                  e.preventDefault();
+                  if (editingFeePayment) {
+                    handleRecordPaymentSubmit(editingFeePayment.id, Number(paymentAmount[editingFeePayment.id] || 0));
+                  }
+                }}>
+                <div className="grid gap-4 py-4">
+                  <div>
+                    <Label htmlFor="paymentAmount">Payment Amount (<span className="font-mono">₹</span>)</Label>
+                    <Input id="paymentAmount" type="number" value={paymentAmount[editingFeePayment?.id || ''] || ''} onChange={(e) => setPaymentAmount(prev => ({ ...prev, [editingFeePayment!.id]: e.target.value === '' ? '' : parseFloat(e.target.value) }))} placeholder="Amount being paid" step="0.01" min="0.01" required disabled={isSubmitting}/>
+                  </div>
+                  <div><Label htmlFor="paymentDate">Payment Date</Label><Input id="paymentDate" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required disabled={isSubmitting}/></div>
+                </div>
+                <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting || !editingFeePayment || (editingFeePayment.paid_amount >= editingFeePayment.assigned_amount)}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <DollarSign className="mr-2 h-4 w-4" /> } Record Payment</Button></DialogFooter>
+              </form>
+          </DialogContent></Dialog>
+          
+          {/* Concession Dialog */}
+           <Dialog open={isConcessionDialogOpen} onOpenChange={setIsConcessionDialogOpen}><DialogContent className="sm:max-w-md">
+                <DialogHeader><DialogTitle>Apply Concession</DialogTitle><DialogDescription>Apply a concession to the fee '{getFeeCategoryName(concessionFeePayment?.fee_category_id || '')}' for {getStudentName(concessionFeePayment?.student_id || '')}.</DialogDescription></DialogHeader>
+                <form onSubmit={handleApplyConcession}>
+                    <div className="grid gap-4 py-4">
+                        <div><Label htmlFor="concessionType">Concession Type</Label><Select value={selectedConcessionId} onValueChange={setSelectedConcessionId} required><SelectTrigger><SelectValue placeholder="Select concession type"/></SelectTrigger><SelectContent>{concessions.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label htmlFor="concessionAmount">Concession Amount (₹)</Label><Input id="concessionAmount" type="number" value={concessionAmount} onChange={e => setConcessionAmount(Number(e.target.value))} required min="0.01" max={(concessionFeePayment?.assigned_amount || 0) - (concessionFeePayment?.paid_amount || 0)}/></div>
+                    </div>
+                    <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Apply Concession</Button></DialogFooter>
+                </form>
+           </DialogContent></Dialog>
+        </div>
+      );
 }
 
 // Add a basic modal component structure here
@@ -713,5 +703,3 @@ export default function StudentFeesPage() {
         </Suspense>
     );
 }
-
-    
