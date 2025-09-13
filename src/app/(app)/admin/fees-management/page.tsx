@@ -28,6 +28,14 @@ interface FeeManagementOption {
 
 const feeConfigOptions: FeeManagementOption[] = [
   {
+    id: "student-fees",
+    title: "Student Fee Records",
+    description: "View fee summaries, record payments, and manage individual student fee assignments.",
+    icon: Users,
+    href: "/admin/student-fees",
+    isImplemented: true,
+  },
+  {
     id: "fee-categories",
     title: "Manage Fee Categories",
     description: "Define fee types like tuition, labs, etc.",

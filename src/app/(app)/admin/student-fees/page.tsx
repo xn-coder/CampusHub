@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession } from '@/types';
 import { DollarSign, FileText, Loader2, CreditCard, Download, FolderOpen, PlusCircle, Save, Edit2, Trash2 } from 'lucide-react';
-import { useState, useEffect, type FormEvent, useMemo, useCallback, Suspense } from 'react';
+import { useState, useEffect, type FormEvent, useMemo, useCallback, Suspense, useRef } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid, isPast, isToday, startOfYear, subDays } from 'date-fns';
 import {
@@ -30,7 +30,8 @@ import { useSearchParams } from 'next/navigation';
 import { getConcessionsAction } from '@/app/(app)/admin/manage-concessions/actions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-
+// Define the structure for the data we'll be fetching and managing
+// These types should ideally be imported from '@/types', but redefining here for clarity
 type StudentFeeStatus = 'Paid' | 'Partially Paid' | 'Pending' | 'Overdue';
 
 interface StudentFeeSummary {
@@ -47,6 +48,26 @@ interface StudentFeeSummary {
   summaryId: string;
 }
 
+// Extend StudentFeePayment type to include optional fields for payment form
+interface StudentFeePaymentWithForm extends StudentFeePayment {
+  paymentAmount?: number | '';
+  paymentNotes?: string;
+}
+
+// Add new imports for data fetching actions
+import {
+  getAllClasses,
+  getStudentsByClass,
+  getStudentFeeHistory,
+} from "./actions";
+import { parse } from "path";
+
+// Define types for the fetched data
+type Class = { id: string; name: string; division: string };
+type Student = { id: string; name: string; roll_number?: string | null; class_id?: string | null };
+type FeeHistoryEntry = StudentFeePayment & { fee_category_name: string; installment_title?: string | null };
+
+
 function StudentFeesPageContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -55,6 +76,11 @@ function StudentFeesPageContent() {
   const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [classes, setClasses] = useState<ClassData[]>([]);
+
+  // State for class and student selection in the record payment tab
+  const [selectedClassIdForPayment, setSelectedClassIdForPayment] = useState<string>('');
+  const [selectedStudentIdForPayment, setSelectedStudentIdForPayment] = useState<string>('');
+
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [concessions, setConcessions] = useState<Concession[]>([]);
 
@@ -62,7 +88,6 @@ function StudentFeesPageContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
   const [isAssignFeeDialogOpen, setIsAssignFeeDialogOpen] = useState(false);
   const [isRecordPaymentDialogOpen, setIsRecordPaymentDialogOpen] = useState(false);
   const [isEditFeeDialogOpen, setIsEditFeeDialogOpen] = useState(false);
@@ -82,6 +107,11 @@ function StudentFeesPageContent() {
   const [dueDate, setDueDate] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string | undefined>(undefined);
+
+  // State to store the fetched list of students based on selected class
+  const [studentsInSelectedClass, setStudentsInSelectedClass] = useState<Student[]>([]);
+  // State to store the fetched fee history for the selected student
+  const [studentFeeHistory, setStudentFeeHistory] = useState<FeeHistoryEntry[]>([]);
   const [selectedInstallmentId, setSelectedInstallmentId] = useState<string | undefined>(undefined);
 
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
@@ -90,7 +120,7 @@ function StudentFeesPageContent() {
   const [editAssignedAmount, setEditAssignedAmount] = useState<number | ''>('');
   const [editDueDate, setEditDueDate] = useState<string>('');
   const [editNotes, setEditNotes] = useState<string>('');
-  const [editInstallmentId, setEditInstallmentId] = useState<string | undefined>('');
+  const [editInstallmentId, setEditInstallmentId] = useState<string | undefined | null>('');
 
   const [concessionFeePayment, setConcessionFeePayment] = useState<StudentFeePayment | null>(null);
   const [selectedConcessionId, setSelectedConcessionId] = useState<string>('');
@@ -176,12 +206,13 @@ function StudentFeesPageContent() {
   const handleOpenEditFeeDialog = (feePayment: StudentFeePayment) => {
     setEditingFeePayment(feePayment); setEditAssignedAmount(feePayment.assigned_amount);
     setEditDueDate(feePayment.due_date ? format(parseISO(feePayment.due_date), 'yyyy-MM-dd') : '');
-    setEditNotes(payment.notes || ''); setEditInstallmentId(payment.installment_id || undefined);
+    setEditNotes(feePayment.notes || ''); setEditInstallmentId(feePayment.installment_id);
     setIsEditFeeDialogOpen(true);
   };
   const handleOpenDetailsDialog = (summary: StudentFeeSummary) => { setSelectedStudentSummary(summary); setIsDetailsDialogOpen(true); };
   const handleOpenConcessionDialog = (feePayment: StudentFeePayment) => {
     setConcessionFeePayment(feePayment); setSelectedConcessionId(''); setConcessionAmount('');
+ setPaymentAmount(''); setPaymentNotes({}); // Clear payment form states
     setIsConcessionDialogOpen(true);
   };
 
@@ -193,7 +224,8 @@ function StudentFeesPageContent() {
     setEditingFeePayment(null); setEditAssignedAmount(''); setEditDueDate(''); setEditNotes(''); setEditInstallmentId(undefined);
   };
   const resetRecordPaymentForm = () => {
-    setPaymentAmount(''); setPaymentDate(format(new Date(), 'yyyy-MM-dd')); setEditingFeePayment(null);
+ setPaymentAmount({}); // Reset payment amounts for all fees
+ setPaymentNotes({}); // Reset notes for all fees
   };
 
   const handleAssignFeeSubmit = async (e: FormEvent) => {
@@ -226,7 +258,7 @@ function StudentFeesPageContent() {
     setIsSubmitting(true);
     const result = await updateStudentFeeAction(editingFeePayment.id, currentSchoolId, {
       assigned_amount: Number(editAssignedAmount), due_date: editDueDate || undefined, notes: editNotes.trim() || undefined,
-      installment_id: editInstallmentId === 'none' ? null : editInstallmentId
+      installment_id: editInstallmentId === 'none' ? null : editInstallmentId // Handle 'none' from select
     });
     if (result.ok) {
         toast({ title: "Fee Updated", description: result.message });
@@ -239,13 +271,22 @@ function StudentFeesPageContent() {
   };
 
   const handleRecordPaymentSubmit = async (e: FormEvent) => {
+    // This handler is for the *dialog* payment form. The new record payment form below has its own handler.
+    // Keep this for compatibility with the old dialog, but the new form is preferred.
     e.preventDefault();
     if (!editingFeePayment || paymentAmount === '' || Number(paymentAmount) <= 0 || !currentSchoolId) {
       toast({ title: "Error", description: "Valid payment amount and fee record context are required.", variant: "destructive" }); return;
     }
+
+    const amountToPay = Number(paymentAmount);
+    const amountDue = (editingFeePayment.assigned_amount ?? 0) - (editingFeePayment.paid_amount ?? 0);
+    if (amountToPay > amountDue + 0.001) { // Allow small floating point inaccuracies
+         toast({ title: "Error", description: `Payment amount cannot exceed the amount due (${amountDue.toFixed(2)})`, variant: "destructive" }); return;
+    }
+
     setIsSubmitting(true);
     const result = await recordStudentFeePaymentAction({
-      fee_payment_id: editingFeePayment.id, payment_amount: Number(paymentAmount), payment_date: paymentDate, school_id: currentSchoolId,
+      fee_payment_id: editingFeePayment.id, payment_amount: amountToPay, payment_date: paymentDate, school_id: currentSchoolId,
     });
     if (result.ok) {
       toast({ title: "Payment Recorded", description: result.message });
@@ -362,7 +403,7 @@ function StudentFeesPageContent() {
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
   
-    if (isLoadingPage) {
+    if (isLoadingPage && !currentSchoolId) { // Show initial loading only if school ID is not yet determined
     return (
         <div className="flex flex-col gap-6">
             <PageHeader title="Student Fee Records" />
@@ -374,14 +415,34 @@ function StudentFeesPageContent() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 min-h-screen">
       <PageHeader
         title="Student Fee Records" description="Assign fees to students, record payments, and track financial records."
         actions={<Button onClick={handleOpenAssignFeeDialog} disabled={!currentSchoolId || isSubmitting || isLoadingPage}><PlusCircle className="mr-2 h-4 w-4" /> Assign New Fee</Button>}
       />
-      <Tabs defaultValue="summary">
+
+      {!currentSchoolId ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>School Association Required</CardTitle>
+            <CardDescription>Your admin account is not associated with a school. Please contact support.</CardDescription>
+          </CardHeader>
+           <CardContent>
+               <p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>
+           </CardContent>
+        </Card>
+      ) : isLoadingPage ? (
+         <div className="flex justify-center items-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mr-2"/> <span className="text-lg">Loading fee records...</span>
+            </div>
+      ) : (
+
+       <> {/* Use a fragment when returning multiple top-level elements */}
+
+      <Tabs defaultValue="summary" className="flex flex-col gap-6">
         <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="summary">Fee Summary</TabsTrigger>
+             {/* Only show tabs if school ID is available and not in initial loading */}
+            <TabsTrigger value="summary" disabled={isLoadingPage}>Fee Summary</TabsTrigger>
             <TabsTrigger value="payment">Record Payment</TabsTrigger>
         </TabsList>
         <TabsContent value="summary">
@@ -389,7 +450,7 @@ function StudentFeesPageContent() {
             <CardHeader>
               <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Fee Summary</CardTitle>
               <CardDescription>A summarized overview of each student's fee status, grouped by academic year. Click "View &amp; Manage" for details.</CardDescription>
-            </CardHeader>
+           </CardHeader>
             <CardContent>
                <div className="mb-4 flex flex-col md:flex-row gap-4">
                  <Input placeholder="Search by student name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm" disabled={isLoadingPage}/>
@@ -408,7 +469,7 @@ function StudentFeesPageContent() {
                 <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredSummaries.length === 0} className="md:ml-auto"><FileDown className="mr-2 h-4 w-4" />Download Summary</Button>
                </div>
               {isLoadingPage ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>) : !currentSchoolId ? (<p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>) : filteredSummaries.length === 0 ? (<p className="text-muted-foreground text-center py-4">{searchTerm || selectedAcademicYearFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}</p>) : (
-                <Table>
+                <Table className="min-w-full divide-y divide-gray-200">
                   <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Academic Year</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>{filteredSummaries.map((summary) => (<TableRow key={summary.summaryId}><TableCell className="font-medium">{summary.studentName} <span className="font-mono text-xs text-muted-foreground">({getStudentRollNumber(summary.studentId)})</span></TableCell><TableCell>{getStudentClass(summary.studentClassId)}</TableCell><TableCell>{summary.academicYearName}</TableCell><TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</TableCell><TableCell><Badge variant={summary.status === 'Paid' ? 'default' : summary.status === 'Partially Paid' ? 'secondary' : summary.status === 'Overdue' ? 'destructive' : 'outline'}>{summary.status}</Badge></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}><FolderOpen className="mr-1 h-3 w-3" /> View &amp; Manage</Button></TableCell></TableRow>))}</TableBody>
                 </Table>
@@ -419,22 +480,23 @@ function StudentFeesPageContent() {
         <TabsContent value="payment">
             <Card>
                 <CardHeader>
-                    <CardTitle>Record Manual Payment</CardTitle>
+ <CardTitle className="flex items-center"><DollarSign className="mr-2 h-5 w-5" />Record Manual Payment</CardTitle>
                     <CardDescription>Select a student to view their pending fees and record a payment.</CardDescription>
-                </CardHeader>
+            </CardHeader>
                 <CardContent>
                     <RecordPaymentForm
                         classes={classes}
-                        students={students}
-                        feePayments={feePayments}
+                        students={students} // Pass all students to the form
                         feeCategories={feeCategories}
                         installments={installments}
-                        onRecordPayment={async (fee, amount) => {
-                            setEditingFeePayment({ ...fee, paid_amount: amount });
-                            await handleRecordPaymentSubmit(new Event('submit') as any);
+                        onRecordPayment={async (feeId, amount, notes) => {
+                             if (!currentSchoolId) return;
+                             const result = await recordStudentFeePaymentAction({
+                                fee_payment_id: feeId, payment_amount: amount, payment_date: format(new Date(), 'yyyy-MM-dd'), school_id: currentSchoolId, notes: notes || undefined,
+                             });
+                             toast({ title: result.ok ? "Payment Recorded" : "Error", description: result.message, variant: result.ok ? "default" : "destructive" });
+                            if (result.ok && currentSchoolId) refreshAllFeeData(currentSchoolId); // Refresh data after successful payment
                         }}
-                        isSubmitting={isSubmitting}
-                        schoolId={currentSchoolId!}
                     />
                 </CardContent>
             </Card>
@@ -448,7 +510,7 @@ function StudentFeesPageContent() {
               <div><Label htmlFor="classIdForFee">Class</Label><Select value={selectedClassIdForFee} onValueChange={setSelectedClassIdForFee} required disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger><SelectContent>{classes.length > 0 ? classes.map(c => (<SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)) : <SelectItem value="-" disabled>No classes found</SelectItem>}</SelectContent></Select></div>
               <div><Label>Fee Categories to Assign</Label><Card className="max-h-48 overflow-y-auto p-2 border"><div className="space-y-2">{feeCategories.length > 0 ? feeCategories.map(fc => (<div key={fc.id} className="flex items-center space-x-2"><Checkbox id={`fee-cat-${fc.id}`} checked={selectedFeeCategoryIds.includes(fc.id)} onCheckedChange={(checked) => {setSelectedFeeCategoryIds(prev => checked ? [...prev, fc.id] : prev.filter(id => id !== fc.id));}} disabled={isSubmitting} /><Label htmlFor={`fee-cat-${fc.id}`} className="font-normal w-full cursor-pointer">{fc.name} {fc.amount ? `(₹${fc.amount.toFixed(2)})` : ''}</Label></div>)) : <p className="text-xs text-muted-foreground text-center">No fee categories defined.</p>}</div></Card><p className="text-xs text-muted-foreground mt-1">The pre-defined amount for each selected category will be used.</p></div>
               <div><Label htmlFor="dueDate">Due Date (Optional)</Label><Input id="dueDate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={isSubmitting}/></div>
-              <div><Label htmlFor="installmentId">Installment (Optional)</Label><Select value={selectedInstallmentId} onValueChange={(val) => setSelectedInstallmentId(val === 'none' ? undefined : val)} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select installment" /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{installments.map(i => (<SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>))}</SelectContent></Select></div>
+              <div><Label htmlFor="installmentId">Installment (Optional)</Label><Select value={selectedInstallmentId || 'none'} onValueChange={(val) => setSelectedInstallmentId(val === 'none' ? undefined : val)} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select installment" /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{installments.map(i => (<SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>))}</SelectContent></Select></div>
               <div><Label htmlFor="academicYearId">Academic Year (Optional)</Label><Select value={selectedAcademicYearId} onValueChange={(val) => setSelectedAcademicYearId(val === 'none' ? undefined : val)} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select academic year" /></SelectTrigger><SelectContent><SelectItem value="none">None (General)</SelectItem>{academicYears.map(ay => (<SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>))}</SelectContent></Select></div>
               <div><Label htmlFor="notes">Notes (Optional)</Label><Input id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any specific notes for this fee" disabled={isSubmitting}/></div>
             </div>
@@ -457,7 +519,7 @@ function StudentFeesPageContent() {
       </DialogContent></Dialog>
       
       <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}><DialogContent className="sm:max-w-3xl">
-           <DialogHeader><DialogTitle>Fee Details for: {selectedStudentSummary?.studentName}</DialogTitle><CardDescription>Academic Year: {selectedStudentSummary?.academicYearName} | Total Due: <span className="font-mono">₹</span>{selectedStudentSummary?.totalDue.toFixed(2)}</CardDescription></DialogHeader>
+           <DialogHeader><DialogTitle>Fee Details for: {selectedStudentSummary?.studentName}</DialogTitle><DialogDescription>Academic Year: {selectedStudentSummary?.academicYearName} | Total Due: <span className="font-mono">₹</span>{selectedStudentSummary?.totalDue.toFixed(2)}</DialogDescription></DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Fee Category</TableHead><TableHead>Due Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{(selectedStudentSummary?.payments || []).map((fp) => (<TableRow key={fp.id}><TableCell className="font-medium">{getFeeCategoryName(fp.fee_category_id)}</TableCell><TableCell>{fp.due_date ? format(parseISO(fp.due_date), 'PP') : 'N/A'}</TableCell><TableCell><Badge variant={fp.status === 'Paid' ? 'default' : fp.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fp.status}</Badge></TableCell><TableCell className="text-right space-x-1">{fp.status !== 'Paid' && (<><Button variant="outline" size="sm" onClick={() => handleOpenRecordPaymentDialog(fp)} disabled={isSubmitting}><DollarSign className="mr-1 h-3 w-3"/>Record Pay</Button><Button variant="outline" size="sm" onClick={() => handleOpenConcessionDialog(fp)}>Apply Concession</Button></>)}<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEditFeeDialog(fp)} disabled={isSubmitting}><Edit2 className="h-4 w-4"/></Button><Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleDeleteFeeAssignment(fp.id)} disabled={isSubmitting || fp.paid_amount > 0}><Trash2 className="h-4 w-4"/></Button></TableCell></TableRow>))}</TableBody></Table></div>
            <DialogFooter><DialogClose asChild><Button variant="outline">Close</Button></DialogClose></DialogFooter>
       </DialogContent></Dialog>
@@ -465,7 +527,7 @@ function StudentFeesPageContent() {
       <Dialog open={isEditFeeDialogOpen} onOpenChange={setIsEditFeeDialogOpen}><DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Edit Fee for {getStudentName(editingFeePayment?.student_id || '')}</DialogTitle><CardDescription>Category: {getFeeCategoryName(editingFeePayment?.fee_category_id || '')}</CardDescription></DialogHeader>
           <form onSubmit={handleEditFeeSubmit}>
-            <div className="grid gap-4 py-4">
+             <div className="grid gap-4 py-4">
                 <div><Label htmlFor="editAssignedAmount">Assigned Amount (<span className="font-mono">₹</span>)</Label><Input id="editAssignedAmount" type="number" value={editAssignedAmount} onChange={(e) => setEditAssignedAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} required disabled={isSubmitting}/></div>
                 <div><Label htmlFor="editDueDate">Due Date</Label><Input id="editDueDate" type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} disabled={isSubmitting}/></div>
                 <div><Label htmlFor="editInstallmentId">Installment</Label><Select value={editInstallmentId || 'none'} onValueChange={val => setEditInstallmentId(val === 'none' ? undefined : val)} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder="Select an installment"/></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem>{installments.map(i => <SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>)}</SelectContent></Select></div>
@@ -476,12 +538,13 @@ function StudentFeesPageContent() {
       </DialogContent></Dialog>
 
       <Dialog open={isRecordPaymentDialogOpen} onOpenChange={setIsRecordPaymentDialogOpen}><DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Record Payment for {editingFeePayment ? getStudentName(editingFeePayment.student_id) : ''}</DialogTitle><CardDescription>Fee: {editingFeePayment ? getFeeCategoryName(editingFeePayment.fee_category_id) : ''} <br/>Assigned: <span className="font-mono">₹</span>{editingFeePayment?.assigned_amount.toFixed(2)} | Paid: <span className="font-mono">₹</span>{editingFeePayment?.paid_amount.toFixed(2)} | Due: <span className="font-mono">₹</span>{((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)) > 0 ? ((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)).toFixed(2) : '0.00'}</CardDescription></DialogHeader>
+ <DialogHeader><DialogTitle>Record Payment for {editingFeePayment ? getStudentName(editingFeePayment.student_id) : ''}</DialogTitle><DialogDescription>Fee: {editingFeePayment ? getFeeCategoryName(editingFeePayment.fee_category_id) : ''} <br/>Assigned: <span className="font-mono">₹</span>{editingFeePayment?.assigned_amount.toFixed(2)} | Paid: <span className="font-mono">₹</span>{editingFeePayment?.paid_amount.toFixed(2)} | Due: <span className="font-mono">₹</span>{((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)) > 0 ? ((editingFeePayment?.assigned_amount ?? 0) - (editingFeePayment?.paid_amount ?? 0)).toFixed(2) : '0.00'}</DialogDescription></DialogHeader>
           <form onSubmit={handleRecordPaymentSubmit}><div className="grid gap-4 py-4"><div><Label htmlFor="paymentAmount">Payment Amount (<span className="font-mono">₹</span>)</Label><Input id="paymentAmount" type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="Amount being paid" step="0.01" min="0.01" required disabled={isSubmitting}/></div><div><Label htmlFor="paymentDate">Payment Date</Label><Input id="paymentDate" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required disabled={isSubmitting}/></div></div>
             <DialogFooter><DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose><Button type="submit" disabled={isSubmitting || !editingFeePayment || (editingFeePayment.paid_amount >= editingFeePayment.assigned_amount)}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <DollarSign className="mr-2 h-4 w-4" /> } Record Payment</Button></DialogFooter>
           </form>
       </DialogContent></Dialog>
       
+      {/* Concession Dialog */}
        <Dialog open={isConcessionDialogOpen} onOpenChange={setIsConcessionDialogOpen}><DialogContent className="sm:max-w-md">
             <DialogHeader><DialogTitle>Apply Concession</DialogTitle><DialogDescription>Apply a concession to the fee '{getFeeCategoryName(concessionFeePayment?.fee_category_id || '')}' for {getStudentName(concessionFeePayment?.student_id || '')}.</DialogDescription></DialogHeader>
             <form onSubmit={handleApplyConcession}>
@@ -494,23 +557,50 @@ function StudentFeesPageContent() {
        </DialogContent></Dialog>
     </div>
   );
+      )}</> )} {/* Close the fragment */}
+    </div>
+  );
 }
 
+// Add a basic modal component structure here
+function BasicPaymentModal() {
+    return (
+        <Dialog open={false}> {/* Use 'open={false}' initially, state will control this */}
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Record Payment</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div>
+                        <Label htmlFor="modal-payment-amount">Amount Paid</Label>
+                        <Input id="modal-payment-amount" type="number" placeholder="Enter amount" />
+                    </div>
+                    <div>
+                        <Label htmlFor="modal-payment-notes">Notes</Label>
+                        <Input id="modal-payment-notes" type="text" placeholder="Add notes (optional)" />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline">Cancel</Button>
+                    <Button>Submit Payment</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+
 function RecordPaymentForm({ classes, students, feePayments, feeCategories, installments, onRecordPayment, isSubmitting, schoolId }: {
-    classes: ClassData[],
-    students: Student[],
-    feePayments: StudentFeePayment[],
-    feeCategories: FeeCategory[],
-    installments: Installment[],
-    onRecordPayment: (fee: StudentFeePayment, amount: number) => void,
-    isSubmitting: boolean,
-    schoolId: string
+     classes: ClassData[], students: Student[], feeCategories: FeeCategory[], installments: Installment[], onRecordPayment: (feeId: string, amount: number, notes: string) => Promise<void>,
 }) {
     const [selectedClassId, setSelectedClassId] = useState('');
     const [selectedStudentId, setSelectedStudentId] = useState('');
     const [paymentAmount, setPaymentAmount] = useState<Record<string, number | ''>>({});
+    const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
 
-    const studentsInClass = useMemo(() => students.filter(s => s.class_id === selectedClassId), [students, selectedClassId]);
+    // Keep track of which fee payment is currently being processed for payment
+    const [payingFeeId, setPayingFeeId] = useState<string | null>(null);
+    const studentsInClass = useMemo(() => students.filter(s => s.class_id === selectedClassId), [students, selectedClassId]); // Use the students prop directly
     const pendingFeesForStudent = useMemo(() => {
         return feePayments.filter(fp => fp.student_id === selectedStudentId && fp.status !== 'Paid');
     }, [feePayments, selectedStudentId]);
@@ -522,11 +612,20 @@ function RecordPaymentForm({ classes, students, feePayments, feeCategories, inst
         return feeCategories.find(fc => fc.id === fee.fee_category_id)?.name || 'Fee';
     };
 
-    const handlePayClick = (fee: StudentFeePayment) => {
+    // Use this state to disable the payment buttons while any payment is being processed
+    const [isAnyPaymentRecording, setIsAnyPaymentRecording] = useState(false);
+
+    const handlePayClick = async (fee: StudentFeePayment) => {
         const amount = paymentAmount[fee.id];
-        if (typeof amount === 'number' && amount > 0) {
-            onRecordPayment(fee, amount);
-            setPaymentAmount(prev => ({...prev, [fee.id]: ''}));
+        const notes = paymentNotes[fee.id] || undefined; // Pass undefined if notes are empty
+        if (typeof amount === 'number' && amount > 0 && !isAnyPaymentRecording) {
+            setIsAnyPaymentRecording(true);
+            setPayingFeeId(fee.id);
+            await onRecordPayment(fee.id, amount, notes);
+            setPaymentAmount(prev => ({...prev, [fee.id]: ''})); // Clear amount after successful payment
+            setPaymentNotes(prev => ({...prev, [fee.id]: ''}));
+             setPayingFeeId(null); // Reset after payment is processed
+            setIsRecordingPayment(false);
         }
     };
 
@@ -553,11 +652,12 @@ function RecordPaymentForm({ classes, students, feePayments, feeCategories, inst
                 <div className="border-t pt-4">
                     <h3 className="font-semibold mb-2">Pending Fees for {students.find(s=>s.id === selectedStudentId)?.name}</h3>
                     {pendingFeesForStudent.length > 0 ? (
-                        <Table>
+                        <Table className="min-w-full divide-y divide-gray-200">
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Fee Type</TableHead>
                                     <TableHead className="text-right">Amount Due</TableHead>
+                                    <TableHead>Notes (Optional)</TableHead>
                                     <TableHead className="w-[150px]">Payment Amount</TableHead>
                                     <TableHead className="text-right">Action</TableHead>
                                 </TableRow>
@@ -569,6 +669,14 @@ function RecordPaymentForm({ classes, students, feePayments, feeCategories, inst
                                         <TableRow key={fee.id}>
                                             <TableCell>{getFeeName(fee)}</TableCell>
                                             <TableCell className="text-right font-mono">₹{due.toFixed(2)}</TableCell>
+                                            <TableCell className="w-[250px]">
+                                                <Input
+                                                    type="text"
+                                                    placeholder="Payment notes"
+                                                    value={paymentNotes[fee.id] || ''}
+                                                    onChange={e => setPaymentNotes(prev => ({...prev, [fee.id]: e.target.value}))}
+                                                />
+                                            </TableCell>
                                             <TableCell>
                                                 <Input
                                                     type="number"
@@ -578,12 +686,16 @@ function RecordPaymentForm({ classes, students, feePayments, feeCategories, inst
                                                     min="0.01"
                                                     value={paymentAmount[fee.id] || ''}
                                                     onChange={e => setPaymentAmount(prev => ({...prev, [fee.id]: Number(e.target.value)}))}
-                                                    disabled={isSubmitting}
+                                                    disabled={isRecordingPayment}
                                                 />
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <Button onClick={() => handlePayClick(fee)} size="sm" disabled={isSubmitting || !paymentAmount[fee.id] || Number(paymentAmount[fee.id]) <= 0}>
-                                                    Record Pay
+                                                <Button
+                                                    onClick={() => handlePayClick(fee)}
+                                                    size="sm"
+                                                    disabled={isAnyPaymentRecording || !paymentAmount[fee.id] || Number(paymentAmount[fee.id]) <= 0}
+                                                >
+                                                    {payingFeeId === fee.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null} Record Pay
                                                 </Button>
                                             </TableCell>
                                         </TableRow>

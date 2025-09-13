@@ -28,6 +28,42 @@ export async function fetchAdminSchoolIdForFees(userId: string): Promise<string 
   return user.school_id;
 }
 
+
+export async function getAllClasses(schoolId: string): Promise<{ ok: boolean; classes?: ClassData[]; message?: string }> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('classes')
+    .select('*')
+    .eq('school_id', schoolId)
+    .order('name');
+
+  if (error) {
+    console.error("Error fetching classes:", error);
+    return { ok: false, message: error.message };
+  }
+  return { ok: true, classes: data || [] };
+}
+
+export async function getStudentsByClass(schoolId: string, classId: string): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('students')
+    .select('*') // Select all fields needed for display in the student dropdown
+    .eq('school_id', schoolId)
+    .eq('class_id', classId)
+    .order('name');
+
+  if (error) {
+    console.error(`Error fetching students for class ${classId}:`, error);
+    return { ok: false, message: error.message };
+  }
+
+  return { ok: true, students: data || [] };
+}
+
+// Renamed existing fetch to be more specific
+// Original: fetchStudentFeesPageDataAction
+// New: fetchAdminFeesOverviewDataAction (or similar, but keeping for now)
 export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<{
   ok: boolean;
   feePayments?: StudentFeePayment[];
@@ -74,6 +110,37 @@ export async function fetchStudentFeesPageDataAction(schoolId: string): Promise<
   }
 }
 
+export async function getStudentFeeHistory(studentId: string): Promise<{ ok: boolean; payments?: StudentFeePayment[]; message?: string }> {
+  const supabase = createSupabaseServerClient();
+  // Assuming student_fee_payments table has foreign keys or relationships
+  // to fee_categories, academic_years, etc., if needed for joining.
+  // For now, fetch directly from student_fee_payments.
+  // You might need to adjust the select statement and joins based on your schema.
+  const { data, error } = await supabase
+    .from('student_fee_payments')
+    .select(`
+      *,
+      fee_categories ( name ),
+      academic_years ( year ),
+      installments ( title )
+    `) // Adjust select based on your schema
+    .eq('student_id', studentId)
+    .order('due_date', { ascending: false, nullsFirst: false });
+
+  if (error) {
+    console.error(`Error fetching fee history for student ${studentId}:`, error);
+    return { ok: false, message: error.message };
+  }
+
+  // Map the joined data into the desired structure if necessary
+  const payments = data?.map(p => ({
+    ...p,
+    fee_category_name: p.fee_categories?.name,
+    academic_year_name: p.academic_years?.year,
+    installment_title: p.installments?.title,
+  })) as StudentFeePayment[] | undefined; // Type assertion might be needed
+  return { ok: true, payments: payments || [] };
+}
 
 export async function assignStudentFeeAction(
   input: {
@@ -234,7 +301,8 @@ export async function recordStudentFeePaymentAction(
   input: RecordPaymentInput
 ): Promise<{ ok: boolean; message: string; feePayment?: StudentFeePayment }> {
   const supabaseAdmin = createSupabaseServerClient();
-  const { fee_payment_id, payment_amount, payment_date, school_id } = input;
+  const { fee_payment_id, payment_amount, payment_date, school_id } = input; // payment_amount is the *new* amount being paid
+
 
   const { data: existingFeePayment, error: fetchError } = await supabaseAdmin
     .from('student_fee_payments')
@@ -248,7 +316,8 @@ export async function recordStudentFeePaymentAction(
     return { ok: false, message: 'Fee assignment not found or database error.' };
   }
 
-  const newPaidAmount = existingFeePayment.paid_amount + payment_amount;
+  // Calculate the new total paid amount
+  const newPaidAmount = existingFeePayment.paid_amount + payment_amount; 
   let newStatus: PaymentStatus = 'Pending';
 
   if (newPaidAmount >= existingFeePayment.assigned_amount) {
@@ -257,10 +326,13 @@ export async function recordStudentFeePaymentAction(
     newStatus = 'Partially Paid';
   }
 
+  // Ensure the new paid amount does not exceed the assigned amount unless it's a full payment
+  const finalPaidAmount = Math.min(newPaidAmount, existingFeePayment.assigned_amount);
+
   const { error, data } = await supabaseAdmin
     .from('student_fee_payments')
     .update({
-      paid_amount: newPaidAmount,
+      paid_amount: finalPaidAmount,
       status: newStatus,
       payment_date: payment_date,
     })
@@ -279,6 +351,53 @@ export async function recordStudentFeePaymentAction(
   revalidatePath('/student/assignments');
   return { ok: true, message: 'Payment recorded successfully.', feePayment: data as StudentFeePayment };
 }
+
+
+export async function recordPayment(feeId: string, amount: number, notes?: string): Promise<{ ok: boolean; message: string }> {
+    const supabaseAdmin = createSupabaseServerClient();
+
+    const { data: feePayment, error: fetchError } = await supabaseAdmin
+        .from('student_fee_payments')
+        .select('assigned_amount, paid_amount, notes')
+        .eq('id', feeId)
+        .single();
+
+    if (fetchError || !feePayment) {
+        console.error(`Error fetching fee payment ${feeId}:`, fetchError);
+        return { ok: false, message: 'Fee payment record not found.' };
+    }
+
+    const newPaidAmount = feePayment.paid_amount + amount;
+    let newStatus: PaymentStatus;
+
+    if (newPaidAmount >= feePayment.assigned_amount) {
+        newStatus = 'Paid';
+    } else if (newPaidAmount > 0) {
+        newStatus = 'Partially Paid';
+    } else {
+        newStatus = 'Pending'; // Should not happen if amount > 0 but good practice
+    }
+
+    const updatedNotes = notes ? (feePayment.notes ? `${feePayment.notes}\n${notes}` : notes) : feePayment.notes;
+
+    const { error: updateError } = await supabaseAdmin
+        .from('student_fee_payments')
+        .update({ paid_amount: newPaidAmount, status: newStatus, notes: updatedNotes, payment_date: new Date().toISOString() })
+        .eq('id', feeId);
+
+    if (updateError) {
+        console.error(`Error updating fee payment ${feeId}:`, updateError);
+        return { ok: false, message: `Failed to record payment: ${updateError.message}` };
+    }
+    
+    revalidatePath('/admin/student-fees');
+    revalidatePath('/student/payment-history');
+    // Consider revalidating dashboard or other relevant paths if fee status affects them
+    revalidatePath('/dashboard'); 
+
+    return { ok: true, message: 'Payment recorded successfully.' };
+}
+
 
 export async function deleteStudentFeeAssignmentAction(
   feePaymentId: string,
