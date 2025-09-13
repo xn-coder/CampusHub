@@ -112,10 +112,13 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
     const [selectedClassId, setSelectedClassId] = useState('');
     const [selectedStudentId, setSelectedStudentId] = useState('');
     
-    const [paymentAmounts, setPaymentAmounts] = useState<Record<string, number | ''>>({});
-    const [paymentModes, setPaymentModes] = useState<Record<string, string>>({});
-    const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
-    const [payingFeeId, setPayingFeeId] = useState<string | null>(null);
+    // State for the payment dialog
+    const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+    const [feeToPay, setFeeToPay] = useState<StudentFeePayment | null>(null);
+    const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
+    const [paymentMode, setPaymentMode] = useState<string>('');
+    const [paymentNotes, setPaymentNotes] = useState('');
+    const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
     const loadInitialData = useCallback(async () => {
         setIsLoadingInitialData(true);
@@ -123,6 +126,9 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
         if (result.ok) {
             setClasses(result.classes || []);
             setPaymentMethods(result.methods || []);
+            if (result.methods && result.methods.length > 0) {
+                setPaymentMode(result.methods[0].name); // Set default payment mode
+            }
         } else {
             toast({ title: 'Error', description: result.message || 'Failed to load initial data.', variant: 'destructive' });
         }
@@ -166,36 +172,41 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
         loadFees();
     }, [selectedStudentId, toast]);
 
-    const handlePayClick = async (feeId: string) => {
-        const amount = paymentAmounts[feeId];
-        const mode = paymentModes[feeId] || (paymentMethods.length > 0 ? paymentMethods[0].name : 'Cash');
-        const notes = paymentNotes[feeId];
-
-        if (typeof amount !== 'number' || amount <= 0) {
+    const handleOpenPaymentDialog = (fee: StudentFeePayment) => {
+        setFeeToPay(fee);
+        const due = fee.assigned_amount - fee.paid_amount;
+        setPaymentAmount(due);
+        setPaymentMode(paymentMethods.length > 0 ? paymentMethods[0].name : 'Cash');
+        setPaymentNotes('');
+        setIsPaymentDialogOpen(true);
+    }
+    
+    const handlePaymentSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+        if (!feeToPay || !paymentAmount || paymentAmount <= 0) {
             toast({ title: 'Invalid Amount', description: 'Please enter a valid payment amount.', variant: 'destructive' });
             return;
         }
-        
-        setPayingFeeId(feeId);
+
+        setIsSubmittingPayment(true);
         const result = await recordStudentFeePaymentAction({
-            fee_payment_id: feeId,
-            payment_amount: amount,
+            fee_payment_id: feeToPay.id,
+            payment_amount: paymentAmount,
             payment_date: format(new Date(), 'yyyy-MM-dd'),
             school_id: schoolId!,
-            payment_mode: mode,
-            notes: notes
+            payment_mode: paymentMode,
+            notes: paymentNotes
         });
 
         if (result.ok) {
             toast({ title: 'Payment Recorded', description: 'The payment was successfully recorded.' });
+            setIsPaymentDialogOpen(false);
             const { ok, fees: updatedFees } = await getFeesForStudentAction(selectedStudentId);
             if (ok) setStudentFees(updatedFees || []);
-            setPaymentAmounts(prev => ({...prev, [feeId]: ''}));
-            setPaymentNotes(prev => ({...prev, [feeId]: ''}));
         } else {
             toast({ title: 'Error', description: result.message, variant: 'destructive' });
         }
-        setPayingFeeId(null);
+        setIsSubmittingPayment(false);
     };
 
     const getFeeTitle = (payment: StudentFeePayment) => {
@@ -211,85 +222,120 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
 
 
     return (
-        <div className="space-y-4">
-            <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                    <Label htmlFor="classSelectPayment">Select Class</Label>
-                    <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingInitialData}>
-                        <SelectTrigger id="classSelectPayment">
-                            <SelectValue placeholder={isLoadingInitialData ? 'Loading classes...' : 'Choose a class'}/>
-                        </SelectTrigger>
-                        <SelectContent>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
-                    </Select>
-                     {classes.length === 0 && !isLoadingInitialData && <p className="text-xs text-muted-foreground mt-1">No classes found.</p>}
+        <>
+            <div className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="classSelectPayment">Select Class</Label>
+                        <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingInitialData}>
+                            <SelectTrigger id="classSelectPayment">
+                                <SelectValue placeholder={isLoadingInitialData ? 'Loading classes...' : 'Choose a class'}/>
+                            </SelectTrigger>
+                            <SelectContent>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
+                        </Select>
+                        {classes.length === 0 && !isLoadingInitialData && <p className="text-xs text-muted-foreground mt-1">No classes found.</p>}
+                    </div>
+                    <div>
+                        <Label htmlFor="studentSelectPayment">Select Student</Label>
+                        <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={isFetchingStudents || !selectedClassId}>
+                            <SelectTrigger id="studentSelectPayment">
+                                <SelectValue placeholder={isFetchingStudents ? 'Loading students...' : 'Choose a student'}/>
+                            </SelectTrigger>
+                            <SelectContent>{students.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                        {students.length === 0 && !isFetchingStudents && selectedClassId && <p className="text-xs text-muted-foreground mt-1">No students in this class.</p>}
+                    </div>
                 </div>
-                 <div>
-                    <Label htmlFor="studentSelectPayment">Select Student</Label>
-                    <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={isFetchingStudents || !selectedClassId}>
-                        <SelectTrigger id="studentSelectPayment">
-                             <SelectValue placeholder={isFetchingStudents ? 'Loading students...' : 'Choose a student'}/>
-                        </SelectTrigger>
-                        <SelectContent>{students.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                     {students.length === 0 && !isFetchingStudents && selectedClassId && <p className="text-xs text-muted-foreground mt-1">No students in this class.</p>}
-                </div>
-            </div>
-            
-            {selectedStudentId && (
-                <Card>
-                    <CardHeader><CardTitle>Fee Records for Selected Student</CardTitle></CardHeader>
-                    <CardContent>
-                        {isFetchingFees ? <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div> : studentFees.length === 0 ? <p className="text-muted-foreground text-center py-4">No fees assigned for this student.</p> : (
-                             <Table>
-                                <TableHeader><TableRow><TableHead>Fee Type</TableHead><TableHead>Amount Due</TableHead><TableHead className="w-[150px]">Payment Amount</TableHead><TableHead className="w-[150px]">Payment Mode</TableHead><TableHead className="w-[200px]">Notes</TableHead><TableHead className="w-[120px] text-right">Action</TableHead></TableRow></TableHeader>
-                                <TableBody>
-                                    {studentFees.map(fee => {
-                                        const due = fee.assigned_amount - fee.paid_amount;
-                                        const currentPayment = paymentAmounts[fee.id] || 0;
-                                        const remainingAfterPay = due - Number(currentPayment);
-                                        return(
-                                        <TableRow key={fee.id}>
-                                            <TableCell className="font-medium">{getFeeTitle(fee)}</TableCell>
-                                            <TableCell className={`font-mono ${due > 0 ? 'text-destructive' : 'text-green-600'}`}>₹{due.toFixed(2)}</TableCell>
-                                            
-                                            {due > 0 ? (
-                                                <>
-                                                    <TableCell>
-                                                        <Input type="number" placeholder="Enter amount" value={paymentAmounts[fee.id] || ''} onChange={e => setPaymentAmounts(prev => ({...prev, [fee.id]: e.target.value === '' ? '' : parseFloat(e.target.value)}))} max={due} step="0.01" disabled={payingFeeId === fee.id}/>
-                                                        {Number(currentPayment) > 0 && remainingAfterPay >= 0 && <p className="text-xs text-muted-foreground mt-1">Remaining: ₹{remainingAfterPay.toFixed(2)}</p>}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Select value={paymentModes[fee.id] || (paymentMethods.length > 0 ? paymentMethods[0].name : 'Cash')} onValueChange={val => setPaymentModes(prev => ({...prev, [fee.id]: val}))} disabled={payingFeeId === fee.id}>
-                                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                                            <SelectContent>
-                                                                {paymentMethods.map(method => (
-                                                                    <SelectItem key={method.id} value={method.name}>{method.name}</SelectItem>
-                                                                ))}
-                                                                 {paymentMethods.length === 0 && <SelectItem value="Cash">Cash</SelectItem>}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </TableCell>
-                                                     <TableCell>
-                                                        <Input placeholder="Optional notes..." value={paymentNotes[fee.id] || ''} onChange={e => setPaymentNotes(prev => ({...prev, [fee.id]: e.target.value}))} disabled={payingFeeId === fee.id}/>
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        <Button size="sm" onClick={() => handlePayClick(fee.id)} disabled={payingFeeId === fee.id || Number(paymentAmounts[fee.id] || 0) <= 0}>
-                                                            {payingFeeId === fee.id ? <Loader2 className="animate-spin" /> : 'Record'}
+                
+                {selectedStudentId && (
+                    <Card>
+                        <CardHeader><CardTitle>Fee Records for Selected Student</CardTitle></CardHeader>
+                        <CardContent>
+                            {isFetchingFees ? <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div> : studentFees.length === 0 ? <p className="text-muted-foreground text-center py-4">No fees assigned for this student.</p> : (
+                                <Table>
+                                    <TableHeader><TableRow><TableHead>Fee Type</TableHead><TableHead>Assigned</TableHead><TableHead>Paid</TableHead><TableHead>Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+                                    <TableBody>
+                                        {studentFees.map(fee => {
+                                            const due = fee.assigned_amount - fee.paid_amount;
+                                            return(
+                                            <TableRow key={fee.id}>
+                                                <TableCell className="font-medium">{getFeeTitle(fee)}</TableCell>
+                                                <TableCell className="font-mono">₹{fee.assigned_amount.toFixed(2)}</TableCell>
+                                                <TableCell className="font-mono">₹{fee.paid_amount.toFixed(2)}</TableCell>
+                                                <TableCell className={`font-mono font-semibold ${due > 0 ? 'text-destructive' : 'text-green-600'}`}>₹{due.toFixed(2)}</TableCell>
+                                                <TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell>
+                                                <TableCell className="text-right">
+                                                    {due > 0 ? (
+                                                        <Button size="sm" onClick={() => handleOpenPaymentDialog(fee)}>
+                                                            Record Payment
                                                         </Button>
-                                                    </TableCell>
-                                                </>
-                                            ) : (
-                                                <TableCell colSpan={4} className="text-green-600 text-center">Paid in full on {formatDateSafe(fee.payment_date)}</TableCell>
-                                            )}
-                                        </TableRow>
-                                    )})}
-                                </TableBody>
-                            </Table>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
-        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">Paid on {formatDateSafe(fee.payment_date)}</span>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        )})}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
+
+            <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <form onSubmit={handlePaymentSubmit}>
+                        <DialogHeader>
+                            <DialogTitle>Record Payment for {getFeeTitle(feeToPay as StudentFeePayment)}</DialogTitle>
+                            <DialogDescription>
+                                Amount due: ₹{(feeToPay ? (feeToPay.assigned_amount - feeToPay.paid_amount) : 0).toFixed(2)}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="paymentAmount" className="text-right">Amount</Label>
+                                <Input
+                                    id="paymentAmount"
+                                    type="number"
+                                    value={paymentAmount}
+                                    onChange={(e) => setPaymentAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                                    max={feeToPay ? (feeToPay.assigned_amount - feeToPay.paid_amount) : 0}
+                                    step="0.01"
+                                    className="col-span-3"
+                                    required
+                                />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="paymentMode" className="text-right">Mode</Label>
+                                <Select value={paymentMode} onValueChange={setPaymentMode} required>
+                                    <SelectTrigger className="col-span-3">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {paymentMethods.map(method => (
+                                            <SelectItem key={method.id} value={method.name}>{method.name}</SelectItem>
+                                        ))}
+                                        {paymentMethods.length === 0 && <SelectItem value="Cash">Cash</SelectItem>}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="paymentNotes" className="text-right">Notes</Label>
+                                <Input id="paymentNotes" value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} className="col-span-3" />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmittingPayment}>Cancel</Button></DialogClose>
+                            <Button type="submit" disabled={isSubmittingPayment}>
+                                {isSubmittingPayment ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                                Confirm Payment
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }
 
