@@ -85,7 +85,9 @@ export async function deleteFeeTypeAction(id: string, schoolId: string): Promise
   const supabase = createSupabaseServerClient();
   try {
     const { count } = await supabase.from('student_fee_payments').select('id', { count: 'exact', head: true }).eq('fee_type_id', id);
-    if (count && count > 0) return { ok: false, message: `Cannot delete: this type is used in ${count} fee record(s).` };
+    if (count && count > 0) {
+      return { ok: false, message: `Cannot delete: this fee type is used in ${count} student fee record(s).` };
+    }
 
     const { error } = await supabase.from('fee_types').delete().eq('id', id).eq('school_id', schoolId);
     if (error) throw error;
