@@ -5,25 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
 import type { StudentFeePayment, PaymentStatus, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession, PaymentMethod } from '@/types';
-
-export async function fetchAdminSchoolIdForFees(userId: string): Promise<string | null> {
-  if (!userId) {
-    console.error("fetchAdminSchoolIdForFees: User ID is required.");
-    return null;
-  }
-  const supabase = createSupabaseServerClient();
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('school_id')
-    .eq('id', userId)
-    .single();
-
-  if (error || !user?.school_id) {
-    console.error("Error fetching user's school for fees:", error?.message);
-    return null;
-  }
-  return user.school_id;
-}
+import { getAdminSchoolIdAction } from '../academic-years/actions';
 
 
 export async function getStudentsByClass(schoolId: string, classId: string): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
@@ -110,23 +92,6 @@ export async function recordStudentFeePaymentAction(
   return { ok: true, message: 'Payment recorded successfully.', feePayment: data as StudentFeePayment };
 }
 
-export async function getPaymentMethodsAction(schoolId: string): Promise<{ ok: boolean; methods?: PaymentMethod[]; message?: string }> {
-    if (!schoolId) return { ok: false, message: "School ID is required." };
-    const supabase = createSupabaseServerClient();
-    try {
-        const { data, error } = await supabase
-            .from('payment_methods')
-            .select('*')
-            .eq('school_id', schoolId)
-            .order('name');
-        if (error) throw error;
-        return { ok: true, methods: data || [] };
-    } catch (e: any) {
-        return { ok: false, message: `DB Error: ${e.message}` };
-    }
-}
-
-
 export async function getFeePaymentPageData(schoolId: string): Promise<{ ok: boolean; classes?: ClassData[]; methods?: PaymentMethod[]; message?: string }> {
     if (!schoolId) return { ok: false, message: 'School ID is required' };
     const supabase = createSupabaseServerClient();
@@ -165,3 +130,5 @@ export async function getFeesForStudentAction(studentId: string): Promise<{ ok: 
         return { ok: false, message: `Failed to load fees: ${e.message}` };
     }
 }
+
+    

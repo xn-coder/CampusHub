@@ -226,3 +226,5 @@ export async function deleteAcademicYearAction(
     return { ok: false, message: 'Failed to delete academic year due to an unexpected error.' };
   }
 }
+
+    
