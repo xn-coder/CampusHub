@@ -3,18 +3,22 @@
 "use client";
 
 import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, Award } from 'lucide-react';
 import { format, isValid, parseISO } from 'date-fns';
+import QRCode from 'qrcode';
+import Image from 'next/image';
 
 function CertificateContent() {
     const searchParams = useSearchParams();
+    const [qrCodeUrl, setQrCodeUrl] = useState('');
 
     const studentName = searchParams.get('studentName') || 'Valued Student';
     const completionItemName = searchParams.get('courseName') || 'the training'; // Can be course or lesson name
     const schoolName = searchParams.get('schoolName') || 'CampusHub University';
     const completionDateStr = searchParams.get('completionDate');
+    const certificateId = searchParams.get('certificateId') || 'N/A';
 
     let completionDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric', month: 'long', day: 'numeric'
@@ -26,6 +30,17 @@ function CertificateContent() {
             completionDate = format(parsedDate, 'MMMM d, yyyy');
         }
     }
+
+    useEffect(() => {
+        const qrData = `Certificate ID: ${certificateId}\nStudent: ${studentName}\nCompleted: ${completionItemName}\nDate: ${completionDate}`;
+        QRCode.toDataURL(qrData, { errorCorrectionLevel: 'M' })
+            .then(url => {
+                setQrCodeUrl(url);
+            })
+            .catch(err => {
+                console.error("QR Code Generation Error:", err);
+            });
+    }, [certificateId, studentName, completionItemName, completionDate]);
 
 
     return (
@@ -64,8 +79,14 @@ function CertificateContent() {
                         {completionDate}
                     </p>
 
-                    <div className="absolute bottom-4 right-4 text-xs text-gray-400 dark:text-gray-500 print:hidden">
-                        Powered by CampusHub
+                    <div className="flex w-full items-end justify-between mt-8 pt-4 border-t border-gray-300">
+                        <div className="text-left text-xs text-gray-500">
+                            <p>Certificate ID: {certificateId}</p>
+                            <p>Powered by CampusHub</p>
+                        </div>
+                        {qrCodeUrl && (
+                           <Image src={qrCodeUrl} alt="QR Code" width={80} height={80} />
+                        )}
                     </div>
                 </div>
             </div>
