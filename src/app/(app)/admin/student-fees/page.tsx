@@ -122,33 +122,31 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
     const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
     const [payingFeeId, setPayingFeeId] = useState<string | null>(null);
 
-    const loadPageData = useCallback(async () => {
-        setIsLoadingClasses(true);
-        const [classesRes, methodsRes] = await Promise.all([
-            supabase.from('classes').select('*').eq('school_id', schoolId),
-            getPaymentMethodsAction(schoolId)
-        ]);
-
-        if (classesRes.error) {
-            toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
-            setClasses([]);
-        } else {
-            setClasses(classesRes.data || []);
-        }
-
-        if (methodsRes.ok) {
-            setPaymentMethods(methodsRes.methods || []);
-        } else {
-            toast({ title: 'Error', description: 'Failed to load payment methods.', variant: 'destructive' });
-        }
-        setIsLoadingClasses(false);
-    }, [schoolId, toast]);
-
     useEffect(() => {
-        if(schoolId) {
-            loadPageData();
+        async function loadPageData() {
+            if(!schoolId) return;
+            setIsLoadingClasses(true);
+            const [classesRes, methodsRes] = await Promise.all([
+                supabase.from('classes').select('*').eq('school_id', schoolId).order('name'),
+                getPaymentMethodsAction(schoolId)
+            ]);
+
+            if (classesRes.error) {
+                toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
+                setClasses([]);
+            } else {
+                setClasses(classesRes.data || []);
+            }
+
+            if (methodsRes.ok) {
+                setPaymentMethods(methodsRes.methods || []);
+            } else {
+                toast({ title: 'Error', description: 'Failed to load payment methods.', variant: 'destructive' });
+            }
+            setIsLoadingClasses(false);
         }
-    }, [loadPageData, schoolId]);
+        loadPageData();
+    }, [schoolId, toast]);
 
 
     useEffect(() => {
@@ -263,7 +261,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
                 <Card>
                     <CardHeader><CardTitle>Fee Records for Selected Student</CardTitle></CardHeader>
                     <CardContent>
-                        {isFetchingFees ? <Loader2 className="animate-spin" /> : studentFees.length === 0 ? <p className="text-muted-foreground">No fees found for this student.</p> : (
+                        {isFetchingFees ? <Loader2 className="animate-spin" /> : studentFees.length === 0 ? <p className="text-muted-foreground text-center py-4">No fees assigned for this student.</p> : (
                              <Table>
                                 <TableHeader><TableRow><TableHead>Fee Type</TableHead><TableHead>Amount Due</TableHead><TableHead className="w-[150px]">Payment Amount</TableHead><TableHead className="w-[150px]">Payment Mode</TableHead><TableHead className="w-[200px]">Notes</TableHead><TableHead className="w-[120px] text-right">Action</TableHead></TableRow></TableHeader>
                                 <TableBody>
