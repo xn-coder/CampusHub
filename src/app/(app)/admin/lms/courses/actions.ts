@@ -712,12 +712,25 @@ export async function getEnrolledStudentsForCourseAction(
   schoolId: string
 ): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-  
-  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
+
+  // Find out if the course is global or school-specific
+  const { data: course, error: courseError } = await supabaseAdmin.from('lms_courses').select('school_id').eq('id', courseId).single();
+  if (courseError || !course) {
+    return { ok: false, message: 'Course not found.' };
+  }
+  const isGlobalCourse = course.school_id === null;
+
+  let enrollmentQuery = supabaseAdmin
     .from('lms_student_course_enrollments')
-    .select('student_id') 
-    .eq('course_id', courseId)
-    .eq('school_id', schoolId);
+    .select('student_id')
+    .eq('course_id', courseId);
+  
+  if (!isGlobalCourse) {
+    // If it's a school-specific course, only get students from that school
+    enrollmentQuery = enrollmentQuery.eq('school_id', schoolId);
+  }
+  
+  const { data: enrollments, error: enrollmentError } = await enrollmentQuery;
 
   if (enrollmentError) {
     console.error("Error fetching student enrollments:", enrollmentError);
@@ -752,11 +765,23 @@ export async function getEnrolledTeachersForCourseAction(
 ): Promise<{ ok: boolean; teachers?: Teacher[]; message?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
 
-  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
+  // Find out if the course is global or school-specific
+  const { data: course, error: courseError } = await supabaseAdmin.from('lms_courses').select('school_id').eq('id', courseId).single();
+  if (courseError || !course) {
+    return { ok: false, message: 'Course not found.' };
+  }
+  const isGlobalCourse = course.school_id === null;
+  
+  let enrollmentQuery = supabaseAdmin
     .from('lms_teacher_course_enrollments')
     .select('teacher_id') 
-    .eq('course_id', courseId)
-    .eq('school_id', schoolId);
+    .eq('course_id', courseId);
+    
+  if (!isGlobalCourse) {
+    enrollmentQuery = enrollmentQuery.eq('school_id', schoolId);
+  }
+
+  const { data: enrollments, error: enrollmentError } = await enrollmentQuery;
 
   if (enrollmentError) {
     console.error("Error fetching teacher enrollments:", enrollmentError);
