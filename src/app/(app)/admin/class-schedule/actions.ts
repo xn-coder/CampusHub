@@ -1,8 +1,5 @@
 
-
 'use server';
-
-console.log('[LOG] Loading src/app/(app)/admin/class-schedule/actions.ts');
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
 import { revalidatePath } from 'next/cache';

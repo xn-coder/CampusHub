@@ -6,7 +6,7 @@ import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { AdmissionRecord, ClassData, StudentFeePayment, FeeCategory, AdmissionStatus, AcademicYear, UserRole } from '@/types';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { ListChecks, CheckSquare, Loader2, UserPlus, FileDown, Search, Receipt, ChevronLeft, ChevronRight, Edit2, MoreHorizontal } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -25,10 +25,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useSearchParams } from 'next/navigation';
 
 const ITEMS_PER_PAGE = 10;
 
-export default function AdmissionsPage() {
+function AdmissionsPageContent() {
   const { toast } = useToast();
   const [admissionRecords, setAdmissionRecords] = useState<AdmissionRecord[]>([]);
   const [activeClasses, setActiveClasses] = useState<ClassData[]>([]);
@@ -305,4 +306,12 @@ export default function AdmissionsPage() {
         </Card>
     </div>
   );
+}
+
+export default function AdmissionsPage() {
+    return (
+        <Suspense fallback={<div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>}>
+            <AdmissionsPageContent />
+        </Suspense>
+    );
 }

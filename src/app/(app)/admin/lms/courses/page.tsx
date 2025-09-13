@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -233,10 +234,10 @@ export default function SchoolLmsCoursesPage() {
                         <CardFooter className="flex-col sm:flex-row gap-2">
                            {course.isEnrolled ? (
                                 <>
-                                    <Button asChild className="w-full" variant="secondary" onClick={() => handleOpenAssignDialog(course)}>
-                                      <div className="flex items-center cursor-pointer">
-                                        <UserPlus className="mr-2 h-4 w-4"/> Assign
-                                      </div>
+                                    <Button asChild className="w-full" variant="secondary">
+                                        <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
+                                            <UserPlus className="mr-2 h-4 w-4"/> User list
+                                        </Link>
                                     </Button>
                                     <Button onClick={() => handleUnassignCourse(course.id)} className="w-full" variant="destructive" disabled={isSubmitting}>
                                         <XCircle className="mr-2 h-4 w-4" /> Unassign
