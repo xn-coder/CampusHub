@@ -15,29 +15,11 @@ import { format, parseISO, startOfDay, endOfDay, subDays } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { createReceiptAction, getReceiptsAction, type ReceiptDB, type ReceiptItemInput, type ReceiptItemDB } from './actions';
 import Link from 'next/link';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import type { DateRange } from 'react-day-picker';
-import { Calendar } from '@/components/ui/calendar';
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  ChartConfig,
-} from "@/components/ui/chart";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
 
 async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
   const { data: user, error } = await supabase.from('users').select('school_id').eq('id', adminUserId).single();
   return user?.school_id || null;
 }
-
-const chartConfig = {
-  amount: {
-    label: "Amount",
-    color: "hsl(var(--chart-1))",
-  },
-} satisfies ChartConfig;
 
 export default function ReceiptsPage() {
   const { toast } = useToast();
@@ -53,13 +35,6 @@ export default function ReceiptsPage() {
   const [narration, setNarration] = useState('');
   const [items, setItems] = useState<ReceiptItemInput[]>([{ ledger: '', description: '', amount: 0 }]);
   
-  // Filtering state
-  const [filterPreset, setFilterPreset] = useState('this_month');
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: startOfDay(new Date(new Date().setDate(1))),
-    to: endOfDay(new Date()),
-  });
-
   const loadData = useCallback(async () => {
     const userId = localStorage.getItem('currentUserId');
     if (userId) {
@@ -80,39 +55,6 @@ export default function ReceiptsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const handleFilterChange = (value: string) => {
-    setFilterPreset(value);
-    const now = new Date();
-    if (value === 'this_year') {
-      setDateRange({ from: startOfDay(new Date(now.getFullYear(), 0, 1)), to: endOfDay(now) });
-    } else if (value === 'this_month') {
-      setDateRange({ from: startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)), to: endOfDay(now) });
-    } else if (value === 'last_7_days') {
-      setDateRange({ from: startOfDay(subDays(now, 6)), to: endOfDay(now) });
-    } else { // custom
-      // Let the date picker handle it
-    }
-  };
-
-  const filteredReceipts = useMemo(() => {
-    if (!dateRange?.from || !dateRange?.to) return allReceipts;
-    return allReceipts.filter(receipt => {
-        const receiptDate = parseISO(receipt.payment_date);
-        return receiptDate >= dateRange.from! && receiptDate <= dateRange.to!;
-    });
-  }, [allReceipts, dateRange]);
-
-  const chartData = useMemo(() => {
-    const dataByPaymentMode = filteredReceipts.reduce((acc, receipt) => {
-        const mode = receipt.payment_mode || 'Other';
-        acc[mode] = (acc[mode] || 0) + receipt.total_amount;
-        return acc;
-    }, {} as Record<string, number>);
-
-    return Object.entries(dataByPaymentMode).map(([name, amount]) => ({ name, amount }));
-  }, [filteredReceipts]);
-
 
   const handleItemChange = (index: number, field: keyof ReceiptItemInput, value: string | number) => {
     const newItems = [...items];
@@ -155,7 +97,7 @@ export default function ReceiptsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Receipt Vouchers" description="Create and manage income receipts for various transactions." />
       <div className="grid lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle>Create New Receipt Voucher</CardTitle>
             <CardDescription>Enter details for the income received. Add multiple ledger items as needed.</CardDescription>
@@ -194,87 +136,24 @@ export default function ReceiptsPage() {
             </CardFooter>
           </form>
         </Card>
-        
-        <div className="lg:col-span-1 space-y-6">
-            <Card>
-                <CardHeader><CardTitle>Income by Payment Mode</CardTitle></CardHeader>
-                <CardContent>
-                    {isLoading ? <div className="text-center"><Loader2 className="h-6 w-6 animate-spin" /></div> :
-                     chartData.length === 0 ? <p className="text-muted-foreground text-center py-10">No receipt data for selected period.</p> :
-                      <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-                        <BarChart
-                          accessibilityLayer
-                          data={chartData}
-                          layout="vertical"
-                          margin={{
-                            left: 10,
-                          }}
-                        >
-                          <CartesianGrid horizontal={false} />
-                          <YAxis
-                            dataKey="name"
-                            type="category"
-                            tickLine={false}
-                            tickMargin={10}
-                            axisLine={false}
-                            className="text-xs"
-                          />
-                          <XAxis dataKey="amount" type="number" hide />
-                          <Tooltip
-                            cursor={{ fill: "hsl(var(--muted))" }}
-                            formatter={(value) => `₹${Number(value).toFixed(2)}`}
-                            content={<ChartTooltipContent indicator="line" />}
-                          />
-                          <Bar dataKey="amount" layout="vertical" fill="var(--color-amount)" radius={4} />
-                        </BarChart>
-                      </ChartContainer>
-                    }
-                </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader><CardTitle>Receipts Log</CardTitle><CardDescription>A log of recently created receipts.</CardDescription></CardHeader>
-              <CardContent className="space-y-4">
-                 <div className="flex flex-col sm:flex-row gap-2">
-                    <Select value={filterPreset} onValueChange={handleFilterChange}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="this_month">This Month</SelectItem>
-                            <SelectItem value="last_7_days">Last 7 Days</SelectItem>
-                            <SelectItem value="this_year">This Year</SelectItem>
-                            <SelectItem value="custom">Custom Range</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    {filterPreset === 'custom' && (
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button id="date" variant={"outline"} className="w-full justify-start text-left font-normal">
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {dateRange?.from ? (dateRange.to ? `${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}` : format(dateRange.from, "LLL dd, y")) : <span>Pick a date range</span>}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={1}/>
-                            </PopoverContent>
-                        </Popover>
-                    )}
-                 </div>
-                <div className="max-h-[500px] overflow-y-auto">
-                    {isLoading ? <div className="text-center"><Loader2 className="h-6 w-6 animate-spin" /></div> : filteredReceipts.length === 0 ? <p className="text-muted-foreground text-center">No receipts found.</p> : (
-                    <ul className="space-y-2">{filteredReceipts.map(r => (
-                        <li key={r.id} className="p-2 border rounded-md flex justify-between items-center">
-                        <div>
-                            <p className="font-medium">Receipt #{r.receipt_no}</p>
-                            <p className="text-sm text-muted-foreground">₹{r.total_amount.toFixed(2)} - {format(parseISO(r.payment_date), 'PP')}</p>
-                        </div>
-                        <Button asChild variant="outline" size="sm"><Link href={`/admin/receipts/${r.id}/voucher`}><FileText className="mr-1 h-3 w-3" /> View</Link></Button>
-                        </li>))}
-                    </ul>)}
-                </div>
-              </CardContent>
-            </Card>
-        </div>
       </div>
+       <Card>
+          <CardHeader><CardTitle>Receipts Log</CardTitle><CardDescription>A log of recently created receipts.</CardDescription></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="max-h-[500px] overflow-y-auto">
+                {isLoading ? <div className="text-center"><Loader2 className="h-6 w-6 animate-spin" /></div> : allReceipts.length === 0 ? <p className="text-muted-foreground text-center">No receipts found.</p> : (
+                <ul className="space-y-2">{allReceipts.map(r => (
+                    <li key={r.id} className="p-2 border rounded-md flex justify-between items-center">
+                    <div>
+                        <p className="font-medium">Receipt #{r.receipt_no}</p>
+                        <p className="text-sm text-muted-foreground">₹{r.total_amount.toFixed(2)} - {format(parseISO(r.payment_date), 'PP')}</p>
+                    </div>
+                    <Button asChild variant="outline" size="sm"><Link href={`/admin/receipts/${r.id}/voucher`}><FileText className="mr-1 h-3 w-3" /> View</Link></Button>
+                    </li>))}
+                </ul>)}
+            </div>
+          </CardContent>
+        </Card>
     </div>
   );
 }

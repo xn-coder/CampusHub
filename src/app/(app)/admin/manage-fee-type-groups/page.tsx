@@ -60,6 +60,11 @@ export default function ManageFeeGroupsPage() {
     return allStudents.filter(s => s.class_id === selectedClassId);
   }, [selectedClassId, allStudents]);
 
+  const regularFeeTypes = useMemo(() => {
+    return allFeeTypes.filter(ft => ft.installment_type === 'installments');
+  }, [allFeeTypes]);
+
+
   const fetchPageData = useCallback(async (schoolId: string) => {
     setIsLoading(true);
     const result = await getFeeTypeGroupsPageDataAction(schoolId);
@@ -322,7 +327,7 @@ export default function ManageFeeGroupsPage() {
                 <Label>Select Fee Types to Include</Label>
                 <Card className="max-h-60 overflow-y-auto p-2 border">
                   <div className="space-y-2">
-                    {allFeeTypes.map(ft => (
+                    {regularFeeTypes.map(ft => (
                         <div key={ft.id} className="flex items-center space-x-2">
                             <Checkbox 
                                 id={`ft-${ft.id}`} 
@@ -334,6 +339,9 @@ export default function ManageFeeGroupsPage() {
                             <Label htmlFor={`ft-${ft.id}`} className="font-normal">{ft.display_name}</Label>
                         </div>
                     ))}
+                    {regularFeeTypes.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center p-2">No regular fee types found. Create some in 'Manage Fee Types'.</p>
+                    )}
                   </div>
                 </Card>
               </div>

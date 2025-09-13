@@ -2,13 +2,14 @@
 "use client";
 
 import { useState, useEffect, Suspense } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Loader2, Printer } from 'lucide-react';
+import { Loader2, Printer, ArrowLeft } from 'lucide-react';
 import { getVoucherDataAction, type ReceiptDB, type ReceiptItemDB } from '../../actions';
 import type { SchoolDetails } from '@/types';
 import Image from 'next/image';
 import { format, parseISO } from 'date-fns';
+import Link from 'next/link';
 
 interface VoucherData {
     receipt: ReceiptDB;
@@ -94,9 +95,16 @@ function VoucherContent() {
                             <p className="text-xs">{school.contact_phone}, {school.contact_email}</p>
                         </div>
                     </div>
-                    <Button variant="ghost" size="icon" className="print:hidden" onClick={() => window.print()}>
-                        <Printer className="h-5 w-5 text-gray-600" />
-                    </Button>
+                     <div className="flex items-center gap-2 no-print">
+                        <Button variant="outline" size="sm" asChild>
+                           <Link href="/admin/receipts">
+                             <ArrowLeft className="h-4 w-4 mr-1" /> Back
+                           </Link>
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => window.print()}>
+                            <Printer className="h-5 w-5 text-gray-600" />
+                        </Button>
+                    </div>
                 </header>
                 <div className="text-center my-4">
                     <span className="text-lg font-semibold border border-black px-4 py-1 rounded">
@@ -145,18 +153,14 @@ function VoucherContent() {
                     </table>
                 </div>
 
-                <div className="grid grid-cols-3 gap-8 mt-16 text-sm">
-                    <div className="text-center pt-8 border-t border-black">Approved By</div>
-                    <div className="text-center pt-8 border-t border-black">Checked By</div>
-                    <div className="text-center pt-8 border-t border-black">Receiver Signature</div>
+                <div className="grid grid-cols-3 gap-8 mt-16 text-xs text-center">
+                    <div><span className="border-t border-black pt-1">Prepared by (Name & Designation)</span></div>
+                    <div><span className="border-t border-black pt-1">Checked by (Name & Designation)</span></div>
+                    <div><span className="border-t border-black pt-1">Signature of Principal (With Official Seal)</span></div>
                 </div>
 
-                <footer className="flex justify-between items-center text-xs text-gray-600 border-t border-dashed mt-8 pt-2">
-                    <span>Printed On: {format(new Date(), 'dd-MMM-yyyy hh:mm:ss a')}</span>
-                    <span>Auth. Signatory</span>
-                </footer>
             </div>
-            <div className="mt-8 print:hidden">
+             <div className="mt-8 print:hidden">
                 <Button onClick={() => window.print()}>
                     <Printer className="mr-2 h-4 w-4" />
                     Download / Print Voucher
