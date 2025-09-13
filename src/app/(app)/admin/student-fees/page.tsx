@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession } from '@/types';
-import { DollarSign, FileText, Loader2, CreditCard, Download, FolderOpen, PlusCircle, Save, Edit2, Trash2, Receipt, FileDown } from 'lucide-react';
+import { DollarSign, Loader2, CreditCard, FolderOpen, PlusCircle, Save, Edit2, Trash2, Receipt, FileDown, ReceiptText } from 'lucide-react';
 import { useState, useEffect, type FormEvent, useMemo, useCallback, Suspense, useRef } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, isValid, isPast, isToday, startOfYear, subDays } from 'date-fns';
@@ -23,11 +23,11 @@ import {
   fetchStudentFeesPageDataAction,
   updateStudentFeeAction,
   applyConcessionAction,
+  getConcessionsAction,
 } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/lib/supabaseClient';
 import { useSearchParams } from 'next/navigation';
-import { getConcessionsAction } from '@/app/(app)/admin/manage-concessions/actions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // Define the structure for the data we'll be fetching and managing
@@ -441,7 +441,7 @@ function StudentFeesPageContent() {
             <TabsContent value="summary">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Fee Summary</CardTitle>
+                  <CardTitle className="flex items-center"><ReceiptText className="mr-2 h-5 w-5" />Fee Summary</CardTitle>
                   <CardDescription>A summarized overview of each student's fee status, grouped by academic year. Click "View &amp; Manage" for details.</CardDescription>
                </CardHeader>
                 <CardContent>
