@@ -91,6 +91,14 @@ const feeConfigOptions: FeeManagementOption[] = [
     href: "/admin/expenses",
     isImplemented: true,
   },
+  {
+    id: "receipts",
+    title: "Receipt Vouchers",
+    description: "Create and manage vouchers for other income.",
+    icon: Receipt,
+    href: "/admin/receipts",
+    isImplemented: true,
+  },
 ];
 
 export default function FeesManagementPage() {
