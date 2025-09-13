@@ -131,7 +131,7 @@ export async function getFeesForStudentAction(studentId: string): Promise<{ ok: 
     try {
         const { data, error } = await supabase
             .from('student_fee_payments')
-            .select('*, fee_category:fee_category_id(name), installment:installment_id(title), fee_type:fee_type_id(display_name)')
+            .select('*, fee_category:fee_category_id(name), installment:installment_id(title), fee_type:fee_type_id(display_name, installment_type)')
             .eq('student_id', studentId)
             .order('due_date', { ascending: false });
 

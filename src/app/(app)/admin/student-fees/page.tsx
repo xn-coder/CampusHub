@@ -215,9 +215,11 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
         const feeType = (payment as any).fee_type;
         const installment = (payment as any).installment;
         const category = (payment as any).fee_category;
-
+    
         if (installment?.title) return `Installment: ${installment.title}`;
+        if (feeType?.installment_type === 'extra_charge') return `Special Fee: ${feeType.display_name}`;
         if (feeType?.display_name) return feeType.display_name;
+        
         return category?.name || 'N/A';
     };
     
@@ -470,5 +472,3 @@ export default function StudentFeesPage() {
         </Suspense>
     );
 }
-
-    
