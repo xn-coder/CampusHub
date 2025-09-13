@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -29,7 +28,7 @@ interface FeeManagementOption {
 const feeConfigOptions: FeeManagementOption[] = [
   {
     id: "student-fees",
-    title: "Student Fee Records",
+    title: "Student Payouts",
     description: "View fee summaries, record payments, and manage individual student fee assignments.",
     icon: Users,
     href: "/admin/student-fees",
