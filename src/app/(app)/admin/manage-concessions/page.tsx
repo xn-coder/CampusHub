@@ -15,7 +15,7 @@ import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react
 import { PlusCircle, Edit2, Trash2, Save, BadgePercent, Loader2, MoreHorizontal, ArrowLeft, Receipt } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { createConcessionAction, updateConcessionAction, deleteConcessionAction, getManageConcessionsPageData, assignConcessionAction, getFeesForStudentsAction, updateStudentFeeAction, deleteStudentFeeAssignmentAction } from './actions';
+import { createConcessionAction, updateConcessionAction, deleteConcessionAction, getManageConcessionsPageData, assignConcessionAction, getFeesForStudentsAction, updateStudentFeeAction, deleteStudentConcessionAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import Link from 'next/link';
@@ -230,19 +230,17 @@ export default function ManageConcessionsPage() {
     setIsSubmitting(false);
   }
 
-   const handleDeleteFeeAssignment = async (feePaymentId: string) => {
+  const handleDeleteFeeAssignment = async (concessionId: string) => {
     if (!currentSchoolId) return;
-    if (confirm("Are you sure you want to delete this fee assignment and its concession record?")) {
-        setIsSubmitting(true);
-        const result = await deleteStudentFeeAssignmentAction(feePaymentId, currentSchoolId);
-        if (result.ok) {
-            toast({ title: "Assignment Deleted", description: result.message, variant: "destructive" });
-            if (currentSchoolId) fetchPageData(currentSchoolId);
-        } else {
-            toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
-        }
-        setIsSubmitting(false);
+    setIsSubmitting(true);
+    const result = await deleteStudentConcessionAction(concessionId, currentSchoolId);
+    if (result.ok) {
+        toast({ title: "Assignment Deleted", description: result.message, variant: "destructive" });
+        if (currentSchoolId) fetchPageData(currentSchoolId);
+    } else {
+        toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
+    setIsSubmitting(false);
   };
 
 
@@ -365,7 +363,7 @@ export default function ManageConcessionsPage() {
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteFeeAssignment(item.fee_payment.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                                <AlertDialogAction onClick={() => handleDeleteFeeAssignment(item.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
