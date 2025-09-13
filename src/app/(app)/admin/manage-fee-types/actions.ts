@@ -55,7 +55,7 @@ export async function getFeeTypesPageDataAction(schoolId: string): Promise<{
   }
 }
 
-export async function createFeeTypeAction(input: Omit<FeeType, 'id'>): Promise<{ ok: boolean; message: string; feeType?: FeeType }> {
+export async function createFeeTypeAction(input: Omit<FeeType, 'id' | 'amount'>): Promise<{ ok: boolean; message: string; feeType?: FeeType }> {
   const supabase = createSupabaseServerClient();
   try {
     const { data, error } = await supabase.from('fee_types').insert({ ...input, id: uuidv4(), installment_type: 'installments' }).select().single();
@@ -67,7 +67,7 @@ export async function createFeeTypeAction(input: Omit<FeeType, 'id'>): Promise<{
   }
 }
 
-export async function updateFeeTypeAction(id: string, input: Partial<Omit<FeeType, 'id'>>): Promise<{ ok: boolean; message: string; feeType?: FeeType }> {
+export async function updateFeeTypeAction(id: string, input: Partial<Omit<FeeType, 'id' | 'amount'>>): Promise<{ ok: boolean; message: string; feeType?: FeeType }> {
   const supabase = createSupabaseServerClient();
   try {
     // Ensure installment_type is not changed during update from this action
@@ -144,7 +144,7 @@ export async function assignFeeTypeToStudentsAction(input: { student_ids: string
         if (studentsToUpdate.length > 0) {
             const { count, error: updateError } = await supabase
                 .from('student_fee_payments')
-                .update({ assigned_amount: amount, due_date: due_date })
+                .update({ assigned_amount: amount, due_date: due_date, status: 'Pending', paid_amount: 0 })
                 .in('student_id', studentsToUpdate)
                 .eq('fee_type_id', fee_type_id);
             if (updateError) throw new Error(`Failed to update existing assignments: ${updateError.message}`);

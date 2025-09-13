@@ -30,7 +30,7 @@ export async function getFeeCategoriesAction(schoolId: string): Promise<{ ok: bo
 
 
 export async function createFeeCategoryAction(
-  input: { name: string; description?: string; amount?: number; school_id: string; }
+  input: { name: string; description?: string; school_id: string; }
 ): Promise<{ ok: boolean; message: string; category?: FeeCategory }> {
   const supabase = createSupabaseServerClient();
   try {
@@ -52,7 +52,7 @@ export async function createFeeCategoryAction(
 
 export async function updateFeeCategoryAction(
   id: string,
-  input: Partial<{ name: string; description?: string; amount?: number; }>
+  input: Partial<{ name: string; description?: string; }>
 ): Promise<{ ok: boolean; message: string; category?: FeeCategory }> {
     const supabase = createSupabaseServerClient();
     try {

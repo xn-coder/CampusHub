@@ -53,7 +53,7 @@ export async function getManageInstallmentsPageData(schoolId: string): Promise<{
 
 
 export async function createInstallmentAction(
-  input: Omit<Installment, 'id'>
+  input: Omit<Installment, 'id' | 'amount'>
 ): Promise<{ ok: boolean; message: string; installment?: Installment }> {
   const supabase = createSupabaseServerClient();
   try {
@@ -68,7 +68,7 @@ export async function createInstallmentAction(
 
 export async function updateInstallmentAction(
   id: string,
-  input: Partial<Omit<Installment, 'id'>>
+  input: Partial<Omit<Installment, 'id' | 'amount'>>
 ): Promise<{ ok: boolean; message: string; installment?: Installment }> {
   const supabase = createSupabaseServerClient();
   try {

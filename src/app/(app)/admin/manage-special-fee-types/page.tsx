@@ -52,7 +52,6 @@ export default function ManageSpecialFeeTypesPage() {
   const [selectedFeeCategoryId, setSelectedFeeCategoryId] = useState('');
   const [isRefundable, setIsRefundable] = useState(false);
   const [description, setDescription] = useState('');
-  const [defaultAmount, setDefaultAmount] = useState<number | ''>('');
 
 
   // Filtering state for assigned fees
@@ -107,22 +106,9 @@ export default function ManageSpecialFeeTypesPage() {
     }
   }, [toast, fetchPageData]);
 
-  useEffect(() => {
-    if (assignFeeTypeId) {
-        const selectedFeeType = feeTypes.find(ft => ft.id === assignFeeTypeId);
-        if (selectedFeeType?.amount) {
-            setAssignAmount(selectedFeeType.amount);
-        } else {
-            setAssignAmount('');
-        }
-    }
-  }, [assignFeeTypeId, feeTypes]);
-
-
   const resetForm = () => {
     setName(''); setDisplayName('');
     setSelectedFeeCategoryId(''); setIsRefundable(false); setDescription('');
-    setDefaultAmount('');
     setEditingFeeType(null);
   };
 
@@ -134,7 +120,6 @@ export default function ManageSpecialFeeTypesPage() {
       setSelectedFeeCategoryId(feeType.fee_category_id);
       setIsRefundable(feeType.is_refundable);
       setDescription(feeType.description || '');
-      setDefaultAmount(feeType.amount ?? '');
     } else {
       resetForm();
     }
@@ -156,7 +141,6 @@ export default function ManageSpecialFeeTypesPage() {
       is_refundable: isRefundable,
       description: description.trim() || undefined, 
       school_id: currentSchoolId,
-      amount: defaultAmount === '' ? undefined : Number(defaultAmount),
     };
 
     let result = editingFeeType ? await updateSpecialFeeTypeAction(editingFeeType.id, feeTypeData) : await createSpecialFeeTypeAction(feeTypeData);
@@ -352,10 +336,6 @@ export default function ManageSpecialFeeTypesPage() {
                         {allFeeCategories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
-              </div>
-              <div>
-                <Label htmlFor="defaultAmount">Default Amount (₹, Optional)</Label>
-                <Input id="defaultAmount" type="number" value={defaultAmount} onChange={e => setDefaultAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} disabled={isSubmitting} />
               </div>
                <div className="flex items-center space-x-2">
                 <Checkbox id="isRefundable" checked={isRefundable} onCheckedChange={(checked) => setIsRefundable(!!checked)} disabled={isSubmitting}/>

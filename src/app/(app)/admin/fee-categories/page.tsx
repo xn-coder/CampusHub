@@ -49,7 +49,6 @@ export default function FeeCategoriesPage() {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState<number | ''>('');
 
   useEffect(() => {
     const userId = localStorage.getItem('currentUserId');
@@ -86,7 +85,6 @@ export default function FeeCategoriesPage() {
   const resetForm = () => {
     setName('');
     setDescription('');
-    setAmount('');
     setEditingCategory(null);
   };
 
@@ -99,7 +97,6 @@ export default function FeeCategoriesPage() {
             setEditingCategory(category);
             setName(category.name);
             setDescription(category.description || '');
-            setAmount(category.amount ?? '');
         } else {
             resetForm();
         }
@@ -122,7 +119,6 @@ export default function FeeCategoriesPage() {
     const categoryData = {
       name: name.trim(),
       description: description.trim() || undefined,
-      amount: amount === '' || amount === undefined ? undefined : Number(amount),
       school_id: currentSchoolId,
     };
 
@@ -211,7 +207,6 @@ export default function FeeCategoriesPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead>Amount (Optional)</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -220,7 +215,6 @@ export default function FeeCategoriesPage() {
                   <TableRow key={category.id}>
                     <TableCell className="font-medium">{category.name}</TableCell>
                     <TableCell className="max-w-xs truncate" title={category.description || ''}>{category.description || 'N/A'}</TableCell>
-                    <TableCell>{category.amount !== undefined && category.amount !== null ? <><span className="font-mono">₹</span>{category.amount.toFixed(2)}</> : 'N/A'}</TableCell>
                     <TableCell className="text-right">
                        <AlertDialog>
                           <DropdownMenu>
@@ -284,11 +278,6 @@ export default function FeeCategoriesPage() {
                 <Label htmlFor="description">Description</Label>
                 <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of the fee" disabled={isSubmitting} />
               </div>
-              <div>
-                <Label htmlFor="amount">Amount (Optional, <span className="font-mono">₹</span>)</Label>
-                <Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 100.00" step="0.01" min="0" disabled={isSubmitting}/>
-                <p className="text-xs text-muted-foreground mt-1">Leave blank if the amount varies or is calculated elsewhere.</p>
-              </div>
             </div>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
@@ -310,10 +299,6 @@ export default function FeeCategoriesPage() {
               <div>
                 <Label>Category Name</Label>
                 <p className="font-semibold text-lg">{viewingCategory?.name}</p>
-              </div>
-              <div>
-                <Label>Amount</Label>
-                <p className="font-mono text-base">{viewingCategory?.amount !== undefined && viewingCategory?.amount !== null ? `₹${viewingCategory.amount.toFixed(2)}` : 'Not set (Varies per assignment)'}</p>
               </div>
               <div>
                 <Label>Description</Label>
