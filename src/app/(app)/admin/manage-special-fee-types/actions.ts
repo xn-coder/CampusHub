@@ -166,3 +166,56 @@ export async function assignSpecialFeeTypeToStudentsAction(input: { student_ids:
         return { ok: false, message: `Failed to assign fees: ${e.message}`};
     }
 }
+
+
+export async function updateStudentFeeAction(
+  id: string,
+  schoolId: string,
+  updates: { assigned_amount: number, due_date?: string }
+): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  const { error } = await supabaseAdmin
+    .from('student_fee_payments')
+    .update(updates)
+    .eq('id', id)
+    .eq('school_id', schoolId);
+
+  if (error) {
+    return { ok: false, message: `Failed to update fee: ${error.message}` };
+  }
+  revalidatePath('/admin/manage-special-fee-types');
+  return { ok: true, message: 'Fee assignment updated successfully.' };
+}
+
+
+export async function deleteStudentFeeAssignmentAction(
+  feePaymentId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+  const supabaseAdmin = createSupabaseServerClient();
+  const { data: feePayment, error: fetchError } = await supabaseAdmin
+    .from('student_fee_payments')
+    .select('paid_amount')
+    .eq('id', feePaymentId)
+    .eq('school_id', schoolId)
+    .single();
+
+  if (fetchError) {
+    return { ok: false, message: `Error checking fee: ${fetchError.message}` };
+  }
+  if (feePayment && feePayment.paid_amount > 0) {
+    return { ok: false, message: "Cannot delete: This fee has payments recorded." };
+  }
+
+  const { error } = await supabaseAdmin
+    .from('student_fee_payments')
+    .delete()
+    .eq('id', feePaymentId)
+    .eq('school_id', schoolId);
+
+  if (error) {
+    return { ok: false, message: `Failed to delete fee: ${error.message}` };
+  }
+  revalidatePath('/admin/manage-special-fee-types');
+  return { ok: true, message: 'Fee assignment deleted successfully.' };
+}

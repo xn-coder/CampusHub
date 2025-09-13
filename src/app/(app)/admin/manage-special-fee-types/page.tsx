@@ -14,7 +14,7 @@ import { useState, useEffect, type FormEvent, useCallback, useMemo } from 'react
 import { PlusCircle, Edit2, Trash2, Save, FileBadge, Loader2, MoreHorizontal, ArrowLeft, Filter, Receipt } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabaseClient';
-import { createSpecialFeeTypeAction, updateSpecialFeeTypeAction, deleteSpecialFeeTypeAction, getSpecialFeeTypesPageDataAction, assignSpecialFeeTypeToStudentsAction } from './actions';
+import { createSpecialFeeTypeAction, updateSpecialFeeTypeAction, deleteSpecialFeeTypeAction, getSpecialFeeTypesPageDataAction, assignSpecialFeeTypeToStudentsAction, updateStudentFeeAction, deleteStudentFeeAssignmentAction } from './actions';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format, parseISO, isValid } from 'date-fns';
@@ -52,6 +52,12 @@ export default function ManageSpecialFeeTypesPage() {
   const [selectedFeeCategoryId, setSelectedFeeCategoryId] = useState('');
   const [isRefundable, setIsRefundable] = useState(false);
   const [description, setDescription] = useState('');
+  
+  // Edit Assignment Dialog
+  const [isEditAssignmentOpen, setIsEditAssignmentOpen] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState<StudentFeePayment | null>(null);
+  const [editAmount, setEditAmount] = useState<number | ''>('');
+  const [editDueDate, setEditDueDate] = useState('');
 
 
   // Filtering state for assigned fees
@@ -193,6 +199,49 @@ export default function ManageSpecialFeeTypesPage() {
     setIsSubmitting(false);
   }
   
+  const handleDeleteFeeAssignment = async (feePaymentId: string) => {
+    if (!currentSchoolId) return;
+    if (confirm("Are you sure you want to delete this fee assignment? This cannot be undone if payments have been made.")) {
+      setIsSubmitting(true);
+      const result = await deleteStudentFeeAssignmentAction(feePaymentId, currentSchoolId);
+      if (result.ok) {
+        toast({ title: "Assignment Deleted", description: result.message, variant: "destructive" });
+        if (currentSchoolId) fetchPageData(currentSchoolId);
+      } else {
+        toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
+      }
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenEditAssignmentDialog = (fee: StudentFeePayment) => {
+    setEditingAssignment(fee);
+    setEditAmount(fee.assigned_amount);
+    setEditDueDate(fee.due_date ? format(parseISO(fee.due_date), 'yyyy-MM-dd') : '');
+    setIsEditAssignmentOpen(true);
+  };
+  
+  const handleEditAssignmentSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingAssignment || editAmount === '' || !currentSchoolId) {
+        toast({title: "Error", description: "All fields are required.", variant: "destructive"});
+        return;
+    }
+    setIsSubmitting(true);
+    const result = await updateStudentFeeAction(editingAssignment.id, currentSchoolId, {
+        assigned_amount: Number(editAmount),
+        due_date: editDueDate || undefined,
+    });
+    if (result.ok) {
+        toast({title: "Success", description: result.message});
+        setIsEditAssignmentOpen(false);
+        if (currentSchoolId) fetchPageData(currentSchoolId);
+    } else {
+        toast({title: "Error", description: result.message, variant: "destructive"});
+    }
+    setIsSubmitting(false);
+  }
+
   const formatDate = (dateString: string) => {
     const date = parseISO(dateString);
     return isValid(date) ? format(date, 'MMM d, yyyy') : 'N/A';
@@ -306,7 +355,7 @@ export default function ManageSpecialFeeTypesPage() {
                          <div className="flex-grow"><Label htmlFor="status-filter"><Filter className="inline-block mr-1 h-3 w-3" />Filter by Status</Label><Select value={statusFilter} onValueChange={setStatusFilter} disabled={isLoading}><SelectTrigger id="status-filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Partially Paid">Partially Paid</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Overdue">Overdue</SelectItem></SelectContent></Select></div>
                     </div>
                      {isLoading ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/></div>) : filteredAssignedFees.length === 0 ? (<p className="text-muted-foreground text-center py-4">No fees assigned for this fee type match the current filters.</p>) : (
-                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{filteredAssignedFees.map(fee => (<TableRow key={fee.id}><TableCell className="font-medium">{fee.student.name}</TableCell><TableCell>{fee.fee_type?.name || 'N/A'}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell></TableRow>))}</TableBody></Table>
+                        <Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Fee Type</TableHead><TableHead>Amount Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filteredAssignedFees.map(fee => (<TableRow key={fee.id}><TableCell className="font-medium">{fee.student.name}</TableCell><TableCell>{fee.fee_type?.name || 'N/A'}</TableCell><TableCell>₹{(fee.assigned_amount - fee.paid_amount).toFixed(2)}</TableCell><TableCell><Badge variant={fee.status === 'Paid' ? 'default' : fee.status === 'Partially Paid' ? 'secondary' : 'destructive'}>{fee.status}</Badge></TableCell><TableCell className="text-right space-x-1"><Button size="sm" variant="ghost" onClick={() => handleOpenEditAssignmentDialog(fee)}><Edit2 className="h-4 w-4"/></Button><Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeleteFeeAssignment(fee.id)}><Trash2 className="h-4 w-4"/></Button></TableCell></TableRow>))}</TableBody></Table>
                      )}
                 </CardContent>
             </Card>
@@ -350,6 +399,26 @@ export default function ManageSpecialFeeTypesPage() {
               <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} {editingFeeType ? 'Save Changes' : 'Create Fee Type'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      
+       <Dialog open={isEditAssignmentOpen} onOpenChange={setIsEditAssignmentOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Assigned Fee</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditAssignmentSubmit}>
+            <div className="space-y-4 py-4">
+              <div><Label htmlFor="editAmount">Assigned Amount (₹)</Label><Input id="editAmount" type="number" value={editAmount} onChange={e => setEditAmount(Number(e.target.value))} required disabled={isSubmitting}/></div>
+              <div><Label htmlFor="editDueDate">Due Date</Label><Input id="editDueDate" type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} disabled={isSubmitting}/></div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />} Save
               </Button>
             </DialogFooter>
           </form>
