@@ -230,15 +230,15 @@ export default function ManageConcessionsPage() {
     setIsSubmitting(false);
   }
 
-  const handleDeleteFeeAssignment = async (concessionId: string) => {
+  const handleDeleteConcessionAssignment = async (concessionId: string) => {
     if (!currentSchoolId) return;
     setIsSubmitting(true);
     const result = await deleteStudentConcessionAction(concessionId, currentSchoolId);
     if (result.ok) {
-        toast({ title: "Assignment Deleted", description: result.message, variant: "destructive" });
+        toast({ title: "Concession Reversed", description: result.message, variant: "destructive" });
         if (currentSchoolId) fetchPageData(currentSchoolId);
     } else {
-        toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
+        toast({ title: "Reversal Failed", description: result.message, variant: "destructive" });
     }
     setIsSubmitting(false);
   };
@@ -256,10 +256,10 @@ export default function ManageConcessionsPage() {
           </div>
         }
       />
-      <Tabs defaultValue="assign">
+      <Tabs defaultValue="types">
         <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="assign">Assign Concession</TabsTrigger>
             <TabsTrigger value="types">Concession Types</TabsTrigger>
+            <TabsTrigger value="assign">Assign Concession</TabsTrigger>
             <TabsTrigger value="log">Assignment Log ({assignedConcessions.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="types">
@@ -358,12 +358,12 @@ export default function ManageConcessionsPage() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  This action cannot be undone and will permanently delete the fee assignment for {item.student?.name}.
+                                  This action will reverse the concession for {item.student?.name}, it cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteFeeAssignment(item.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                                <AlertDialogAction onClick={() => handleDeleteConcessionAssignment(item.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>

@@ -28,6 +28,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/lib/supabaseClient';
 import { useSearchParams } from 'next/navigation';
 import { getConcessionsAction } from '@/app/(app)/admin/manage-concessions/actions';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 
 type StudentFeeStatus = 'Paid' | 'Partially Paid' | 'Pending' | 'Overdue';
@@ -378,36 +379,67 @@ function StudentFeesPageContent() {
         title="Student Fee Records" description="Assign fees to students, record payments, and track financial records."
         actions={<Button onClick={handleOpenAssignFeeDialog} disabled={!currentSchoolId || isSubmitting || isLoadingPage}><PlusCircle className="mr-2 h-4 w-4" /> Assign New Fee</Button>}
       />
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Fee Summary</CardTitle>
-          <CardDescription>A summarized overview of each student's fee status, grouped by academic year. Click "View &amp; Manage" for details.</CardDescription>
-        </CardHeader>
-        <CardContent>
-           <div className="mb-4 flex flex-col md:flex-row gap-4">
-             <Input placeholder="Search by student name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm" disabled={isLoadingPage}/>
-            <Select value={selectedAcademicYearFilter} onValueChange={setSelectedAcademicYearFilter} disabled={isLoadingPage || academicYears.length === 0}>
-                <SelectTrigger className="w-full md:w-[200px]"><SelectValue placeholder="All Years" /></SelectTrigger>
-                <SelectContent><SelectItem value="all">All Years</SelectItem><SelectItem value="general">General</SelectItem>{academicYears.map(ay => <SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)}</SelectContent>
-            </Select>
-             <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter} disabled={isLoadingPage || classes.length === 0}>
-                <SelectTrigger className="w-full md:w-[200px]"><SelectValue placeholder="All Classes" /></SelectTrigger>
-                <SelectContent><SelectItem value="all">All Classes</SelectItem>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
-            </Select>
-            <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter} disabled={isLoadingPage}>
-                <SelectTrigger className="w-full md:w-[180px]"><SelectValue placeholder="Filter by status" /></SelectTrigger>
-                <SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Partially Paid">Partially Paid</SelectItem><SelectItem value="Overdue">Overdue</SelectItem></SelectContent>
-            </Select>
-            <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredSummaries.length === 0} className="md:ml-auto"><FileDown className="mr-2 h-4 w-4" />Download Summary</Button>
-           </div>
-          {isLoadingPage ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>) : !currentSchoolId ? (<p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>) : filteredSummaries.length === 0 ? (<p className="text-muted-foreground text-center py-4">{searchTerm || selectedAcademicYearFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}</p>) : (
-            <Table>
-              <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Academic Year</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredSummaries.map((summary) => (<TableRow key={summary.summaryId}><TableCell className="font-medium">{summary.studentName} <span className="font-mono text-xs text-muted-foreground">({getStudentRollNumber(summary.studentId)})</span></TableCell><TableCell>{getStudentClass(summary.studentClassId)}</TableCell><TableCell>{summary.academicYearName}</TableCell><TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</TableCell><TableCell><Badge variant={summary.status === 'Paid' ? 'default' : summary.status === 'Partially Paid' ? 'secondary' : summary.status === 'Overdue' ? 'destructive' : 'outline'}>{summary.status}</Badge></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}><FolderOpen className="mr-1 h-3 w-3" /> View &amp; Manage</Button></TableCell></TableRow>))}</TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="summary">
+        <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="summary">Fee Summary</TabsTrigger>
+            <TabsTrigger value="payment">Record Payment</TabsTrigger>
+        </TabsList>
+        <TabsContent value="summary">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center"><Receipt className="mr-2 h-5 w-5" />Fee Summary</CardTitle>
+              <CardDescription>A summarized overview of each student's fee status, grouped by academic year. Click "View &amp; Manage" for details.</CardDescription>
+            </CardHeader>
+            <CardContent>
+               <div className="mb-4 flex flex-col md:flex-row gap-4">
+                 <Input placeholder="Search by student name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm" disabled={isLoadingPage}/>
+                <Select value={selectedAcademicYearFilter} onValueChange={setSelectedAcademicYearFilter} disabled={isLoadingPage || academicYears.length === 0}>
+                    <SelectTrigger className="w-full md:w-[200px]"><SelectValue placeholder="All Years" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All Years</SelectItem><SelectItem value="general">General</SelectItem>{academicYears.map(ay => <SelectItem key={ay.id} value={ay.id}>{ay.name}</SelectItem>)}</SelectContent>
+                </Select>
+                 <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter} disabled={isLoadingPage || classes.length === 0}>
+                    <SelectTrigger className="w-full md:w-[200px]"><SelectValue placeholder="All Classes" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All Classes</SelectItem>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
+                </Select>
+                <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter} disabled={isLoadingPage}>
+                    <SelectTrigger className="w-full md:w-[180px]"><SelectValue placeholder="Filter by status" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Partially Paid">Partially Paid</SelectItem><SelectItem value="Overdue">Overdue</SelectItem></SelectContent>
+                </Select>
+                <Button onClick={handleDownloadCsv} disabled={isLoadingPage || filteredSummaries.length === 0} className="md:ml-auto"><FileDown className="mr-2 h-4 w-4" />Download Summary</Button>
+               </div>
+              {isLoadingPage ? (<div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin"/> Loading fee data...</div>) : !currentSchoolId ? (<p className="text-destructive text-center py-4">Admin not associated with a school. Cannot manage student fees.</p>) : filteredSummaries.length === 0 ? (<p className="text-muted-foreground text-center py-4">{searchTerm || selectedAcademicYearFilter !== 'all' || selectedStatusFilter !== 'all' ? "No students match your filters." : "No student fee records found for this school."}</p>) : (
+                <Table>
+                  <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Academic Year</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                  <TableBody>{filteredSummaries.map((summary) => (<TableRow key={summary.summaryId}><TableCell className="font-medium">{summary.studentName} <span className="font-mono text-xs text-muted-foreground">({getStudentRollNumber(summary.studentId)})</span></TableCell><TableCell>{getStudentClass(summary.studentClassId)}</TableCell><TableCell>{summary.academicYearName}</TableCell><TableCell className={`text-right font-semibold ${summary.totalDue > 0 ? 'text-destructive' : ''}`}><span className="font-mono">₹</span>{summary.totalDue.toFixed(2)}</TableCell><TableCell><Badge variant={summary.status === 'Paid' ? 'default' : summary.status === 'Partially Paid' ? 'secondary' : summary.status === 'Overdue' ? 'destructive' : 'outline'}>{summary.status}</Badge></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => handleOpenDetailsDialog(summary)} disabled={isSubmitting}><FolderOpen className="mr-1 h-3 w-3" /> View &amp; Manage</Button></TableCell></TableRow>))}</TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="payment">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Record Manual Payment</CardTitle>
+                    <CardDescription>Select a student to view their pending fees and record a payment.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <RecordPaymentForm
+                        classes={classes}
+                        students={students}
+                        feePayments={feePayments}
+                        feeCategories={feeCategories}
+                        installments={installments}
+                        onRecordPayment={async (fee, amount) => {
+                            setEditingFeePayment({ ...fee, paid_amount: amount });
+                            await handleRecordPaymentSubmit(new Event('submit') as any);
+                        }}
+                        isSubmitting={isSubmitting}
+                        schoolId={currentSchoolId!}
+                    />
+                </CardContent>
+            </Card>
+        </TabsContent>
+      </Tabs>
       
       <Dialog open={isAssignFeeDialogOpen} onOpenChange={setIsAssignFeeDialogOpen}><DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Assign New Fee to a Class</DialogTitle></DialogHeader>
@@ -464,6 +496,108 @@ function StudentFeesPageContent() {
   );
 }
 
+function RecordPaymentForm({ classes, students, feePayments, feeCategories, installments, onRecordPayment, isSubmitting, schoolId }: {
+    classes: ClassData[],
+    students: Student[],
+    feePayments: StudentFeePayment[],
+    feeCategories: FeeCategory[],
+    installments: Installment[],
+    onRecordPayment: (fee: StudentFeePayment, amount: number) => void,
+    isSubmitting: boolean,
+    schoolId: string
+}) {
+    const [selectedClassId, setSelectedClassId] = useState('');
+    const [selectedStudentId, setSelectedStudentId] = useState('');
+    const [paymentAmount, setPaymentAmount] = useState<Record<string, number | ''>>({});
+
+    const studentsInClass = useMemo(() => students.filter(s => s.class_id === selectedClassId), [students, selectedClassId]);
+    const pendingFeesForStudent = useMemo(() => {
+        return feePayments.filter(fp => fp.student_id === selectedStudentId && fp.status !== 'Paid');
+    }, [feePayments, selectedStudentId]);
+
+    const getFeeName = (fee: StudentFeePayment) => {
+        if (fee.installment_id) {
+            return installments.find(i => i.id === fee.installment_id)?.title || 'Installment';
+        }
+        return feeCategories.find(fc => fc.id === fee.fee_category_id)?.name || 'Fee';
+    };
+
+    const handlePayClick = (fee: StudentFeePayment) => {
+        const amount = paymentAmount[fee.id];
+        if (typeof amount === 'number' && amount > 0) {
+            onRecordPayment(fee, amount);
+            setPaymentAmount(prev => ({...prev, [fee.id]: ''}));
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                    <Label htmlFor="record-payment-class">Select Class</Label>
+                    <Select value={selectedClassId} onValueChange={id => {setSelectedClassId(id); setSelectedStudentId('')}}>
+                        <SelectTrigger id="record-payment-class"><SelectValue placeholder="Choose a class..." /></SelectTrigger>
+                        <SelectContent>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
+                    </Select>
+                </div>
+                <div>
+                    <Label htmlFor="record-payment-student">Select Student</Label>
+                    <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={!selectedClassId}>
+                        <SelectTrigger id="record-payment-student"><SelectValue placeholder="Choose a student..." /></SelectTrigger>
+                        <SelectContent>{studentsInClass.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                </div>
+            </div>
+
+            {selectedStudentId && (
+                <div className="border-t pt-4">
+                    <h3 className="font-semibold mb-2">Pending Fees for {students.find(s=>s.id === selectedStudentId)?.name}</h3>
+                    {pendingFeesForStudent.length > 0 ? (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Fee Type</TableHead>
+                                    <TableHead className="text-right">Amount Due</TableHead>
+                                    <TableHead className="w-[150px]">Payment Amount</TableHead>
+                                    <TableHead className="text-right">Action</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {pendingFeesForStudent.map(fee => {
+                                    const due = fee.assigned_amount - fee.paid_amount;
+                                    return (
+                                        <TableRow key={fee.id}>
+                                            <TableCell>{getFeeName(fee)}</TableCell>
+                                            <TableCell className="text-right font-mono">₹{due.toFixed(2)}</TableCell>
+                                            <TableCell>
+                                                <Input
+                                                    type="number"
+                                                    placeholder={`Max: ${due.toFixed(2)}`}
+                                                    max={due}
+                                                    step="0.01"
+                                                    min="0.01"
+                                                    value={paymentAmount[fee.id] || ''}
+                                                    onChange={e => setPaymentAmount(prev => ({...prev, [fee.id]: Number(e.target.value)}))}
+                                                    disabled={isSubmitting}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <Button onClick={() => handlePayClick(fee)} size="sm" disabled={isSubmitting || !paymentAmount[fee.id] || Number(paymentAmount[fee.id]) <= 0}>
+                                                    Record Pay
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })}
+                            </TableBody>
+                        </Table>
+                    ) : <p className="text-muted-foreground text-center py-4">This student has no pending fees.</p>}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function StudentFeesPage() {
     return (
         <Suspense fallback={<div>Loading...</div>}>
@@ -471,3 +605,4 @@ export default function StudentFeesPage() {
         </Suspense>
     );
 }
+

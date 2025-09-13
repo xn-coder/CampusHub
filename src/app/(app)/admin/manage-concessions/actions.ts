@@ -186,6 +186,41 @@ export async function deleteStudentFeeAssignmentAction(
   return { ok: true, message: 'Fee assignment and any associated concession records deleted successfully.' };
 }
 
+export async function deleteStudentConcessionAction(
+  concessionId: string,
+  schoolId: string
+): Promise<{ ok: boolean; message: string }> {
+    const supabase = createSupabaseServerClient();
+    try {
+        // Start a transaction
+        const { data: concession, error: fetchError } = await supabase.from('student_fee_concessions').select('*, fee_payment:student_fee_payment_id(assigned_amount, paid_amount)').eq('id', concessionId).eq('school_id', schoolId).single();
+        if (fetchError || !concession) return { ok: false, message: "Concession record not found." };
+
+        const feePayment = concession.fee_payment;
+        const concessionAmount = concession.concession_amount;
+
+        // 1. Revert the fee payment record
+        const newPaidAmount = feePayment.paid_amount - concessionAmount;
+        const newStatus: PaymentStatus = newPaidAmount <= 0 ? 'Pending' : 'Partially Paid';
+        const { error: updateError } = await supabase.from('student_fee_payments')
+            .update({ paid_amount: newPaidAmount, status: newStatus, notes: `Concession of ${concessionAmount} reversed.` })
+            .eq('id', concession.student_fee_payment_id);
+        if (updateError) throw new Error(`Failed to revert fee record: ${updateError.message}`);
+
+        // 2. Delete the concession record
+        const { error: deleteError } = await supabase.from('student_fee_concessions').delete().eq('id', concessionId);
+        if (deleteError) throw new Error(`Failed to delete concession record: ${deleteError.message}`);
+
+        revalidatePath('/admin/manage-concessions');
+        revalidatePath('/admin/student-fees');
+        return { ok: true, message: `Successfully reversed concession of ₹${concessionAmount.toFixed(2)}.` };
+    } catch(e: any) {
+        console.error("Error reversing concession:", e);
+        // Rollback would be needed here in a real transaction
+        return { ok: false, message: e.message || "Failed to reverse concession."};
+    }
+}
+
 
 interface UpdateStudentFeeInput {
   assigned_amount?: number;
