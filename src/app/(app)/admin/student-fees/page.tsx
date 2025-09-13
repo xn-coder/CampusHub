@@ -11,10 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import type { StudentFeePayment, Student, FeeCategory, AcademicYear, ClassData, Installment, Concession } from '@/types';
-import { DollarSign, Loader2, CreditCard, FolderOpen, Save, Edit2, Trash2, PlusCircle, FileDown, Receipt } from 'lucide-react';
+import { DollarSign, Loader2, CreditCard, FolderOpen, Save, Edit2, Trash2, PlusCircle, FileDown, ReceiptText } from 'lucide-react';
 import { useState, useEffect, type FormEvent, useMemo, useCallback, Suspense, useRef } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO, isValid, isPast, isToday, startOfYear, subDays } from 'date-fns';
+import { format, parseISO, isValid, isPast, isToday } from 'date-fns';
 import {
   recordStudentFeePaymentAction,
   deleteStudentFeeAssignmentAction,
@@ -426,21 +426,22 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
     const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
     const [payingFeeId, setPayingFeeId] = useState<string | null>(null);
 
-    useEffect(() => {
-        async function loadClasses() {
-            if (!schoolId) return;
-            setIsLoading(true);
-            const { data: classesData, error } = await supabase.from('classes').select('*').eq('school_id', schoolId);
-            if (error) {
-                toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
-                setClasses([]);
-            } else {
-                setClasses(classesData || []);
-            }
-            setIsLoading(false);
+    const loadClasses = useCallback(async () => {
+        if (!schoolId) return;
+        setIsLoading(true);
+        const { data: classesData, error } = await supabase.from('classes').select('*').eq('school_id', schoolId);
+        if (error) {
+            toast({ title: 'Error', description: 'Failed to load classes.', variant: 'destructive' });
+            setClasses([]);
+        } else {
+            setClasses(classesData || []);
         }
-        loadClasses();
+        setIsLoading(false);
     }, [schoolId, toast]);
+
+    useEffect(() => {
+        loadClasses();
+    }, [loadClasses]);
 
     useEffect(() => {
         async function loadStudents() {
