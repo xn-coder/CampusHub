@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import type { StudentFeePayment, Student, ClassData, PaymentMethod } from '@/types';
+import type { StudentFeePayment, Student, ClassData } from '@/types';
+import type { PaymentMethod } from './payment-method-actions';
 import { DollarSign, Loader2, Save, List, Edit2, Trash2 } from 'lucide-react';
 import { useState, useEffect, type FormEvent, useCallback, Suspense } from 'react';
 import { useToast } from "@/hooks/use-toast";
@@ -27,7 +28,6 @@ import {
     deletePaymentMethodAction,
     getPaymentMethodsAction
 } from '../student-fees/payment-method-actions';
-import { useSearchParams } from 'next/navigation';
 import { Textarea } from '@/components/ui/textarea';
 import { getAdminSchoolIdAction } from '../academic-years/actions';
 
