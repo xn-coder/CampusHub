@@ -92,16 +92,20 @@ function StudentFeesPageContent() {
           <CardDescription>Select a student to view their fees and record a payment.</CardDescription>
         </CardHeader>
         <CardContent>
-            <RecordPaymentForm schoolId={currentSchoolId} />
+            {currentSchoolId ? (
+                <RecordPaymentForm schoolId={currentSchoolId} />
+            ) : (
+                <p className="text-muted-foreground">Waiting for school context...</p>
+            )}
         </CardContent>
       </Card>
     </div>
   );
 }
 
-function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
+function RecordPaymentForm({ schoolId }: { schoolId: string }) {
     const { toast } = useToast();
-    const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+    const [isLoadingClasses, setIsLoadingClasses] = useState(true);
     const [isFetchingStudents, setIsFetchingStudents] = useState(false);
     const [isFetchingFees, setIsFetchingFees] = useState(false);
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -119,7 +123,6 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
     const [payingFeeId, setPayingFeeId] = useState<string | null>(null);
 
     const loadPageData = useCallback(async () => {
-        if (!schoolId) return;
         setIsLoadingClasses(true);
         const [classesRes, methodsRes] = await Promise.all([
             supabase.from('classes').select('*').eq('school_id', schoolId),
@@ -148,7 +151,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
 
     useEffect(() => {
         async function loadStudents() {
-            if (!selectedClassId || !schoolId) {
+            if (!selectedClassId) {
                 setStudents([]);
                 setSelectedStudentId('');
                 setStudentFees([]);
@@ -234,17 +237,23 @@ function RecordPaymentForm({ schoolId }: { schoolId: string | null }) {
             <div className="grid md:grid-cols-2 gap-4">
                 <div>
                     <Label htmlFor="classSelectPayment">Select Class</Label>
-                    <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingClasses || classes.length === 0}>
-                        <SelectTrigger id="classSelectPayment"><SelectValue placeholder="Choose a class"/></SelectTrigger>
+                    <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoadingClasses}>
+                        <SelectTrigger id="classSelectPayment">
+                            <SelectValue placeholder={isLoadingClasses ? 'Loading classes...' : 'Choose a class'}/>
+                        </SelectTrigger>
                         <SelectContent>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.division}</SelectItem>)}</SelectContent>
                     </Select>
+                     {classes.length === 0 && !isLoadingClasses && <p className="text-xs text-muted-foreground mt-1">No classes found.</p>}
                 </div>
                  <div>
                     <Label htmlFor="studentSelectPayment">Select Student</Label>
-                    <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={isFetchingStudents || students.length === 0}>
-                        <SelectTrigger id="studentSelectPayment"><SelectValue placeholder="Choose a student"/></SelectTrigger>
+                    <Select value={selectedStudentId} onValueChange={setSelectedStudentId} disabled={isFetchingStudents || !selectedClassId}>
+                        <SelectTrigger id="studentSelectPayment">
+                             <SelectValue placeholder={isFetchingStudents ? 'Loading students...' : 'Choose a student'}/>
+                        </SelectTrigger>
                         <SelectContent>{students.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                     </Select>
+                     {students.length === 0 && !isFetchingStudents && selectedClassId && <p className="text-xs text-muted-foreground mt-1">No students in this class.</p>}
                 </div>
             </div>
             
@@ -428,3 +437,5 @@ export default function StudentFeesPage() {
         </Suspense>
     );
 }
+
+    
