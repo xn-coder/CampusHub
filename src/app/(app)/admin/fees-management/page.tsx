@@ -83,6 +83,14 @@ const feeConfigOptions: FeeManagementOption[] = [
     href: "/admin/manage-fee-structures",
     isImplemented: true,
   },
+  {
+    id: "expenses",
+    title: "Manage Expenses",
+    description: "Track and manage all school expenditures.",
+    icon: Wallet,
+    href: "/admin/expenses",
+    isImplemented: true,
+  },
 ];
 
 export default function FeesManagementPage() {
