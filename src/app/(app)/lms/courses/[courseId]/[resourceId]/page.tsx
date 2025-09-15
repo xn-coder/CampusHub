@@ -609,12 +609,12 @@ export default function CourseResourcePage() {
                 </CardContent>
                  <CardFooter className="flex justify-between items-center flex-wrap gap-2">
                     <Button variant="outline" disabled={!previousResourceId} asChild>
-                        <Link href={previousResourceId ? `/lms/courses/${courseId}/${previousResourceId}${isPreview ? '?preview=true': ''}` : '#'}>
+                        <Link href={previousResourceId ? `/lms/courses/${courseId}/${previousResourceId}${isPreviewing ? '?preview=true': ''}` : '#'}>
                             <ArrowLeft className="mr-2 h-4 w-4"/> {previousResourceTitle ? `Previous: ${previousResourceTitle}`: 'Previous'}
                         </Link>
                     </Button>
                     <Button variant="outline" disabled={isNextDisabled} asChild>
-                        <Link href={nextResourceId && !isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreview ? '?preview=true': ''}` : '#'}>
+                        <Link href={nextResourceId && !isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true': ''}` : '#'}>
                             {nextResourceTitle ? `Next: ${nextResourceTitle}`: 'Next'} <ArrowRight className="ml-2 h-4 w-4"/>
                         </Link>
                     </Button>
