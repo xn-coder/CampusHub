@@ -271,6 +271,7 @@ export default function CourseResourcePage() {
             const allLessonContents = lessons.flatMap(lesson => {
                 try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } catch { return []; }
             });
+            const firstLessonContents = lessons.length > 0 ? (JSON.parse(lessons[0].url_or_content || '[]') as LessonContentResource[]) : [];
             
             const currentIndex = allLessonContents.findIndex(r => r.id === resourceId);
 
@@ -282,8 +283,8 @@ export default function CourseResourcePage() {
             setResource(currentResource);
 
             // Lock content if admin is previewing beyond the first lesson
-            const isFirstLessonResource = lessons.length > 0 && (JSON.parse(lessons[0].url_or_content || '[]') as LessonContentResource[]).some(r => r.id === resourceId);
-            if (isPreviewing && !isFirstLessonResource) {
+            const isResourceInFirstLesson = firstLessonContents.some(r => r.id === resourceId);
+            if (isPreviewing && !isResourceInFirstLesson) {
                 setIsContentLocked(true);
             } else {
                 setIsContentLocked(false);
@@ -313,17 +314,20 @@ export default function CourseResourcePage() {
             // Set up navigation
             const prevResource = currentIndex > 0 ? allLessonContents[currentIndex - 1] : null;
             const nextResource = currentIndex < allLessonContents.length - 1 ? allLessonContents[currentIndex + 1] : null;
+            
+            const isLastResourceOfFirstLesson = isPreviewing && isResourceInFirstLesson && firstLessonContents[firstLessonContents.length - 1].id === resourceId;
+            
             setPreviousResourceId(prevResource?.id || null);
             setPreviousResourceTitle(prevResource?.title || null);
-            setNextResourceId(nextResource?.id || null);
-            setNextResourceTitle(nextResource?.title || null);
+            setNextResourceId(isLastResourceOfFirstLesson ? null : nextResource?.id || null);
+            setNextResourceTitle(isLastResourceOfFirstLesson ? null : nextResource?.title || null);
 
         } catch (e: any) {
             setError(e.message);
         } finally {
             setIsLoading(false);
         }
-    }, [courseId, resourceId, currentUserRole, isPreviewing]);
+    }, [courseId, resourceId, currentUserRole, isPreviewing, calculateProgress]);
 
     useEffect(() => {
         if(currentUserRole !== null) {
@@ -420,7 +424,7 @@ export default function CourseResourcePage() {
     }
     
     const isAdmin = currentUserRole === 'admin' || currentUserRole === 'superadmin';
-    const isNextDisabled = !isAdmin && (isPreviewing || !isCompleted);
+    const isNextDisabled = !nextResourceId || (isPreviewing ? false : !isCompleted);
     
     return (
         <div className="flex flex-col gap-6">
@@ -605,13 +609,13 @@ export default function CourseResourcePage() {
                 </CardContent>
                  <CardFooter className="flex justify-between items-center flex-wrap gap-2">
                     <Button variant="outline" disabled={!previousResourceId} asChild>
-                        <Link href={previousResourceId ? `/lms/courses/${courseId}/${previousResourceId}` : '#'}>
-                            <ArrowLeft className="mr-2 h-4 w-4"/> Previous: {previousResourceTitle}
+                        <Link href={previousResourceId ? `/lms/courses/${courseId}/${previousResourceId}${isPreview ? '?preview=true': ''}` : '#'}>
+                            <ArrowLeft className="mr-2 h-4 w-4"/> {previousResourceTitle ? `Previous: ${previousResourceTitle}`: 'Previous'}
                         </Link>
                     </Button>
-                    <Button variant="outline" disabled={isNextDisabled || !nextResourceId} asChild>
-                        <Link href={nextResourceId && !isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}` : '#'}>
-                            Next: {nextResourceTitle} <ArrowRight className="ml-2 h-4 w-4"/>
+                    <Button variant="outline" disabled={isNextDisabled} asChild>
+                        <Link href={nextResourceId && !isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreview ? '?preview=true': ''}` : '#'}>
+                            {nextResourceTitle ? `Next: ${nextResourceTitle}`: 'Next'} <ArrowRight className="ml-2 h-4 w-4"/>
                         </Link>
                     </Button>
                 </CardFooter>

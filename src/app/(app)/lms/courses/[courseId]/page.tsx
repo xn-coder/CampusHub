@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
@@ -7,10 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Progress } from '@/components/ui/progress';
-import { Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion, CheckCircle, Presentation, Eye } from 'lucide-react';
+import { Lock, Loader2, BookOpen, Video, FileText, Users, Award, FileQuestion, CheckCircle, Presentation, Eye, Music, MousePointerSquareDashed, ListVideo, Code } from 'lucide-react';
 import type { Course, CourseResource, UserRole, LessonContentResource } from '@/types';
 import Link from 'next/link';
-import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction } from './actions';
+import { getCourseForViewingAction, checkUserEnrollmentForCourseViewAction, getCompletionStatusAction } from './actions';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from "@/hooks/use-toast";
 import { v4 as uuidv4 } from 'uuid';
@@ -36,16 +37,23 @@ function ViewCoursePageContent() {
   const [currentSchoolName, setCurrentSchoolName] = useState<string>('');
   const [openLessons, setOpenLessons] = useState<string[]>([]);
 
+  const calculateProgress = useCallback((courseToCalc: (Course & { resources: CourseResource[] }) | null, completed: Record<string, boolean>) => {
+    if (!courseToCalc) return 0;
+    const lessons = courseToCalc.resources.filter(r => r.type === 'note');
+    if (lessons.length === 0) return 0;
 
-  const loadProgress = useCallback(() => {
-    if (typeof window !== 'undefined') {
-      const storedProgress = localStorage.getItem(`progress_${courseId}`);
-      if (storedProgress) {
-        setCompletedResources(JSON.parse(storedProgress));
-      }
-    }
-  }, [courseId]);
+    const allLessonContents = lessons.flatMap(lesson => {
+      try {
+        const content = JSON.parse(lesson.url_or_content || '[]');
+        return Array.isArray(content) ? content as LessonContentResource[] : [];
+      } catch { return []; }
+    });
 
+    if (allLessonContents.length === 0) return 0;
+
+    const completedCount = allLessonContents.filter(res => completed[res.id]).length;
+    return Math.round((completedCount / allLessonContents.length) * 100);
+  }, []);
 
   const fetchData = useCallback(async () => {
       setIsLoading(true);
@@ -88,52 +96,34 @@ function ViewCoursePageContent() {
             } else {
                 setCurrentSchoolName('CampusHub');
             }
+            
+            const completionResult = await getCompletionStatusAction(userId, courseId);
+            if (completionResult.ok && completionResult.completedResources) {
+                setCompletedResources(completionResult.completedResources);
+                const initialProgress = calculateProgress(courseResult.course, completionResult.completedResources);
+                setProgress(initialProgress);
+            }
         }
+        
+        // Auto-open first lesson
+        const firstLessonId = courseResult.course.resources.find(r => r.type === 'note')?.id;
+        if(firstLessonId) {
+            setOpenLessons([firstLessonId]);
+        }
+
       } else {
         setPageError(courseResult.message || "Failed to load course details.");
       }
       
       setIsLoading(false);
-  }, [courseId, toast, isPreview]);
+  }, [courseId, toast, isPreview, calculateProgress]);
 
 
   useEffect(() => {
     if (courseId) {
       fetchData();
-      if (!isPreview) {
-        loadProgress();
-      }
     }
-  }, [courseId, fetchData, loadProgress, isPreview]);
-
-  useEffect(() => {
-    if (!course || isPreview) return;
-
-    const lessons = course.resources.filter(r => r.type === 'note');
-    if (lessons.length === 0) {
-      setProgress(0);
-      return;
-    }
-
-    const allLessonContents = lessons.flatMap(lesson => {
-      try {
-        const content = JSON.parse(lesson.url_or_content || '[]');
-        return Array.isArray(content) ? content as LessonContentResource[] : [];
-      } catch {
-        return [];
-      }
-    });
-
-    if(allLessonContents.length === 0) {
-        setProgress(0);
-        return;
-    }
-
-    const completedCount = allLessonContents.filter(res => completedResources[res.id]).length;
-    const newProgress = Math.round((completedCount / allLessonContents.length) * 100);
-    setProgress(newProgress);
-
-  }, [completedResources, course, isPreview]);
+  }, [courseId, fetchData]);
 
   const getResourceIcon = (type: string) => {
     const props = { className: "mr-3 h-5 w-5 text-primary shrink-0" };
@@ -144,13 +134,18 @@ function ViewCoursePageContent() {
       case 'webinar': return <Users {...props} />;
       case 'quiz': return <FileQuestion {...props} />;
       case 'ppt': return <Presentation {...props} />;
+      case 'audio': return <Music {...props} />;
+      case 'drag_and_drop': return <MousePointerSquareDashed {...props} />;
+      case 'youtube_playlist': return <ListVideo {...props} />;
+      case 'web_page': return <Code {...props} />;
       default: return null;
     }
   };
 
   const handleStartCourse = () => {
-    if (lessons.length > 0) {
-      setOpenLessons([lessons[0].id]);
+    const firstLessonId = course?.resources.find(r => r.type === 'note')?.id;
+    if (firstLessonId) {
+      setOpenLessons([firstLessonId]);
     }
   };
   
@@ -234,27 +229,29 @@ function ViewCoursePageContent() {
                 >
                  {lessons.map((lesson, lessonIndex) => {
                     const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[];
+                    const isLessonLocked = isPreview && lessonIndex > 0;
                     
                     return (
-                        <AccordionItem value={lesson.id} key={lesson.id} className="border rounded-md">
-                            <AccordionTrigger className="px-4 hover:no-underline font-semibold text-lg">
-                                {lesson.title}
+                        <AccordionItem value={lesson.id} key={lesson.id} className="border rounded-md" disabled={isLessonLocked}>
+                            <AccordionTrigger className={`px-4 hover:no-underline font-semibold text-lg ${isLessonLocked ? 'cursor-not-allowed' : ''}`}>
+                                <div className="flex items-center">
+                                    {isLessonLocked && <Lock className="mr-2 h-4 w-4 text-muted-foreground shrink-0"/>}
+                                    {lesson.title}
+                                </div>
                             </AccordionTrigger>
                             <AccordionContent className="px-4 pt-2 border-t">
                                <div className="space-y-2 py-2">
                                    {lessonContents.length > 0 ? lessonContents.map(res => {
-                                       const isLocked = isPreview && lessonIndex > 0;
                                        return (
                                            <div key={res.id} className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors">
-                                                <Link href={isLocked ? '#' : `/lms/courses/${courseId}/${res.id}${isPreview ? '?preview=true' : ''}`} className={`flex-grow ${isLocked ? 'cursor-not-allowed' : ''}`}>
+                                                <Link href={`/lms/courses/${courseId}/${res.id}${isPreview ? '?preview=true' : ''}`} className="flex-grow">
                                                     <div className="flex items-center p-1 font-medium">
                                                         {getResourceIcon(res.type)}
-                                                        <span className={isLocked ? 'text-muted-foreground' : ''}>{res.title}</span>
+                                                        <span>{res.title}</span>
                                                     </div>
                                                 </Link>
                                                 <div className="flex items-center space-x-2 pl-4 shrink-0">
-                                                    {isLocked ? <Lock className="h-5 w-5 text-muted-foreground" /> :
-                                                    !isPreview && completedResources[res.id] && (
+                                                    {!isPreview && completedResources[res.id] && (
                                                         <CheckCircle className="h-5 w-5 text-green-500" />
                                                     )}
                                                 </div>
