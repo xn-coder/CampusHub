@@ -1,5 +1,3 @@
-
-
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -727,6 +725,24 @@ export async function getEnrollmentPageDataAction(courseId: string, adminUserId:
             throw new Error(adminError?.message || "Admin not found or not linked to a school.");
         }
         const schoolId = adminUser.school_id;
+        
+        const { data: availability, error: availabilityError } = await supabase
+            .from('lms_course_school_availability')
+            .select('course_id')
+            .eq('school_id', schoolId)
+            .eq('course_id', courseId)
+            .maybeSingle();
+
+        if (availabilityError) throw new Error(`DB Error checking course availability: ${availabilityError.message}`);
+        
+        if (!availability) {
+            // Also check if it's a school-specific course made by this school's admin
+             const { data: ownCourse, error: ownCourseError } = await supabase.from('lms_courses').select('id').eq('id', courseId).eq('school_id', schoolId).maybeSingle();
+             if (ownCourseError) throw new Error(`DB Error checking for own course: ${ownCourseError.message}`);
+             if(!ownCourse) {
+                 return { ok: false, message: "Course not found or not assigned to this school."};
+             }
+        }
 
         const { data: course, error: courseError } = await supabase.from('lms_courses').select('*').eq('id', courseId).single();
         if (courseError || !course) {
@@ -1090,3 +1106,4 @@ export async function getAssignedCoursesCountForSchool(schoolId: string): Promis
     }
     return count || 0;
 }
+
