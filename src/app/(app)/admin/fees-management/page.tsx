@@ -155,53 +155,54 @@ export default function FeesManagementPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-               {/* Dues Reports Column */}
-                <div className="col-span-1">
-                    <h3 className="text-lg font-semibold text-red-600 mb-2">Dues Reports</h3>
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* Collection Reports */}
+                <div className="space-y-3">
+                    <h3 className="text-lg font-semibold text-green-600">Collection Reports</h3>
                     <div className="flex flex-col space-y-2 text-sm">
-                        <Link href="/admin/student-fees?period=this_year&status=Unpaid" className="text-primary hover:underline">Yearly Head-Wise Dues Summary</Link>
-                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Outstanding Due Summary</Link>
-                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Class Wise Outstanding Dues</Link>
-                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">Complete Outstanding Dues</Link>
-                        <Link href="/admin/student-fees" className="text-primary hover:underline">All Students Fee Report</Link>
-                        <span className="text-muted-foreground cursor-not-allowed">Consolidated Dues Report (Soon)</span>
-                        <span className="text-muted-foreground cursor-not-allowed">Fee Student Follow Up (Soon)</span>
+                        <Link href="/admin/student-fees?period=today&status=Paid" className="text-primary hover:underline">Daily Collection Report</Link>
+                        <span className="text-muted-foreground cursor-not-allowed">Headwise Daily Collection (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Installment Wise Daily Collection (Soon)</span>
+                        <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Complete Paid Report</Link>
+                        <span className="text-muted-foreground cursor-not-allowed">Online Fee Transaction (Soon)</span>
+                        <Link href="/admin/student-fees?period=this_year&status=Paid" className="text-primary hover:underline">Year Wise Paid Collection</Link>
                     </div>
                 </div>
-                 {/* Collection Reports Column */}
-                <div className="col-span-1">
-                    <h3 className="text-lg font-semibold text-green-600 mb-2">Collection Reports</h3>
+
+                {/* Dues Reports */}
+                <div className="space-y-3">
+                    <h3 className="text-lg font-semibold text-red-600">Dues Reports</h3>
                     <div className="flex flex-col space-y-2 text-sm">
-                         <Link href="/admin/student-fees?period=today&status=Paid" className="text-primary hover:underline">Daily Collection Report</Link>
-                         <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Date-wise Collection</Link>
-                         <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Head Wise Collection</Link>
-                         <span className="text-muted-foreground cursor-not-allowed">Deleted Fee Collection (Soon)</span>
-                         <span className="text-muted-foreground cursor-not-allowed">Cashier-wise Collection (Soon)</span>
-                         <Link href="/admin/student-fees?period=this_year&status=Paid" className="text-primary hover:underline">Yearly Collection Report</Link>
-                         <Link href="/admin/student-fees?status=Paid" className="text-primary hover:underline">Consolidated Collection Report</Link>
+                        <Link href="/admin/student-fees?period=this_year&status=Unpaid" className="text-primary hover:underline">Yearly Wise Dues</Link>
+                        <Link href="/admin/student-fees?status=Unpaid" className="text-primary hover:underline">All Student Dues</Link>
+                        <span className="text-muted-foreground cursor-not-allowed">Month Wise Dues (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Headwise Dues (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Installment Wise Dues (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Consolidate Dues (Soon)</span>
                     </div>
                 </div>
-                {/* General Reports Column */}
-                <div className="col-span-1">
-                    <h3 className="text-lg font-semibold text-blue-600 mb-2">General Reports</h3>
+
+                {/* Student Wise Fee Reports */}
+                <div className="space-y-3">
+                    <h3 className="text-lg font-semibold text-blue-600">Student Wise Fee</h3>
                     <div className="flex flex-col space-y-2 text-sm">
-                        <Link href="/admin/student-fees" className="text-primary hover:underline">All Fee Transactions</Link>
-                        <span className="text-muted-foreground cursor-not-allowed">Fee Ledger Book (Soon)</span>
-                        <span className="text-muted-foreground cursor-not-allowed">Concession Report (Soon)</span>
-                        <span className="text-muted-foreground cursor-not-allowed">Fee Type/Group Wise Report (Soon)</span>
-                        <span className="text-muted-foreground cursor-not-allowed">Fee Defaulter List (Soon)</span>
-                        <span className="text-muted-foreground cursor-not-allowed">Fee Structure Report (Soon)</span>
+                        <Link href="/admin/student-fees" className="text-primary hover:underline">Student Wise Fees</Link>
+                        <span className="text-muted-foreground cursor-not-allowed">Group Wise Fees (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Student Fee Type Wise (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Class Wise (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Student Payment (Soon)</span>
                     </div>
                 </div>
-                 {/* Student Reports Column */}
-                <div className="col-span-1">
-                    <h3 className="text-lg font-semibold text-purple-600 mb-2">Student Reports</h3>
+                
+                {/* General Reports */}
+                <div className="space-y-3">
+                    <h3 className="text-lg font-semibold text-purple-600">General Reports</h3>
                     <div className="flex flex-col space-y-2 text-sm">
-                        <span className="text-muted-foreground cursor-not-allowed">Student Fee Card (Soon)</span>
-                        <span className="text-muted-foreground cursor-not-allowed">Student Ledger (Soon)</span>
-                        <span className="text-muted-foreground cursor-not-allowed">Student Fee Receipt (Soon)</span>
-                         <span className="text-muted-foreground cursor-not-allowed">Student Hostel Report (Soon)</span>
+                        <Link href="/admin/student-fees" className="text-primary hover:underline">All Fee Transaction</Link>
+                        <span className="text-muted-foreground cursor-not-allowed">Class Wise Fees Transaction (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Installment Wise Fees Transaction (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Daily Online Fee Payment (Soon)</span>
+                        <span className="text-muted-foreground cursor-not-allowed">Headwise Fee Transaction (Soon)</span>
                     </div>
                 </div>
             </div>
