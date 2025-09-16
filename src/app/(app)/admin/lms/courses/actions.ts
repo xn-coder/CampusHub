@@ -707,31 +707,77 @@ export async function unenrollUserFromCourseAction(
 }
 
 // --- Fetching Enrolled Users ---
+export async function getEnrollmentPageDataAction(courseId: string, adminUserId: string): Promise<{
+    ok: boolean;
+    message?: string;
+    course?: Course;
+    allStudents?: Student[];
+    allTeachers?: Teacher[];
+    enrolledStudents?: Student[];
+    enrolledTeachers?: Teacher[];
+}> {
+    if (!courseId || !adminUserId) {
+        return { ok: false, message: "Course and Admin IDs are required." };
+    }
+    const supabase = createSupabaseServerClient();
+
+    try {
+        const { data: adminUser, error: adminError } = await supabase.from('users').select('school_id').eq('id', adminUserId).single();
+        if (adminError || !adminUser?.school_id) {
+            throw new Error(adminError?.message || "Admin not found or not linked to a school.");
+        }
+        const schoolId = adminUser.school_id;
+
+        const { data: course, error: courseError } = await supabase.from('lms_courses').select('*').eq('id', courseId).single();
+        if (courseError || !course) {
+            throw new Error(courseError?.message || "Course not found.");
+        }
+
+        const [
+            allStudentsRes,
+            allTeachersRes,
+            enrolledStudentsRes,
+            enrolledTeachersRes
+        ] = await Promise.all([
+            supabase.from('students').select('id, name, email').eq('school_id', schoolId),
+            supabase.from('teachers').select('id, name, subject').eq('school_id', schoolId),
+            getEnrolledStudentsForCourseAction(courseId, schoolId),
+            getEnrolledTeachersForCourseAction(courseId, schoolId),
+        ]);
+
+        if (allStudentsRes.error) throw new Error(`Failed to fetch all students: ${allStudentsRes.error.message}`);
+        if (allTeachersRes.error) throw new Error(`Failed to fetch all teachers: ${allTeachersRes.error.message}`);
+        if (!enrolledStudentsRes.ok) throw new Error(`Failed to fetch enrolled students: ${enrolledStudentsRes.message}`);
+        if (!enrolledTeachersRes.ok) throw new Error(`Failed to fetch enrolled teachers: ${enrolledTeachersRes.message}`);
+
+        return {
+            ok: true,
+            course: course as Course,
+            allStudents: allStudentsRes.data || [],
+            allTeachers: allTeachersRes.data || [],
+            enrolledStudents: enrolledStudentsRes.students || [],
+            enrolledTeachers: enrolledTeachersRes.teachers || [],
+        };
+
+    } catch (e: any) {
+        console.error("Error in getEnrollmentPageDataAction:", e);
+        return { ok: false, message: e.message || "An unexpected error occurred." };
+    }
+}
+
+
 export async function getEnrolledStudentsForCourseAction(
   courseId: string,
   schoolId: string
 ): Promise<{ ok: boolean; students?: Student[]; message?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
 
-  // Find out if the course is global or school-specific
-  const { data: course, error: courseError } = await supabaseAdmin.from('lms_courses').select('school_id').eq('id', courseId).single();
-  if (courseError || !course) {
-    return { ok: false, message: 'Course not found.' };
-  }
-  const isGlobalCourse = course.school_id === null;
-
-  let enrollmentQuery = supabaseAdmin
+  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
     .from('lms_student_course_enrollments')
     .select('student_id')
-    .eq('course_id', courseId);
+    .eq('course_id', courseId)
+    .eq('school_id', schoolId);
   
-  if (!isGlobalCourse) {
-    // If it's a school-specific course, only get students from that school
-    enrollmentQuery = enrollmentQuery.eq('school_id', schoolId);
-  }
-  
-  const { data: enrollments, error: enrollmentError } = await enrollmentQuery;
-
   if (enrollmentError) {
     console.error("Error fetching student enrollments:", enrollmentError);
     return { ok: false, message: `Failed to fetch student enrollments: ${enrollmentError.message}` };
@@ -764,24 +810,12 @@ export async function getEnrolledTeachersForCourseAction(
   schoolId: string
 ): Promise<{ ok: boolean; teachers?: Teacher[]; message?: string }> {
   const supabaseAdmin = createSupabaseServerClient();
-
-  // Find out if the course is global or school-specific
-  const { data: course, error: courseError } = await supabaseAdmin.from('lms_courses').select('school_id').eq('id', courseId).single();
-  if (courseError || !course) {
-    return { ok: false, message: 'Course not found.' };
-  }
-  const isGlobalCourse = course.school_id === null;
   
-  let enrollmentQuery = supabaseAdmin
+  const { data: enrollments, error: enrollmentError } = await supabaseAdmin
     .from('lms_teacher_course_enrollments')
     .select('teacher_id') 
-    .eq('course_id', courseId);
-    
-  if (!isGlobalCourse) {
-    enrollmentQuery = enrollmentQuery.eq('school_id', schoolId);
-  }
-
-  const { data: enrollments, error: enrollmentError } = await enrollmentQuery;
+    .eq('course_id', courseId)
+    .eq('school_id', schoolId);
 
   if (enrollmentError) {
     console.error("Error fetching teacher enrollments:", enrollmentError);

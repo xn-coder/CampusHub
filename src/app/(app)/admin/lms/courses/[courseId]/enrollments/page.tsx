@@ -11,18 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { Course, Student, Teacher, UserRole } from '@/types';
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, UserMinus, Users, Briefcase, Loader2, Info } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
-import { enrollUserInCourseAction, unenrollUserFromCourseAction, getEnrolledStudentsForCourseAction, getEnrolledTeachersForCourseAction } from '../../actions';
-
-async function fetchAdminSchoolId(adminUserId: string): Promise<string | null> {
-    const { data: userRec, error: userErr } = await supabase.from('users').select('school_id').eq('id', adminUserId).single();
-    if (userErr || !userRec || !userRec.school_id) {
-        console.warn("Could not determine admin's school_id from users table:", userErr?.message);
-        return null;
-    }
-    return userRec.school_id;
-}
+import { UserPlus, UserMinus, Users, Briefcase, Loader2, Info, ArrowLeft } from 'lucide-react';
+import { enrollUserInCourseAction, unenrollUserFromCourseAction, getEnrollmentPageDataAction } from '../../actions';
 
 
 export default function ManageCourseEnrollmentsPage() {
@@ -32,13 +22,12 @@ export default function ManageCourseEnrollmentsPage() {
   const courseId = params.courseId as string;
 
   const [course, setCourse] = useState<Course | null>(null);
-  const [allStudentsForDropdown, setAllStudentsForDropdown] = useState<Student[]>([]);
-  const [allTeachersForDropdown, setAllTeachersForDropdown] = useState<Teacher[]>([]);
+  const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [allTeachers, setAllTeachers] = useState<Teacher[]>([]);
   const [enrolledStudents, setEnrolledStudents] = useState<Student[]>([]);
   const [enrolledTeachers, setEnrolledTeachers] = useState<Teacher[]>([]);
   
   const [isLoadingPage, setIsLoadingPage] = useState(true);
-  const [isLoadingEnrollments, setIsLoadingEnrollments] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [currentSchoolId, setCurrentSchoolId] = useState<string | null>(null);
@@ -46,80 +35,36 @@ export default function ManageCourseEnrollmentsPage() {
   const [selectedStudentIdToEnroll, setSelectedStudentIdToEnroll] = useState<string>('');
   const [selectedTeacherIdToEnroll, setSelectedTeacherIdToEnroll] = useState<string>('');
   
-  const fetchCurrentlyEnrolledUsers = useCallback(async (cId: string, schoolId: string | null) => {
-    if (!cId || !schoolId) return;
-    setIsLoadingEnrollments(true);
-
-    const [studentsResult, teachersResult] = await Promise.all([
-        getEnrolledStudentsForCourseAction(cId, schoolId),
-        getEnrolledTeachersForCourseAction(cId, schoolId)
-    ]);
-
-    if (studentsResult.ok && studentsResult.students) {
-        setEnrolledStudents(studentsResult.students);
-    } else {
-        toast({ title: "Error fetching enrolled students", description: studentsResult.message, variant: "destructive"});
-        setEnrolledStudents([]);
-    }
-
-    if (teachersResult.ok && teachersResult.teachers) {
-        setEnrolledTeachers(teachersResult.teachers);
-    } else {
-        toast({ title: "Error fetching enrolled teachers", description: teachersResult.message, variant: "destructive"});
-        setEnrolledTeachers([]);
-    }
-    setIsLoadingEnrollments(false);
-  }, [toast]);
-
-  const fetchCourseDetailsAndPotentialEnrollees = useCallback(async (cId: string, adminSchoolId: string | null) => {
+  const fetchEnrollmentData = useCallback(async (cId: string, adminUserId: string) => {
     setIsLoadingPage(true);
-    // This logic is now more robust. It can find any course, not just one linked to the admin's school.
-    const { data: courseData, error: courseError } = await supabase
-      .from('lms_courses')
-      .select('*')
-      .eq('id', cId)
-      .single();
-      
-    if (courseError || !courseData) {
-      toast({ title: "Error", description: "Course not found.", variant: "destructive" });
-      router.push('/admin/lms/courses');
-      setIsLoadingPage(false);
-      return;
-    }
-    const loadedCourse = courseData as Course;
-    setCourse(loadedCourse);
+    const result = await getEnrollmentPageDataAction(cId, adminUserId);
 
-    if (adminSchoolId) {
-        const { data: studentsData, error: studentsError } = await supabase.from('students').select('id, name, email').eq('school_id', adminSchoolId);
-        if (studentsError) toast({ title: "Error fetching students", variant: "destructive"}); else setAllStudentsForDropdown(studentsData || []);
-        
-        const { data: teachersData, error: teachersError } = await supabase.from('teachers').select('id, name, subject').eq('school_id', adminSchoolId);
-        if (teachersError) toast({ title: "Error fetching teachers", variant: "destructive"}); else setAllTeachersForDropdown(teachersData || []);
+    if (result.ok) {
+        setCourse(result.course || null);
+        setAllStudents(result.allStudents || []);
+        setAllTeachers(result.allTeachers || []);
+        setEnrolledStudents(result.enrolledStudents || []);
+        setEnrolledTeachers(result.enrolledTeachers || []);
     } else {
-        setAllStudentsForDropdown([]);
-        setAllTeachersForDropdown([]);
+        toast({ title: "Error Loading Data", description: result.message, variant: "destructive" });
+        router.push('/admin/lms/courses');
     }
     setIsLoadingPage(false);
   }, [router, toast]);
 
 
   useEffect(() => {
-    const adminId = localStorage.getItem('currentUserId');
-    if (adminId) {
-      fetchAdminSchoolId(adminId).then(schoolId => {
-        setCurrentSchoolId(schoolId); 
-        if (courseId) {
-          fetchCourseDetailsAndPotentialEnrollees(courseId, schoolId);
-          fetchCurrentlyEnrolledUsers(courseId, schoolId);
-        } else {
-            setIsLoadingPage(false);
-        }
-      });
+    const adminUserId = localStorage.getItem('currentUserId');
+    const schoolId = localStorage.getItem('currentSchoolId'); // Assuming this is set on login
+    
+    if (adminUserId && courseId) {
+      setCurrentSchoolId(schoolId); 
+      fetchEnrollmentData(courseId, adminUserId);
     } else {
-        toast({title: "Error", description: "Admin user not identified.", variant: "destructive"});
+        toast({title: "Error", description: "Admin user or course not identified.", variant: "destructive"});
         setIsLoadingPage(false);
     }
-  }, [courseId, toast, fetchCourseDetailsAndPotentialEnrollees, fetchCurrentlyEnrolledUsers]);
+  }, [courseId, toast, fetchEnrollmentData]);
   
 
   const handleEnrollUser = async (userType: 'student' | 'teacher') => {
@@ -143,7 +88,8 @@ export default function ManageCourseEnrollmentsPage() {
 
     if (result.ok) {
       toast({ title: `${userType.charAt(0).toUpperCase() + userType.slice(1)} Enrolled`, description: result.message });
-      fetchCurrentlyEnrolledUsers(course.id, currentSchoolId); 
+      const adminUserId = localStorage.getItem('currentUserId');
+      if (adminUserId) fetchEnrollmentData(course.id, adminUserId); 
       if(userType === 'student') setSelectedStudentIdToEnroll(''); else setSelectedTeacherIdToEnroll('');
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -162,7 +108,8 @@ export default function ManageCourseEnrollmentsPage() {
       });
       if (result.ok) {
         toast({ title: `${userType.charAt(0).toUpperCase() + userType.slice(1)} Unenrolled`, variant: "destructive" });
-        fetchCurrentlyEnrolledUsers(course.id, currentSchoolId);
+        const adminUserId = localStorage.getItem('currentUserId');
+        if (adminUserId) fetchEnrollmentData(course.id, adminUserId);
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
       }
@@ -170,14 +117,14 @@ export default function ManageCourseEnrollmentsPage() {
     }
   };
   
-  const enrolledStudentIds = enrolledStudents.map(s => s.id);
-  const enrolledTeacherIds = enrolledTeachers.map(t => t.id);
+  const enrolledStudentIds = new Set(enrolledStudents.map(s => s.id));
+  const enrolledTeacherIds = new Set(enrolledTeachers.map(t => t.id));
 
-  const availableStudentsToEnroll = allStudentsForDropdown.filter(s => !enrolledStudentIds.includes(s.id));
-  const availableTeachersToEnroll = allTeachersForDropdown.filter(t => !enrolledTeacherIds.includes(t.id));
+  const availableStudentsToEnroll = allStudents.filter(s => !enrolledStudentIds.has(s.id));
+  const availableTeachersToEnroll = allTeachers.filter(t => !enrolledTeacherIds.has(t.id));
 
   if (isLoadingPage && !course) return <div className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Loading course details...</div>;
-  if (!course) return <div className="text-center py-10 text-destructive">Course not found.</div>;
+  if (!course) return <div className="text-center py-10 text-destructive">Course not found. It may have been deleted or is not accessible.</div>;
   
   const renderStudentEnrollmentCard = () => (
     <Card>
@@ -199,24 +146,25 @@ export default function ManageCourseEnrollmentsPage() {
             {isSubmitting && selectedStudentIdToEnroll ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserPlus className="mr-2 h-4 w-4" />} Enroll Student
           </Button>
         </div>
-        <h4 className="font-medium mb-2">Currently Enrolled Students:</h4>
-        {isLoadingEnrollments ? <div className="text-center py-2"><Loader2 className="h-5 w-5 animate-spin"/></div> :
-        enrolledStudents.length > 0 ? (
-          <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {enrolledStudents.map(student => (
-                  <TableRow key={student.id}>
-                    <TableCell>{student.name}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="destructive" size="sm" onClick={() => handleUnenrollUser(student.id, 'student')} disabled={isSubmitting}>
-                        <UserMinus className="mr-1 h-3 w-3" /> Unenroll
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <h4 className="font-medium mb-2">Currently Enrolled Students ({enrolledStudents.length}):</h4>
+        {enrolledStudents.length > 0 ? (
+          <div className="max-h-60 overflow-y-auto">
+            <Table>
+              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {enrolledStudents.map(student => (
+                    <TableRow key={student.id}>
+                      <TableCell>{student.name}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="destructive" size="sm" onClick={() => handleUnenrollUser(student.id, 'student')} disabled={isSubmitting}>
+                          <UserMinus className="mr-1 h-3 w-3" /> Unenroll
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         ) : <p className="text-sm text-muted-foreground">No students enrolled yet.</p>}
       </CardContent>
     </Card>
@@ -242,24 +190,25 @@ export default function ManageCourseEnrollmentsPage() {
             {isSubmitting && selectedTeacherIdToEnroll ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserPlus className="mr-2 h-4 w-4" />} Enroll Teacher
           </Button>
         </div>
-        <h4 className="font-medium mb-2">Currently Enrolled Teachers:</h4>
-         {isLoadingEnrollments ? <div className="text-center py-2"><Loader2 className="h-5 w-5 animate-spin"/></div> :
-        enrolledTeachers.length > 0 ? (
-          <Table>
-             <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {enrolledTeachers.map(teacher => (
-                  <TableRow key={teacher.id}>
-                    <TableCell>{teacher.name}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="destructive" size="sm" onClick={() => handleUnenrollUser(teacher.id, 'teacher')} disabled={isSubmitting}>
-                        <UserMinus className="mr-1 h-3 w-3" /> Unenroll
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <h4 className="font-medium mb-2">Currently Enrolled Teachers ({enrolledTeachers.length}):</h4>
+        {enrolledTeachers.length > 0 ? (
+           <div className="max-h-60 overflow-y-auto">
+            <Table>
+               <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {enrolledTeachers.map(teacher => (
+                    <TableRow key={teacher.id}>
+                      <TableCell>{teacher.name}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="destructive" size="sm" onClick={() => handleUnenrollUser(teacher.id, 'teacher')} disabled={isSubmitting}>
+                          <UserMinus className="mr-1 h-3 w-3" /> Unenroll
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         ) : <p className="text-sm text-muted-foreground">No teachers enrolled yet.</p>}
       </CardContent>
     </Card>
@@ -281,10 +230,9 @@ export default function ManageCourseEnrollmentsPage() {
       </div>
       
        <Button variant="outline" onClick={() => router.push('/admin/lms/courses')} className="mt-4 self-start" disabled={isSubmitting}>
+        <ArrowLeft className="mr-2 h-4 w-4" />
         Back to Courses
       </Button>
     </div>
   );
 }
-
-    
