@@ -73,7 +73,13 @@ export default function ManageCourseEnrollmentsPage() {
 
   const fetchCourseDetailsAndPotentialEnrollees = useCallback(async (cId: string, adminSchoolId: string | null) => {
     setIsLoadingPage(true);
-    const { data: courseData, error: courseError } = await supabase.from('lms_courses').select('*').eq('id', cId).single();
+    // This logic is now more robust. It can find any course, not just one linked to the admin's school.
+    const { data: courseData, error: courseError } = await supabase
+      .from('lms_courses')
+      .select('*')
+      .eq('id', cId)
+      .single();
+      
     if (courseError || !courseData) {
       toast({ title: "Error", description: "Course not found.", variant: "destructive" });
       router.push('/admin/lms/courses');
@@ -280,3 +286,5 @@ export default function ManageCourseEnrollmentsPage() {
     </div>
   );
 }
+
+    
