@@ -425,7 +425,7 @@ export default function CourseResourcePage() {
                 title={resource.title}
                 description={`Part of course: ${course.title}`}
                 actions={
-                    <Button variant="outline" onClick={() => router.push(`/lms/courses/${courseId}`)}>
+                    <Button variant="outline" onClick={() => router.push(isAdmin ? `/admin/lms/courses/${courseId}/content` : `/lms/courses/${courseId}`)}>
                         <ArrowLeft className="mr-2 h-4 w-4" />
                         Back to Course
                     </Button>
