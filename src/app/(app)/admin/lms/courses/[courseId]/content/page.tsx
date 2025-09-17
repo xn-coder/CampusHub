@@ -24,7 +24,7 @@ import {
   updateResourceInLessonAction,
   createSignedUploadUrlAction,
   addResourceToLessonAction,
-} from '@/app/(app)/admin/lms/courses/actions';
+} from '../../actions';
 import { supabase } from '@/lib/supabaseClient';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
