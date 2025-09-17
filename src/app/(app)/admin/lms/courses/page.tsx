@@ -13,7 +13,6 @@ import Image from 'next/image';
 import { 
     getAdminLmsPageData,
     assignCourseToSchoolAudienceAction, 
-    enrollSchoolInCourseAction,
     unassignCourseFromSchoolAction,
     createSchoolSubscriptionOrderAction
 } from './actions';
@@ -110,25 +109,6 @@ export default function SchoolLmsCoursesPage() {
     setIsSubmitting(false);
   }
   
-  const handleEnrollFreeCourse = async (courseId: string) => {
-      if (!currentSchool || !currentUserId) {
-        toast({ title: "Error", description: "School context or user is missing.", variant: "destructive" });
-        return;
-      }
-      setIsSubmitting(true);
-      
-      const result = await enrollSchoolInCourseAction(courseId, currentSchool.id);
-
-      if(result.ok) {
-        toast({title: "Success!", description: `Your school now has access to this course. You can assign it to users.`});
-        if (currentUserId) await fetchPageData(currentUserId);
-      } else {
-        toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
-      }
-
-      setIsSubmitting(false);
-  };
-  
     const handleUnassignCourse = async (courseId: string) => {
     if (!currentSchool) return;
     if (confirm("Are you sure you want to unassign this course from your school? This will unenroll all users and remove it from your school's catalog.")) {
@@ -153,7 +133,7 @@ export default function SchoolLmsCoursesPage() {
   const totalPages = Math.ceil(filteredCourses.length / ITEMS_PER_PAGE);
   
   const SubscriptionBadge = ({ course }: { course: Course }) => {
-    if (!course.isEnrolled || !course.is_paid || !course.subscription_end_date) {
+    if (!course.is_paid || !course.subscription_end_date) {
         return null;
     }
 
@@ -213,7 +193,7 @@ export default function SchoolLmsCoursesPage() {
                 <Library className="mx-auto h-12 w-12 text-muted-foreground" />
                 <h3 className="mt-4 text-lg font-semibold">No Courses Found</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    {searchTerm ? 'No courses match your search.' : 'There are no courses currently available.'}
+                    {searchTerm ? 'No courses match your search.' : 'There are no courses currently available for your school.'}
                 </p>
             </div>
           ) : (
@@ -237,61 +217,55 @@ export default function SchoolLmsCoursesPage() {
                              <CardDescription className="line-clamp-3">{course.description || "No description available."}</CardDescription>
                         </CardContent>
                         <CardFooter className="flex-col sm:flex-row gap-2">
-                           {course.isEnrolled ? (
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button className="w-full">
-                                            <Settings className="mr-2 h-4 w-4" /> Manage Course
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem asChild>
-                                            <Link href={`/admin/lms/courses/${course.id}/content?preview=true`}>
-                                                <Eye className="mr-2 h-4 w-4"/> Preview Content
-                                            </Link>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button className="w-full">
+                                        <Settings className="mr-2 h-4 w-4" /> Manage Course
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-56">
+                                    <DropdownMenuItem asChild>
+                                        <Link href={`/admin/lms/courses/${course.id}/content?preview=true`}>
+                                            <Eye className="mr-2 h-4 w-4"/> Preview Content
+                                        </Link>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => handleOpenAssignDialog(course)}>
+                                        <UserPlus className="mr-2 h-4 w-4"/> Assign To...
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                        <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
+                                            <UsersIcon className="mr-2 h-4 w-4"/> Manage Enrollments
+                                        </Link>
+                                    </DropdownMenuItem>
+                                    {course.is_paid && (
+                                        <DropdownMenuItem onSelect={() => handleOpenSubscribeDialog(course)}>
+                                            <CreditCard className="mr-2 h-4 w-4" /> Upgrade Subscription
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onSelect={() => handleOpenAssignDialog(course)}>
-                                            <UserPlus className="mr-2 h-4 w-4"/> Assign To...
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem asChild>
-                                            <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                                                <UsersIcon className="mr-2 h-4 w-4"/> Manage Enrollments
-                                            </Link>
-                                        </DropdownMenuItem>
-                                        {course.is_paid && (
-                                            <DropdownMenuItem onSelect={() => handleOpenSubscribeDialog(course)}>
-                                                <CreditCard className="mr-2 h-4 w-4" /> Upgrade Subscription
+                                    )}
+                                    <DropdownMenuSeparator />
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <DropdownMenuItem onSelect={e => e.preventDefault()} className="text-destructive">
+                                                <XCircle className="mr-2 h-4 w-4"/> Unassign Course
                                             </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuSeparator />
-                                        <AlertDialog>
-                                            <AlertDialogTrigger asChild>
-                                                <DropdownMenuItem onSelect={e => e.preventDefault()} className="text-destructive">
-                                                    <XCircle className="mr-2 h-4 w-4"/> Unassign Course
-                                                </DropdownMenuItem>
-                                            </AlertDialogTrigger>
-                                            <AlertDialogContent>
-                                                <AlertDialogHeader>
-                                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                                    <AlertDialogDescription>
-                                                        This will unassign the course from your school, removing it from your catalog and unenrolling all current users.
-                                                    </AlertDialogDescription>
-                                                </AlertDialogHeader>
-                                                <AlertDialogFooter>
-                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={() => handleUnassignCourse(course.id)} className="bg-destructive hover:bg-destructive/90">
-                                                        Unassign
-                                                    </AlertDialogAction>
-                                                </AlertDialogFooter>
-                                            </AlertDialogContent>
-                                        </AlertDialog>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            ) : (
-                                <Button className="w-full" onClick={() => handleEnrollFreeCourse(course.id)} disabled={isSubmitting}>
-                                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCheck className="mr-2 h-4 w-4" />} Enroll School
-                                </Button>
-                           )}
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                    This will unassign the course from your school, removing it from your catalog and unenrolling all current users.
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction onClick={() => handleUnassignCourse(course.id)} className="bg-destructive hover:bg-destructive/90">
+                                                    Unassign
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </CardFooter>
                     </Card>
                 ))}

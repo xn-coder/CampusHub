@@ -212,7 +212,6 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
 }> {
     const supabase = createSupabaseServerClient();
     try {
-        // 1. Get all courses this school has access to (via the availability table)
         const { data: availability, error: availabilityError } = await supabase
             .from('lms_course_school_availability')
             .select('course_id, target_audience_in_school')
@@ -226,7 +225,6 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
 
         const courseIds = availability.map(a => a.course_id);
 
-        // 2. Fetch details for those courses AND the school's subscriptions in parallel
         const [coursesRes, subscriptionsRes] = await Promise.all([
           supabase.from('lms_courses').select('*').in('id', courseIds),
           supabase.from('lms_school_subscriptions').select('course_id, end_date, subscribed_users_count').eq('school_id', schoolId)
@@ -235,9 +233,6 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
         if (coursesRes.error) throw coursesRes.error;
         if (subscriptionsRes.error) console.warn("Could not fetch school subscriptions:", subscriptionsRes.error.message);
 
-        // 3. Create a simple Set of subscribed course IDs for quick lookup
-        const subscribedCourseIds = new Set((subscriptionsRes.data || []).map(sub => sub.course_id));
-        
         const subscriptionInfoMap = (subscriptionsRes.data || []).reduce((acc, sub) => {
             acc[sub.course_id] = {
                 endDate: sub.end_date,
@@ -246,15 +241,13 @@ export async function getCoursesForSchoolAction(schoolId: string): Promise<{
             return acc;
         }, {} as Record<string, { endDate: string | null; userCount: number | null }>);
 
-        // 4. Map through the available courses and determine their enrollment status
         const coursesWithSchoolStatus = (coursesRes.data || []).map(course => {
-            const isEnrolled = subscribedCourseIds.has(course.id);
             const availInfo = availability.find(a => a.course_id === course.id);
             const subInfo = subscriptionInfoMap[course.id];
 
             return {
                 ...course,
-                isEnrolled,
+                isEnrolled: true, // If it's in the availability table, the admin can manage it.
                 target_audience_in_school: availInfo?.target_audience_in_school,
                 subscription_end_date: subInfo?.endDate || null,
                 subscribed_users_count: subInfo?.userCount || 0
@@ -321,6 +314,30 @@ export async function assignCourseToSchoolAudienceAction(params: {
     console.error("Error assigning course to audience:", error);
     return { ok: false, message: error.message || "An unexpected error occurred." };
   }
+}
+
+export async function unassignCourseFromSchoolAction(courseId: string, schoolId: string): Promise<{ ok: boolean, message: string }> {
+    const supabase = createSupabaseServerClient();
+    try {
+        // Unenroll all users from this school for this course first
+        await supabase.from('lms_student_course_enrollments').delete().eq('course_id', courseId).eq('school_id', schoolId);
+        await supabase.from('lms_teacher_course_enrollments').delete().eq('course_id', courseId).eq('school_id', schoolId);
+        
+        // Remove the availability record
+        const { error: availabilityError } = await supabase.from('lms_course_school_availability').delete().eq('course_id', courseId).eq('school_id', schoolId);
+        if (availabilityError) throw new Error(`Failed to unassign course: ${availabilityError.message}`);
+
+        // Also remove subscription if it exists
+        await supabase.from('lms_school_subscriptions').delete().eq('course_id', courseId).eq('school_id', schoolId);
+
+        revalidatePath('/admin/lms/courses');
+        revalidatePath('/lms/available-courses');
+        return { ok: true, message: "Course unassigned from your school. All users have been unenrolled."};
+
+    } catch (e: any) {
+        console.error("Error in unassignCourseFromSchoolAction:", e);
+        return { ok: false, message: e.message || 'An unexpected error occurred.' };
+    }
 }
 
 
@@ -583,57 +600,6 @@ interface ManageEnrollmentInput {
   user_profile_id: string; 
   user_type: UserRole;
   school_id: string;
-}
-
-
-export async function enrollSchoolInCourseAction(courseId: string, schoolId: string): Promise<{ ok: boolean; message: string }> {
-  const supabase = createSupabaseServerClient();
-  const { data: course, error: courseError } = await supabase.from('lms_courses').select('is_paid').eq('id', courseId).single();
-  if (courseError || !course) return { ok: false, message: "Course not found." };
-  if (course.is_paid) return { ok: false, message: "This is a paid course and requires a subscription." };
-
-  // This will either insert a new subscription record for the free course or do nothing if one already exists.
-  const { error: subError } = await supabase
-      .from('lms_school_subscriptions')
-      .upsert({
-          course_id: courseId,
-          school_id: schoolId,
-          status: 'active',
-          amount_paid: 0,
-          razorpay_payment_id: `FREE_ENROLL_${uuidv4()}`
-      }, { onConflict: 'course_id, school_id' }); // Correct ON CONFLICT constraint
-
-  if (subError) {
-      console.error("Error enrolling school in free course (creating subscription record):", subError);
-      return { ok: false, message: `Failed to enroll school: ${subError.message}` };
-  }
-
-  revalidatePath('/admin/lms/courses');
-  return { ok: true, message: "School successfully enrolled in the free course." };
-}
-
-export async function unassignCourseFromSchoolAction(courseId: string, schoolId: string): Promise<{ ok: boolean, message: string }> {
-    const supabase = createSupabaseServerClient();
-    try {
-        // Unenroll all users from this school for this course first
-        await supabase.from('lms_student_course_enrollments').delete().eq('course_id', courseId).eq('school_id', schoolId);
-        await supabase.from('lms_teacher_course_enrollments').delete().eq('course_id', courseId).eq('school_id', schoolId);
-        
-        // Remove the availability record
-        const { error: availabilityError } = await supabase.from('lms_course_school_availability').delete().eq('course_id', courseId).eq('school_id', schoolId);
-        if (availabilityError) throw new Error(`Failed to unassign course: ${availabilityError.message}`);
-
-        // Also remove subscription if it exists
-        await supabase.from('lms_school_subscriptions').delete().eq('course_id', courseId).eq('school_id', schoolId);
-
-        revalidatePath('/admin/lms/courses');
-        revalidatePath('/lms/available-courses');
-        return { ok: true, message: "Course unassigned from your school. All users have been unenrolled."};
-
-    } catch (e: any) {
-        console.error("Error in unassignCourseFromSchoolAction:", e);
-        return { ok: false, message: e.message || 'An unexpected error occurred.' };
-    }
 }
 
 
