@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
@@ -54,7 +55,8 @@ const getEmbedUrl = (url: string, type: CourseResourceType): string | null => {
 
         if ((type === 'ebook' || type === 'ppt') && url.includes("drive.google.com/file/d/")) {
             const fileId = url.split('/d/')[1]?.split('/')[0];
-            return `https://drive.google.com/file/d/${fileId}/preview`;
+            // Add parameters to hide the toolbar and fit the page horizontally to prevent the "pop out" button
+            return `https://drive.google.com/file/d/${fileId}/preview#view=FitH&toolbar=0`;
         }
 
         if (type === 'video' && url.match(/\.(mp4|webm|ogg)$/i)) {
@@ -412,7 +414,7 @@ export default function CourseResourcePage() {
     
     const userRole = localStorage.getItem('currentUserRole') as UserRole | null;
     const backToCoursesPath = userRole === 'admin' || userRole === 'superadmin' 
-        ? '/admin/lms/courses' 
+        ? `/admin/lms/courses/${courseId}/content` 
         : '/lms/available-courses';
 
 
