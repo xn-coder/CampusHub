@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { differenceInDays, parseISO, isPast } from 'date-fns';
 
 
@@ -111,12 +112,7 @@ export default function SchoolLmsCoursesPage() {
 
       if(result.ok) {
         toast({title: "Success!", description: `Your school now has access to this course. You can assign it to users.`});
-        // Optimistically update UI to avoid full refetch
-        setCourses(prevCourses => 
-            prevCourses.map(c => 
-                c.id === courseId ? { ...c, isEnrolled: true } : c
-            )
-        );
+        if (currentUserId) await fetchPageData(currentUserId);
       } else {
         toast({ title: "Enrollment Failed", description: result.message, variant: "destructive"});
       }
@@ -233,16 +229,31 @@ export default function SchoolLmsCoursesPage() {
                         </CardContent>
                         <CardFooter className="flex-col sm:flex-row gap-2">
                            {course.isEnrolled ? (
-                                <>
-                                    <Button asChild className="w-full" variant="secondary">
-                                        <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                                            <UserPlus className="mr-2 h-4 w-4"/> User list
-                                        </Link>
-                                    </Button>
-                                    <Button onClick={() => handleUnassignCourse(course.id)} className="w-full" variant="destructive" disabled={isSubmitting}>
-                                        <XCircle className="mr-2 h-4 w-4" /> Unassign
-                                    </Button>
-                                </>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button className="w-full">
+                                            <Settings className="mr-2 h-4 w-4" /> Manage Course
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem asChild>
+                                            <Link href={`/admin/lms/courses/${course.id}/content?preview=true`}>
+                                                <Eye className="mr-2 h-4 w-4"/> Preview Content
+                                            </Link>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onSelect={() => handleOpenAssignDialog(course)}>
+                                            <UserPlus className="mr-2 h-4 w-4"/> Assign To...
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem asChild>
+                                            <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
+                                                <Users className="mr-2 h-4 w-4"/> View Enrolled Users
+                                            </Link>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem disabled>
+                                            <CreditCard className="mr-2 h-4 w-4" /> Upgrade Plan
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             ) : (
                                 <>
                                     <Button asChild className="w-full" variant="outline">

@@ -692,6 +692,15 @@ export interface Installment {
   updated_at?: string;
 }
 
+export interface PaymentMethod {
+  id: string;
+  school_id: string;
+  name: string;
+  description?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 
 declare global {
   interface Window {

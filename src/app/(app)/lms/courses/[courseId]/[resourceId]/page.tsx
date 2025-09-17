@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
@@ -137,7 +138,7 @@ export default function CourseResourcePage() {
         } else {
             toast({title: "Error", description: result.message, variant: "destructive"});
         }
-    }, [resource, courseId, resourceId, toast, course]);
+    }, [resource, courseId, resourceId, toast, course, calculateProgress]);
     
     const handleSubmitQuiz = useCallback(() => {
         if (quizResult) return; // Prevent re-submission
@@ -271,7 +272,6 @@ export default function CourseResourcePage() {
             const allLessonContents = lessons.flatMap(lesson => {
                 try { return JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[]; } catch { return []; }
             });
-            const firstLessonContents = lessons.length > 0 ? (JSON.parse(lessons[0].url_or_content || '[]') as LessonContentResource[]) : [];
             
             const currentIndex = allLessonContents.findIndex(r => r.id === resourceId);
 
@@ -282,45 +282,38 @@ export default function CourseResourcePage() {
             const currentResource = allLessonContents[currentIndex];
             setResource(currentResource);
 
-            // Lock content if admin is previewing beyond the first lesson
-            const isResourceInFirstLesson = firstLessonContents.some(r => r.id === resourceId);
-            if (isPreviewing && !isResourceInFirstLesson) {
-                setIsContentLocked(true);
-            } else {
-                setIsContentLocked(false);
-                // Parse content for specific resource types
-                try {
-                    if (currentResource.type === 'quiz') {
-                         const loadedQuestions: QuizQuestion[] = JSON.parse(currentResource.url_or_content || '[]') || [];
-                         const migratedQuestions = loadedQuestions.map(q => {
-                            if (q.correctAnswerIndex !== undefined && q.correctAnswers === undefined) {
-                                return { ...q, questionType: 'single', correctAnswers: [q.correctAnswerIndex] };
-                            }
-                            return { ...q, questionType: q.questionType || 'single', correctAnswers: q.correctAnswers || [] };
-                        });
-                        setQuizQuestions(migratedQuestions);
-                    }
-                    else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) {
-                        setNotePages(JSON.parse(currentResource.url_or_content));
-                    }
-                    else if (currentResource.type === 'drag_and_drop') {
-                        setDndActivityData(JSON.parse(currentResource.url_or_content));
-                    } else if (currentResource.type === 'web_page') {
-                        setWebPageContent(JSON.parse(currentResource.url_or_content || '{}'));
-                    }
-                } catch(e) { throw new Error(`Failed to load content for this resource. It might be corrupted.`); }
-            }
+            setIsContentLocked(false);
+            
+            // Parse content for specific resource types
+            try {
+                if (currentResource.type === 'quiz') {
+                     const loadedQuestions: QuizQuestion[] = JSON.parse(currentResource.url_or_content || '[]') || [];
+                     const migratedQuestions = loadedQuestions.map(q => {
+                        if (q.correctAnswerIndex !== undefined && q.correctAnswers === undefined) {
+                            return { ...q, questionType: 'single', correctAnswers: [q.correctAnswerIndex] };
+                        }
+                        return { ...q, questionType: q.questionType || 'single', correctAnswers: q.correctAnswers || [] };
+                    });
+                    setQuizQuestions(migratedQuestions);
+                }
+                else if (currentResource.type === 'note' && currentResource.url_or_content.startsWith('[')) {
+                    setNotePages(JSON.parse(currentResource.url_or_content));
+                }
+                else if (currentResource.type === 'drag_and_drop') {
+                    setDndActivityData(JSON.parse(currentResource.url_or_content));
+                } else if (currentResource.type === 'web_page') {
+                    setWebPageContent(JSON.parse(currentResource.url_or_content || '{}'));
+                }
+            } catch(e) { throw new Error(`Failed to load content for this resource. It might be corrupted.`); }
 
             // Set up navigation
             const prevResource = currentIndex > 0 ? allLessonContents[currentIndex - 1] : null;
             const nextResource = currentIndex < allLessonContents.length - 1 ? allLessonContents[currentIndex + 1] : null;
             
-            const isLastResourceOfFirstLesson = isPreviewing && isResourceInFirstLesson && firstLessonContents[firstLessonContents.length - 1].id === resourceId;
-            
             setPreviousResourceId(prevResource?.id || null);
             setPreviousResourceTitle(prevResource?.title || null);
-            setNextResourceId(isLastResourceOfFirstLesson ? null : nextResource?.id || null);
-            setNextResourceTitle(isLastResourceOfFirstLesson ? null : nextResource?.title || null);
+            setNextResourceId(nextResource?.id || null);
+            setNextResourceTitle(nextResource?.title || null);
 
         } catch (e: any) {
             setError(e.message);

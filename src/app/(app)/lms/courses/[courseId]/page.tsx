@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
@@ -229,13 +230,11 @@ function ViewCoursePageContent() {
                 >
                  {lessons.map((lesson, lessonIndex) => {
                     const lessonContents: LessonContentResource[] = JSON.parse(lesson.url_or_content || '[]') as LessonContentResource[];
-                    const isLessonLocked = isPreview && lessonIndex > 0;
                     
                     return (
-                        <AccordionItem value={lesson.id} key={lesson.id} className="border rounded-md" disabled={isLessonLocked}>
-                            <AccordionTrigger className={`px-4 hover:no-underline font-semibold text-lg ${isLessonLocked ? 'cursor-not-allowed' : ''}`}>
+                        <AccordionItem value={lesson.id} key={lesson.id} className="border rounded-md">
+                            <AccordionTrigger className={`px-4 hover:no-underline font-semibold text-lg`}>
                                 <div className="flex items-center">
-                                    {isLessonLocked && <Lock className="mr-2 h-4 w-4 text-muted-foreground shrink-0"/>}
                                     {lesson.title}
                                 </div>
                             </AccordionTrigger>
