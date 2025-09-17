@@ -288,16 +288,9 @@ export default function SchoolLmsCoursesPage() {
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             ) : (
-                                <>
-                                    <Button asChild className="w-full" variant="outline">
-                                        <Link href={`/lms/courses/${course.id}?preview=true`}>
-                                            <Eye className="mr-2 h-4 w-4"/> Preview
-                                        </Link>
-                                    </Button>
-                                    <Button className="w-full" onClick={() => handleEnrollFreeCourse(course.id)} disabled={isSubmitting}>
-                                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCheck className="mr-2 h-4 w-4" />} Enroll School
-                                    </Button>
-                                </>
+                                <Button className="w-full" onClick={() => handleEnrollFreeCourse(course.id)} disabled={isSubmitting}>
+                                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCheck className="mr-2 h-4 w-4" />} Enroll School
+                                </Button>
                            )}
                         </CardFooter>
                     </Card>
