@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo, useRef, useCallback } from 'react';
@@ -22,6 +21,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { DragAndDropViewer } from '@/components/lms/dnd/DragAndDropViewer';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
+import { WebPageRenderer } from '@/components/lms/WebPageRenderer';
 
 // Configure the worker to be served from the public directory
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
@@ -47,19 +47,16 @@ const getEmbedUrl = (url: string, type: CourseResourceType): string | null => {
             return `https://open.spotify.com/embed/track/${trackId}`;
         }
         
-        // Handle Google Slides presentations
         if (type === 'ppt' && url.includes("docs.google.com/presentation/d/")) {
             const presentationId = url.split('/d/')[1]?.split('/')[0];
             return `https://docs.google.com/presentation/d/${presentationId}/embed?start=false&loop=false&delayms=3000`;
         }
 
-        // Handle Google Drive file links (for PDFs or other files)
         if ((type === 'ebook' || type === 'ppt') && url.includes("drive.google.com/file/d/")) {
             const fileId = url.split('/d/')[1]?.split('/')[0];
             return `https://drive.google.com/file/d/${fileId}/preview`;
         }
 
-        // For direct video links that can be played by the <video> tag
         if (type === 'video' && url.match(/\.(mp4|webm|ogg)$/i)) {
             return url;
         }
@@ -387,18 +384,6 @@ export default function CourseResourcePage() {
              setTimeLeft(resource.duration_minutes);
         }
     };
-    
-    const renderWebPageContent = (content: WebPageContent) => {
-        // This is a simplified renderer. A real implementation would need more robust sandboxing.
-        const pageHtml = content.sections?.map(section => {
-            if (section.type === 'heading') return `<h2>${section.content}</h2>`;
-            if (section.type === 'text') return section.content; // Assumes this is safe HTML from CKEditor
-            if (section.type === 'image') return `<img src="${section.content}" alt="Web page image" style="max-width: 100%; height: auto; border-radius: 8px;" />`;
-            return '';
-        }).join('');
-
-        return <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: pageHtml || '' }} />;
-    };
 
 
     if (isLoading) {
@@ -425,15 +410,23 @@ export default function CourseResourcePage() {
     const isAdmin = currentUserRole === 'admin' || currentUserRole === 'superadmin';
     const isNextDisabled = !nextResourceId || (isPreviewing ? false : !isCompleted);
     
+    const userRole = localStorage.getItem('currentUserRole') as UserRole | null;
+    const backToCoursesPath = userRole === 'admin' || userRole === 'superadmin' 
+        ? '/admin/lms/courses' 
+        : '/lms/available-courses';
+
+
     return (
         <div className="flex flex-col gap-6">
             <PageHeader
                 title={resource.title}
                 description={`Part of course: ${course.title}`}
                 actions={
-                    <Button variant="outline" onClick={() => router.push(isAdmin ? `/admin/lms/courses/${courseId}/content` : `/lms/courses/${courseId}`)}>
-                        <ArrowLeft className="mr-2 h-4 w-4" />
-                        Back to Course
+                    <Button variant="outline" asChild>
+                        <Link href={isPreviewing ? `/admin/lms/courses/${courseId}/content` : `/lms/courses/${courseId}`}>
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            Back to Course
+                        </Link>
                     </Button>
                 }
             />
@@ -489,7 +482,7 @@ export default function CourseResourcePage() {
                             <p className="text-muted-foreground mt-2">This is part of the course preview.</p>
                             <p className="text-muted-foreground">Enroll in or subscribe to this course to unlock all lessons.</p>
                              <Button asChild className="mt-6">
-                                <Link href="/admin/lms/courses">Back to Course Management</Link>
+                                <Link href={backToCoursesPath}>Back to Course Management</Link>
                             </Button>
                         </div>
                     ) : (
@@ -532,12 +525,12 @@ export default function CourseResourcePage() {
                             ))}
                         </HTMLFlipBook>
                      )}
-                     {resource.type === 'web_page' && webPageContent && renderWebPageContent(webPageContent)}
+                     {resource.type === 'web_page' && webPageContent && <WebPageRenderer content={webPageContent} />}
                      {(resource.type === 'ebook' || resource.type === 'ppt') && (
                         embedUrl ? (
                              <iframe src={embedUrl} title={resource.title} className="w-full h-[80vh]"></iframe>
                         ) : pdfFile ? (
-                           <div className="w-full h-[80vh] overflow-y-auto flex justify-center">
+                           <div className="w-full h-full flex justify-center">
                                 <Document file={pdfFile} onLoadSuccess={onDocumentLoadSuccess}>
                                     {Array.from(new Array(numPages), (el, index) => (
                                         <Page key={`page_${index + 1}`} pageNumber={index + 1} renderAnnotationLayer={false} renderTextLayer={false}/>
@@ -550,7 +543,7 @@ export default function CourseResourcePage() {
                         <div className="text-center p-8">
                             <h2 className="text-2xl font-bold mb-4">Webinar Link</h2>
                             <p className="mb-4">This resource is an external link to a webinar or live session.</p>
-                            <Button asChild><a href={resource.url_or_content} target="_blank" rel="noopener noreferrer">Join Webinar</a></Button>
+                            <Button asChild><a href={resource.url_or_content}>Join Webinar</a></Button>
                         </div>
                      )}
                      {resource.type === 'drag_and_drop' && dndActivityData && (
@@ -612,7 +605,7 @@ export default function CourseResourcePage() {
                     )}
                 </CardContent>
                  <CardFooter className="flex justify-between items-center flex-wrap gap-2">
-                    {previousResourceId && (
+                    {previousResourceId ? (
                         <Button variant="outline" asChild>
                             <Link href={`/lms/courses/${courseId}/${previousResourceId}${isPreviewing ? '?preview=true': ''}`}>
                                 <ArrowLeft className="mr-2 h-4 w-4 shrink-0"/>
@@ -621,9 +614,9 @@ export default function CourseResourcePage() {
                                 </span>
                             </Link>
                         </Button>
-                    )}
+                    ) : <div />}
                     {nextResourceId && (
-                        <Button variant="outline" disabled={isNextDisabled} asChild className="ml-auto">
+                        <Button variant="outline" disabled={isNextDisabled} asChild>
                             <Link href={!isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true': ''}` : '#'}>
                                 <span className="truncate">
                                     {nextResourceTitle ? `Next: ${nextResourceTitle}`: 'Next'}
@@ -637,5 +630,3 @@ export default function CourseResourcePage() {
         </div>
     );
 }
-
-    
