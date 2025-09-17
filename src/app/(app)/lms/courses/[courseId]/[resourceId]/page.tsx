@@ -133,7 +133,7 @@ export default function CourseResourcePage() {
             return;
         }
         
-        if (!userId || !resource) return;
+        if (!userId || !resource || !courseId) return;
 
         const result = await markResourceAsCompleteAction(userId, courseId, resourceId);
         if (result.ok) {
@@ -340,7 +340,7 @@ export default function CourseResourcePage() {
     const embedUrl = useMemo(() => (resource?.type && resource.url_or_content) ? getEmbedUrl(resource.url_or_content, resource.type) : null, [resource]);
 
     const getResourceIcon = (type: string) => {
-        const props = { className: "mr-2 h-5 w-5" };
+        const props = { className: "mr-3 h-5 w-5" };
         switch(type) {
             case 'ebook': return <BookOpen {...props} />;
             case 'video': return <Video {...props} />;
@@ -534,7 +534,7 @@ export default function CourseResourcePage() {
                         embedUrl ? (
                              <iframe src={embedUrl} title={resource.title} className="w-full h-[80vh]"></iframe>
                         ) : pdfFile ? (
-                           <div className="w-full h-full flex justify-center">
+                           <div className="w-full flex justify-center">
                                 <Document file={pdfFile} onLoadSuccess={onDocumentLoadSuccess}>
                                     {Array.from(new Array(numPages), (el, index) => (
                                         <Page key={`page_${index + 1}`} pageNumber={index + 1} renderAnnotationLayer={false} renderTextLayer={false}/>
@@ -609,23 +609,27 @@ export default function CourseResourcePage() {
                     )}
                 </CardContent>
                  <CardFooter className="flex justify-between items-center flex-wrap gap-2">
-                     {previousResourceId ? (
-                        <Button variant="outline" asChild>
-                            <Link href={`/lms/courses/${courseId}/${previousResourceId}${isPreviewing ? '?preview=true': ''}`} className="flex items-center">
-                                <ArrowLeft className="mr-2 h-4 w-4 shrink-0"/>
-                                <span className="truncate">Previous: {previousResourceTitle}</span>
-                            </Link>
-                        </Button>
-                    ) : <div></div>}
+                     <div className="flex-1 min-w-[150px]">
+                        {previousResourceId && (
+                            <Button variant="outline" asChild className="w-full justify-start text-left">
+                                <Link href={`/lms/courses/${courseId}/${previousResourceId}${isPreviewing ? '?preview=true': ''}`} className="flex items-center">
+                                    <ArrowLeft className="mr-2 h-4 w-4 shrink-0"/>
+                                    <span className="truncate">Previous: {previousResourceTitle}</span>
+                                </Link>
+                            </Button>
+                        )}
+                    </div>
                     
-                    {nextResourceId ? (
-                        <Button variant="outline" disabled={isNextDisabled} asChild>
-                            <Link href={!isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true': ''}` : '#'} className="flex items-center">
-                                <span className="truncate">Next: {nextResourceTitle}</span>
-                                <ArrowRight className="ml-2 h-4 w-4 shrink-0"/>
-                            </Link>
-                        </Button>
-                    ): <div></div>}
+                     <div className="flex-1 min-w-[150px] flex justify-end">
+                        {nextResourceId && (
+                            <Button variant="outline" disabled={isNextDisabled} asChild className="w-full justify-end text-left">
+                                <Link href={!isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true': ''}` : '#'} className="flex items-center">
+                                    <span className="truncate">Next: {nextResourceTitle}</span>
+                                    <ArrowRight className="ml-2 h-4 w-4 shrink-0"/>
+                                </Link>
+                            </Button>
+                        )}
+                    </div>
                 </CardFooter>
             </Card>
         </div>
