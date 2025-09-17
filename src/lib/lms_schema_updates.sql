@@ -1,89 +1,91 @@
--- Update lms_courses table for new pricing model
--- This renames the existing 'price' column and adds a new one for bundled pricing.
--- It also removes the no-longer-used 'max_users_allowed' column.
+-- Run these queries on your Supabase SQL Editor to update your schema for the new LMS features.
+-- Note: Running these multiple times is safe.
 
--- Add a subscription_plan column if it doesn't exist
--- This is safe to run multiple times.
+-- 1. Add `subscription_plan` to `lms_courses` if it doesn't exist
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'lms_courses' AND column_name = 'subscription_plan'
-    ) THEN
-        ALTER TABLE public.lms_courses ADD COLUMN subscription_plan TEXT;
-    END IF;
-END
-$$;
-
--- Add a base_price column for the initial course cost
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'lms_courses' AND column_name = 'base_price'
-    ) THEN
-        ALTER TABLE public.lms_courses ADD COLUMN base_price NUMERIC(10, 2);
-    END IF;
-END
-$$;
-
--- Add a price_per_10_users column for scalable pricing
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'lms_courses' AND column_name = 'price_per_10_users'
-    ) THEN
-        ALTER TABLE public.lms_courses ADD COLUMN price_per_10_users NUMERIC(10, 2);
-    END IF;
-END
-$$;
-
--- Drop the old 'price' and 'max_users_allowed' columns if they exist
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'lms_courses' AND column_name = 'price'
-    ) THEN
-        -- If you need to migrate data from 'price' to 'base_price' before dropping, do it here.
-        -- UPDATE public.lms_courses SET base_price = price WHERE base_price IS NULL;
-        ALTER TABLE public.lms_courses DROP COLUMN price;
-    END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'lms_courses'
+    AND column_name = 'subscription_plan'
+  ) THEN
+    ALTER TABLE public.lms_courses
+    ADD COLUMN subscription_plan TEXT;
     
-    IF EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'lms_courses' AND column_name = 'max_users_allowed'
-    ) THEN
-        ALTER TABLE public.lms_courses DROP COLUMN max_users_allowed;
-    END IF;
-END
-$$;
+    -- You might want to add a CHECK constraint if you have a specific list of plans
+    -- ALTER TABLE public.lms_courses
+    -- ADD CONSTRAINT lms_courses_subscription_plan_check CHECK (subscription_plan = ANY (ARRAY['free', 'monthly', 'yearly', 'one_time']));
+  END IF;
+END $$;
 
 
--- Update lms_school_subscriptions table to track user counts
--- This column will store how many users a school's subscription covers for a specific course.
+-- 2. Add `price_per_10_users` to `lms_courses` if it doesn't exist
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'lms_school_subscriptions' AND column_name = 'subscribed_users_count'
-    ) THEN
-        ALTER TABLE public.lms_school_subscriptions ADD COLUMN subscribed_users_count INTEGER DEFAULT 10;
-    END IF;
-END
-$$;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'lms_courses'
+    AND column_name = 'price_per_10_users'
+  ) THEN
+    ALTER TABLE public.lms_courses
+    ADD COLUMN price_per_10_users NUMERIC(10, 2);
+  END IF;
+END $$;
 
 
-COMMENT ON COLUMN public.lms_courses.base_price IS 'The initial, one-time cost for a school to subscribe to the course.';
-COMMENT ON COLUMN public.lms_courses.price_per_10_users IS 'The cost for each additional bundle of 10 users for this course.';
-COMMENT ON COLUMN public.lms_school_subscriptions.subscribed_users_count IS 'The total number of user seats this school has purchased for this course.';
+-- 3. Add `subscribed_users_count` to `lms_school_subscriptions` if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'lms_school_subscriptions'
+    AND column_name = 'subscribed_users_count'
+  ) THEN
+    ALTER TABLE public.lms_school_subscriptions
+    ADD COLUMN subscribed_users_count INTEGER DEFAULT 0;
+  END IF;
+END $$;
 
--- Run this script to apply the necessary database schema changes for the updated LMS pricing model.
--- After running, refresh your Supabase API schema in Project Settings -> API.
+
+-- 4. Rename `price` to `base_price` in `lms_courses` if `price` exists
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'lms_courses'
+    AND column_name = 'price'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'lms_courses'
+    AND column_name = 'base_price'
+  ) THEN
+    ALTER TABLE public.lms_courses
+    RENAME COLUMN price TO base_price;
+  END IF;
+END $$;
+
+-- 5. Add `max_users_allowed` to `lms_courses` if it doesn't exist
+-- This column now represents the initial seats included in the base price.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'lms_courses'
+    AND column_name = 'max_users_allowed'
+  ) THEN
+    ALTER TABLE public.lms_courses
+    ADD COLUMN max_users_allowed INTEGER;
+  END IF;
+END $$;

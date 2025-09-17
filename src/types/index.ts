@@ -459,6 +459,7 @@ export interface Course {
   is_paid: boolean;
   base_price?: number | null; // New
   price_per_10_users?: number | null; // New
+  max_users_allowed?: number | null; // New: initial seats in base price
   currency?: 'INR' | 'USD' | 'EUR' | null;
   discount_percentage?: number | null;
   school_id?: string | null; // Null for global courses by superadmin
@@ -472,6 +473,7 @@ export interface CourseWithEnrollmentStatus extends Course {
   isEnrolled?: boolean;
   target_audience_in_school?: 'student' | 'teacher' | 'both';
   subscription_end_date?: string | null;
+  subscribed_users_count?: number;
 }
 
 

@@ -43,6 +43,7 @@ export async function createCourseAction(
   const school_id = formData.get('school_id') as string | null;
   const created_by_user_id = formData.get('created_by_user_id') as string;
   const featureImageFile = formData.get('feature_image_url') as File | null;
+  const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : undefined;
   
   let feature_image_url: string | undefined = undefined;
 
@@ -69,6 +70,7 @@ export async function createCourseAction(
       is_paid,
       base_price: is_paid ? base_price : null,
       price_per_10_users: is_paid ? price_per_10_users : null,
+      max_users_allowed: is_paid ? max_users_allowed : null,
       discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
       created_by_user_id,
@@ -104,6 +106,7 @@ export async function updateCourseAction(
   const is_paid = formData.get('is_paid') === 'true';
   const base_price = formData.get('base_price') ? Number(formData.get('base_price')) : undefined;
   const price_per_10_users = formData.get('price_per_10_users') ? Number(formData.get('price_per_10_users')) : undefined;
+  const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : undefined;
   const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const school_id = formData.get('school_id') as string | null;
   const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
@@ -116,6 +119,7 @@ export async function updateCourseAction(
       is_paid,
       base_price: is_paid ? base_price : null,
       price_per_10_users: is_paid ? price_per_10_users : null,
+      max_users_allowed: is_paid ? max_users_allowed : null,
       discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
       subscription_plan,

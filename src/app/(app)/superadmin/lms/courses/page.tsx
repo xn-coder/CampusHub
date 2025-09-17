@@ -57,6 +57,7 @@ export default function SuperAdminManageCoursesPage() {
   const [basePrice, setBasePrice] = useState<number | ''>('');
   const [pricePer10Users, setPricePer10Users] = useState<number | ''>('');
   const [discountPercentage, setDiscountPercentage] = useState<number | ''>('');
+  const [maxUsersAllowed, setMaxUsersAllowed] = useState<number | ''>('');
   
   const fetchCourses = useCallback(async () => {
     setIsLoading(true);
@@ -93,6 +94,7 @@ export default function SuperAdminManageCoursesPage() {
     setBasePrice('');
     setPricePer10Users('');
     setDiscountPercentage('');
+    setMaxUsersAllowed('');
     setEditingCourse(null);
   };
 
@@ -105,6 +107,7 @@ export default function SuperAdminManageCoursesPage() {
       setSubscriptionPlan(course.subscription_plan || 'free');
       setBasePrice(course.base_price ?? '');
       setPricePer10Users(course.price_per_10_users ?? '');
+      setMaxUsersAllowed(course.max_users_allowed ?? '');
       setDiscountPercentage(course.discount_percentage ?? '');
     } else {
       resetCourseForm();
@@ -139,6 +142,7 @@ export default function SuperAdminManageCoursesPage() {
     formData.append('is_paid', String(isPaid));
     formData.append('base_price', String(isPaid ? basePrice || 0 : 0));
     formData.append('price_per_10_users', String(isPaid ? pricePer10Users || 0 : 0));
+    formData.append('max_users_allowed', String(isPaid ? maxUsersAllowed || 0 : 0));
     formData.append('discount_percentage', String(isPaid ? discountPercentage || 0 : 0));
     formData.append('subscription_plan', subscriptionPlan);
 
@@ -261,6 +265,7 @@ export default function SuperAdminManageCoursesPage() {
                   <TableHead>Scope</TableHead>
                   <TableHead>Plan</TableHead>
                   <TableHead>Pricing Details</TableHead>
+                  <TableHead>Initial Seats</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -273,6 +278,7 @@ export default function SuperAdminManageCoursesPage() {
                     <TableCell>
                       <PriceDisplay course={course} />
                     </TableCell>
+                    <TableCell className="text-center">{course.is_paid ? course.max_users_allowed ?? 0 : 'N/A'}</TableCell>
                     <TableCell className="text-right">
                        <Button variant="outline" size="sm" onClick={() => handleOpenAssignDialog(course)} disabled={isSubmitting}>
                             <Send className="mr-2 h-4 w-4" /> Assign
@@ -393,11 +399,16 @@ export default function SuperAdminManageCoursesPage() {
                     <Input id="pricePer10Users" type="number" value={pricePer10Users} onChange={(e) => setPricePer10Users(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 999" step="0.01" min="0" required={subscriptionPlan !== 'free'} disabled={isSubmitting || subscriptionPlan === 'free'}/>
                   </div>
               </div>
-               <div>
-                <Label htmlFor="discount_percentage">Discount (%)</Label>
-                <Input id="discount_percentage" type="number" value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 10" step="1" min="0" max="100" disabled={isSubmitting || subscriptionPlan === 'free'}/>
+              <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="maxUsersAllowed">Initial Seats Included</Label>
+                    <Input id="maxUsersAllowed" type="number" value={maxUsersAllowed} onChange={(e) => setMaxUsersAllowed(e.target.value === '' ? '' : parseInt(e.target.value, 10))} placeholder="e.g., 50" min="0" required={subscriptionPlan !== 'free'} disabled={isSubmitting || subscriptionPlan === 'free'}/>
+                  </div>
+                   <div>
+                    <Label htmlFor="discount_percentage">Discount (%)</Label>
+                    <Input id="discount_percentage" type="number" value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 10" step="1" min="0" max="100" disabled={isSubmitting || subscriptionPlan === 'free'}/>
+                  </div>
               </div>
-
             </div>
             <DialogFooter className="mt-4">
               <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>

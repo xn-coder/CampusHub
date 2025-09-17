@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseClient';
@@ -954,6 +955,12 @@ export async function createSchoolSubscriptionOrderAction(
 }> {
   const isRazorpayEnabled = process.env.RAZORPAY_ENABLED === 'true';
   const supabase = createSupabaseServerClient();
+  
+  const { data: course, error: courseError } = await supabase.from('lms_courses').select('max_users_allowed').eq('id', courseId).single();
+  if (courseError) return { ok: false, message: `DB error: ${courseError.message}` };
+  
+  const initialSeats = amount > 0 ? (course?.max_users_allowed || 0) : 0;
+  const userCountToAdd = (userCount || 0) + initialSeats;
 
   if (!isRazorpayEnabled) {
       const { data: existingSub } = await supabase.from('lms_school_subscriptions').select('subscribed_users_count').eq('course_id', courseId).eq('school_id', schoolId).single();
@@ -964,7 +971,7 @@ export async function createSchoolSubscriptionOrderAction(
           amount_paid: amount,
           status: 'active',
           razorpay_payment_id: `MOCK_${uuidv4()}`,
-          subscribed_users_count: (existingSub?.subscribed_users_count || 0) + (userCount || 0)
+          subscribed_users_count: (existingSub?.subscribed_users_count || 0) + userCountToAdd,
       }, { onConflict: 'course_id, school_id' });
 
       if (error) return { ok: false, message: `Mock subscription failed: ${error.message}`};
@@ -982,7 +989,7 @@ export async function createSchoolSubscriptionOrderAction(
           course_id: courseId,
           school_id: schoolId,
           type: 'school_subscription',
-          user_count_to_add: userCount || 0
+          user_count_to_add: userCountToAdd,
       },
   };
 
