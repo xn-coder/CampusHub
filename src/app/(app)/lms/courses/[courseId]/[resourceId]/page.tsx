@@ -138,7 +138,7 @@ export default function CourseResourcePage() {
         } else {
             toast({title: "Error", description: result.message, variant: "destructive"});
         }
-    }, [resource, courseId, resourceId, toast, course, calculateProgress]);
+    }, [resource, courseId, resourceId, toast, course]);
     
     const handleSubmitQuiz = useCallback(() => {
         if (quizResult) return; // Prevent re-submission
@@ -383,15 +383,15 @@ export default function CourseResourcePage() {
     };
     
     const renderWebPageContent = (content: WebPageContent) => {
-        if (!content || !content.html) {
-            return <p>This web page content is empty.</p>;
-        }
-        return (
-            <>
-                <style>{content.css || ''}</style>
-                <div dangerouslySetInnerHTML={{ __html: content.html }} />
-            </>
-        );
+        // This is a simplified renderer. A real implementation would need more robust sandboxing.
+        const pageHtml = content.sections?.map(section => {
+            if (section.type === 'heading') return `<h2>${section.content}</h2>`;
+            if (section.type === 'text') return section.content; // Assumes this is safe HTML from CKEditor
+            if (section.type === 'image') return `<img src="${section.content}" alt="Web page image" style="max-width: 100%; height: auto; border-radius: 8px;" />`;
+            return '';
+        }).join('');
+
+        return <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: pageHtml || '' }} />;
     };
 
 
@@ -526,7 +526,7 @@ export default function CourseResourcePage() {
                         embedUrl ? (
                              <iframe src={embedUrl} title={resource.title} className="w-full h-[80vh]"></iframe>
                         ) : pdfFile ? (
-                           <div className="w-full h-[80vh] overflow-y-auto flex items-center justify-center">
+                           <div className="w-full h-[80vh] overflow-y-auto flex justify-center">
                                 <Document file={pdfFile} onLoadSuccess={onDocumentLoadSuccess}>
                                     {Array.from(new Array(numPages), (el, index) => (
                                         <Page key={`page_${index + 1}`} pageNumber={index + 1} renderAnnotationLayer={false} renderTextLayer={false}/>
@@ -616,3 +616,4 @@ export default function CourseResourcePage() {
         </div>
     );
 }
+
