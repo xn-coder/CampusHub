@@ -497,9 +497,11 @@ export default function CourseResourcePage() {
                            )}
                         </div>
                      )}
-                      {resource.type === 'youtube_playlist' && embedUrl && (
-                         <div className="aspect-video w-full bg-black rounded-lg overflow-hidden">
-                            <iframe src={embedUrl} title={resource.title} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full"></iframe>
+                      {(resource.type === 'youtube_playlist') && embedUrl && (
+                         <div className="space-y-4">
+                            <div className="aspect-video w-full bg-black rounded-lg overflow-hidden">
+                                <iframe src={embedUrl} title={resource.title} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full"></iframe>
+                            </div>
                          </div>
                       )}
                      {resource.type === 'audio' && (
@@ -601,14 +603,20 @@ export default function CourseResourcePage() {
                     )}
                 </CardContent>
                  <CardFooter className="flex justify-between items-center flex-wrap gap-2">
-                    <Button variant="outline" disabled={!previousResourceId} asChild>
+                    <Button variant="outline" disabled={!previousResourceId} asChild className="flex-1 justify-center sm:justify-start min-w-[120px]">
                         <Link href={previousResourceId ? `/lms/courses/${courseId}/${previousResourceId}${isPreviewing ? '?preview=true': ''}` : '#'}>
-                            <ArrowLeft className="mr-2 h-4 w-4"/> {previousResourceTitle ? `Previous: ${previousResourceTitle}`: 'Previous'}
+                            <ArrowLeft className="mr-2 h-4 w-4 shrink-0"/>
+                            <div className="truncate">
+                                {previousResourceTitle ? `Previous: ${previousResourceTitle}`: 'Previous'}
+                            </div>
                         </Link>
                     </Button>
-                    <Button variant="outline" disabled={isNextDisabled} asChild>
+                    <Button variant="outline" disabled={isNextDisabled} asChild className="flex-1 justify-center sm:justify-end min-w-[120px]">
                         <Link href={nextResourceId && !isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true': ''}` : '#'}>
-                            {nextResourceTitle ? `Next: ${nextResourceTitle}`: 'Next'} <ArrowRight className="ml-2 h-4 w-4"/>
+                            <div className="truncate">
+                                {nextResourceTitle ? `Next: ${nextResourceTitle}`: 'Next'}
+                            </div>
+                            <ArrowRight className="ml-2 h-4 w-4 shrink-0"/>
                         </Link>
                     </Button>
                 </CardFooter>
@@ -616,4 +624,3 @@ export default function CourseResourcePage() {
         </div>
     );
 }
-
