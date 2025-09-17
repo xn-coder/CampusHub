@@ -3,7 +3,7 @@
 "use client";
 
 import { useState, useEffect, type FormEvent, useRef } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,7 @@ import {
   updateResourceInLessonAction,
   createSignedUploadUrlAction,
   addResourceToLessonAction,
-} from './../../actions';
+} from '../../actions';
 import { supabase } from '@/lib/supabaseClient';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
