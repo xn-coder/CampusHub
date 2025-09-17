@@ -124,11 +124,13 @@ export default function CourseResourcePage() {
     
     const handleMarkAsComplete = useCallback(async () => {
         const userId = localStorage.getItem('currentUserId');
-        const role = localStorage.getItem('currentUserRole');
+        const role = localStorage.getItem('currentUserRole') as UserRole | null;
         
         if (role !== 'student') {
-             toast({title: "Info", description: "Progress tracking is only available for students.", variant: "default"});
-             return;
+            // For teachers, just update the UI optimistically
+            setIsCompleted(true);
+            toast({title: "Completed", description: "You marked this resource as complete.", variant: "default"});
+            return;
         }
         
         if (!userId || !resource) return;
@@ -410,10 +412,10 @@ export default function CourseResourcePage() {
     }
     
     const isAdmin = currentUserRole === 'admin' || currentUserRole === 'superadmin';
-    const isNextDisabled = !nextResourceId || (isPreviewing ? false : !isCompleted);
+    const canMarkComplete = currentUserRole === 'student' || currentUserRole === 'teacher';
+    const isNextDisabled = !nextResourceId || (isPreviewing ? false : (!isAdmin && !isCompleted));
     
-    const userRole = localStorage.getItem('currentUserRole') as UserRole | null;
-    const backToCoursesPath = userRole === 'admin' || userRole === 'superadmin' 
+    const backToCoursesPath = isAdmin
         ? `/admin/lms/courses/${courseId}/content` 
         : '/lms/available-courses';
 
@@ -453,7 +455,7 @@ export default function CourseResourcePage() {
                             {getResourceIcon(resource.type)}
                             {resource.title}
                         </CardTitle>
-                        {currentUserRole === 'student' && !isPreviewing && (
+                        {canMarkComplete && (
                           <div className="flex items-center gap-2">
                               <Button 
                                   onClick={handleMarkAsComplete} 
@@ -465,7 +467,7 @@ export default function CourseResourcePage() {
                                   <CheckCircle className="mr-2 h-4 w-4" />
                                   {isCompleted ? "Completed" : "Mark as Completed"}
                               </Button>
-                              {isCompleted && (
+                              {isCompleted && currentUserRole === 'student' && (
                                   <Button asChild size="sm">
                                       <Link href={`/lms/courses/${courseId}/certificate?studentName=${encodeURIComponent(currentStudentName)}&courseName=${encodeURIComponent(resource.title)}&schoolName=${encodeURIComponent(currentSchoolName)}&completionDate=${new Date().toISOString()}&certificateId=${uuidv4()}`}>
                                           <Award className="mr-2 h-4 w-4" /> Get Certificate
@@ -607,26 +609,23 @@ export default function CourseResourcePage() {
                     )}
                 </CardContent>
                  <CardFooter className="flex justify-between items-center flex-wrap gap-2">
-                    {previousResourceId ? (
+                     {previousResourceId ? (
                         <Button variant="outline" asChild>
-                            <Link href={`/lms/courses/${courseId}/${previousResourceId}${isPreviewing ? '?preview=true': ''}`}>
+                            <Link href={`/lms/courses/${courseId}/${previousResourceId}${isPreviewing ? '?preview=true': ''}`} className="flex items-center">
                                 <ArrowLeft className="mr-2 h-4 w-4 shrink-0"/>
-                                <span className="truncate">
-                                    {previousResourceTitle ? `Previous: ${previousResourceTitle}`: 'Previous'}
-                                </span>
+                                <span className="truncate">Previous: {previousResourceTitle}</span>
                             </Link>
                         </Button>
-                    ) : <div />}
-                    {nextResourceId && (
+                    ) : <div></div>}
+                    
+                    {nextResourceId ? (
                         <Button variant="outline" disabled={isNextDisabled} asChild>
-                            <Link href={!isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true': ''}` : '#'}>
-                                <span className="truncate">
-                                    {nextResourceTitle ? `Next: ${nextResourceTitle}`: 'Next'}
-                                </span>
+                            <Link href={!isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true': ''}` : '#'} className="flex items-center">
+                                <span className="truncate">Next: {nextResourceTitle}</span>
                                 <ArrowRight className="ml-2 h-4 w-4 shrink-0"/>
                             </Link>
                         </Button>
-                    )}
+                    ): <div></div>}
                 </CardFooter>
             </Card>
         </div>
