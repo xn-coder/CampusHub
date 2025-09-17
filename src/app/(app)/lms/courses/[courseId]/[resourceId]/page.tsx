@@ -606,7 +606,7 @@ export default function CourseResourcePage() {
                 </CardContent>
                  <CardFooter className="flex justify-between items-center flex-wrap gap-2">
                     {previousResourceId && (
-                        <Button variant="outline" asChild className="flex-1 justify-center sm:justify-start min-w-[120px]">
+                        <Button variant="outline" asChild>
                             <Link href={`/lms/courses/${courseId}/${previousResourceId}${isPreviewing ? '?preview=true': ''}`}>
                                 <ArrowLeft className="mr-2 h-4 w-4 shrink-0"/>
                                 <div className="truncate">
@@ -616,7 +616,7 @@ export default function CourseResourcePage() {
                         </Button>
                     )}
                     {nextResourceId && (
-                        <Button variant="outline" disabled={isNextDisabled} asChild className={`flex-1 justify-center sm:justify-end min-w-[120px] ${!previousResourceId ? 'ml-auto' : ''}`}>
+                        <Button variant="outline" disabled={isNextDisabled} asChild className="ml-auto">
                             <Link href={!isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true': ''}` : '#'}>
                                 <div className="truncate">
                                     {nextResourceTitle ? `Next: ${nextResourceTitle}`: 'Next'}
