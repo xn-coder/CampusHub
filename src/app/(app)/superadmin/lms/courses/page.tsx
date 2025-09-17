@@ -226,13 +226,13 @@ export default function SuperAdminManageCoursesPage() {
     if (discount > 0) {
       return (
         <div className="flex flex-col">
-          <span className="font-semibold">₹{finalPrice.toFixed(2)}</span>
-          <span className="text-xs text-muted-foreground line-through">₹{course.price.toFixed(2)}</span>
+          <span className="font-semibold font-mono">₹{finalPrice.toFixed(2)}</span>
+          <span className="text-xs text-muted-foreground line-through font-mono">₹{course.price.toFixed(2)}</span>
         </div>
       );
     }
 
-    return <span>₹{course.price.toFixed(2)}</span>;
+    return <span className="font-mono">₹{course.price.toFixed(2)}</span>;
   };
 
   return (
@@ -390,7 +390,7 @@ export default function SuperAdminManageCoursesPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                  <div>
-                    <Label htmlFor="price">Price (₹)</Label>
+                    <Label htmlFor="price" className="font-mono">Price (₹)</Label>
                     <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 499" step="0.01" min="0" required={subscriptionPlan !== 'free'} disabled={isSubmitting || subscriptionPlan === 'free'}/>
                   </div>
                  <div>
