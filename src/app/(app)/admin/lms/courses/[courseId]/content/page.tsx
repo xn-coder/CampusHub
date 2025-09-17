@@ -3,7 +3,7 @@
 "use client";
 
 import { useState, useEffect, type FormEvent, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import PageHeader from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -927,4 +927,3 @@ export default function ManageCourseContentPage() {
     </div>
   );
 }
-
