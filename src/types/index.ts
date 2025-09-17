@@ -457,7 +457,8 @@ export interface Course {
   description?: string | null;
   feature_image_url?: string | null;
   is_paid: boolean;
-  price?: number | null;
+  base_price?: number | null; // New
+  price_per_10_users?: number | null; // New
   currency?: 'INR' | 'USD' | 'EUR' | null;
   discount_percentage?: number | null;
   school_id?: string | null; // Null for global courses by superadmin
@@ -465,7 +466,6 @@ export interface Course {
   created_at?: string;
   updated_at?: string;
   subscription_plan?: SubscriptionPlan | null;
-  max_users_allowed?: number | null;
 }
 
 export interface CourseWithEnrollmentStatus extends Course {

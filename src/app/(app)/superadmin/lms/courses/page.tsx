@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -53,7 +54,8 @@ export default function SuperAdminManageCoursesPage() {
   const [description, setDescription] = useState('');
   const [featureImageFile, setFeatureImageFile] = useState<File | null>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>('free');
-  const [price, setPrice] = useState<number | ''>('');
+  const [basePrice, setBasePrice] = useState<number | ''>('');
+  const [pricePer10Users, setPricePer10Users] = useState<number | ''>('');
   const [discountPercentage, setDiscountPercentage] = useState<number | ''>('');
   
   const fetchCourses = useCallback(async () => {
@@ -88,7 +90,8 @@ export default function SuperAdminManageCoursesPage() {
     setDescription('');
     setFeatureImageFile(null);
     setSubscriptionPlan('free');
-    setPrice('');
+    setBasePrice('');
+    setPricePer10Users('');
     setDiscountPercentage('');
     setEditingCourse(null);
   };
@@ -100,7 +103,8 @@ export default function SuperAdminManageCoursesPage() {
       setDescription(course.description || '');
       setFeatureImageFile(null);
       setSubscriptionPlan(course.subscription_plan || 'free');
-      setPrice(course.price ?? '');
+      setBasePrice(course.base_price ?? '');
+      setPricePer10Users(course.price_per_10_users ?? '');
       setDiscountPercentage(course.discount_percentage ?? '');
     } else {
       resetCourseForm();
@@ -133,7 +137,8 @@ export default function SuperAdminManageCoursesPage() {
     formData.append('school_id', ''); // Global course
     formData.append('created_by_user_id', currentAdminUserId);
     formData.append('is_paid', String(isPaid));
-    formData.append('price', String(isPaid ? price || 0 : 0));
+    formData.append('base_price', String(isPaid ? basePrice || 0 : 0));
+    formData.append('price_per_10_users', String(isPaid ? pricePer10Users || 0 : 0));
     formData.append('discount_percentage', String(isPaid ? discountPercentage || 0 : 0));
     formData.append('subscription_plan', subscriptionPlan);
 
@@ -214,21 +219,17 @@ export default function SuperAdminManageCoursesPage() {
   };
 
   const PriceDisplay = ({ course }: { course: Course }) => {
-    if (!course.is_paid || !course.price) return <span>Free</span>;
+    if (!course.is_paid) return <span>Free</span>;
 
-    const discount = course.discount_percentage || 0;
-    const finalPrice = course.price * (1 - discount / 100);
+    const base = course.base_price || 0;
+    const perBundle = course.price_per_10_users || 0;
 
-    if (discount > 0) {
-      return (
-        <div className="flex flex-col">
-          <span className="font-semibold font-mono">₹{finalPrice.toFixed(2)}</span>
-          <span className="text-xs text-muted-foreground line-through font-mono">₹{course.price.toFixed(2)}</span>
-        </div>
-      );
-    }
-
-    return <span className="font-mono">₹{course.price.toFixed(2)}</span>;
+    return (
+      <div className="flex flex-col font-mono text-xs">
+          <span>Base: ₹{base.toFixed(2)}</span>
+          <span>Per 10 Users: ₹{perBundle.toFixed(2)}</span>
+      </div>
+    );
   };
 
   return (
@@ -259,7 +260,7 @@ export default function SuperAdminManageCoursesPage() {
                   <TableHead>Title</TableHead>
                   <TableHead>Scope</TableHead>
                   <TableHead>Plan</TableHead>
-                  <TableHead>Price / User</TableHead>
+                  <TableHead>Pricing Details</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -384,13 +385,17 @@ export default function SuperAdminManageCoursesPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                  <div>
-                    <Label htmlFor="price" className="font-mono">Price per User (₹)</Label>
-                    <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 499" step="0.01" min="0" required={subscriptionPlan !== 'free'} disabled={isSubmitting || subscriptionPlan === 'free'}/>
+                    <Label htmlFor="basePrice" className="font-mono">Initial Course Price (₹)</Label>
+                    <Input id="basePrice" type="number" value={basePrice} onChange={(e) => setBasePrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 2999" step="0.01" min="0" required={subscriptionPlan !== 'free'} disabled={isSubmitting || subscriptionPlan === 'free'}/>
                   </div>
                  <div>
-                    <Label htmlFor="discount_percentage">Discount (%)</Label>
-                    <Input id="discount_percentage" type="number" value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 10" step="1" min="0" max="100" disabled={isSubmitting || subscriptionPlan === 'free'}/>
+                    <Label htmlFor="pricePer10Users" className="font-mono">Price per 10 Users (₹)</Label>
+                    <Input id="pricePer10Users" type="number" value={pricePer10Users} onChange={(e) => setPricePer10Users(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 999" step="0.01" min="0" required={subscriptionPlan !== 'free'} disabled={isSubmitting || subscriptionPlan === 'free'}/>
                   </div>
+              </div>
+               <div>
+                <Label htmlFor="discount_percentage">Discount (%)</Label>
+                <Input id="discount_percentage" type="number" value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 10" step="1" min="0" max="100" disabled={isSubmitting || subscriptionPlan === 'free'}/>
               </div>
 
             </div>

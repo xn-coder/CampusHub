@@ -36,10 +36,10 @@ export async function createCourseAction(
   const title = formData.get('title') as string;
   const description = formData.get('description') as string | null;
   const is_paid = formData.get('is_paid') === 'true';
-  const price = formData.get('price') ? Number(formData.get('price')) : undefined;
+  const base_price = formData.get('base_price') ? Number(formData.get('base_price')) : undefined;
+  const price_per_10_users = formData.get('price_per_10_users') ? Number(formData.get('price_per_10_users')) : undefined;
   const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
-  const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null;
   const school_id = formData.get('school_id') as string | null;
   const created_by_user_id = formData.get('created_by_user_id') as string;
   const featureImageFile = formData.get('feature_image_url') as File | null;
@@ -67,12 +67,12 @@ export async function createCourseAction(
       description,
       feature_image_url,
       is_paid,
-      price: is_paid ? price : null,
+      base_price: is_paid ? base_price : null,
+      price_per_10_users: is_paid ? price_per_10_users : null,
       discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
       created_by_user_id,
       subscription_plan,
-      max_users_allowed: max_users_allowed && max_users_allowed > 0 ? max_users_allowed : null,
     };
 
     const { error, data: courseData } = await supabaseAdmin
@@ -102,11 +102,11 @@ export async function updateCourseAction(
   const title = formData.get('title') as string;
   const description = formData.get('description') as string | null;
   const is_paid = formData.get('is_paid') === 'true';
-  const price = formData.get('price') ? Number(formData.get('price')) : undefined;
+  const base_price = formData.get('base_price') ? Number(formData.get('base_price')) : undefined;
+  const price_per_10_users = formData.get('price_per_10_users') ? Number(formData.get('price_per_10_users')) : undefined;
   const discount_percentage = formData.get('discount_percentage') ? Number(formData.get('discount_percentage')) : null;
   const school_id = formData.get('school_id') as string | null;
   const subscription_plan = formData.get('subscription_plan') as SubscriptionPlan | null;
-  const max_users_allowed = formData.get('max_users_allowed') ? Number(formData.get('max_users_allowed')) : null;
   const featureImageFile = formData.get('feature_image_url') as File | null;
   
   try {
@@ -114,11 +114,11 @@ export async function updateCourseAction(
       title,
       description,
       is_paid,
-      price: is_paid ? price : null,
+      base_price: is_paid ? base_price : null,
+      price_per_10_users: is_paid ? price_per_10_users : null,
       discount_percentage: is_paid ? discount_percentage : null,
       school_id: school_id === '' ? null : school_id,
       subscription_plan,
-      max_users_allowed: max_users_allowed && max_users_allowed > 0 ? max_users_allowed : null,
       updated_at: new Date().toISOString(),
     };
 
