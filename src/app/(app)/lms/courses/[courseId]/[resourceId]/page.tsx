@@ -526,7 +526,7 @@ export default function CourseResourcePage() {
                         embedUrl ? (
                              <iframe src={embedUrl} title={resource.title} className="w-full h-[80vh]"></iframe>
                         ) : pdfFile ? (
-                           <div className="w-full h-[80vh] overflow-y-auto">
+                           <div className="w-full h-[80vh] overflow-y-auto flex items-center justify-center">
                                 <Document file={pdfFile} onLoadSuccess={onDocumentLoadSuccess}>
                                     {Array.from(new Array(numPages), (el, index) => (
                                         <Page key={`page_${index + 1}`} pageNumber={index + 1} renderAnnotationLayer={false} renderTextLayer={false}/>
