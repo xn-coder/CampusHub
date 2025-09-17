@@ -496,13 +496,13 @@ export default function CourseResourcePage() {
                            )}
                         </div>
                      )}
-                      {(resource.type === 'youtube_playlist') && embedUrl && (
+                      {resource.type === 'youtube_playlist' && embedUrl && (
                          <div className="space-y-4">
                             <div className="aspect-video w-full bg-black rounded-lg overflow-hidden">
                                 <iframe src={embedUrl} title={resource.title} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full"></iframe>
                             </div>
-                            <div className="aspect-video w-full bg-black rounded-lg overflow-hidden">
-                                <iframe src={embedUrl.replace('/embed/videoseries', '/embed/embed/videoseries')} title={`${resource.title} Playlist`} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full"></iframe>
+                            <div className="w-full bg-black rounded-lg overflow-hidden">
+                                <iframe src={embedUrl.replace('/embed/videoseries', '/embed/embed/videoseries')} title={`${resource.title} Playlist`} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" className="w-full h-[50vh]"></iframe>
                             </div>
                          </div>
                       )}
