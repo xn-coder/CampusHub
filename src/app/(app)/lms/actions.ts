@@ -69,6 +69,7 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
   try {
     let courseQuery = supabase.from('lms_courses').select('*');
     
+    // Non-superadmins only see courses available to their school or global courses.
     if (userRole !== 'superadmin') {
       const { data: availableRecords, error: availabilityError } = await supabase
           .from('lms_course_school_availability')
@@ -81,8 +82,10 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       let courseIdsForUser: string[] = [];
 
       if (userRole === 'admin') {
+          // Admins see all courses made available to their school.
           courseIdsForUser = availableRecords.map(rec => rec.course_id);
       } else if (userRole === 'teacher') {
+          // Teachers see courses targeted to 'teacher' or 'both'.
           courseIdsForUser = availableRecords
               .filter(rec => rec.target_audience_in_school === 'teacher' || rec.target_audience_in_school === 'both')
               .map(rec => rec.course_id);
@@ -100,27 +103,30 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
           
           const studentClassId = studentData?.class_id;
           
+          // Students see courses targeted to 'student' or 'both', and either general or for their specific class.
           courseIdsForUser = availableRecords
             .filter(rec => {
                 const isForStudentAudience = rec.target_audience_in_school === 'student' || rec.target_audience_in_school === 'both';
                 const isClassSpecific = rec.target_class_id !== null;
                 const isGeneral = !isClassSpecific;
                 
-                // Visible if: it's for students AND (it's a general course OR it matches the student's class)
                 return isForStudentAudience && (isGeneral || (isClassSpecific && rec.target_class_id === studentClassId));
             })
             .map(rec => rec.course_id);
       }
       
       if (courseIdsForUser.length === 0) return { ok: true, courses: [] };
+      // Further filter the main query to only these relevant courses.
       courseQuery = courseQuery.in('id', [...new Set(courseIdsForUser)]);
     }
 
+    // Now, execute the query to get course details.
     const { data: coursesData, error: coursesError } = await courseQuery.order('created_at', { ascending: false });
 
     if (coursesError) throw coursesError;
     if (!coursesData) return { ok: true, courses: [] };
 
+    // Next, check enrollment status for the fetched courses.
     let enrolledCourseIds: string[] = [];
     if (userProfileId && (userRole === 'student' || userRole === 'teacher')) {
       const enrollmentTable = userRole === 'student' ? 'lms_student_course_enrollments' : 'lms_teacher_course_enrollments';
@@ -138,16 +144,16 @@ export async function getAvailableCoursesWithEnrollmentStatusAction(
       }
     }
     
-    // For admins, their "enrollment" is determined by the school's subscription to paid courses. Free courses are not auto-enrolled.
+    // For admins, their "enrollment" means the school is subscribed (for paid courses) or has access (for free).
     if (userRole === 'admin' && userSchoolId) {
-        const { data: schoolSubscriptions } = await supabase.from('lms_school_subscriptions').select('course_id').eq('school_id', userSchoolId);
-        enrolledCourseIds = schoolSubscriptions?.map(s => s.course_id) || [];
+        const { data: schoolAssignments } = await supabase.from('lms_course_school_availability').select('course_id').eq('school_id', userSchoolId);
+        enrolledCourseIds = schoolAssignments?.map(s => s.course_id) || [];
     }
 
+    // Finally, combine course data with enrollment status.
     const coursesWithStatus: CourseWithEnrollmentStatus[] = coursesData.map(course => ({
       ...course,
-      isEnrolled: (userRole === 'superadmin') ? true : 
-                  (course.is_paid ? enrolledCourseIds.includes(course.id) : enrolledCourseIds.includes(course.id)),
+      isEnrolled: enrolledCourseIds.includes(course.id),
     }));
     
     return { ok: true, courses: coursesWithStatus };
