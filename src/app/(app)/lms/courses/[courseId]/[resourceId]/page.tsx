@@ -126,11 +126,15 @@ export default function CourseResourcePage() {
         const userId = localStorage.getItem('currentUserId');
         const role = localStorage.getItem('currentUserRole') as UserRole | null;
         
-        if (role !== 'student') {
-            // For teachers, just update the UI optimistically
+        if (role !== 'student' && role !== 'teacher') {
             setIsCompleted(true);
             toast({title: "Completed", description: "You marked this resource as complete.", variant: "default"});
             return;
+        }
+
+        if (role === 'teacher') {
+             setIsCompleted(true);
+             return;
         }
         
         if (!userId || !resource || !courseId) return;
