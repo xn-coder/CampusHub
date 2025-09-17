@@ -48,7 +48,7 @@ const getEmbedUrl = (url: string, type: CourseResourceType): string | null => {
             return `https://open.spotify.com/embed/track/${trackId}`;
         }
         
-        if (type === 'ebook' && url.includes("drive.google.com/file/d/")) {
+        if ((type === 'ebook' || type === 'ppt') && url.includes("drive.google.com/file/d/")) {
             const fileId = url.split('/d/')[1]?.split('/')[0];
             return `https://drive.google.com/file/d/${fileId}/preview`;
         }
