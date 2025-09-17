@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import PageHeader from '@/components/shared/page-header';
@@ -56,7 +55,6 @@ export default function SuperAdminManageCoursesPage() {
   const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>('free');
   const [price, setPrice] = useState<number | ''>('');
   const [discountPercentage, setDiscountPercentage] = useState<number | ''>('');
-  const [maxUsers, setMaxUsers] = useState<number | ''>('');
   
   const fetchCourses = useCallback(async () => {
     setIsLoading(true);
@@ -92,7 +90,6 @@ export default function SuperAdminManageCoursesPage() {
     setSubscriptionPlan('free');
     setPrice('');
     setDiscountPercentage('');
-    setMaxUsers('');
     setEditingCourse(null);
   };
 
@@ -105,7 +102,6 @@ export default function SuperAdminManageCoursesPage() {
       setSubscriptionPlan(course.subscription_plan || 'free');
       setPrice(course.price ?? '');
       setDiscountPercentage(course.discount_percentage ?? '');
-      setMaxUsers(course.max_users_allowed ?? '');
     } else {
       resetCourseForm();
     }
@@ -140,7 +136,6 @@ export default function SuperAdminManageCoursesPage() {
     formData.append('price', String(isPaid ? price || 0 : 0));
     formData.append('discount_percentage', String(isPaid ? discountPercentage || 0 : 0));
     formData.append('subscription_plan', subscriptionPlan);
-    formData.append('max_users_allowed', String(maxUsers || 0));
 
     if(featureImageFile) {
         formData.append('feature_image_url', featureImageFile);
@@ -264,8 +259,7 @@ export default function SuperAdminManageCoursesPage() {
                   <TableHead>Title</TableHead>
                   <TableHead>Scope</TableHead>
                   <TableHead>Plan</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Users</TableHead>
+                  <TableHead>Price / User</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -278,7 +272,6 @@ export default function SuperAdminManageCoursesPage() {
                     <TableCell>
                       <PriceDisplay course={course} />
                     </TableCell>
-                    <TableCell>{course.max_users_allowed || 'Unlimited'}</TableCell>
                     <TableCell className="text-right">
                        <Button variant="outline" size="sm" onClick={() => handleOpenAssignDialog(course)} disabled={isSubmitting}>
                             <Send className="mr-2 h-4 w-4" /> Assign
@@ -391,16 +384,12 @@ export default function SuperAdminManageCoursesPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                  <div>
-                    <Label htmlFor="price" className="font-mono">Price (₹)</Label>
+                    <Label htmlFor="price" className="font-mono">Price per User (₹)</Label>
                     <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 499" step="0.01" min="0" required={subscriptionPlan !== 'free'} disabled={isSubmitting || subscriptionPlan === 'free'}/>
                   </div>
                  <div>
                     <Label htmlFor="discount_percentage">Discount (%)</Label>
                     <Input id="discount_percentage" type="number" value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="e.g., 10" step="1" min="0" max="100" disabled={isSubmitting || subscriptionPlan === 'free'}/>
-                  </div>
-                  <div>
-                    <Label htmlFor="maxUsers">Allowed Users</Label>
-                    <Input id="maxUsers" type="number" value={maxUsers} onChange={(e) => setMaxUsers(e.target.value === '' ? '' : parseInt(e.target.value))} placeholder="Leave blank for unlimited" min="0" disabled={isSubmitting}/>
                   </div>
               </div>
 
@@ -408,7 +397,7 @@ export default function SuperAdminManageCoursesPage() {
             <DialogFooter className="mt-4">
               <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 {editingCourse ? 'Save Changes' : 'Add Course'}
               </Button>
             </DialogFooter>
