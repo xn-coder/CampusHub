@@ -216,7 +216,7 @@ export default function ManageCourseEnrollmentsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={`Manage Enrollments: ${course.title}`} description="Enroll or unenroll users from this course." />
+      <PageHeader title={`Manage Content & Enrollments: ${course.title}`} description="Enroll or unenroll users from this course." />
       
       <div className="grid md:grid-cols-2 gap-6">
         {course.target_audience_in_school === 'student' && renderStudentEnrollmentCard()}
