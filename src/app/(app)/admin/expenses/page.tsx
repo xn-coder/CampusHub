@@ -282,7 +282,7 @@ export default function ExpensesPage() {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Date</TableHead><TableHead>Title</TableHead><TableHead>Category</TableHead>
-                                            <TableHead className="text-right">Amount (₹)</TableHead>
+                                            <TableHead className="text-right font-mono">Amount (₹)</TableHead>
                                             <TableHead className="text-right">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -346,7 +346,7 @@ export default function ExpensesPage() {
                     <form onSubmit={handleSubmit}>
                         <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
                             <div><Label htmlFor="title">Title</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required disabled={isSubmitting}/></div>
-                            <div><Label htmlFor="amount">Amount (₹)</Label><Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} required disabled={isSubmitting}/></div>
+                            <div><Label htmlFor="amount" className="font-mono">Amount (₹)</Label><Input id="amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))} required disabled={isSubmitting}/></div>
                             <div><Label htmlFor="categoryId">Category</Label>
                                 <Select value={categoryId} onValueChange={setCategoryId} required disabled={isSubmitting}>
                                     <SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger>

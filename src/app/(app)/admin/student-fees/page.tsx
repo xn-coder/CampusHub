@@ -217,7 +217,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
         const category = (payment as any).fee_category;
     
         if (installment?.title) return `Installment: ${installment.title}`;
-        if (feeType?.installment_type === 'extra_charge') return `Special Fee: ${feeType.display_name}`;
+        if (feeType?.installment_type === 'extra_charge') return `${feeType.display_name}`;
         if (feeType?.display_name) return feeType.display_name;
         
         return category?.name || 'N/A';
@@ -304,7 +304,7 @@ function RecordPaymentForm({ schoolId }: { schoolId: string }) {
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="paymentAmount" className="text-right">Amount</Label>
+                                <Label htmlFor="paymentAmount" className="text-right font-mono">Amount (₹)</Label>
                                 <Input
                                     id="paymentAmount"
                                     type="number"
