@@ -47,6 +47,13 @@ const getEmbedUrl = (url: string, type: CourseResourceType): string | null => {
             return `https://open.spotify.com/embed/track/${trackId}`;
         }
         
+        // Handle Google Slides presentations
+        if (type === 'ppt' && url.includes("docs.google.com/presentation/d/")) {
+            const presentationId = url.split('/d/')[1]?.split('/')[0];
+            return `https://docs.google.com/presentation/d/${presentationId}/embed?start=false&loop=false&delayms=3000`;
+        }
+
+        // Handle Google Drive file links (for PDFs or other files)
         if ((type === 'ebook' || type === 'ppt') && url.includes("drive.google.com/file/d/")) {
             const fileId = url.split('/d/')[1]?.split('/')[0];
             return `https://drive.google.com/file/d/${fileId}/preview`;
@@ -609,18 +616,18 @@ export default function CourseResourcePage() {
                         <Button variant="outline" asChild>
                             <Link href={`/lms/courses/${courseId}/${previousResourceId}${isPreviewing ? '?preview=true': ''}`}>
                                 <ArrowLeft className="mr-2 h-4 w-4 shrink-0"/>
-                                <div className="truncate">
+                                <span className="truncate">
                                     {previousResourceTitle ? `Previous: ${previousResourceTitle}`: 'Previous'}
-                                </div>
+                                </span>
                             </Link>
                         </Button>
                     )}
                     {nextResourceId && (
                         <Button variant="outline" disabled={isNextDisabled} asChild className="ml-auto">
                             <Link href={!isNextDisabled ? `/lms/courses/${courseId}/${nextResourceId}${isPreviewing ? '?preview=true': ''}` : '#'}>
-                                <div className="truncate">
+                                <span className="truncate">
                                     {nextResourceTitle ? `Next: ${nextResourceTitle}`: 'Next'}
-                                </div>
+                                </span>
                                 <ArrowRight className="ml-2 h-4 w-4 shrink-0"/>
                             </Link>
                         </Button>
@@ -630,3 +637,5 @@ export default function CourseResourcePage() {
         </div>
     );
 }
+
+    
