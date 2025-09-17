@@ -574,14 +574,14 @@ export default function ManageCourseContentPage() {
                             <AccordionContent className="px-4 pt-2 border-t">
                                <div className="space-y-3">
                                    {lessonContents.length > 0 ? lessonContents.map(res => (
-                                       <div key={res.id} className="flex justify-between items-center p-2 border rounded-md">
-                                           <div className="flex items-center min-w-0">
+                                       <div key={res.id} className="flex justify-between items-center p-2 border rounded-md hover:bg-muted/50 transition-colors">
+                                            <Link href={`/lms/courses/${courseId}/${res.id}?preview=true`} className="flex items-center min-w-0 flex-grow">
                                                 {getResourceIcon(res.type)}
                                                 <span className="truncate" title={res.title}>{res.title}</span>
                                                 {res.duration_minutes && <Clock className="h-3 w-3 text-muted-foreground ml-2 shrink-0" />}
-                                           </div>
+                                            </Link>
                                             {isSuperAdmin && (
-                                                <div className="flex items-center gap-1">
+                                                <div className="flex items-center gap-1 shrink-0">
                                                     <Button variant="ghost" size="icon" onClick={() => handleOpenResourceForm(lesson.id, res)} disabled={isSubmitting}>
                                                         <Edit2 className="h-4 w-4"/>
                                                     </Button>
@@ -927,3 +927,4 @@ export default function ManageCourseContentPage() {
     </div>
   );
 }
+
