@@ -14,15 +14,17 @@ import {
     getAdminLmsPageData,
     assignCourseToSchoolAudienceAction, 
     enrollSchoolInCourseAction,
-    unassignCourseFromSchoolAction
+    unassignCourseFromSchoolAction,
+    createSchoolSubscriptionOrderAction
 } from './actions';
-import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard, Edit2, Trash2, CalendarDays, ShoppingCart, CheckCheck, MoreHorizontal, XCircle } from 'lucide-react';
+import { Library, Settings, UserPlus, Loader2, Eye, Search, ChevronLeft, ChevronRight, Lock, Unlock, CreditCard, Edit2, Trash2, CalendarDays, ShoppingCart, CheckCheck, MoreHorizontal, XCircle, Users as UsersIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { differenceInDays, parseISO, isPast } from 'date-fns';
 
 
@@ -47,6 +49,8 @@ export default function SchoolLmsCoursesPage() {
   const [assignTargetClassId, setAssignTargetClassId] = useState<string>('');
   
   const [isSubscribeDialogOpen, setIsSubscribeDialogOpen] = useState(false);
+  const [seatsToPurchase, setSeatsToPurchase] = useState<number>(1);
+
 
   const fetchPageData = useCallback(async (adminUserId: string) => {
     setIsLoading(true);
@@ -76,7 +80,12 @@ export default function SchoolLmsCoursesPage() {
     setIsAssignDialogOpen(true);
   };
   
-
+  const handleOpenSubscribeDialog = (course: Course) => {
+    setCourseToAction(course);
+    setSeatsToPurchase(1);
+    setIsSubscribeDialogOpen(true);
+  };
+  
   const handleAssignCourse = async () => {
     if (!courseToAction || !currentSchool || !assignTarget) return;
     if (assignTarget === 'class' && !assignTargetClassId) {
@@ -246,12 +255,36 @@ export default function SchoolLmsCoursesPage() {
                                         </DropdownMenuItem>
                                         <DropdownMenuItem asChild>
                                             <Link href={`/admin/lms/courses/${course.id}/enrollments`}>
-                                                <Users className="mr-2 h-4 w-4"/> View Enrolled Users
+                                                <UsersIcon className="mr-2 h-4 w-4"/> Manage Enrollments
                                             </Link>
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem disabled>
-                                            <CreditCard className="mr-2 h-4 w-4" /> Upgrade Plan
-                                        </DropdownMenuItem>
+                                        {course.is_paid && (
+                                            <DropdownMenuItem onSelect={() => handleOpenSubscribeDialog(course)}>
+                                                <CreditCard className="mr-2 h-4 w-4" /> Upgrade Subscription
+                                            </DropdownMenuItem>
+                                        )}
+                                        <DropdownMenuSeparator />
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <DropdownMenuItem onSelect={e => e.preventDefault()} className="text-destructive">
+                                                    <XCircle className="mr-2 h-4 w-4"/> Unassign Course
+                                                </DropdownMenuItem>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This will unassign the course from your school, removing it from your catalog and unenrolling all current users.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => handleUnassignCourse(course.id)} className="bg-destructive hover:bg-destructive/90">
+                                                        Unassign
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             ) : (
@@ -326,6 +359,37 @@ export default function SchoolLmsCoursesPage() {
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
                     Set Visibility
                 </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog open={isSubscribeDialogOpen} onOpenChange={setIsSubscribeDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Upgrade Subscription</DialogTitle>
+                <DialogDescription>Purchase additional seats for "{courseToAction?.title}".</DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+                <div className="grid grid-cols-2 gap-4 items-center">
+                    <p>Current Seats:</p>
+                    <p className="font-bold text-lg">{courseToAction?.subscribed_users_count ?? 0}</p>
+                    <p>Price per 10 users:</p>
+                    <p className="font-bold text-lg">₹{(courseToAction?.price_per_10_users ?? 0).toFixed(2)}</p>
+                </div>
+                 <div>
+                    <Label htmlFor="seatsToPurchase">Number of User Bundles (x10) to Add:</Label>
+                    <Input id="seatsToPurchase" type="number" min="1" value={seatsToPurchase} onChange={(e) => setSeatsToPurchase(Number(e.target.value))} />
+                </div>
+                <div className="text-right">
+                    <p className="text-muted-foreground">Total Additional Cost</p>
+                    <p className="text-2xl font-bold">
+                        ₹{((courseToAction?.price_per_10_users ?? 0) * seatsToPurchase).toFixed(2)}
+                    </p>
+                </div>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                <Button>Proceed to Payment</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
